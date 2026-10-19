@@ -31,16 +31,72 @@ def local(iri) -> str:
     return s.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
 
 
+# 标准词汇命名空间（自动推导默认 NS 时排除）
+_RESERVED_NS = {
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "http://www.w3.org/2000/01/rdf-schema#",
+    "http://www.w3.org/2002/07/owl#",
+    "http://www.w3.org/2001/XMLSchema#",
+    "http://www.w3.org/XML/1998/namespace#",
+}
+
+
+def _resolve_ns(onto_path: str, g: "Graph") -> str:
+    """从本体自动推导默认命名空间（engine 的短名查询依赖它）。
+
+    优先级：
+      1. RDF/XML 根元素的 xml:base（本体作者的显式声明，追加 '#'），
+         仅当图中确有以该前缀开头的术语时采用（避免误导）；
+      2. 断言图中 IRI 最高频的 '#' 前缀（排除 rdf/rdfs/owl/xsd 标准词汇）；
+      3. DEFAULT_NS 兜底（保持旧行为）。
+
+    在原始断言图（raw，未推理）上统计，避免推理产物干扰。
+    """
+    import xml.etree.ElementTree as ET
+
+    # 1) xml:base 显式声明
+    try:
+        root = ET.parse(onto_path).getroot()
+        base = root.attrib.get("{http://www.w3.org/XML/1998/namespace}base")
+        if base:
+            candidate = base if base.endswith("#") else base + "#"
+            for term in g.subjects():
+                if isinstance(term, URIRef) and str(term).startswith(candidate):
+                    return candidate
+    except Exception:
+        pass
+
+    # 2) 图中最高频 '#' 前缀（排除标准词汇）
+    from collections import Counter
+
+    counter: Counter[str] = Counter()
+    terms = set(g.subjects()) | {o for o in g.objects() if isinstance(o, URIRef)} | \
+            {p for p in g.predicates() if isinstance(p, URIRef)}
+    for term in terms:
+        text = str(term)
+        if "#" in text:
+            prefix = text.rsplit("#", 1)[0] + "#"
+            if prefix not in _RESERVED_NS:
+                counter[prefix] += 1
+    if counter:
+        return counter.most_common(1)[0][0]
+
+    # 3) 兜底
+    return DEFAULT_NS
+
+
 class OntologyEngine:
     """通用本体引擎：加载 / 推理 / 查询 / 写图原语，与本体定义无关。"""
 
     def __init__(self, onto_path: str = ONTO_PATH, ns: str | None = None):
         self.onto_path = onto_path
-        self.NS = Namespace(ns or DEFAULT_NS)
 
         # 原始断言快照（未推理）——供物化 diff（推理新增 = 推理后图 − 原始图）
         self.raw = Graph()
         self.raw.parse(onto_path, format="xml")
+
+        # 默认命名空间：显式 ns > 从本体自动推导（xml:base / IRI 频率） > DEFAULT_NS
+        self.NS = Namespace(ns) if ns else Namespace(_resolve_ns(onto_path, self.raw))
 
         self.g = Graph()
         self.g.parse(onto_path, format="xml")

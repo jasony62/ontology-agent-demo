@@ -31,13 +31,18 @@ def local(iri) -> str:
     return s.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
 
 
-# 标准词汇命名空间（自动推导默认 NS 时排除）
+# 标准词汇命名空间（自动推导默认 NS 时排除；同时覆盖带 '#' 与无 '#' 写法）
 _RESERVED_NS = {
     "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns",
     "http://www.w3.org/2000/01/rdf-schema#",
+    "http://www.w3.org/2000/01/rdf-schema",
     "http://www.w3.org/2002/07/owl#",
+    "http://www.w3.org/2002/07/owl",
     "http://www.w3.org/2001/XMLSchema#",
+    "http://www.w3.org/2001/XMLSchema",
     "http://www.w3.org/XML/1998/namespace#",
+    "http://www.w3.org/XML/1998/namespace",
 }
 
 
@@ -47,7 +52,8 @@ def _resolve_ns(onto_path: str, g: "Graph") -> str:
     优先级：
       1. RDF/XML 根元素的 xml:base（本体作者的显式声明，追加 '#'），
          仅当图中确有以该前缀开头的术语时采用（避免误导）；
-      2. 断言图中 IRI 最高频的 '#' 前缀（排除 rdf/rdfs/owl/xsd 标准词汇）；
+      2. 断言图中最高频的 IRI 前缀——'#' 分隔优先，无 '#' 时取最后一个
+         '/' 分隔（排除 rdf/rdfs/owl/xsd 标准词汇）；频率并列取字典序最小者；
       3. DEFAULT_NS 兜底（保持旧行为）。
 
     在原始断言图（raw，未推理）上统计，避免推理产物干扰。
@@ -66,7 +72,7 @@ def _resolve_ns(onto_path: str, g: "Graph") -> str:
     except Exception:
         pass
 
-    # 2) 图中最高频 '#' 前缀（排除标准词汇）
+    # 2) 图中最高频 IRI 前缀（排除标准词汇；并列取字典序最小，保证确定性）
     from collections import Counter
 
     counter: Counter[str] = Counter()
@@ -76,10 +82,17 @@ def _resolve_ns(onto_path: str, g: "Graph") -> str:
         text = str(term)
         if "#" in text:
             prefix = text.rsplit("#", 1)[0] + "#"
-            if prefix not in _RESERVED_NS:
-                counter[prefix] += 1
+        else:
+            # 无 '#' 的 IRI：取最后一个 '/' 前缀（协议+域名+路径，且短名非空）
+            head, _, tail = text.rpartition("/")
+            if not (head and tail and "//" in head):
+                continue
+            prefix = head + "/"
+        if prefix not in _RESERVED_NS:
+            counter[prefix] += 1
     if counter:
-        return counter.most_common(1)[0][0]
+        # 最高频；频率并列时取字典序最小，避免 set 迭代顺序导致的不确定
+        return min(counter, key=lambda p: (-counter[p], p))
 
     # 3) 兜底
     return DEFAULT_NS

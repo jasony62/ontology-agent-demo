@@ -50,6 +50,18 @@ MINI_OWL_FULL_IRI = """<?xml version="1.0"?>
 </rdf:RDF>
 """
 
+# 无 '#' 分隔、纯 '/' 形式 IRI 的迷你本体（RDF 1.1 风格常见写法）
+MINI_OWL_SLASH_IRI = """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://demo.example.org/slash/Operator"/>
+  <owl:NamedIndividual rdf:about="http://demo.example.org/slash/alice">
+    <rdf:type rdf:resource="http://demo.example.org/slash/Operator"/>
+  </owl:NamedIndividual>
+</rdf:RDF>
+"""
+
 
 def _write(tmp_path, content: str, name: str) -> str:
     p = tmp_path / name
@@ -71,6 +83,29 @@ def test_ns_from_iri_frequency(tmp_path):
     path = _write(tmp_path, MINI_OWL_FULL_IRI, "mini_full.owl")
     engine = OntologyEngine(path)
     assert str(engine.NS) == "http://demo.example.org/full-iri-domain#"
+
+
+def test_ns_from_slash_iri(tmp_path):
+    """纯 '/' 分隔 IRI（无 '#'）也能推导出正确 NS。"""
+    path = _write(tmp_path, MINI_OWL_SLASH_IRI, "mini_slash.owl")
+    engine = OntologyEngine(path)
+    assert str(engine.NS) == "http://demo.example.org/slash/"
+
+
+def test_ns_tie_picks_lexicographically_smallest(tmp_path):
+    """频率并列时取字典序最小前缀，避免 set 迭代顺序导致的不确定。"""
+    tie_owl = """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://a.example.org#A1"/>
+  <owl:Class rdf:about="http://a.example.org#A2"/>
+  <owl:Class rdf:about="http://b.example.org#B1"/>
+  <owl:Class rdf:about="http://b.example.org#B2"/>
+</rdf:RDF>
+"""
+    path = _write(tmp_path, tie_owl, "mini_tie.owl")
+    engine = OntologyEngine(path)
+    assert str(engine.NS) == "http://a.example.org#"
 
 
 def test_ns_defaults_for_upstream_ontology():
@@ -104,6 +139,14 @@ def test_short_name_queries_work_after_load(tmp_path):
     assert engine.individuals("Operator") == ["alice"]
     assert "Operator" in engine.types_of("alice")
     assert engine.label(engine.NS["alice"]) == "操作员甲"
+
+
+def test_short_name_queries_work_for_slash_iri(tmp_path):
+    """修复扩展：'/' 分隔 IRI 的本体，短名查询同样可用。"""
+    path = _write(tmp_path, MINI_OWL_SLASH_IRI, "mini_slash_query.owl")
+    engine = OntologyEngine(path)
+    assert engine.individuals("Operator") == ["alice"]
+    assert "Operator" in engine.types_of("alice")
 
 
 def test_sparql_and_individuals_consistent(tmp_path):

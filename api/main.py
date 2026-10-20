@@ -36,6 +36,19 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from rdflib import RDF, OWL
 
+
+class LazyStaticFiles(StaticFiles):
+    """允许挂载目录在运行时才出现（API 先于前端构建启动）。
+
+    Starlette 的 StaticFiles(check_dir=False) 仅跳过【构造期】目录检查；
+    lifespan 启动时仍会执行 check_config() 并 os.stat 目录，目录不存在会抛
+    RuntimeError 导致服务启动失败。覆盖 check_config 为 no-op，使挂载
+    真正延迟生效：目录出现后请求即自动可服务，无需重启。
+    """
+
+    async def check_config(self) -> None:
+        pass
+
 import reasoner.engine as engine_mod
 from reasoner.engine import get_engine, OntologyEngine
 from domains import load_domain
@@ -56,7 +69,6 @@ app = FastAPI(
     version="1.3.0",
 )
 
-FRONTEND = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
 APP_DIST = Path(__file__).resolve().parent.parent / "frontend" / "app" / "dist"
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -80,12 +92,14 @@ def _require_default_ontology():
 
 @app.get("/", include_in_schema=False)
 def index():
-    # 优先返回新前端（frontend/app/dist，Vite 构建产物）；未构建时回退旧单页
+    # 优先返回新前端（frontend/app/dist，Vite 构建产物）；
+    # 未构建时给出明确提示，避免「静默回退旧页 → 误以为仍停在 demo 页」的误解
     if APP_DIST.exists() and (APP_DIST / "index.html").exists():
         return FileResponse(str(APP_DIST / "index.html"))
-    if FRONTEND.exists():
-        return FileResponse(str(FRONTEND))
-    return {"message": "frontend 未构建，请先运行 frontend/app 下的 npm run build"}
+    return {
+        "message": "工作台前端未构建：请先运行 cd frontend/app && npm install && npm run build，然后刷新页面",
+        "hint": "API 已运行；前端构建完成后无需重启服务，直接刷新即可加载 /assets/*",
+    }
 
 
 def _baseline_hash() -> str:
@@ -355,7 +369,12 @@ def import_individuals(req: ImportRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-# 新前端静态资源（frontend/app/dist/assets）——存在时挂载
+# 新前端静态资源（frontend/app/dist/assets）——始终挂载，不依赖启动时目录是否存在：
+# API 先于前端构建启动时，LazyStaticFiles 跳过启动期目录检查；构建完成后请求即自动
+# 可服务，无需重启（与 index() 的请求期动态判断保持一致）。
 _assets_dir = APP_DIST / "assets"
-if _assets_dir.exists():
-    app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="app-assets")
+app.mount(
+    "/assets",
+    LazyStaticFiles(directory=str(_assets_dir), check_dir=False),
+    name="app-assets",
+)

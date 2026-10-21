@@ -175,15 +175,21 @@ def main() -> int:
     state["engine"], state["adapter"] = _load(domain_mod.ONTO_FILE)
 
     def _reload(trigger: str) -> bool:
-        """重建引擎 + 适配器（核心 + extensions/）；失败保持旧状态。SIGHUP / 文件监听共用。"""
+        """重建引擎 + 适配器（核心 + extensions/）；失败保持旧状态。SIGHUP / 文件监听共用。
+
+        显式传 None（而非旧引擎的 extensions_dir）让 OntologyEngine.__init__ 总是重新
+        检测 extensions/ 目录（issue #6）：MCP 启动后新建的增量目录，热重载即生效，
+        无需重启进程（与 API 端 reload 行为一致）。
+        """
         try:
-            new_engine, new_adapter = _load(domain_mod.ONTO_FILE, state["engine"].extensions_dir)
+            new_engine, new_adapter = _load(domain_mod.ONTO_FILE)
         except Exception as exc:
             print(f"[{trigger}] 重载失败（保持旧状态）: {exc}", file=sys.stderr, flush=True)
             return False
         state["engine"], state["adapter"] = new_engine, new_adapter
         print(f"[{trigger}] 本体已热重载：{len(new_engine.g)} 三元组，"
-              f"{len(set(new_engine.g.subjects()) | set(new_engine.g.objects()))} 节点",
+              f"{len(set(new_engine.g.subjects()) | set(new_engine.g.objects()))} 节点，"
+              f"extensions_dir={new_engine.extensions_dir}",
               file=sys.stderr, flush=True)
         return True
 

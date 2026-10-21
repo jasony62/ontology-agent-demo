@@ -53,6 +53,7 @@ def register_tools(server: MCPServer, get_adapter) -> None:
         return get_adapter().graph_export()
 
     @server.tool(description="本体状态（只读）：返回基线文件哈希与内存变更计数，用于与 API 端一致性校验（REQ-02）。dirty=true 表示存在未持久化的变更。")
+    @server.tool(description="本体状态（只读）：返回基线文件哈希与内存变更计数，用于与 API 端一致性校验（REQ-02）。dirty=true 表示存在未持久化的变更；extensions_dir 反映扩展增量目录是否已启用（issue #6，与 API /api/ontology/status 对齐）。")
     def status() -> dict:
         a = get_adapter()
         return {
@@ -61,6 +62,7 @@ def register_tools(server: MCPServer, get_adapter) -> None:
             "changelog": a.changelog[-5:],
             "last_commit": a.last_commit,
             "assignments": len(a.assignments),
+            "extensions_dir": a.engine.extensions_dir,
         }
 
     @server.tool(description="实体清单：返回本体中可用的任务/智能体/能力/约束短名及中文标签，帮助确定其它工具的参数取值。")

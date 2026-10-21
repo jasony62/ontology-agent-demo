@@ -179,6 +179,9 @@ def test_mcp_tools_follow_adapter_factory():
     st_fn, _ = server.tools["status"]
     st = st_fn()
     assert st["assignments"] == 1
+    # issue #6：status 暴露 extensions_dir（热重载后新引擎目录状态可观测）
+    assert "extensions_dir" in st
+    assert st["extensions_dir"] is None or isinstance(st["extensions_dir"], str)
 
 
 def test_mcp_server_import_smoke():
@@ -188,3 +191,23 @@ def test_mcp_server_import_smoke():
     import mcp_server  # noqa: F401
     assert hasattr(mcp_server, "build_server")
     assert hasattr(mcp_server, "main")
+
+
+def test_engine_detects_newly_created_ext_dir():
+    """issue #6 根因回归：OntologyEngine(onto, None)（MCP _reload 语义）在
+    extensions/ 目录启动后新建时能重新检测并启用——SIGHUP 热重载后
+    persist=true 无需重启即可写盘。"""
+    from reasoner.engine import OntologyEngine
+
+    # 清场：确保 extensions/ 当前不存在（避免污染测试前提）
+    if os.path.isdir(EXTENSIONS_DIR) and not os.listdir(EXTENSIONS_DIR):
+        os.rmdir(EXTENSIONS_DIR)
+    try:
+        e1 = OntologyEngine(ONTO_FILE, extensions_dir=None)
+        assert e1.extensions_dir is None          # 启动时无目录 → 未启用
+        os.makedirs(EXTENSIONS_DIR, exist_ok=True)  # 模拟运行期新建增量目录
+        e2 = OntologyEngine(ONTO_FILE, extensions_dir=None)  # 等价 _reload 的 _load(ONTO_FILE)
+        assert e2.extensions_dir == EXTENSIONS_DIR  # 重新检测 → 启用
+    finally:
+        if os.path.isdir(EXTENSIONS_DIR) and not os.listdir(EXTENSIONS_DIR):
+            os.rmdir(EXTENSIONS_DIR)              # 保持仓库干净

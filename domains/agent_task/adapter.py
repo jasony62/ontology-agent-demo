@@ -534,7 +534,10 @@ class AgentTaskAdapter:
 
         校验：name 必填且不冲突、能力/约束引用存在、risk_level 合法。
         任一失败整体拒绝，不产生半套数据。
+        空列表视为无操作：不 reparse、不写 changelog、不置 dirty（issue #7）。
         """
+        if not individuals:
+            return {"imported": 0, "individuals": [], "persisted": None}
         plan: list[tuple] = []                       # (iri, caps, cons, risk)
         for item in individuals:
             name = (item.get("name") or "").strip()

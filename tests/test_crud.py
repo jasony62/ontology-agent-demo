@@ -135,6 +135,18 @@ def test_import_unknown_capability_rejected(ext_dir):
         adapter.import_individuals([{"name": "t_import_bad", "capabilities": ["NoSuchCap"]}])
 
 
+def test_import_empty_list_is_noop_no_dirty(ext_dir):
+    """issue #7：空数组导入视为无操作——不 reparse、不写 changelog、不置 dirty。"""
+    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    before = (adapter.change_count, len(adapter.changelog))
+    r = adapter.import_individuals([])
+    assert r == {"imported": 0, "individuals": [], "persisted": None}
+    # dirty 计数与 changelog 均无新增
+    assert adapter.change_count == before[0]
+    assert len(adapter.changelog) == before[1]
+    assert not any(c["op"] == "import" for c in adapter.changelog)
+
+
 def test_import_ok_persist_reload(ext_dir):
     adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
     r = adapter.import_individuals([

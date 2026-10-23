@@ -14,6 +14,10 @@
 - 新增 SHACL 数据体检工具 `validate_shapes`（agent_task 领域包）：按 `pipeline/shapes/agent_task.ttl` 对 ABox 做 SHACL 形状校验，返回结构化报告（conforms/summary/violations，violations 逐条给出焦点个体、属性路径、约束与中文说明）。落地上游 `docs/MODELING_PIPELINE.md` §5.4 G4 已约定但未实现的 SHACL 闸门（pipeline/ 目录此前为空）；新增 `pyshacl` 依赖
 - 新增时序 ABox 支持（主体级 `validFrom`/`validTo`）：`engine.facts_at(property, at)` 按时间过滤活跃事实，MCP 通用工具 `active_facts`——半开区间（at==from 活跃、at==to 失效）、无时间戳事实永远活跃（零回归）、失效事实进 `inactive`（失效而非删除，原始三元组仍在图中）、非法时间戳进 `warnings`。参考 Graphiti「事实失效而非删除」机制
 
+### Fixed
+
+- MCP 热重载失效（issue #6，v1.3.0 复测重新打开）：SIGHUP 回调签名与 asyncio 调用约定不匹配——`loop.add_signal_handler(SIGHUP, cb)` 以**无参**调用回调，而原 `_on_sighup(signum, frame)` 需要 2 个位置参数，每次 `kill -HUP` 触发 TypeError 被事件循环吞掉，`_reload` 从未执行。修复：回调改为 `*args` 兼容签名（`_make_sighup_handler` 工厂，同时兼容 `signal.signal` 带参与 `add_signal_handler` 无参两种注册路径），新增回归测试 `test_sighup_handler_signature_compat`
+
 ## [0.2.2] - 2026-10-22
 
 ### Added

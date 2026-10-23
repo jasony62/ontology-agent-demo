@@ -211,3 +211,19 @@ def test_engine_detects_newly_created_ext_dir():
     finally:
         if os.path.isdir(EXTENSIONS_DIR) and not os.listdir(EXTENSIONS_DIR):
             os.rmdir(EXTENSIONS_DIR)              # 保持仓库干净
+
+
+def test_sighup_handler_signature_compat():
+    """issue #6 根因回归：SIGHUP 回调必须兼容无参（loop.add_signal_handler）
+    与带参（signal.signal）两种调用约定——此前固定 (signum, frame) 签名在
+    asyncio 路径下抛 TypeError，_reload 从未执行。"""
+    mcp_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "mcp"))
+    if mcp_dir not in sys.path:
+        sys.path.insert(0, mcp_dir)
+    import mcp_server
+
+    calls = []
+    handler = mcp_server._make_sighup_handler(lambda trigger: calls.append(trigger))
+    handler()            # asyncio add_signal_handler：无参调用
+    handler(1, None)     # signal.signal：handler(signum, frame) 带参调用
+    assert calls == ["sighup", "sighup"]

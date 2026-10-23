@@ -187,6 +187,20 @@ def _register_generic_tools(server: MCPServer, get_engine, policy=None) -> None:
         return get_engine().facts_at(property, at)
 
 
+def _make_sighup_handler(reload_fn):
+    """返回 SIGHUP 热重载回调（issue #6 根因修复：兼容两种注册路径的调用约定）。
+
+    - `signal.signal(SIGHUP, h)`   → h(signum, frame)   （2 个位置参数）
+    - `loop.add_signal_handler(…)` → callback()          （无参调用）
+    此前固定签名 (signum, frame) 在 asyncio 路径下抛 TypeError，_reload 从未执行。
+    """
+
+    def _on_sighup(*_args):
+        reload_fn("sighup")
+
+    return _on_sighup
+
+
 async def _async_main(main_async, on_sighup):
     """在事件循环内注册 SIGHUP（asyncio 可靠信号路径）后运行 MCP 服务。"""
     loop = asyncio.get_running_loop()
@@ -260,8 +274,7 @@ def main() -> int:
               file=sys.stderr, flush=True)
         return True
 
-    def _on_sighup(signum, frame):
-        _reload("sighup")
+    _on_sighup = _make_sighup_handler(_reload)
 
     try:
         signal.signal(signal.SIGHUP, _on_sighup)

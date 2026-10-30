@@ -19,7 +19,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ontology-plugin-sdk"
-version = "1.0.0"
+# 次版本升级：新增 `cq` 子包（出题 / 质检 / TBox 草稿校验）与 `owlrl` 依赖。
+# 纯增量——没有改任何既有符号的签名，也没有删符号，因此 `PLUGIN_API` 仍是 "1"。
+# 两个版本号分工：本字段描述"包里有什么"，PLUGIN_API 描述"领域包还能不能按这版
+# 契约加载"。前者可以随便涨，后者只在破坏兼容时才动。
+version = "1.1.0"
 description = "领域插件 SDK：领域适配器契约、语义配置、推导链展开与 ABox 事务仓库"
 readme = "README.md"
 requires-python = ">=3.10"

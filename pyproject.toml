@@ -6,7 +6,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ontology-agent-demo"
-version = "0.2.3"
+# 与 git tag 对齐。此前长期停在 0.2.3（v0.3.0 / v0.4.0 / v0.5.0 打了 tag 却没回来改
+# 这个字段），发布 v0.6.0 时一并修正——版本号只在一个地方写错，就等于没有版本号。
+version = "0.6.0"
 description = "本体 × 智能体协作 Demo：通用推理引擎 + 领域适配器 + FastAPI + MCP，配套《本体上手指南》"
 readme = "README.md"
 requires-python = ">=3.10"

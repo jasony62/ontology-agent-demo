@@ -27,7 +27,8 @@ bash scripts/start.sh      # venv + deps + API + open browser
 - The Makefile hardcodes `.venv/bin/*`; run commands from the repo root. Backend tests need no running server or network.
 - Single backend test: `.venv/bin/python -m pytest tests/test_reasoning.py -k r1 -q`.
 - Frontend (from `frontend/app/`): `npm ci`, `npm run typecheck`, `npm run test`, `npm run build` (build includes typecheck). Single vitest file: `npx vitest run src/store/editorStore.test.ts`.
-- Current suites: 393 backend tests, 68 frontend tests. Counts in README/CONTRIBUTING are stale; trust `pytest`/`vitest` output.
+- Current suites: 402 backend tests, 75 frontend tests. Counts in README/CONTRIBUTING are stale; trust `pytest`/`vitest` output.
+- Graph display is data-driven: the domain declares `graph_groups` (group name → class key) in `config.json`; `graph_group_members()` in the SDK is the single source for both `graph_export` and `GET /api/ontology/graph-groups`, which the frontend uses for node colours and the legend. Never hardcode group names (`Agent`/`Task`) in the adapter or the UI — a domain that declares a new group must get a coloured column for free.
 - No backend linter/formatter/typechecker is configured; do not invent one. CI is pytest on Python 3.10–3.12 plus a Node 20 frontend job. The local `.venv` is Python 3.14; `make docs` cannot install mkdocs there (no watchdog wheel), so doc builds are verified in CI on 3.12.
 - `scripts/query.py` is HTTP-first with `--local` fallback; `scripts/query.py` and `scripts/ontologyctl.py` read `DOUBAO_API_BASE` (default `http://127.0.0.1:8000`).
 

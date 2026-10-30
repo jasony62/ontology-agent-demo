@@ -356,6 +356,7 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 | 方法 | 路径 | 请求 | 说明 |
 |---|---|---|---|
 | GET | `/api/ontology` | — | 图谱数据（类/个体/边） |
+| GET | `/api/ontology/graph-groups` | — | 领域声明的图谱分组（`name` / `class` / `label` / `members`），前端据此上色与出图例 |
 | POST | `/api/reason` | `{type: capability_match\|orchestrate\|assign, task, agent?}` | 领域查询 |
 | POST | `/api/entities` | `{payload, persist?}` | 按领域 `ENTITY_SCHEMA` 新建实体 |
 | GET | `/api/entities/schema` | — | 当前领域的实体字段声明 |

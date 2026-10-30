@@ -24,6 +24,24 @@ export interface GraphData {
   edges: GraphEdge[];
 }
 
+/**
+ * 领域声明的图谱分组（GET /api/ontology/graph-groups）。
+ *
+ * 分组是**领域**的展示约定（`config.json` 的 `graph_groups`：组名 → 类键），
+ * 不是框架概念——前端因此不猜任何类名，只按这份声明上色、出图例。
+ * 未声明的领域拿到空数组，回落到按 类/个体 两色渲染。
+ */
+export interface GraphGroup {
+  /** 组名（领域自定；前端只当标签与配色键） */
+  name: string;
+  /** 该组成员所属的类短名 */
+  class: string;
+  /** 类的 rdfs:label，图例显示用 */
+  label: string;
+  /** 成员个体短名（后端已按子类收全） */
+  members: string[];
+}
+
 export interface MaterializedResponse {
   stats: { triples_asserted: number; triples_materialized: number; inferred_added: number };
   asserted: GraphData;
@@ -80,6 +98,9 @@ export const api = {
 
   /** 领域图数据（图谱渲染） */
   ontology: () => request<GraphData>('/api/ontology'),
+
+  /** 领域声明的图谱分组（只读展示约定；未声明时 groups 为空数组） */
+  graphGroups: () => request<{ groups: GraphGroup[] }>('/api/ontology/graph-groups'),
 
   /** 物化 diff：原始断言 / 推理新增 */
   materialized: () => request<MaterializedResponse>('/api/ontology/materialized'),

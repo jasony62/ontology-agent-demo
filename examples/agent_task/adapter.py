@@ -24,6 +24,7 @@ from rdflib import URIRef, RDF, RDFS
 from ontology_plugin_sdk import (
     PluginContext,
     SemanticConfig,
+    graph_group_members,
     load_derivation_config,
     load_domain_config,
     local,
@@ -591,7 +592,13 @@ class AgentTaskAdapter:
     # ---------------- 图谱导出（领域展示） ----------------
 
     def graph_export(self) -> dict:
-        """导出本体结构供前端图谱渲染（仅包含演示相关的类/个体/边）。"""
+        """导出本体结构供前端图谱渲染（仅包含演示相关的类/个体/边）。
+
+        **分组来自 config 的 `graph_groups`，不在这里写死。** 原先两处各写一份
+        （`self.agents()` 拼 "Agent"、`self.tasks()` 拼 "Task"），配置里加一组
+        个体在导出里会被静默丢掉，而前端图例与节点配色读的是配置——两边慢慢
+        就漂了。现在分组集合只有一个来源，字段丰富度仍由领域按组登记。
+        """
         g, cfg = self.engine.g, self.c
         classes = []
         for tc in cfg.top_classes:
@@ -603,22 +610,14 @@ class AgentTaskAdapter:
                 classes.append({"name": local(sub), "label": self.label(sub), "parent": tc})
 
         individuals = []
-        for agent in self.agents():
-            individuals.append({
-                "name": local(agent), "label": self.label(agent), "group": "Agent",
-                "certified": self.is_certified(agent),
-                "description": self.description(agent),
-                "capabilities": self.capabilities_of(agent),
-            })
-        for task in self.tasks():
-            individuals.append({
-                "name": local(task), "label": self.label(task), "group": "Task",
-                "type": "复合任务" if self.is_complex_task(task) else "简单任务",
-                "risk_level": self.risk(task),
-                "description": self.description(task),
-                "requires": self.required_capabilities(task),
-                "constraints": self.constraints_of(task),
-            })
+        for grp in graph_group_members(self):
+            row = self._group_row(grp["name"])
+            for name in grp["members"]:
+                iri = self.NS[name]
+                individuals.append({
+                    "name": name, "label": self.label(iri), "group": grp["name"],
+                    **row(iri),
+                })
 
         edges = []
         for s, o in self.direct_has_cap:
@@ -639,3 +638,31 @@ class AgentTaskAdapter:
             edges.append({"source": t, "target": a, "property": self.c.resolve("assigned_to"), "inferred": False})
 
         return {"classes": classes, "individuals": individuals, "edges": edges}
+
+    def _group_row(self, group: str):
+        """分组 → 该组的展示字段构造函数。
+
+        未登记的分组只报 name/label/group 三项——**不报错**。配置里新加一组
+        个体是合法操作，图应该能画出来，只是没有额外字段；为了"字段丰富度"
+        去拒绝一个合法配置，是把展示层的完备性当成了架构约束。
+        """
+        return {
+            "Agent": self._agent_row,
+            "Task": self._task_row,
+        }.get(group, lambda _iri: {})
+
+    def _agent_row(self, iri) -> dict:
+        return {
+            "certified": self.is_certified(iri),
+            "description": self.description(iri),
+            "capabilities": self.capabilities_of(iri),
+        }
+
+    def _task_row(self, iri) -> dict:
+        return {
+            "type": "复合任务" if self.is_complex_task(iri) else "简单任务",
+            "risk_level": self.risk(iri),
+            "description": self.description(iri),
+            "requires": self.required_capabilities(iri),
+            "constraints": self.constraints_of(iri),
+        }

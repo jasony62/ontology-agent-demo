@@ -105,3 +105,40 @@ def test_consistency():
     r = client.post("/api/consistency")
     assert r.status_code == 200
     assert "consistent" in r.json()
+
+
+# ---------- 图谱分组（分组由领域声明，前端据此上色） ----------
+
+def test_graph_groups_endpoint():
+    """/api/ontology/graph-groups 报出 domain config 声明的分组。
+
+    agent_task 的分组曾经只活在 graph_export 的字符串里（"Agent" / "Task"），
+    配置里加一组个体导出会静默丢掉；现在两边同源，这条用例守住"报得出"。
+    """
+    r = client.get("/api/ontology/graph-groups")
+    assert r.status_code == 200
+    groups = r.json()["groups"]
+    assert [g["name"] for g in groups] == ["Agent", "Task"]
+    by = {g["name"]: g for g in groups}
+    # 不断言成员总数：别的用例会往同一个引擎里建个体（如 t_api_classify），
+    # 精确计数会让这条用例依赖执行顺序。断言"这一组里有谁"才是它的职责。
+    assert by["Agent"]["members"] == [
+        "deploy_agent", "dev_agent", "junior_dev", "req_agent", "test_agent"]
+    assert "t_feature" in by["Task"]["members"]
+    # label 取自本体 rdfs:label（图例要给人看），不是组名本身
+    assert by["Agent"]["label"] == "智能体"
+
+
+def test_graph_groups_agree_with_graph_export():
+    """端点与导出必须说同一件事：同样的分组名、同样的一批个体。
+
+    两处若各自算一遍，图例会多出空色块，而"看图"看不出这种错。
+    """
+    groups = {
+        g["name"]: set(g["members"])
+        for g in client.get("/api/ontology/graph-groups").json()["groups"]
+    }
+    exported: dict[str, set[str]] = {}
+    for ind in client.get("/api/ontology").json()["individuals"]:
+        exported.setdefault(ind["group"], set()).add(ind["name"])
+    assert groups == exported

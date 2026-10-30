@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Ontology } from '../data/ontology';
-import type { GraphData } from '../api/client';
+import type { GraphData, GraphGroup } from '../api/client';
 
 export type ViewMode = 'asserted' | 'materialized' | 'diff';
 
@@ -12,6 +12,8 @@ interface AppState {
   ontology: Ontology | null;
   // 后端图数据（/api/ontology，领域图）与物化数据
   graphData: GraphData | null;
+  // 领域声明的图谱分组（上色 / 图例）；未声明的领域为空数组
+  graphGroups: GraphGroup[];
   materialized: {
     asserted: GraphData | null;
     inferred: GraphData | null;
@@ -33,6 +35,7 @@ interface AppState {
   setBackendOk: (ok: boolean, info?: Record<string, unknown>) => void;
   setOntology: (o: Ontology | null) => void;
   setGraphData: (g: GraphData | null) => void;
+  setGraphGroups: (g: GraphGroup[]) => void;
   setMaterialized: (m: AppState['materialized']) => void;
   setSource: (xml: string, name: string) => void;
   setViewMode: (m: ViewMode) => void;
@@ -47,6 +50,7 @@ export const useAppStore = create<AppState>((set) => ({
   backendInfo: null,
   ontology: null,
   graphData: null,
+  graphGroups: [],
   materialized: { asserted: null, inferred: null, stats: null },
   sourceXml: '',
   sourceName: '',
@@ -59,6 +63,7 @@ export const useAppStore = create<AppState>((set) => ({
   setBackendOk: (ok, info) => set({ backendOk: ok, backendInfo: info ?? null }),
   setOntology: (o) => set({ ontology: o }),
   setGraphData: (g) => set({ graphData: g }),
+  setGraphGroups: (g) => set({ graphGroups: g }),
   setMaterialized: (m) => set({ materialized: m }),
   setSource: (xml, name) => set({ sourceXml: xml, sourceName: name }),
   setViewMode: (m) => set({ viewMode: m }),

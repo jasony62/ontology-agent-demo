@@ -18,6 +18,10 @@
     "hidden_label_classes": [
       "CertifiedAgent",
       "ComplianceTask"
-    ]
+    ],
+    "graph_groups": {
+      "Agent": "agent_class",
+      "Task": "task_class"
+    }
   }
 }

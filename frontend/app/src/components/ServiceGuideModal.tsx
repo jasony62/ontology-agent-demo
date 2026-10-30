@@ -29,6 +29,7 @@ function CopyBlock({ code }: { code: string }) {
 
 const API_TABLE: { method: string; path: string; desc: string; note?: string }[] = [
   { method: 'GET', path: '/api/health', desc: '服务状态、默认本体、Agent/任务数量', note: '任意状态' },
+  { method: 'GET', path: '/api/ontology/graph-groups', desc: '领域声明的图谱分组（组名 / 类 / 成员），前端据此上色与出图例', note: '默认本体' },
   { method: 'POST', path: '/api/reason', desc: '能力匹配 / 任务编排 / 分配（type 参数）', note: '默认本体' },
   { method: 'POST', path: '/api/entities', desc: '按领域 schema 新建实体（先看 /api/entities/schema）', note: '默认本体' },
   { method: 'POST', path: '/api/explain', desc: '最近一次查询的推导链（中文解释）', note: '默认本体' },

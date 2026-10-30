@@ -24,6 +24,7 @@ from reasoner.protocol import (  # noqa: E402
     capability_handlers,
     create_entity,
     dangling_capabilities,
+    graph_group_members,
     missing_methods,
     normalize_entity_payload,
     supports,
@@ -395,7 +396,7 @@ def test_adapter_can_override_defaults():
     assert A().graph_export()["custom"] is True
 
 
-def _adapter_with(engine, top=("Widget",), schema=None):
+def _adapter_with(engine, top=("Widget",), schema=None, groups=None):
     """用给定引擎装配一个最小适配器（只测默认实现，不测业务）。"""
     from reasoner.semantic import SemanticConfig
 
@@ -405,7 +406,8 @@ def _adapter_with(engine, top=("Widget",), schema=None):
         def __init__(self):
             self.engine = engine
             self.c = SemanticConfig(
-                top_classes=list(top), hidden_label_classes=[], graph_groups={},
+                top_classes=list(top), hidden_label_classes=[],
+                graph_groups=dict(groups or {}),
             )
 
         def capability_match(self, *a, **k):
@@ -607,3 +609,74 @@ def test_entity_schema_without_create_rejected(tmp_path, root):
 
     with pytest.raises(DomainContractError, match="create"):
         load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
+
+
+# ---------------- 图谱分组（graph_groups） ----------------
+#
+# 分组是领域的**展示约定**：组名 → 类键。它曾经只被两端各写一份
+# （fault_diag 走默认导出、agent_task 在自己的 graph_export 里拼字符串），
+# 现在收敛成一个函数，前端也从同一份声明取色。下面守三件事：
+#   1. 成员按子类收全（否则「Equipment 的子类 Pump 的个体」整组消失）；
+#   2. 顺序即声明顺序（图例与阅读顺序靠它）；
+#   3. 未声明时返回空列表，而不是让端点 500 / 让前端拿到 undefined。
+
+def test_graph_group_members_collects_subclass_individuals():
+    engine = _FakeEngine([
+        (f"{T}Widget", RDF.type, f"{T}Thing"),
+        (f"{T}Gizmo", RDFS.subClassOf, f"{T}Widget"),
+        (f"{T}w1", RDF.type, f"{T}Widget"),
+        (f"{T}g1", RDF.type, f"{T}Gizmo"),
+    ])
+    adapter = _adapter_with(engine, groups={"Widget": "Widget"})
+
+    [grp] = graph_group_members(adapter)
+    # g1 是 Gizmo 的个体、Gizmo ⊑ Widget：按类层次写分组本来就是为了不必逐个列类
+    assert grp["members"] == ["g1", "w1"]
+    assert grp["name"] == "Widget"
+    assert grp["class"] == "Widget"
+
+
+def test_graph_group_members_resolves_config_key_and_label():
+    engine = _FakeEngine([
+        (f"{T}Widget", RDFS.label, "部件"),
+        (f"{T}w1", RDF.type, f"{T}Widget"),
+    ])
+    # 值为语义配置键而非本体短名：config.resolve 负责映射
+    adapter = _adapter_with(engine, groups={"Part": "widget_class"})
+    adapter.c = adapter.c.update(widget_class="Widget")
+
+    [grp] = graph_group_members(adapter)
+    assert (grp["class"], grp["label"], grp["members"]) == ("Widget", "部件", ["w1"])
+
+
+def test_graph_group_members_keeps_declaration_order():
+    engine = _FakeEngine([
+        (f"{T}a1", RDF.type, f"{T}Alpha"),
+        (f"{T}b1", RDF.type, f"{T}Beta"),
+    ])
+    # Beta 先声明：图例与列序按这个顺序，字典序不是领域的阅读顺序
+    adapter = _adapter_with(engine, groups={"Beta": "Beta", "Alpha": "Alpha"})
+    assert [g["name"] for g in graph_group_members(adapter)] == ["Beta", "Alpha"]
+
+
+def test_graph_group_members_empty_when_undeclared():
+    """未声明分组不是错误：分组是可选的展示约定，没它照样画图。"""
+    adapter = _adapter_with(_FakeEngine([(f"{T}w1", RDF.type, f"{T}Widget")]))
+    assert graph_group_members(adapter) == []
+
+
+def test_graph_export_and_group_members_agree():
+    """导出的 group 集合 == 声明的分组集合。
+
+    这条是**防漂移**用的：两处一旦各算一遍，配置里加一组、
+    导出里静默丢掉，前端图例就会多出一组空色块——那种问题看图看不出来。
+    """
+    engine = _FakeEngine([
+        (f"{T}a1", RDF.type, f"{T}Alpha"),
+        (f"{T}b1", RDF.type, f"{T}Beta"),
+    ])
+    adapter = _adapter_with(engine, groups={"Alpha": "Alpha", "Beta": "Beta"})
+
+    declared = {g["name"] for g in graph_group_members(adapter)}
+    exported = {i["group"] for i in adapter.graph_export()["individuals"]}
+    assert exported == declared

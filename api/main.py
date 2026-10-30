@@ -7,6 +7,7 @@
         GET  /                 前端 Demo 页面（图谱展示）
         GET  /api/health       健康检查
         GET  /api/ontology     本体结构（图谱渲染数据）
+        GET  /api/ontology/graph-groups 领域声明的图谱分组（前端上色 / 图例）
         POST /api/reason       结构化推理（框架内置三种 ∪ 领域注册的处理器）
         GET  /api/entities/schema 当前领域的实体 schema（字段 / 类型 / 必填）
         POST /api/entities     按领域 schema 新建实体（校验 → 写图 → 推理）
@@ -63,6 +64,7 @@ from reasoner.protocol import (
     capability_handlers,
     dangling_capabilities,
     entity_schema,
+    graph_group_members,
     supports,
     undeclared_missing,
     validate_entity_schema,
@@ -286,6 +288,23 @@ def ontology():
     _require_default_ontology()
     _require_capability("graph_export")
     return ADAPTER.graph_export()
+
+
+@app.get("/api/ontology/graph-groups")
+def ontology_graph_groups():
+    """当前领域声明的图谱分组：group → 该类（含子类）的个体短名。
+
+    前端据此给节点上色、渲染图例。为什么单独一个端点而不塞进
+    `/api/ontology/materialized`：后者是**引擎**的通用产物（断言图 / 推理图），
+    对任意 .owl 都成立；分组是**领域**的展示约定，只有装配了适配器才存在。
+    把领域信息混进通用产物，等于让通用端点依赖领域——正是这轮改造在拆的东西。
+
+    未声明 `graph_groups` 时返回空列表而不是 400：分组是可选的，没有它
+    前端回落到按 类/个体 上色，图照样画得出来。
+    """
+    _require_default_ontology()
+    _require_capability("graph_export")
+    return {"groups": graph_group_members(ADAPTER)}
 
 
 # 推理类型 → 领域方法调用（P2-4：能力表驱动）。

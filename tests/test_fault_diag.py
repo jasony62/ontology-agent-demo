@@ -447,3 +447,33 @@ def test_create_entity_requires_declared_capability(fd_api):
     """未声明 CAPABILITIES 的端点行为保持一致：400「未声明能力」。"""
     resp = fd_api.post("/api/reason", json={"type": "capability_match", "task": "pump_01"})
     assert resp.status_code == 400
+
+
+# ---------------- 图谱分组（默认导出由 config 驱动） ----------------
+
+def test_graph_groups_endpoint_lists_domain_groups(fd_api):
+    """五个分组按 config 书写顺序报出——顺序就是图例顺序，字典序会打乱阅读次序。"""
+    resp = fd_api.get("/api/ontology/graph-groups")
+    assert resp.status_code == 200
+    groups = resp.json()["groups"]
+    assert [g["name"] for g in groups] == ["Equipment", "Component", "Symptom", "FaultMode", "Remedy"]
+    by = {g["name"]: g for g in groups}
+    # 本领域没有子类个体落在 Equipment 下（Pump 未建个体），成员就是一个
+    assert by["Equipment"]["members"] == ["pump_01"]
+    assert by["Remedy"]["label"] == "处置措施"
+
+
+def test_graph_groups_agree_with_default_export(fd_api):
+    """默认导出与分组端点同源：个体集合逐组相等。
+
+    fault_diag 走的是框架默认 graph_export（零领域代码），这条用例同时验证
+    "默认实现读的就是同一份 graph_groups"——否则前端图例与画布会对不上。
+    """
+    groups = {
+        g["name"]: set(g["members"])
+        for g in fd_api.get("/api/ontology/graph-groups").json()["groups"]
+    }
+    exported: dict[str, set[str]] = {}
+    for ind in fd_api.get("/api/ontology").json()["individuals"]:
+        exported.setdefault(ind["group"], set()).add(ind["name"])
+    assert groups == exported

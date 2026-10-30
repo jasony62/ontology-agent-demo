@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from './store/appStore';
 import { api } from './api/client';
 import { parseRDF } from './lib/rdf/parser';
+import { CLASS_COLOR, INDIVIDUAL_COLOR, buildGroupView } from './lib/graphGroups';
 import GraphView from './components/GraphView';
 import GraphErrorBoundary from './components/GraphErrorBoundary';
 import Inspector from './components/Inspector';
@@ -23,11 +24,13 @@ export default function App() {
   const setSource = useAppStore((s) => s.setSource);
   const setOntology = useAppStore((s) => s.setOntology);
   const setGraphData = useAppStore((s) => s.setGraphData);
+  const setGraphGroups = useAppStore((s) => s.setGraphGroups);
   const setError = useAppStore((s) => s.setError);
   const setSelectedId = useAppStore((s) => s.setSelectedId);
   const error = useAppStore((s) => s.error);
   const materialized = useAppStore((s) => s.materialized);
   const graphData = useAppStore((s) => s.graphData);
+  const graphGroups = useAppStore((s) => s.graphGroups);
   const viewMode = useAppStore((s) => s.viewMode);
   const sourceName = useAppStore((s) => s.sourceName);
 
@@ -68,6 +71,9 @@ export default function App() {
     setEditorOpen(false);
   };
 
+  // 图例与画布共用同一份分组视图：两处若各自算一遍，颜色迟早对不上
+  const groupLegend = useMemo(() => buildGroupView(graphGroups).legend, [graphGroups]);
+
   /** #21：编辑入口点击后锚点滚动到编辑区并短暂高亮，避免"点完无反应" */
   const scrollToEditor = (selector: string) => {
     requestAnimationFrame(() => {
@@ -106,6 +112,14 @@ export default function App() {
       } catch (e) {
         setError(`本体加载/物化失败：${e instanceof Error ? e.message : String(e)}\n请检查当前本体文件是否可读（通用模式下文件缺失时重载本体或重启服务恢复默认本体）。`);
       }
+      // 图谱分组是**可选**的展示约定：拿不到就回落到 类/个体 两色，
+      // 所以这里静默降级、不进错误横幅——为了配色去拿一个红色提示打断读图，不值当。
+      try {
+        const { groups } = await api.graphGroups();
+        setGraphGroups(groups ?? []);
+      } catch {
+        setGraphGroups([]);
+      }
       try {
         const src = await api.source();
         setSource(src.content, src.filename);
@@ -120,7 +134,7 @@ export default function App() {
         setError(`OWL 源码读取失败：${e instanceof Error ? e.message : String(e)}\n本体文件可能缺失，可重新加载本体或重启服务恢复默认本体。`);
       }
     })();
-  }, [setBackendOk, setMaterialized, setSource, setOntology, setGraphData, setError]);
+  }, [setBackendOk, setMaterialized, setSource, setOntology, setGraphData, setGraphGroups, setError]);
 
   return (
     <div className="app">
@@ -158,8 +172,16 @@ export default function App() {
           <h2>本体图谱 · {sourceName || '—'}</h2>
           <MaterializedPanel />
           <div className="legend">
-            <span className="item"><span className="line" style={{ borderColor: '#4a90a4' }}></span> 类（Class）</span>
-            <span className="item"><span className="line" style={{ borderColor: '#c98a3d' }}></span> 个体（Individual）</span>
+            <span className="item"><span className="line" style={{ borderColor: CLASS_COLOR }}></span> 类（Class）</span>
+            {groupLegend.length > 0 ? (
+              groupLegend.map((g) => (
+                <span className="item" key={g.name} title={`分组 ${g.name}（类 ${g.name}，含子类）`}>
+                  <span className="dot" style={{ background: g.color }}></span> {g.label}（{g.count}）
+                </span>
+              ))
+            ) : (
+              <span className="item"><span className="line" style={{ borderColor: INDIVIDUAL_COLOR }}></span> 个体（Individual）</span>
+            )}
             <span className="item"><span className="line"></span> 原始断言边</span>
             <span className="item"><span className="line dashed" style={{ borderColor: '#2f8f6b' }}></span> 推理新增边（物化）</span>
           </div>
@@ -170,6 +192,7 @@ export default function App() {
                   viewMode={viewMode}
                   asserted={viewMode === 'diff' ? null : graphData ?? materialized.asserted}
                   inferred={materialized.inferred}
+                  groups={graphGroups}
                   onSelect={(id) => setSelectedId(id)}
                 />
               </GraphErrorBoundary>

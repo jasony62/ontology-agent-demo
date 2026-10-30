@@ -78,6 +78,7 @@ __all__ = [
     "default_explain",
     "default_graph_export",
     "entity_schema",
+    "graph_group_members",
     "missing_methods",
     "normalize_entity_payload",
     "validate_entity_schema",
@@ -600,6 +601,34 @@ def default_explain(adapter: Any) -> dict:
     }
 
 
+def graph_group_members(adapter: Any) -> list[dict]:
+    """领域声明的图谱分组，以及每组的成员个体短名（**含子类**）。
+
+    `graph_groups` 是领域 config 里的展示约定：group 名 → 取该 group 个体的类键。
+    成员判定走 `engine.individuals_of`，它沿 `rdfs:subClassOf` 收全部后代——
+    按类层次写分组，本来就是为了不必把 `Pump` / `Valve` 逐个列进配置。
+
+    返回顺序即 config 里的书写顺序。不排序是刻意的：图例与列序都靠它稳定，
+    一旦在这里 sort，领域作者就失去了控制阅读顺序的手段（"设备→部件→现象→
+    故障→处置"是有认知顺序的，字典序不是）。
+
+    未声明 `graph_groups` 时返回空列表而不是报错：分组是**可选**的展示约定，
+    没有它的领域照样能画图（前端回落到按 类/个体 上色）。
+    """
+    cfg, engine = adapter.c, adapter.engine
+    out: list[dict] = []
+    for name, class_key in (cfg.get("graph_groups", {}) or {}).items():
+        cls = cfg.resolve(class_key)
+        out.append({
+            "name": name,
+            "class": cls,
+            # 用类的 rdfs:label 而非短名：图例要给人看
+            "label": engine.label(engine.NS[cls]),
+            "members": engine.individuals_of(cls),
+        })
+    return out
+
+
 def default_graph_export(adapter: Any) -> dict:
     """默认的图谱导出：只依赖引擎原语 + 领域 config 的结构声明。
 
@@ -627,12 +656,12 @@ def default_graph_export(adapter: Any) -> dict:
         classes.extend(_descendants(engine.g, cls, tc, hidden, engine.label))
 
     individuals: list[dict] = []
-    for group, class_key in (cfg.get("graph_groups", {}) or {}).items():
-        for name in engine.individuals_of(cfg.resolve(class_key)):
+    for group in graph_group_members(adapter):
+        for name in group["members"]:
             individuals.append({
                 "name": name,
                 "label": engine.label(name),
-                "group": group,
+                "group": group["name"],
             })
 
     known = {i["name"] for i in individuals}

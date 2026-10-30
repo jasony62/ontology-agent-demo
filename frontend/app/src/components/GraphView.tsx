@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
 import type { Core, ElementDefinition, NodeSingular, StylesheetStyle, LayoutOptions } from 'cytoscape';
-import type { GraphData } from '../api/client';
+import type { GraphData, GraphGroup } from '../api/client';
+import { CLASS_COLOR, INDIVIDUAL_COLOR, buildGroupView } from '../lib/graphGroups';
 
 cytoscape.use(fcose);
 
@@ -12,13 +13,13 @@ interface Props {
   viewMode: GraphViewMode;
   asserted?: GraphData | null;
   inferred?: GraphData | null;
+  /** 领域声明的分组（上色用）；缺省或空 = 按 类/个体 两色 */
+  groups?: GraphGroup[];
   onSelect?: (id: string | null) => void;
 }
 
 const INFERRED_COLOR = '#2f8f6b';
 const EDGE_COLOR = '#9aa0a6';
-const CLASS_COLOR = '#4a90a4';
-const INDIVIDUAL_COLOR = '#c98a3d';
 
 const stylesheet: StylesheetStyle[] = [
   {
@@ -89,6 +90,7 @@ function elementsFromGraphData(
   asserted: GraphData | null | undefined,
   inferred: GraphData | null | undefined,
   viewMode: GraphViewMode,
+  colorOf: Map<string, string>,
 ): ElementDefinition[] {
   const elements: ElementDefinition[] = [];
   const seenNodes = new Set<string>();
@@ -106,7 +108,13 @@ function elementsFromGraphData(
         data: {
           id,
           label: `${n.type === 'class' ? '◈' : '●'} ${(n.label ?? '').trim() || id}`,
-          color: isInferred && viewMode === 'diff' ? INFERRED_COLOR : n.type === 'class' ? CLASS_COLOR : INDIVIDUAL_COLOR,
+          // diff 视图里推理新增一律走绿色（读者要一眼看出"这是新冒出来的"）；
+          // 其余情况：类一种色、个体按领域声明的分组上色，未声明分组回落单色
+          color: isInferred && viewMode === 'diff'
+            ? INFERRED_COLOR
+            : n.type === 'class'
+              ? CLASS_COLOR
+              : colorOf.get(id) ?? INDIVIDUAL_COLOR,
         },
         classes: isInferred ? 'inferred' : undefined,
       });
@@ -132,7 +140,8 @@ function elementsFromGraphData(
   return elements;
 }
 
-export default function GraphView({ viewMode, asserted, inferred, onSelect }: Props) {
+export default function GraphView({ viewMode, asserted, inferred, groups, onSelect }: Props) {
+  const groupView = useMemo(() => buildGroupView(groups ?? []), [groups]);
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const laidOutRef = useRef(false);
@@ -172,7 +181,7 @@ export default function GraphView({ viewMode, asserted, inferred, onSelect }: Pr
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const elements = elementsFromGraphData(asserted, inferred, viewMode);
+    const elements = elementsFromGraphData(asserted, inferred, viewMode, groupView.colorOf);
 
     const nodeIds = elements.filter((el) => !('source' in el.data)).map((el) => String(el.data.id));
     const edgeIds = elements.filter((el) => 'source' in el.data).map((el) => String(el.data.id));
@@ -245,7 +254,7 @@ export default function GraphView({ viewMode, asserted, inferred, onSelect }: Pr
       cy.layout({ name: 'fcose', animate: false, randomize: true, nodeSeparation: 60 } as LayoutOptions).run();
       cy.fit(undefined, 28);
     }
-  }, [viewMode, asserted, inferred]);
+  }, [viewMode, asserted, inferred, groupView.colorOf]);
 
   // #23：节点搜索/聚焦——输入实体名，匹配节点高亮并居中
   useEffect(() => {

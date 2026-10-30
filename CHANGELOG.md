@@ -29,6 +29,7 @@
 - **`ReasonRequest.params`**：领域自定义参数的自由字典；`type` 由 `Literal` 枚举改为字符串——枚举会在进程启动那一刻把类型列表冻结成某个领域的形状，而领域是运行时可换的
 - **实体形状由领域自声明（`ENTITY_SCHEMA`）+ 通用创建端点**：领域声明字段清单（`class` / `id_field` / `label_field` / 每项的 `kind`（`literal`/`node`）、`type`（str/int/float/bool）、`many`、`required`），框架据此校验 payload、建个体、写断言、触发推理。`GET /api/entities/schema` 暴露形状，`POST /api/entities` 创建；`/api/health` 的 `contract` 附一句摘要。校验分两层：**加载期**拒掉写错的 schema（字段无名 / 重名 / kind 拼错 / `id_field` 指向不存在的字段），**请求期**拒掉未知字段（拼错字段名能被当成"生效了"是最难查的一类问题）、缺必填、类型不符、悬空引用（指向不存在的个体），一律 400
 - **`fault_diag` 借通用创建验证推理闭环**：补录 `severity=4` 的故障模式时，`CriticalFault` 由本体里的 `owl:hasValue` 定义推出——框架只按 schema 写三元组，定级全程没有领域代码参与
+- **图谱分组由领域声明（`graph_groups`）+ `GET /api/ontology/graph-groups`**：分组（组名 → 类键）从"只在导出里拼字符串"变成一份可被查询的声明，成员按 `rdfs:subClassOf` 收全子类个体，顺序即声明顺序。SDK 新增 `graph_group_members()` 作为**唯一来源**：默认 `graph_export` 与端点都读它，前端据此给节点上色并渲染图例。未声明分组时返回空数组（前端回落到按 类/个体 两色），不是 400——分组是可选的展示约定，没有它的领域照样画图
 
 ### Changed
 
@@ -38,7 +39,7 @@
 - **SHACL 形状文件定位**：`examples/agent_task/mcp.py` 改为 环境变量 `ONTOLOGY_SHAPES_FILE` → 包内 `SHAPES_FILE` 声明 → 包内 `shapes/*.ttl`（P3 起删除"上溯三级到仓库根"的兜底）
 - **`default_graph_export` 三处修复（由 `fault_diag` 照出）**：① 匿名类（`owl:Restriction` 等）不再作为类出现——`owl:equivalentClass` 在 RL 推理后拆成两条 `subClassOf`，匿名端点会变成 `N<hex>` 这样的"类名"；判据用 `isinstance(x, URIRef)` 而非 `isinstance(x, BNode)`（**rdflib 的 `BNode` 继承自 `str`**，任何"按 str 兜底"的转换都会把它变成 `Literal`，使 BNode 判断恒为假）；② 多级类层次不再被压平——推理闭包里 `subjects(subClassOf, C)` 拿到的是全部后代，直接当子类用会让 `Pump ⊑ Equipment ⊑ Asset` 的 `Pump` 挂到 `Asset` 下；③ 类层次改为递归展开，第三级不再消失（此前只展开"顶层 + 直接子类"两代）。`agent_task` 只有一级类层次且无匿名类，三个洞都没被照出来
 - **`/api/health` 的 `reasoner` 描述改由领域声明**：`REASONER_SUMMARY`（`AdapterBase` 默认 `"OWL 2 RL (owlrl)"`）。此前写死 `"OWL 2 RL (owlrl) + 业务规则 R2/R4"`——R2/R4 是 `agent_task` 的规则编号，异构领域的运维探针会报告两条它根本没有的规则
-- 后端测试 178 → 236 → 290 → 308 → 322 → 342 → 362 → 370 → 393 项；`tests/_helpers.py` 统一提供 `domain_module()` / `submodule()`，conftest 不再往 `sys.modules` 塞别名；`isolated_api` 夹具把会写盘的用例（reload / save-overwrite）挪到 tmp 副本，全量跑完运行态 `domains/<name>/` 的内容哈希与本体哈希均不变；未安装领域时（CI 干净检出）自动以临时副本运行，干净检出可直接跑且不写脏 `examples/`
+- 后端测试 178 → 236 → 290 → 308 → 322 → 342 → 362 → 370 → 393 → 402 项；`tests/_helpers.py` 统一提供 `domain_module()` / `submodule()`，conftest 不再往 `sys.modules` 塞别名；`isolated_api` 夹具把会写盘的用例（reload / save-overwrite）挪到 tmp 副本，全量跑完运行态 `domains/<name>/` 的内容哈希与本体哈希均不变；未安装领域时（CI 干净检出）自动以临时副本运行，干净检出可直接跑且不写脏 `examples/`
 - **能力门禁与契约同源（P2-4）**：`/api/reason` 由 `if/elif` 枚举改为 `REASON_KINDS` 表驱动，支持清单 = 表键 ∩ 领域 `CAPABILITIES`；门禁判据改用 `undeclared_missing`——只声明部分能力的领域调未声明能力返 **400（未声明）** 而非 501（契约破损），501 只留给"声明了却没实现"
 - **形状文件随领域包走（P3-1/2）**：`pipeline/shapes/agent_task.ttl` → `examples/agent_task/shapes/agent_task.ttl`；`gates.json` 的 `shapes_file` 改为 `"@domain"` 哨兵，由 G4 按运行态配置从当前领域包解析（包内 `config.json` 的 `shapes_file` → 包内 `shapes/*.ttl`）。删掉 `mcp.py` 里"上溯三级到仓库根"的兜底——那个路径只在领域包恰好位于仓库里时成立，装到别处就静默变成"SHACL 跳过"
 - **`/api/health` 不再假设领域形状**：`agents` / `tasks` / `capabilities` 等统计在领域没有对应方法/配置时给 0，而不是 500。此前它写死了 `agent_task` 的字段，切到最小领域即崩
@@ -47,6 +48,7 @@
 - **缺 SDK 时给可执行的提示**：`reasoner/engine.py` 捕获 `ModuleNotFoundError` 并改写为安装命令（仅当 `exc.name == "ontology_plugin_sdk"`，SDK 自己缺依赖时原样抛出，不替它背锅）。此前拉下分支却没重装依赖的人只会看到一句 `No module named 'ontology_plugin_sdk'`，看不懂该做什么
 - `agent_task` 适配器从 1391 行降到 591 行（ABox 205 行、CQ 502 行上移框架后）
 - **`classify` 移出契约，`create` 补位**（契约仍是 7 个方法，但少了一个领域的形状）：`classify(name, capabilities, constraints, risk_level)` 把「智能体任务编排」的四个字段写进了框架，异构领域只能落个"声明不提供"。现在契约只要求 `create(payload)`，字段形状来自领域自己的 `ENTITY_SCHEMA`；`classify` 作为 `agent_task` 的领域方法保留（MCP 工具仍叫这个名字，新领域的 schema 可以完全不同）
+- **`agent_task` 的图谱列名不再硬编码**：`graph_export` 原先在自己的代码里拼 `"group": "Agent"` / `"Task"`，与 `config.json` 各存一份——配置里加一组个体会被导出静默丢掉，而前端图例读的是配置。现在改为遍历 `graph_group_members(self)`，组集合只有一个来源，附带的展示字段仍由领域按组登记（`_group_row`）；未登记的分组照常出现，只是没有额外字段
 
 ### BREAKING CHANGE
 

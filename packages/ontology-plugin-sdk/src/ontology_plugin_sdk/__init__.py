@@ -17,6 +17,7 @@
     context.py    PluginContext（门面）+ ToolRegistrar（MCP 最小面）
     engine.py     EngineProtocol + local / resolve_ns
     fakes.py      FakeEngine（脱离宿主单测用，刻意不推理）
+    cq/           CQ 工位：出题、质检、TBox 草稿引导与 L1-L5 校验
 
 兼容性契约（PLUGIN_API）：
     本包对外冻结的是 `PLUGIN_API` 这个整数主版本，不是文件结构。次版本可以
@@ -64,6 +65,10 @@ from .semantic import (
     load_derivation_config,
     load_domain_config,
 )
+
+# CQ 工位（`cq` 子包）：放在最后导入，让上面各模块先完成绑定。
+# 它内部要 `from ..engine import local, resolve_ns`，顺序反了会拿到半初始化的模块。
+from . import cq
 
 # 领域插件 API 主版本。整数而非 "1.2.3"：领域包只关心"还能不能用"，
 # 不关心 SDK 内部改了几次文档字符串。
@@ -114,4 +119,6 @@ __all__ = [
     "PluginContext",
     "ToolRegistrar",
     "AboxStore",
+    # CQ 工位
+    "cq",
 ]

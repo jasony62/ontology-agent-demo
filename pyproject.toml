@@ -31,9 +31,10 @@ Documentation = "https://github.com/jasony62/ontology-agent-demo"
 [tool.setuptools.packages.find]
 include = ["api*", "reasoner*", "domains*", "mcp*", "scripts*", "config*", "examples*"]
 
-# 运行时资源（不是代码，find 不会带）：框架默认 prompts、领域本体与配置、配置模板
+# 运行时资源（不是代码，find 不会带）：领域本体与配置、配置模板。
+# CQ 工位的中立默认 prompts 随子包搬进了 SDK（packages/ontology-plugin-sdk），
+# 由那里的 package-data 负责分发，不在这里登记。
 [tool.setuptools.package-data]
-"reasoner.cq" = ["*.json"]
 "config" = ["*.json"]
 "examples" = ["*/*.json", "*.md"]
 

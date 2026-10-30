@@ -26,10 +26,20 @@ requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "yangyue" }]
 keywords = ["ontology", "owl", "plugin", "sdk", "adapter"]
-# 唯一硬依赖。rdflib 是本体操作的基础设施，不是"某个应用的实现细节"；
-# 想不依赖它，等于要求领域包自己重写图存储。
-dependencies = ["rdflib>=7.0"]
+# 两个硬依赖，判断标准一致：它们是**本体操作的基础设施**，不是某个应用的
+# 实现细节。rdflib 是图存储，owlrl 是 OWL 2 RL 推理器；想不依赖它们，等于
+# 要求领域包自己重写这两层。
+#
+# owlrl 是随 `cq` 子包进来的（P4 从宿主搬入）。也可以做成可选依赖 + 缺库时
+# 把 L3 一致性检查降级为 skipped，但那等于让 `validate_tbox_draft` 返回一个
+# 没跑完校验的 "pass"——**会说谎的校验器比没有校验器更糟**，调用方拿不到任何
+# 线索知道自己少了一层。真在乎依赖体积的话，这个包本身也不该存在。
+dependencies = ["rdflib>=7.0", "owlrl>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["ontology_plugin_sdk*"]
+
+# 运行时资源（不是代码，find 不会带）：CQ 工位的中立默认 prompts。
+[tool.setuptools.package-data]
+"ontology_plugin_sdk.cq" = ["*.json"]

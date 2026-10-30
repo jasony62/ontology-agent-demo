@@ -89,8 +89,11 @@ def _resolve_ns(onto_path: str, g: "Graph", use_xml_base: bool = True) -> str:
     return _sdk_resolve_ns(onto_path, g, use_xml_base, default_ns=DEFAULT_NS)
 
 
-# 公开名：框架子模块（reasoner/cq/）与历史调用点用 `resolve_ns`。
+# 公开名：框架内部（OntologyEngine 的初始化与 reparse）与历史调用点用 `resolve_ns`。
 # 私有别名保留，避免已有调用点在这次搬迁里被迫改动（改的是实现归属，不是接口）。
+# CQ 工位原先也走这里，P4 搬进 SDK 后它直接用 `..engine` 那份——宿主版唯一的
+# 增值是 `default_ns=DEFAULT_NS` 这个兜底，而校验一份草稿时不该认领任何应用的
+# 命名空间，所以那边刻意传空串而不是复用它。
 resolve_ns = _resolve_ns
 
 

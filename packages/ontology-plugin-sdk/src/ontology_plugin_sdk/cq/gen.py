@@ -84,7 +84,7 @@ def guide_cq_generation(prompts: dict | None = None, engine=None, focus: str | N
     导出真实 schema 术语对照）。
 
     schema_map：可调用对象（engine -> {"classes":[{name,label}], "properties":[str]}）；
-    缺省用 reasoner.cq.tbox.schema_map。
+    缺省用同包 tbox.schema_map。
     """
     prompts = prompts or _default_prompts()
     gen = prompts.get("cq_generation", {})

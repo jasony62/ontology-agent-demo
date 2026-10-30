@@ -8,9 +8,11 @@
 反例守护：validate 只评 TBox 本身的可加载性/一致性/公理表达力，
 不替宿主构造 ABox 断言（与评测 Harness「语料防污染」同一纪律）。
 
-从 agent_task 上移时改掉的两处领域耦合：
+两处领域耦合的来历：
   1. prompts 由调用方传入（默认取框架中立模板，见 prompts.py）；
-  2. `_resolve_ns` 改用公开名 `resolve_ns`（领域此前直接 import 私有符号）。
+  2. 命名空间推导原先走宿主的 `_resolve_ns`（私有符号，且带宿主的 DEFAULT_NS
+     兜底）。搬进 SDK 后它直接来自 `..engine`，兜底值由 `default_ns` 参数给，
+     本包不再知道任何具体应用的命名空间。
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from __future__ import annotations
 import owlrl
 from rdflib import Graph, OWL, RDF, RDFS, URIRef
 
-from reasoner.engine import local, resolve_ns
+from ..engine import local, resolve_ns
 
 # rdf/rdfs/owl/xsd 元谓词（导出 schema_map 时排除）
 META_PRED = {
@@ -107,8 +109,11 @@ def validate_tbox_draft(ttl: str, cqs: list[str] | None = None,
         }
 
     # L2 命名空间与最小结构
+    # default_ns="" 是刻意的：推导不出时返回空串，而不是替调用方认领某个
+    # 应用的命名空间。空草稿本就走下面的 fixable 分支，此时报出宿主的默认
+    # 命名空间纯属误导——它给不出任何关于这份草稿的信息。
     try:
-        ns = resolve_ns("", g, use_xml_base=False)
+        ns = resolve_ns("", g, use_xml_base=False, default_ns="")
     except Exception as exc:
         return {"verdict": "reject", "level": "L2", "valid_syntax": True,
                 "valid_ns_resolved": False, "error": f"默认命名空间推导失败：{exc}"}

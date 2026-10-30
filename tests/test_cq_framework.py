@@ -1,8 +1,11 @@
 """CQ 工位的框架侧测试：不依赖任何领域包。
 
 P1-3 的验收不是"代码挪过去了"，而是"新领域零复制就能用 CQ 流程"。
-所以这里全部用框架默认 prompts（reasoner/cq/default_prompts.json）驱动，
-不 import agent_task 的任何东西。
+所以这里全部用中性默认 prompts（`ontology_plugin_sdk/cq/default_prompts.json`）
+驱动，不 import agent_task 的任何东西。
+
+P4 起这个工位住在 SDK 里（原 `reasoner/cq/`），本文件因此连 `reasoner` 都不用碰——
+"不依赖领域"升级成了"不依赖宿主"。
 """
 
 import os
@@ -12,7 +15,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from reasoner.cq import gen, load_prompts, tbox  # noqa: E402
+from ontology_plugin_sdk.cq import gen, load_prompts, tbox  # noqa: E402
 
 MINIMAL_TTL = """
 @prefix owl:  <http://www.w3.org/2002/07/owl#> .

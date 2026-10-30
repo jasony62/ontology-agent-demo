@@ -3,18 +3,18 @@
 P1-3 之前这里是 502 行实现（cq_gen.py + cq_tbox.py）。上移后本领域只剩：
   - cq_prompts.json：术语、措辞规则、公理提示（领域资产，可编辑）
   - cq_tests.json：既有题库（查重对拍对象，可选）
-  - 本文件：把上面两样喂给 reasoner.cq
+  - 本文件：把上面两样喂给 ontology_plugin_sdk.cq
 
-新领域不需要复制任何一行实现：装好框架后
-`from reasoner.cq import gen, tbox, load_prompts` 即可，
-没有自己的 prompts 时用框架默认模板也能跑通。
+新领域不需要复制任何一行实现：装好 SDK 后
+`from ontology_plugin_sdk.cq import gen, tbox, load_prompts` 即可，
+没有自己的 prompts 时用 SDK 自带的中立模板也能跑通。
 """
 
 from __future__ import annotations
 
 import os
 
-from reasoner.cq import gen, load_prompts, tbox
+from ontology_plugin_sdk.cq import gen, load_prompts, tbox
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 

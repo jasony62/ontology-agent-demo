@@ -27,8 +27,9 @@ DOMAIN_PKG = ROOT / "examples" / "agent_task"
 # 其余 .py（mcp.py / cq.py）是工具接线层，绑在宿主上跑，口径见对应测试。
 DOMAIN_CORE_FILES = {"__init__.py", "adapter.py"}
 
-# 工具接线层唯一被容忍的宿主依赖，理由写在该测试的 docstring 里。
-ALLOWED_TOOL_LAYER_IMPORTS = {"reasoner.cq"}
+# 工具接线层容许的宿主依赖：P4 把 CQ 工位搬进 SDK 后清空，且必须保持为空
+# （理由见 test_domain_tool_layer_imports_no_host_modules 的 docstring）。
+ALLOWED_TOOL_LAYER_IMPORTS: set[str] = set()
 
 
 class _EngineStub:
@@ -227,16 +228,18 @@ def test_domain_core_actually_uses_sdk():
         )
 
 
-def test_domain_tool_layer_only_extra_imports_cq():
-    """工具接线层（`mcp.py` / `cq.py`）只允许再碰 `reasoner.cq` 一个宿主模块。
+def test_domain_tool_layer_imports_no_host_modules():
+    """工具接线层（`mcp.py` / `cq.py`）也不许碰任何 `reasoner.*`。
 
-    为什么留这个口子而不是顺手搬走：CQ 生成是**建模期**工具（581 行，含
-    prompts 拼装与 TBox 草稿校验），不是适配器运行时的依赖——`create_adapter`
-    这条路径完全不碰它。塞进 SDK 会把"最小契约"变成"工具箱"，而领域真正
-    该提供的只是 `cq_prompts.json` 这份数据。
+    这里曾有一份白名单 `{"reasoner.cq"}`，理由是"CQ 生成是建模期工具，塞进 SDK
+    会把最小契约稀释成工具箱"。那个顾虑本身成立，但结论下错了地方——它假设
+    CQ 只能塞进 `protocol.py`（真正的契约模块）。实际做法是给它一个**独立子包**
+    `ontology_plugin_sdk/cq/`：契约仍是那 7 个方法加实体 schema，"最小契约"一点
+    没稀释，工具箱与契约在 SDK 里是两个抽屉。
 
-    下一步（独立立项）：把 CQ 工具注册整体上移为宿主能力，领域只留数据文件，
-    这个口子随之关闭。在那之前，用断言把它限制在"一个模块、且有理由"。
+    白名单保留为空集而不是直接删掉变量，是想让下一个人看到"这里曾经有个口子、
+    现在空了"。**它必须一直为空**：一旦又能往里加名字，就等于承认还有领域包
+    需要宿主才能跑，那"领域可脱离主仓库"就是个没到期的承诺。
     """
     offenders = {}
     for pkg in _all_domain_packages():
@@ -249,6 +252,6 @@ def test_domain_tool_layer_only_extra_imports_cq():
                     offenders.setdefault(f"{pkg.name}/{py.name}", []).append(mod)
 
     assert not offenders, (
-        f"领域工具接线层 import 了 {offenders}；只允许 reasoner.cq"
-        f"（领域自有工具应改用 ontology_plugin_sdk）"
+        f"领域工具接线层 import 了宿主模块 {offenders}；"
+        f"领域包的一切依赖都该来自 ontology_plugin_sdk"
     )

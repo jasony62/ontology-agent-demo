@@ -22,7 +22,7 @@
 - **`scripts/query.py --domain <name>`**：CLI 不再硬编码 `agent_task`，领域与本体路径由运行态配置解析（与 API / MCP 同一套判据）
 - **`ontologyctl domain list / uninstall / use`（P3-3）**：`list [--scan DIR]` 列出已安装领域并标注候选目录里哪些未装/已过期（内容哈希比对，只读）；`uninstall` 先整体移入 `backups/domains/` 再移除记录，默认拒绝卸载当前默认领域；`use` 把默认领域写进 `config/domain.json`（配置文件而非内存——API / MCP / CLI 三个进程都要读它）
 - **`domains` 加载器支持任意路径**：`spec_from_file_location` + `submodule_search_locations` 构造合法包，包内相对导入保持有效；同路径复用避免类身份分裂，`reload=True` 整包重建且失败回滚
-- **`packages/ontology-plugin-sdk/`（P4，workspace 包，不发布 PyPI）**：把领域包需要的一切从宿主搬出来——`protocol`（`AdapterProtocol` / `AdapterBase` / 契约三态判据）、`semantic`（`config.json` / `derivation.json` 加载）、`derivation`（`expand` / `render_step` / `resolve`）、`abox`（`AboxStore` 事务仓库）、`context`（`PluginContext`）、`engine`（`local` / `resolve_ns` / `EngineProtocol`）、`fakes`（`FakeEngine`，让领域包能脱离宿主单测）。硬依赖只有 `rdflib`：框架关心的东西（引擎实例、FastAPI、MCP、被分析的仓库路径）一件都没进去
+- **`packages/ontology-plugin-sdk/`（P4，workspace 包，不发布 PyPI）**：把领域包需要的一切从宿主搬出来——`protocol`（`AdapterProtocol` / `AdapterBase` / 契约三态判据）、`semantic`（`config.json` / `derivation.json` 加载）、`derivation`（`expand` / `render_step` / `resolve`）、`abox`（`AboxStore` 事务仓库）、`context`（`PluginContext`）、`engine`（`local` / `resolve_ns` / `EngineProtocol`）、`fakes`（`FakeEngine`，让领域包能脱离宿主单测）、`cq`（CQ 出题 / 质检 / TBox 草稿校验，见下方 Added）。硬依赖只有 `rdflib` 与 `owlrl` 两个本体基础设施：框架关心的东西（引擎实例、FastAPI、MCP、被分析的仓库路径）一件都没进去
 - **`PLUGIN_API` 版本声明与加载期校验**：领域包用 `PLUGIN_API = "1"` 声明按哪一版插件 API 编写，`load_domain` 比对主版本，不匹配直接 `DomainContractError`。意义不是"证明我兼容"，而是让版本冲突在**加载时**暴露，而不是在某个请求进来时变成 `AttributeError`
 - **领域自有能力的 HTTP 出口 `CAPABILITY_HANDLERS`**：适配器可声明 `{"能力名": 处理器}`，处理器签名 `(adapter, request) -> dict`，运行时并入 `/api/reason` 的路由表——框架没预见的业务操作（如 `diagnose`）终于能从 REST 触达，而不必为每个新领域改框架代码。领域处理器不得覆盖框架内置键（同名以内置为准：内置键的语义属于契约，被悄悄换掉会让按契约调用的集成方拿到形状不符的返回）；处理器抛 `ValueError` 转 400，领域包不必为状态码 import FastAPI。`/api/health` 的 `contract` 增加 `reason_kinds`（当前可触达类型）与 `dangling`（声明了却没有落点）
 - **"声明即承诺"覆盖自定义能力**：`dangling_capabilities()` + 加载期校验——`CAPABILITIES` 里每个名字必须有落点（契约方法 / `CAPABILITY_HANDLERS` 处理器 / 适配器同名方法）；只经 MCP 暴露的能力属于最后一种，照常放行。此前笔误型声明（`diagnoze`）会被静默接受：能力表里多一个谁都不认识的名字，端点既不报错也不开门
@@ -30,6 +30,8 @@
 - **实体形状由领域自声明（`ENTITY_SCHEMA`）+ 通用创建端点**：领域声明字段清单（`class` / `id_field` / `label_field` / 每项的 `kind`（`literal`/`node`）、`type`（str/int/float/bool）、`many`、`required`），框架据此校验 payload、建个体、写断言、触发推理。`GET /api/entities/schema` 暴露形状，`POST /api/entities` 创建；`/api/health` 的 `contract` 附一句摘要。校验分两层：**加载期**拒掉写错的 schema（字段无名 / 重名 / kind 拼错 / `id_field` 指向不存在的字段），**请求期**拒掉未知字段（拼错字段名能被当成"生效了"是最难查的一类问题）、缺必填、类型不符、悬空引用（指向不存在的个体），一律 400
 - **`fault_diag` 借通用创建验证推理闭环**：补录 `severity=4` 的故障模式时，`CriticalFault` 由本体里的 `owl:hasValue` 定义推出——框架只按 schema 写三元组，定级全程没有领域代码参与
 - **图谱分组由领域声明（`graph_groups`）+ `GET /api/ontology/graph-groups`**：分组（组名 → 类键）从"只在导出里拼字符串"变成一份可被查询的声明，成员按 `rdfs:subClassOf` 收全子类个体，顺序即声明顺序。SDK 新增 `graph_group_members()` 作为**唯一来源**：默认 `graph_export` 与端点都读它，前端据此给节点上色并渲染图例。未声明分组时返回空数组（前端回落到按 类/个体 两色），不是 400——分组是可选的展示约定，没有它的领域照样画图
+- **`ontology_plugin_sdk/cq/`（P4 收尾）**：CQ 工位从宿主 `reasoner/cq/` 搬进 SDK，领域包的 import 面至此**不含任何** `reasoner.*`。这个例外当初被容忍的理由（"CQ 是建模期工具，塞进 SDK 会把最小契约稀释成工具箱"）本身成立，但结论下错了地方——它假设 CQ 只能塞进 `protocol.py`；给它一个独立子包即可，契约仍是 7 个方法加实体 schema。搬迁顺带照出两件事：① 依赖方向本来就是反的——`reasoner.engine` 里的 `local` 是 `_sdk_local` 的别名、`_resolve_ns` 只是给 SDK 版本补了宿主兜底值，`reasoner.cq` 绕一圈去取本就在 SDK 里的东西；② L2 命名空间推导此前在草稿为空时会返回 `agent_task` 的命名空间（兜底值 `DEFAULT_NS`），对一份空文件报告某个应用的命名空间纯属误导，搬入后 `default_ns=""`，推导不出就是空串。`owlrl` 随之成为 SDK 硬依赖：也可以做成可选依赖 + 缺库时把 L3 降级为 skipped，但那会让 `validate_tbox_draft` 返回一个没跑完校验的 `pass`——会说谎的校验器比没有校验器更糟。与前面五个模块不同，`reasoner/cq/` 这次是**整个删掉**而非留 shim：那五个在宿主代码里仍有 import 点，而 CQ 的消费者只有领域包自己，留一层转发只会让人以为它还在那里
+- **工具接线层的宿主白名单清空**：`tests/test_plugin.py` 的 `ALLOWED_TOOL_LAYER_IMPORTS` 从 `{"reasoner.cq"}` 变为 `set()`，保留空变量而非常量删除，是为了让下一个人看到"这里曾经有个口子、现在空了"。它必须一直为空——一旦又能往里加名字，就等于承认还有领域包需要宿主才能跑
 
 ### Changed
 
@@ -43,7 +45,7 @@
 - **能力门禁与契约同源（P2-4）**：`/api/reason` 由 `if/elif` 枚举改为 `REASON_KINDS` 表驱动，支持清单 = 表键 ∩ 领域 `CAPABILITIES`；门禁判据改用 `undeclared_missing`——只声明部分能力的领域调未声明能力返 **400（未声明）** 而非 501（契约破损），501 只留给"声明了却没实现"
 - **形状文件随领域包走（P3-1/2）**：`pipeline/shapes/agent_task.ttl` → `examples/agent_task/shapes/agent_task.ttl`；`gates.json` 的 `shapes_file` 改为 `"@domain"` 哨兵，由 G4 按运行态配置从当前领域包解析（包内 `config.json` 的 `shapes_file` → 包内 `shapes/*.ttl`）。删掉 `mcp.py` 里"上溯三级到仓库根"的兜底——那个路径只在领域包恰好位于仓库里时成立，装到别处就静默变成"SHACL 跳过"
 - **`/api/health` 不再假设领域形状**：`agents` / `tasks` / `capabilities` 等统计在领域没有对应方法/配置时给 0，而不是 500。此前它写死了 `agent_task` 的字段，切到最小领域即崩
-- **领域包的导入面收敛**：只 import `ontology_plugin_sdk`（外加 `rdflib`），不再 import `reasoner.*`；由 `tests/test_plugin.py` 的 ast 扫描断言守住。`reasoner.cq` 是唯一保留的宿主例外，且只允许出现在领域包的非核心文件（如 `cq.py` 这类工具接线）里
+- **领域包的导入面收敛**：只 import `ontology_plugin_sdk`（外加 `rdflib`），不再 import `reasoner.*`；由 `tests/test_plugin.py` 的 ast 扫描断言守住。P4 收尾时把最后一个例外 `reasoner.cq` 也搬进了 SDK，工具接线层的宿主白名单随之清空（见下方 Added），断言从"容忍一个例外"变成"不容忍任何例外"
 - **宿主侧五个模块转为 re-export shim（P4）**：`reasoner/protocol.py` / `semantic.py` / `derivation.py` / `abox.py` / `plugin.py` 只剩转发，实现全在 SDK。转发用的是同一对象而非同名副本，因此 isinstance / issubclass 不会因两个模块名而分裂。宿主代码的 import 一行未改
 - **缺 SDK 时给可执行的提示**：`reasoner/engine.py` 捕获 `ModuleNotFoundError` 并改写为安装命令（仅当 `exc.name == "ontology_plugin_sdk"`，SDK 自己缺依赖时原样抛出，不替它背锅）。此前拉下分支却没重装依赖的人只会看到一句 `No module named 'ontology_plugin_sdk'`，看不懂该做什么
 - `agent_task` 适配器从 1391 行降到 591 行（ABox 205 行、CQ 502 行上移框架后）

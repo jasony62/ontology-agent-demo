@@ -1,0 +1,106 @@
+{
+  "suite": "agent_task_cq_regression",
+  "version": 1,
+  "description": "agent_task 领域 CQ 回归测试集：能力问题 + 工具调用 + 期望答案（LLM-free 确定性判分）。题源：评测 Harness T2 隐含关系档 12 题平移，gold 全部由引擎/适配器确定性输出生成（无人工标注）。改本体/公理/规则后跑 cq_regression 一键回归。",
+  "cases": [
+    {
+      "id": "T2-01",
+      "cq": "哪些智能体可以执行「登录模块开发」？",
+      "tool": "capability_match",
+      "params": {"task": "t_login_dev"},
+      "expect": {"type": "set_exact", "pick": "matches.agent", "set": ["dev_agent", "junior_dev"]},
+      "rule": "R1"
+    },
+    {
+      "id": "T2-02",
+      "cq": "哪些智能体可以执行「登录模块代码审查」？",
+      "tool": "capability_match",
+      "params": {"task": "t_login_review"},
+      "expect": {"type": "set_exact", "pick": "matches.agent", "set": ["dev_agent"]},
+      "rule": "R1"
+    },
+    {
+      "id": "T2-03",
+      "cq": "哪些智能体可以执行「生产部署发布」？",
+      "tool": "capability_match",
+      "params": {"task": "t_deploy"},
+      "expect": {"type": "set_exact", "pick": "matches.agent", "set": ["deploy_agent"]},
+      "rule": "R1"
+    },
+    {
+      "id": "T2-04",
+      "cq": "哪些智能体可以执行「新功能上线」？",
+      "tool": "capability_match",
+      "params": {"task": "t_feature"},
+      "expect": {"type": "set_exact", "pick": "matches.agent", "set": []},
+      "rule": "R1 反例",
+      "note": "无人可整体执行（复合任务能力覆盖不足）——空集是有效期望，防幻觉列举"
+    },
+    {
+      "id": "T2-05",
+      "cq": "「登录模块测试执行」依赖哪些任务？请包含间接依赖。",
+      "tool": "query_sparql",
+      "params": {"sparql": "SELECT ?dep WHERE { <http://demo.example.org/agent-task-ontology#t_login_test> <http://demo.example.org/agent-task-ontology#depends_on>+ ?dep }"},
+      "expect": {"type": "set_exact", "pick": "results.dep", "set": ["t_login_review", "t_login_dev", "t_req"]},
+      "rule": "R3"
+    },
+    {
+      "id": "T2-06",
+      "cq": "「生产部署发布」间接依赖哪些任务？（不含直接依赖）",
+      "tool": "query_sparql",
+      "params": {"sparql": "SELECT ?dep WHERE { <http://demo.example.org/agent-task-ontology#t_deploy> <http://demo.example.org/agent-task-ontology#depends_on>* ?dep . FILTER(?dep != <http://demo.example.org/agent-task-ontology#t_deploy> && ?dep != <http://demo.example.org/agent-task-ontology#t_login_test>) }"},
+      "expect": {"type": "set_exact", "pick": "results.dep", "set": ["t_login_review", "t_login_dev", "t_req"]},
+      "rule": "R3"
+    },
+    {
+      "id": "T2-07",
+      "cq": "「敏感数据报表开发」有什么约束？",
+      "tool": "property_values",
+      "params": {"subject": "t_compliance_dev", "property_name": "requires_constraint"},
+      "expect": {"type": "set_exact", "pick": "values", "set": ["ComplianceRequirement"]},
+      "rule": "R4"
+    },
+    {
+      "id": "T2-08",
+      "cq": "把「敏感数据报表开发」分配给「初级研发Agent」会怎样？",
+      "tool": "assign",
+      "params": {"task": "t_compliance_dev", "agent": "junior_dev"},
+      "expect": {"type": "exact_struct", "keys": {"assigned": true, "conflict.type": "合规认证冲突", "conflict.rule": "R4"}},
+      "rule": "R4"
+    },
+    {
+      "id": "T2-09",
+      "cq": "把「敏感数据报表开发」分配给「研发Agent」会怎样？",
+      "tool": "assign",
+      "params": {"task": "t_compliance_dev", "agent": "dev_agent"},
+      "expect": {"type": "exact_struct", "keys": {"assigned": true, "conflict": null}},
+      "rule": "R4 边界",
+      "note": "已认证不触发冲突（覆盖式重分配）"
+    },
+    {
+      "id": "T2-10",
+      "cq": "哪些智能体可以整体执行「双模块开发」？",
+      "tool": "capability_match",
+      "params": {"task": "t_double_dev"},
+      "expect": {"type": "set_exact", "pick": "matches.agent", "set": ["dev_agent", "junior_dev"]},
+      "rule": "R2"
+    },
+    {
+      "id": "T2-11",
+      "cq": "全系统哪些智能体是「已认证」的（CertifiedAgent）？",
+      "tool": "individuals",
+      "params": {"class_name": "CertifiedAgent"},
+      "expect": {"type": "set_exact", "pick": "individuals", "set": ["dev_agent", "req_agent", "test_agent", "deploy_agent"]},
+      "rule": "类别推理"
+    },
+    {
+      "id": "T2-12",
+      "cq": "初级研发Agent 属于哪些类别？",
+      "tool": "types_of",
+      "params": {"individual": "junior_dev"},
+      "expect": {"type": "contains", "pick": "types", "contains": ["JuniorDevAgent", "DevAgent", "Agent"]},
+      "rule": "子类链",
+      "note": "contains 判分：业务类别必须齐；推理机内建类型（Thing/NamedIndividual）随实现浮动，不作硬断言"
+    }
+  ]
+}

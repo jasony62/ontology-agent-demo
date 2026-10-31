@@ -7,6 +7,13 @@
 
 ### Added
 
+- 新增 CQ 回归测试集（agent_task 领域包，`cq_tests.json` + `cq_regression` 工具）：把软件工程的「回归测试」纪律搬进本体——CQ + 工具调用 + 期望答案固化成数据文件，改动公理/规则后一键跑出「通过 X/Y + 失败清单（含退化定位 hint）」
+  - 三层测试网的运行期回归层：SDK CQ 工位（建模期 `validate_tbox_draft` L1-L5）→ 本工具（改动后即时回归，「牵一发动全身」的恐慌变「带安全带换轮胎」）→ 扰动式评估（破坏期，候补）
+  - 判分三档（LLM-free 确定性、可复现）：`set_exact`（集合精确相等，含「空集期望」反例题——无人可执行也是有效期望，防幻觉列举）/ `contains`（业务类别必须齐；推理机内建类型随实现浮动不作硬断言）/ `exact_struct`（已知键精确匹配，值可为 null）
+  - 失败项附期望 vs 实际对照 + 按 `rule` 生成的退化定位 hint（R1 属性链 / R2 委派 / R3 传递闭包 / R4 合规冲突）；失效检测精准不误伤（删一条推理边 → 仅依赖该边的 CQ 变红、其余保持绿）——回归工具的核心质量指标
+  - 首批 12 题平移自评测 Harness T2 隐含关系档（四类推理全覆盖 + 反例/边界），gold 全部由引擎/适配器确定性输出核验（无人工标注）；`cq_tests.json` 同时是 CQ 出题器 `validate_cqs` 的查重对拍对象（题库落地即激活查重）
+  - 边界：题库为空/缺失 → 「先建题库」诚实提示（不返回 0/0 假成功）；case 工具名非法逐条 error 不拖垮全跑；`cq` 字段与 `guide_tbox_draft` 输入同型（同一问题文本可直喂建模工位）
+
 - 新增模块合并冲突预检 `merge_check`（通用 MCP 工具，`reasoner/merge_check.py`）：两个本体（团队词表 / 领域包）合并前的「冲突扫描仪」，**只体检、不合并**（处置决策是人的语义判断）
   - 三类扫描：①同 URI 异定义（`subClassOf`/`domain`/`range` 签名差异，conflict 级——最危险的静默串数据）；②名称冲突（同 `rdfs:label` 或同短名但 IRI 不同——同名不同义，warning 级需人工确认）；③公理矛盾（incoming `X ⊑ B`、current `X ⊑ A` 且 `A disjointWith B`，含对称）
   - 每条冲突附 current vs incoming 双侧事实对照 + 处置建议（`rename`/`align`/`skip`）——「两个团队当面对齐一次就够」的会议材料直接可打

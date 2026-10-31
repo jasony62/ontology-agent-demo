@@ -11,7 +11,7 @@ adapter 的工厂"——SIGHUP 热重载后新 adapter 自动生效，无需重�
 from mcp.server.mcpserver import MCPServer
 
 from ontology_plugin_sdk import local
-from . import cq
+from . import cq, cq_regression as cq_reg
 
 import os
 from rdflib import Graph, Namespace, RDF, URIRef
@@ -247,3 +247,13 @@ def register_tools(server: MCPServer, get_adapter) -> None:
         "三档与缺口提醒。出题质量是人把关：机器质检后仍需挑题人终审。"))
     def validate_cqs(cqs: list[str]) -> dict:
         return cq.validate_cqs(cqs)
+
+    @server.tool(description=(
+        "CQ 回归套件（领域）：一键执行 cq_tests.json 题库全部断言（CQ + 工具调用 + 期望答案），"
+        "返回「通过 X/Y + 失败清单」。失败项附期望 vs 实际对照与按 rule 生成的退化定位 hint。"
+        "判分三档（LLM-free 确定性）：set_exact（集合精确相等）/ contains（包含关键项）/ "
+        "exact_struct（已知键精确匹配）。改公理/规则后即时回归——「牵一发动全身」的恐慌"
+        "变「带安全带换轮胎」。题库为空/缺失时如实提示先建题库，不返回 0/0 假成功。"))
+    def cq_regression() -> dict:
+        a = get_adapter()
+        return cq_reg.run_suite(a)

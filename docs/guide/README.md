@@ -43,7 +43,7 @@ docker compose up -d     # 构建镜像并后台启动 API(:8000) + MCP(:9000)
 
 首次构建会自动拉取基础镜像并安装依赖（Dockerfile 默认用清华 TUNA pip 源）；之后秒级启动。
 
-验证（420 项测试全绿，在容器内执行）：
+验证（452 项测试全绿，在容器内执行）：
 
 ```bash
 docker compose exec api python -m pytest tests/ -q

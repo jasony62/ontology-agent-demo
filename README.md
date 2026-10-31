@@ -80,7 +80,7 @@ python3 -m venv .venv
 ### 运行测试与一键演示
 
 ```bash
-.venv/bin/python -m pytest tests/ -v      # 420 项测试
+.venv/bin/python -m pytest tests/ -v      # 452 项测试
 make demo                                  # 按顺序跑一遍核心接口（需服务已启动）
 ```
 
@@ -434,7 +434,7 @@ URL 填 `http://127.0.0.1:9000/mcp`，保存后即可在对话中直接调用。
 
 ## 开发与贡献
 
-- **测试**：`make test`（pytest，420 项，含推理规则、插件契约、热切换与 SDK 边界）；CI 在 push / PR 时对 Python 3.10–3.12 全量跑。
+- **测试**：`make test`（pytest，452 项，含推理规则、插件契约、热切换与 SDK 边界）；CI 在 push / PR 时对 Python 3.10–3.12 全量跑。
 - **文档**：指南用 MkDocs 构建，推送 `main` 后由 CI 自动构建并部署文档站；本地 `make docs` 预览需 Python 3.10–3.12（当前机器 3.14 暂无 watchdog 轮子，故本地构建在 CI 上验证）。
 - **可安装包**：`pip install -e .`（pyproject.toml，依赖与 requirements.txt 一致）。领域插件 SDK 是
   同仓库的 workspace 包，`requirements.txt` 已含 `-e ./packages/ontology-plugin-sdk`，会一起装上。

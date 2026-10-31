@@ -22,7 +22,7 @@ ontology-agent-demo/
 │   ├── index.html       #   旧单页（回退）
 │   └── app/             #   本体图谱工作台（React 19 + Vite + Cytoscape）
 ├── scripts/             # start.sh / demo.sh / query.py（CLI）/ ontologyctl.py / build_ontology.py
-├── tests/               # 后端 pytest（420 项）
+├── tests/               # 后端 pytest（452 项）
 ├── config/              # 运行配置（domain.example.json / loader.py）
 ├── pipeline/            # 建模流水线闸门配置（gates.json）
 ├── docs/                # 设计文档 + 《本体上手指南》系列（docs/guide/）

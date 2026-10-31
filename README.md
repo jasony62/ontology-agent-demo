@@ -234,6 +234,22 @@ npm run build               # 产物 frontend/app/dist
 | GET  | `/api/ontology/source` | 当前本体的 OWL/RDF 源码                                              |
 | GET  | `/api/ontology/export` | 导出当前模型或物化后本体（Turtle / RDF/XML）                           |
 
+### SPARQL 支持边界（兼容度声明）
+
+把边界写在明处：拿标准语法来测试前，先看这张表再判定是 Bug 还是边界。`/api/query` 与 MCP `query_sparql` 由 rdflib 实现，**只支持 SELECT**——下表每一条都经实际查询验证（验证环境：默认 agent_task 本体 + rdflib 7.x，随版本演进维护）：
+
+| 能力 | 支持 | 实测说明 |
+| --- | --- | --- |
+| SELECT 基本语法（WHERE / FILTER / OPTIONAL / UNION / ORDER BY / LIMIT / OFFSET / DISTINCT / MINUS / FILTER NOT EXISTS） | ✅ | 实测通过（覆盖大部分 SPARQL 1.1 语法） |
+| 属性路径（`+` / `*` / `/` / `^` 等，如依赖闭包 `depends_on+`） | ✅ | 实测通过 |
+| 聚合与表达式（COUNT / SUM / AVG / GROUP BY、BIND、VALUES、STR / CONTAINS 等内置函数） | ✅ | 实测通过 |
+| 子查询 | ✅ | 实测通过 |
+| UPDATE（INSERT / DELETE） | ❌ | 解析即拒绝。**为什么不开放裸写入**：本服务的写路径必须「先校验、后留痕」——更新请走 `/api/entities`、`/api/ontology/import`、MCP `assign` / `classify` 等任务接口（带事务与变更记录），而不是让数据「改完就走」 |
+| SERVICE（联邦查询） | ❌ | 不在支持面：运行时会尝试外呼远端端点（连不上报网络错误），但缺隔离与超时控制，不作为产品能力承诺 |
+| ASK / CONSTRUCT / DESCRIBE | ❌ | 仅 SELECT：非 SELECT 形式当前报错拒绝（错误文案暂为底层异常信息，改进中） |
+
+> 声明兼容度是行业成品的通行底线（Apache Jena 提供 `strictSPARQL` 严格模式开关，把「离标准多远」做成第一等信息）。demo 当前以文档声明为主，查询级的严格模式开关列为后续工作。
+
 示例：
 
 ```

@@ -1,5 +1,15 @@
 # AGENTS.md
 
+## Working scope（先读）
+
+**本机唯一权威 checkout 是本文件所在目录：`/Users/yangyue/projects/ontology-agent-demo`。**
+
+本机还可能存在其它名为 `ontology-agent-demo` 的目录副本。**它们属于其它用户或其它用途，在本项目范围内一律视为不存在**——不得查找、列举、读取、diff、对比、修改、删除，也不得在报告或回答中提及。
+
+- 遇到路径歧义时，答案只能是本文件所在目录；不要为了「以防万一」去磁盘搜索同名目录。
+- 不要假设其它目录与本仓库内容一致，也不要用它们做交叉验证或作为参考实现。
+- 评估 / 清理类任务若扫到副本，直接忽略，不要向用户汇报、不要建议归档或删除。
+
 Chinese-language ontology × agent demo: a domain-agnostic OWL 2 RL engine (`reasoner/`) + a domain plugin system (sample in `examples/agent_task/`, runtime packages under the configured root, default `domains/`) + FastAPI (`api/`) + a separate MCP server (`mcp/`) + a React/Vite workbench (`frontend/app/`). Keep docs, comments, and user-facing strings in Chinese; match the existing style.
 
 ## Layout boundaries

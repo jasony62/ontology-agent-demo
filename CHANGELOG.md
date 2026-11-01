@@ -11,6 +11,7 @@
   - `quickstart`（三通道部署 + 健康断言链 + MCP 握手 curl 配方）/ `domain-dev`（模板选择 + 契约最小集 + L1-L3 热切换语义 + FakeEngine 脱离宿主单测）/ `cq-modeling`（出题指令→起草→质检→TBox→回归五工位，`guide_cq_generation` 给出题指令、题目由宿主智能体起草）/ `reason-query`（MCP/REST/CLI 三通道路由 + SPARQL 边界 + generic 模式自救）；纯 Markdown 零依赖：有技能装载机制的智能体可直接接入，没有的可当文档照做
   - **防漂移三纪律 + CI 四断言**（`tests/test_skills.py`）：单一事实源引用（命令权威在 Makefile/scripts/docs）、「写获取方法不写现值」（工具数以 `tools/list` 实测为准）、坑位互链；CI 断言 frontmatter 完整 / 相对链接无死链 / **引用命令子命令级静态比对**（SKILL.md 中的 make 目标与 CLI 子命令 vs 源码注册表，抓「脚本还在但命令改名了」的真漂移）/ 行数上限
   - 触达接线：README 徽章区下种子行（第一用户 = 通用 shell 智能体）；AGENTS.md 标题后新增「Agent 使用索引」节做使用/贡献视角分流（该节设计为可独立 revert，不影响 skills/ 与技能内容）；CONTRIBUTING 自查清单新增公约——改命令/坑位的 PR 须 grep `skills/` 确认无引用漂移
+  - **第五技能 `domain-authoring`（创作侧，与前四个使用侧技能配套）**：从零新建领域包全流程——T1 选域（三判据）→T2 TBox/ABox 设计（量化标准+预写断言）→T3 构建冒烟→T4 推理验证（物化 diff）→T5 接入（三轨验证）→T6 总结回流；核心方法论：四类推理原型 × 三种执行层（.owl 公理 / adapter.py 代码 / rules/*.ttl SHACL 规则）正交选型矩阵、逐规则正/反/边界三例法、「推不出新结论不算建模成功」门禁；四卷宗：领域包契约与测试结构、MCP 出口层六类扩展模式、explain_proof 证明导出实现要点、上游贡献礼仪（token 选型/撞车三查/CHANGELOG 硬要求/PR 跟进）；与 domain-dev 显式分工（装已有包 vs 造新领域）
 
 - 新增 CQ 回归测试集（agent_task 领域包，`cq_tests.json` + `cq_regression` 工具）：把软件工程的「回归测试」纪律搬进本体——CQ + 工具调用 + 期望答案固化成数据文件，改动公理/规则后一键跑出「通过 X/Y + 失败清单（含退化定位 hint）」
   - 三层测试网的运行期回归层：SDK CQ 工位（建模期 `validate_tbox_draft` L1-L5）→ 本工具（改动后即时回归，「牵一发动全身」的恐慌变「带安全带换轮胎」）→ 扰动式评估（破坏期，候补）
@@ -362,3 +363,5 @@
 [0.2.1]: https://github.com/jasony62/ontology-agent-demo/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jasony62/ontology-agent-demo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jasony62/ontology-agent-demo/releases/tag/v0.1.0
+
+> AI生成

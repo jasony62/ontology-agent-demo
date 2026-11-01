@@ -1,6 +1,6 @@
 # 智能体入口 · 拿到仓库地址后从这页开始
 
-> 你（智能体）刚拿到这个仓库的地址。本文件是一页纸导览：项目是什么、按用户诉求去哪个技能、动手前先看哪条安全边界。**四个技能都是普通 Markdown，照做即可，不需要任何特殊运行环境。**
+> 你（智能体）刚拿到这个仓库的地址。本文件是一页纸导览：项目是什么、按用户诉求去哪个技能、动手前先看哪条安全边界。**五个技能都是普通 Markdown，照做即可，不需要任何特殊运行环境。**
 
 ## 项目三句话
 
@@ -16,9 +16,10 @@
 | 「帮我开发一个新领域 / 换领域 / 装领域包」 | domain-dev | [domain-dev/SKILL.md](domain-dev/SKILL.md) |
 | 「帮本体出题（能力问题 CQ） / 质检 / TBox 草稿 / 改动后回归」 | cq-modeling | [cq-modeling/SKILL.md](cq-modeling/SKILL.md) |
 | 「查一下谁能做这个任务 / 一致性检查 / SPARQL 查询 / 解释结论」 | reason-query | [reason-query/SKILL.md](reason-query/SKILL.md) |
+| 「选个新领域建本体 / 从零造一个领域包 / 给项目贡献新领域和 PR」 | domain-authoring | [domain-authoring/SKILL.md](domain-authoring/SKILL.md) |
 | 「备份 / 回滚 / 看服务状态」 | quickstart 的运维延伸节 | [quickstart/SKILL.md](quickstart/SKILL.md) |
 
-技能按 Agent Skills 规范书写（目录 + `SKILL.md`；frontmatter 的 description 供路由，正文统一六段式）。支持该格式的智能体可直接装载；不支持的当作普通文档照做，同样成立。
+技能按 Agent Skills 规范书写（目录 + `SKILL.md`；frontmatter 的 description 供路由，正文统一六段式）。支持该格式的智能体可直接装载；不支持的当作普通文档照做，同样成立。前四个为使用侧（拉起服务→装领域包→CQ 建模→调推理），domain-authoring 为创作侧（从零造一个新领域并贡献上游），需同时改代码时读仓库 AGENTS.md。
 
 ## 零技能机制环境的降级路径
 

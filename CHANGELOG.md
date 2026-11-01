@@ -7,6 +7,11 @@
 
 ### Added
 
+- **智能体开箱技能集 `skills/`（Agent Skills 标准格式，4 技能 + 1 入口索引）**：把「给智能体一个仓库地址，它就能拉取/部署/启动/开发领域包/生成 CQ/调用推理」做成随仓库分发的工作流资产——MCP 工具面已兑现接口层的智能体友好，这批技能补上工作流层（「有接口」≠「知道从 clone 到推理怎么一路走完」）
+  - `quickstart`（三通道部署 + 健康断言链 + MCP 握手 curl 配方）/ `domain-dev`（模板选择 + 契约最小集 + L1-L3 热切换语义 + FakeEngine 脱离宿主单测）/ `cq-modeling`（出题指令→起草→质检→TBox→回归五工位，`guide_cq_generation` 给出题指令、题目由宿主智能体起草）/ `reason-query`（MCP/REST/CLI 三通道路由 + SPARQL 边界 + generic 模式自救）；纯 Markdown 零依赖：有技能装载机制的智能体可直接接入，没有的可当文档照做
+  - **防漂移三纪律 + CI 四断言**（`tests/test_skills.py`）：单一事实源引用（命令权威在 Makefile/scripts/docs）、「写获取方法不写现值」（工具数以 `tools/list` 实测为准）、坑位互链；CI 断言 frontmatter 完整 / 相对链接无死链 / **引用命令子命令级静态比对**（SKILL.md 中的 make 目标与 CLI 子命令 vs 源码注册表，抓「脚本还在但命令改名了」的真漂移）/ 行数上限
+  - 触达接线：README 徽章区下种子行（第一用户 = 通用 shell 智能体）；AGENTS.md 标题后新增「Agent 使用索引」节做使用/贡献视角分流（该节设计为可独立 revert，不影响 skills/ 与技能内容）；CONTRIBUTING 自查清单新增公约——改命令/坑位的 PR 须 grep `skills/` 确认无引用漂移
+
 - 新增 CQ 回归测试集（agent_task 领域包，`cq_tests.json` + `cq_regression` 工具）：把软件工程的「回归测试」纪律搬进本体——CQ + 工具调用 + 期望答案固化成数据文件，改动公理/规则后一键跑出「通过 X/Y + 失败清单（含退化定位 hint）」
   - 三层测试网的运行期回归层：SDK CQ 工位（建模期 `validate_tbox_draft` L1-L5）→ 本工具（改动后即时回归，「牵一发动全身」的恐慌变「带安全带换轮胎」）→ 扰动式评估（破坏期，候补）
   - 判分三档（LLM-free 确定性、可复现）：`set_exact`（集合精确相等，含「空集期望」反例题——无人可执行也是有效期望，防幻觉列举）/ `contains`（业务类别必须齐；推理机内建类型随实现浮动不作硬断言）/ `exact_struct`（已知键精确匹配，值可为 null）
@@ -357,5 +362,3 @@
 [0.2.1]: https://github.com/jasony62/ontology-agent-demo/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jasony62/ontology-agent-demo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jasony62/ontology-agent-demo/releases/tag/v0.1.0
-
-> AI生成

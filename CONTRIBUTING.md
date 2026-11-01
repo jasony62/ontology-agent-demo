@@ -108,6 +108,7 @@ npm run build          # 生产构建（typecheck + vite build）
 - [ ] README / 指南（如涉及）已同步更新
 - [ ] 提交信息符合第 3 节规范
 - [ ] 不包含本地残留：`.venv/`、`node_modules/`、`dist/`、`.obsidian/`、`*.canvas`、`data/uploads/`（已在 .gitignore）
+- [ ] 改动了命令或坑位（Makefile 目标、`scripts/` CLI 子命令、AGENTS.md Gotchas）时：已 grep `skills/` 确认无引用漂移（`tests/test_skills.py` 会做静态比对，但语义/输出形态变化它测不出）
 
 ## 6. 发版流程（维护者）
 

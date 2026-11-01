@@ -12,6 +12,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 ## 2. 前置自检
 
 - 服务与 MCP 就绪（quickstart 断言链 + §3.4 握手拿到 session id）；以下工具均经 MCP `tools/call` 调用；
+- **工位工具的注册前提**：CQ 工位五件（guide/validate × CQ+TBox）、`cq_regression`、`validate_shapes` 随 **agent_task 领域包**注册（`examples/agent_task/mcp.py`）——切到其他领域时这些工具消失，用 `tools/list` 实测确认后再用；通用闸门（`pipeline_gate` / `run_rules` / `list_rules` / `merge_check`）任何领域都在；
 - 分清两种模式：**schema_anchored**（默认，对照既有本体 schema 出题）与 **from_description**（传 `focus` 领域描述，全新领域降级用）；
 - 明确一个事实：`guide_cq_generation` 返回的是**给宿主 LLM 的出题指令**（题型配比、措辞规则、锚点要求），**不是题目本身**——题目由你（智能体）按指令起草。
 

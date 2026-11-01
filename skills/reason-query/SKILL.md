@@ -61,7 +61,7 @@ curl -s -X POST http://127.0.0.1:8000/api/query -H "Content-Type: application/js
 | SERVICE（联邦查询） | ❌ 不作为产品能力承诺 |
 | ASK / CONSTRUCT / DESCRIBE | ❌ 仅 SELECT |
 
-查询超时两段式（`first` 首批就绪时限 / `total` 整体上限）：环境变量默认关闭；MCP `query_sparql` 可传 `first_ms` / `total_ms`，超时返回结构化 `query_timeout` 错误（API 408），不挂死服务。
+查询超时两段式（`first` 首批就绪时限 / `total` 整体上限，对齐 Jena ARQ 形态）：经环境变量 `ONTOLOGY_SPARQL_FIRST_RESULT_TIMEOUT_MS` / `ONTOLOGY_SPARQL_TOTAL_TIMEOUT_MS` 配置，**未设=不启用**；触发仅放弃该查询不挂后续，MCP 返回结构化错误 `{error: query_timeout, kind: first|total, limit_ms, hint}`（REST 侧 408）。
 
 ### 3.3 通用查询（与本体定义无关）
 
@@ -93,7 +93,7 @@ curl -s -X POST http://127.0.0.1:8000/api/entities \
 | `explain` 说没有可解释的推理 | explain 只对最近一次推理有效：先 reason 一次再 explain |
 | SPARQL 报 UPDATE 不支持 | 是边界不是 Bug：写数据走 §3.4 任务接口（带校验与留痕） |
 | 个体的中文短名查不到 | SPARQL 里用 IRI 或完整 URIRef；短名↔IRI 的便利转换只发生在 REST/MCP 封装层 |
-| 查询把服务拖住 | 超时默认关闭——紧急时给 `query_sparql` 传 `total_ms`；确认服务仍活：`/api/health` |
+| 查询把服务拖住 | 两段式超时未设时不启用：先缩小查询范围/加 LIMIT（超时 hint 同口径）；确认服务仍活：`/api/health`；需长期防护则设上述环境变量后重启服务（工具本身不接受超时参数） |
 | CLI 连不上服务 | `query.py` 本地双通道：加 `--local` 直接用内嵌引擎，不需要服务 |
 | CLI 子命令不确定 | 完整清单 `python scripts/query.py -h`（能力匹配/编排/分配/创建/一致性/SPARQL/个体/类/类型/属性/推理） |
 
@@ -107,5 +107,5 @@ curl -s -X POST http://127.0.0.1:8000/api/entities \
 ## 6. 安全与边界
 
 - `assign` / `entities` / `import` 是写操作（改引擎状态、可能落盘、有事务与变更记录）：执行前告知用户，失败不重试写操作（先看 400 detail）；
-- 删除个体（DELETE `/api/ontology/individual/{name}`）有引用保护，级联删除需显式 `cascade=true`——用前向用户确认影响面；
+- 写操作（`assign`/`classify` 的 `persist: true` 落盘、本体增量导入）带校验与变更记录：不传 persist 只改内存不落盘；persist 语义=重启不丢；执行前告知用户影响面；
 - 永远不绕过任务接口直接改图（无 SPARQL UPDATE 是刻意设计：先校验、后留痕）。

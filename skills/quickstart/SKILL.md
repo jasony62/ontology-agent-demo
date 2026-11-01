@@ -111,6 +111,16 @@ curl -s -X POST http://127.0.0.1:9000/mcp \
 make demo      # 按顺序 curl 核心接口：健康 / 能力匹配 / 推导链 / 合规检查 / SPARQL
 ```
 
+### 3.6 停止与清理
+
+```bash
+docker compose down                                    # 容器通道：容器与网络一并移除
+lsof -iTCP:8000 -iTCP:9000 | awk 'NR>1{print $2}' | sort -u | xargs kill 2>/dev/null
+# 脚本/手动通道：按端口找到 nohup 起的 PID 逐个 kill（API=8000，MCP=9000）
+```
+
+收尾自检：端口已释放、`pgrep -f "uvicorn|mcp_server"` 无残留。
+
 ## 4. 常见坑与自救
 
 | 症状 | 原因与自救 |

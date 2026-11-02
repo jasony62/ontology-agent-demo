@@ -26,8 +26,8 @@ docker info >/dev/null 2>&1 && echo "docker 可用" || echo "docker 不可用（
 ### 3.1 拉取
 
 ```bash
-git clone <仓库地址> ontology-agent-demo
-cd ontology-agent-demo
+git clone <仓库地址>
+cd <项目根目录>
 ```
 
 验收：`ls Makefile pyproject.toml scripts/start.sh` 三个文件都在。

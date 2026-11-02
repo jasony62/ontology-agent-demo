@@ -1,6 +1,6 @@
 # 建模流水线 + 推理服务架构方案
 
-> 目标读者：需要把 ontology-agent-demo 从「手工建模 + 推理服务」升级为
+> 目标读者：需要把本系统从「手工建模 + 推理服务」升级为
 > 「**数据驱动建模流水线 + 推理服务**」闭环的开发者 / 架构负责人。
 >
 > 一句话目标：**从数据字典（表结构）自动生成本体骨架 → LLM/人工补公理 →
@@ -459,7 +459,7 @@ def export_materialized(owl_path: str, out_ttl: str) -> None:
 ## 7. 目录结构（新增部分，融入现有仓库）
 
 ```
-ontology-agent-demo/
+<项目根目录>/
 ├── pipeline/                          # ★ 新增：建模流水线（四阶段 DAG）
 │   ├── __init__.py
 │   ├── s1_skeleton.py                 # S1 数据字典 → OWL 骨架

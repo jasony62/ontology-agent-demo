@@ -348,18 +348,8 @@
 - **工程化**：GitHub Actions CI（后端 pytest 3.10–3.12 + 前端 typecheck/vitest/build）、
   Pages 工作流部署在线指南
 - **学习指南**：《本体上手指南》9 篇系列（`docs/guide/`），从概念到实战逐步上手，
-  章节与代码一一对应；在线站点 https://jasony62.github.io/ontology-agent-demo/
+  章节与代码一一对应；在线站点由 CI 工作流自动构建部署
 - **文档**：`docs/DESIGN.md`、`docs/FLOW.md`、`docs/REASONING.md`、
   `docs/KNOWLEDGE_BEYOND_OWL.md`、`docs/DOMAIN_PACKAGE_GENERATION.md`（领域包自动生成路线图）
 - **许可证**：MIT（根 LICENSE；前端另附上游 MIT 许可证）
 
-[Unreleased]: https://github.com/jasony62/ontology-agent-demo/compare/v0.6.0...HEAD
-[0.6.0]: https://github.com/jasony62/ontology-agent-demo/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/jasony62/ontology-agent-demo/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/jasony62/ontology-agent-demo/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/jasony62/ontology-agent-demo/compare/v0.2.3...v0.3.0
-[0.2.3]: https://github.com/jasony62/ontology-agent-demo/compare/v0.2.2...v0.2.3
-[0.2.2]: https://github.com/jasony62/ontology-agent-demo/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/jasony62/ontology-agent-demo/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/jasony62/ontology-agent-demo/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/jasony62/ontology-agent-demo/releases/tag/v0.1.0

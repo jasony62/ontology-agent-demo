@@ -540,7 +540,7 @@ adapter = AgentTaskAdapter(eng, DEFAULT_CONFIG.update(
 ## 14. 目录结构总览
 
 ```
-ontology-agent-demo/
+<项目根目录>/
 ├── reasoner/                       # 通用机制层（零领域词汇）
 │   ├── engine.py                   #   通用引擎（加载/推理/通用查询原语）
 │   ├── semantic.py                 #   语义配置容器 + JSON 加载器

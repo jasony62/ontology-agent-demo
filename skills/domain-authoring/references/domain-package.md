@@ -1,6 +1,6 @@
 # 领域包契约与测试结构
 
-> 适用于 ontology-agent-demo v0.6.0+ 插件化架构。架构三层：领域插件 SDK（`packages/ontology-plugin-sdk/`，领域包唯一依赖）→ 宿主（`reasoner/` 等，零领域词汇）→ 运行态领域包（`domains/<name>/`，gitignored）。换领域 = 新增一个领域包 + 一条安装命令，零上游改动。
+> 适用于本系统 v0.6.0+ 插件化架构。架构三层：领域插件 SDK（`packages/ontology-plugin-sdk/`，领域包唯一依赖）→ 宿主（`reasoner/` 等，零领域词汇）→ 运行态领域包（`domains/<name>/`，gitignored）。换领域 = 新增一个领域包 + 一条安装命令，零上游改动。
 
 ## 一、源与运行态分离
 

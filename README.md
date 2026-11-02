@@ -37,24 +37,24 @@
 ### 方式一：一键脚本（推荐，macOS / Linux）
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 bash scripts/start.sh        # 建 venv → 装依赖 → 起服务 → 自动打开浏览器
 ```
 
 ### 方式二：Docker
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 docker compose up            # 同时起 API(:8000) 和 MCP(:9000)
 ```
 
 > Dockerfile 为多阶段构建：Node 阶段自动编译前端，Python 阶段仅装运行时依赖；默认国内镜像源（npm: npmmirror / pip: 清华 TUNA）加速，均可覆盖：
-> `docker build --build-arg NPM_REGISTRY=https://registry.npmjs.org --build-arg PIP_INDEX_URL=https://pypi.org/simple -t ontology-agent-demo .`
+> `docker build --build-arg NPM_REGISTRY=https://registry.npmjs.org --build-arg PIP_INDEX_URL=https://pypi.org/simple -t <镜像名> .`
 
 ### 方式三：手动
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 
 # 1. 创建虚拟环境并安装依赖（首次）
 python3 -m venv .venv
@@ -335,7 +335,7 @@ adapter = AgentTaskAdapter(get_engine(), DEFAULT_CONFIG.update(
 ## 目录结构
 
 ```
-ontology-agent-demo/
+<项目根目录>/
 ├── packages/ontology-plugin-sdk/      # 领域插件 SDK：领域包唯一依赖，自身不依赖宿主
 │   └── src/ontology_plugin_sdk/
 │       ├── protocol.py                # 适配器契约 AdapterProtocol / AdapterBase / 契约三态判据
@@ -398,7 +398,7 @@ ontology-agent-demo/
 **换领域时领域工具随之更换**：有 `mcp.py` 的领域注册自有工具；未提供 `mcp.py` 的领域（如 `fault_diag`）只注册引擎通用工具，其 `diagnose` 仍可通过 REST 调用。
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 .venv/bin/python mcp/mcp_server.py                                   # 默认领域；streamable-http
 .venv/bin/python mcp/mcp_server.py --domain fault_diag --port 9000    # 换领域
 .venv/bin/python mcp/mcp_server.py --watch                            # 文件监听热重载（推荐）

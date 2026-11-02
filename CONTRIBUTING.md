@@ -5,7 +5,7 @@
 ## 1. 项目结构与技术栈
 
 ```
-ontology-agent-demo/
+<项目根目录>/
 ├── packages/            # ontology-plugin-sdk：领域包唯一依赖（契约 / CQ / ABox / fakes）
 ├── reasoner/            # 宿主：通用推理引擎 + proof + pipeline_gate + plugin 兼容层
 ├── domains/             # 运行态领域包（由 examples/ 安装，DomainManager 统一管理）

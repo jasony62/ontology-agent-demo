@@ -1,9 +1,6 @@
 site_name: 本体上手指南
-site_description: 本体 × 智能体协作 —— 面向零基础读者的 9 篇入门系列（配套 ontology-agent-demo 仓库）
+site_description: 本体 × 智能体协作 —— 面向零基础读者的 9 篇入门系列（配套开源示例仓库）
 site_author: yangyue
-site_url: https://jasony62.github.io/ontology-agent-demo/
-repo_url: https://github.com/jasony62/ontology-agent-demo
-edit_uri: blob/main/docs/guide/
 
 theme:
   name: material

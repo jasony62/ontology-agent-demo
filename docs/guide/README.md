@@ -2,7 +2,7 @@
 
 面向**零本体基础**读者的本体应用入门系列（9 篇）。贯穿一个示例：**智能体任务编排本体**（`domains/agent_task/agent_task_ontology.owl`），三大场景：登录模块开发、新功能上线、合规报表分配。
 
-> 全程动手，命令在仓库根目录（`ontology-agent-demo/`）下可复现；配图源文件与 PNG 均在 `docs/guide/assets/`。
+> 全程动手，命令在仓库根目录（`<项目根目录>`）下可复现；配图源文件与 PNG 均在 `docs/guide/assets/`。
 > **零 OWL 基础友好**：篇 1/3/8 文末均附「本文用到的 OWL 语法」速查附录，正文在给出 .owl 片段时同步逐行讲解。
 
 ## 学习路径
@@ -37,7 +37,7 @@
 无需安装任何 Python 依赖——用 Docker 一条命令起服务：
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 docker compose up -d     # 构建镜像并后台启动 API(:8000) + MCP(:9000)
 ```
 

@@ -95,7 +95,7 @@ export default function App() {
       } catch (e) {
         setBackendOk(false);
         setError(
-          `服务未启动：${e instanceof Error ? e.message : String(e)}\n请先启动推理 API（cd ontology-agent-demo && make run，或 uvicorn api.main:app --port 8000）。`,
+          `服务未启动：${e instanceof Error ? e.message : String(e)}\n请先启动推理 API（cd <项目根目录> && make run，或 uvicorn api.main:app --port 8000）。`,
         );
         return;
       }
@@ -140,7 +140,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <h1>本体图谱工作台</h1>
-        <span className="app-sub">ontology-agent-demo · OWL 2 RL 推理 API</span>
+        <span className="app-sub">OWL 2 RL 推理 API</span>
         <div className="toolbar" style={{ marginLeft: 'auto' }}>
           <button onClick={() => setImportOpen(true)}>导入</button>
           <button onClick={() => setExportOpen(true)}>导出</button>

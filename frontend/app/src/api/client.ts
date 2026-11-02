@@ -1,5 +1,5 @@
 /**
- * 后端 REST 封装：本体推理 API（ontology-agent-demo · FastAPI :8000）
+ * 后端 REST 封装：本体推理 API（FastAPI :8000）
  * 开发期经 Vite proxy 转发（/api → http://127.0.0.1:8000）。
  */
 

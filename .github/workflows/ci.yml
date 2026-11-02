@@ -90,10 +90,10 @@ jobs:
           docker build \
             --build-arg NPM_REGISTRY=https://registry.npmjs.org \
             --build-arg PIP_INDEX_URL=https://pypi.org/simple \
-            -t ontology-agent-demo:ci .
+            -t app:ci .
       - name: Run container and probe health
         run: |
-          docker run -d --name onto-smoke -p 8000:8000 ontology-agent-demo:ci
+          docker run -d --name onto-smoke -p 8000:8000 app:ci
           trap 'docker rm -f onto-smoke 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:8000/api/health -o /tmp/health.json; then

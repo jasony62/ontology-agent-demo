@@ -294,7 +294,7 @@ def test_domain_package_runs_outside_repo(tmp_path):
     `sys.modules` 里有没有它根本说明不了问题。
 
     路径过滤有个坑值得记：只能摘仓库**源码**路径，`.venv/.../site-packages`
-    必须留着——rdflib 在那里。第一版用 `"ontology-agent-demo" in p` 一刀切，
+    必须留着——rdflib 在那里。第一版用 `"项目根目录" in p` 一刀切，
     把依赖也摘了，报出来的是 `No module named 'rdflib'`，看起来像 SDK 有
     问题，其实是自己把 rdflib 拿掉了。
     """

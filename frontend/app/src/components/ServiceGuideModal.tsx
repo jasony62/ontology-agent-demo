@@ -132,7 +132,7 @@ curl -s "http://127.0.0.1:8000/api/ontology/export?format=turtle" -o materialize
             在项目根目录启动 MCP 服务，即可把本体推理能力接入豆包等智能体：
           </p>
           <CopyBlock code={`# 启动 MCP Server（streamable-http，默认端口 9000）
-cd /Users/yangyue/projects/ontology-agent-demo
+cd <项目根目录>
 .venv/bin/python mcp/mcp_server.py
 
 # 本地标准输入模式（用于本地 Client / Claude Desktop）

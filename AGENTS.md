@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Agent 使用索引（智能体视角）
+
+拿着本仓库地址做「使用」而非「贡献」的智能体：先读 [`skills/README.md`](skills/README.md)——按用户诉求路由到五个技能（quickstart 拉起服务 / domain-dev 领域包开发 / cq-modeling CQ 建模 / reason-query 推理查询 / domain-authoring 从零创作新领域并贡献上游），每个都是步骤级命令 + 每步验收断言，纯 Markdown 可直接照做。本文件其余部分（Layout boundaries / Commands / Gotchas）面向贡献者，动手改代码时再读。
+
 ## Working scope（先读）
 
 **本机唯一权威 checkout 是本文件所在目录：`/Users/yangyue/projects/ontology-agent-demo`。**

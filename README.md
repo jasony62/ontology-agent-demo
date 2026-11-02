@@ -5,6 +5,8 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](pyproject.toml)
 [![指南](https://img.shields.io/badge/指南-本体上手指南-blue)](docs/guide/README.md)
 
+> **AI 智能体**：拿到本仓库地址即可自助完成「拉取 → 部署 → 启动 → 领域包开发 → CQ 建模 → 推理调用」，入口见 [`skills/README.md`](skills/README.md)；Claude Code 用户可 `mkdir -p .claude && cp -r skills .claude/skills/` 启用。
+
 演示**本体（Ontology）如何与智能体（Agent）配合**：用户用自然语言提问，智能体负责理解与编排（把问题翻译成对推理 API 的调用），本体负责给出确定性、可解释的推理结论，智能体再把结论组织成回答。全程可视化展示「事实 → 规则 → 结论」的推导链。
 
 一句话定位：**把本体推理能力打包成一个开箱即用的工具**——一条命令起服务，MCP 接入智能体，配套 9 篇《本体上手指南》边学边跑。

@@ -1,12 +1,5 @@
 # 本体 × 智能体协作 Demo
 
-[![CI](https://github.com/jasony62/ontology-agent-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/jasony62/ontology-agent-demo/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](pyproject.toml)
-[![指南](https://img.shields.io/badge/指南-本体上手指南-blue)](docs/guide/README.md)
-
-> **AI 智能体**：拿到本仓库地址即可自助完成「拉取 → 部署 → 启动 → 领域包开发 → CQ 建模 → 推理调用」，入口见 [`skills/README.md`](skills/README.md)；Claude Code 用户可 `mkdir -p .claude && cp -r skills .claude/skills/` 启用。
-
 演示**本体（Ontology）如何与智能体（Agent）配合**：用户用自然语言提问，智能体负责理解与编排（把问题翻译成对推理 API 的调用），本体负责给出确定性、可解释的推理结论，智能体再把结论组织成回答。全程可视化展示「事实 → 规则 → 结论」的推导链。
 
 一句话定位：**把本体推理能力打包成一个开箱即用的工具**——一条命令起服务，MCP 接入智能体，配套 9 篇《本体上手指南》边学边跑。
@@ -44,24 +37,24 @@
 ### 方式一：一键脚本（推荐，macOS / Linux）
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 bash scripts/start.sh        # 建 venv → 装依赖 → 起服务 → 自动打开浏览器
 ```
 
 ### 方式二：Docker
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 docker compose up            # 同时起 API(:8000) 和 MCP(:9000)
 ```
 
 > Dockerfile 为多阶段构建：Node 阶段自动编译前端，Python 阶段仅装运行时依赖；默认国内镜像源（npm: npmmirror / pip: 清华 TUNA）加速，均可覆盖：
-> `docker build --build-arg NPM_REGISTRY=https://registry.npmjs.org --build-arg PIP_INDEX_URL=https://pypi.org/simple -t ontology-agent-demo .`
+> `docker build --build-arg NPM_REGISTRY=https://registry.npmjs.org --build-arg PIP_INDEX_URL=https://pypi.org/simple -t <镜像名> .`
 
 ### 方式三：手动
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 
 # 1. 创建虚拟环境并安装依赖（首次）
 python3 -m venv .venv
@@ -82,7 +75,7 @@ python3 -m venv .venv
 ### 运行测试与一键演示
 
 ```bash
-.venv/bin/python -m pytest tests/ -v      # 452 项测试
+.venv/bin/python -m pytest tests/ -v      # 自动化测试套件（约 450+ 项，以 pytest 实测为准）
 make demo                                  # 按顺序跑一遍核心接口（需服务已启动）
 ```
 
@@ -155,7 +148,7 @@ npm run build               # 产物 frontend/app/dist
 ```
 浏览器前端 / 工作台               智能体（豆包等，经 MCP 接入）
         │                                │
-        │ REST /api/*                    │ MCP 工具调用（26 个）
+        │ REST /api/*                    │ MCP 工具调用（30 个）
         ▼                                ▼
 推理 API（api/main.py · FastAPI）   MCP Server（mcp/mcp_server.py · :9000）
         └────────────── 共享同一运行态 ──────────────┘
@@ -342,7 +335,7 @@ adapter = AgentTaskAdapter(get_engine(), DEFAULT_CONFIG.update(
 ## 目录结构
 
 ```
-ontology-agent-demo/
+<项目根目录>/
 ├── packages/ontology-plugin-sdk/      # 领域插件 SDK：领域包唯一依赖，自身不依赖宿主
 │   └── src/ontology_plugin_sdk/
 │       ├── protocol.py                # 适配器契约 AdapterProtocol / AdapterBase / 契约三态判据
@@ -405,7 +398,7 @@ ontology-agent-demo/
 **换领域时领域工具随之更换**：有 `mcp.py` 的领域注册自有工具；未提供 `mcp.py` 的领域（如 `fault_diag`）只注册引擎通用工具，其 `diagnose` 仍可通过 REST 调用。
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 .venv/bin/python mcp/mcp_server.py                                   # 默认领域；streamable-http
 .venv/bin/python mcp/mcp_server.py --domain fault_diag --port 9000    # 换领域
 .venv/bin/python mcp/mcp_server.py --watch                            # 文件监听热重载（推荐）
@@ -436,7 +429,7 @@ URL 填 `http://127.0.0.1:9000/mcp`，保存后即可在对话中直接调用。
 
 ## 开发与贡献
 
-- **测试**：`make test`（pytest，452 项，含推理规则、插件契约、热切换与 SDK 边界）；CI 在 push / PR 时对 Python 3.10–3.12 全量跑。
+- **测试**：`make test`（pytest，约 450+ 项，含推理规则、插件契约、热切换与 SDK 边界）；CI 在 push / PR 时对 Python 3.10–3.12 全量跑。
 - **文档**：指南用 MkDocs 构建，推送 `main` 后由 CI 自动构建并部署文档站；本地 `make docs` 预览需 Python 3.10–3.12（当前机器 3.14 暂无 watchdog 轮子，故本地构建在 CI 上验证）。
 - **可安装包**：`pip install -e .`（pyproject.toml，依赖与 requirements.txt 一致）。领域插件 SDK 是
   同仓库的 workspace 包，`requirements.txt` 已含 `-e ./packages/ontology-plugin-sdk`，会一起装上。

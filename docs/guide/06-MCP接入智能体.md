@@ -17,7 +17,7 @@
 ## 第 1 步：启动 MCP Server（Docker）
 
 ```bash
-cd ontology-agent-demo
+cd <项目根目录>
 docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 ```
 

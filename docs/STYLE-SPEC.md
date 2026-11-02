@@ -1,6 +1,6 @@
 # 项目样式设计规范（Style Design Spec）
 
-- 项目：ontology-agent-demo · 前端图谱工作台
+- 项目：本体智能体协作系统 · 前端图谱工作台
 - 版本：v1.0 · 2026-10-28
 - 适用范围：所有前端页面与组件（可视化编辑 Designer、在线编辑 OntologyEditor，及未来新增模块）
 - 配套实现：`frontend/app/src/styles/index.css`（token 与组件原语的唯一落点）

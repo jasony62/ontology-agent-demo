@@ -465,4 +465,4 @@ def __init__(self, onto_path, ns=None):
 
 ---
 
-*本文档与代码同步维护；行为基线以 `tests/`（380 项）与 `README.md` 为准。*
+*本文档与代码同步维护；行为基线以 `tests/`（自动化测试套件，约 450+ 项，以 `pytest` 实测为准）与 `README.md` 为准。*

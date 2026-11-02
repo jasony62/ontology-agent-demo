@@ -43,54 +43,29 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 2. 传输类型选 **HTTP**，MCP 服务器 URL 填 `http://127.0.0.1:9000/mcp`；
 3. 保存后即可在对话中直接调用本体推理工具。
 
-> 连接器本质：把"对话中能看到哪些工具"告诉豆包。保存后豆包就"认识"了本体的 26 个工具。
+> 连接器本质：把"对话中能看到哪些工具"告诉豆包。保存后豆包就"认识"了本体的 30 个工具。
 
-## 第 3 步：认识 26 个工具
+**怎么确认接上了？** 保存后直接问一句最轻的话，例如「登录模块开发谁能做？」——如果豆包调用到了本体工具（比如追问"为什么是他"能触发 `explain`），就说明接通了；如果没反应，先看容器日志 `docker compose logs mcp`，确认 `:9000` 起来、URL 没填错。
 
-服务共暴露 **26 个工具**，按来源分三组：**领域工具 9 个**随领域包注册（仅当领域提供 `mcp.py`；换领域这组跟着换）、**通用工具 12 个**走引擎（任意 `.owl` 可用）、**建模 / 质量工具 5 个**（TBox 草稿、SHACL 形状、CQ 质检），做"造自己的领域"（篇 8）时才会用到。
+## 第 3 步：认识核心工具（完整清单见速查表 §C）
 
-**领域工具（9 个，随领域包注册）**
+服务共暴露 **30 个工具**，按来源分三类：
 
-| 工具 | 参数 | 说明 |
-|---|---|---|
-| `capability_match` | `task` | R1/R2 能力匹配：哪些智能体可执行该任务，附推导链 |
-| `orchestrate` | `task` | R3 任务编排：拆解依赖链、拓扑排序、逐环节匹配执行者 |
-| `assign` | `task, agent` | 任务分配 + R4 合规冲突检测 |
-| `classify` | `name, capabilities, constraints, risk_level` | 新增任务个体、重推理、自动分类 |
-| `consistency` | — | 全量一致性 / 合规冲突检查 |
-| `explain` | — | 最近一次查询的中文推导链（回答"为什么"） |
-| `ontology` | — | 本体结构导出（类/个体/边） |
-| `entities` | — | 实体短名清单（任务/智能体/能力/约束 + 中文标签） |
-| `status` | — | 服务与当前领域状态自检（本体、三元组数、是否就绪） |
+- **领域业务工具 9 个**——随领域包注册（`capability_match`/`orchestrate`/`assign`/`classify`/`consistency`/`explain`/`ontology`/`entities`/`status`），换领域这组跟着换；
+- **建模 / 质量工具 6 个**——也随领域包注册（`guide_tbox_draft`/`validate_tbox_draft`/`validate_shapes`/`guide_cq_generation`/`validate_cqs`/`cq_regression`），做篇 8「造自己的领域」时才用；
+- **引擎通用工具 15 个**——任意 `.owl` 可用（SPARQL、个体、类、类型、属性、重推理、证明、守卫、闸门、规则执行、合并预检等）。
 
-**通用工具（12 个，走引擎，任意 .owl 可用）**
-
-| 工具 | 参数 | 说明 |
-|---|---|---|
-| `query_sparql` | `sparql` | SPARQL SELECT，IRI 转短名 |
-| `individuals` | `class_name` | 类（含子类）下个体列表 |
-| `classes` | — | 类层次（name/label/parent） |
-| `types_of` | `individual` | 个体推理后的全部类型 |
-| `property_values` | `subject, property_name` | 主体-属性取值列表 |
-| `infer` | — | 重新推理 + 三元组统计 |
-| `explain_proof` | `subject, predicate, object` | 机读证明树（与 `explain` 的人读推导链互补） |
-| `predefined_queries` | — | 列出预置的 SPARQL 查询模板 |
-| `run_predefined_query` | `name` | 按名运行一条预置查询 |
-| `active_facts` | — | 推理后的「激活事实」图（raw → g 的结果） |
-| `guard_status` | — | 查看调用守卫（guard）状态 |
-| `pipeline_gate` | `ttl, abox` | 流水线闸门状态与触发 |
-
-有个小细节很贴心：`entities` 工具专门用来"帮智能体选参数"——它返回全部任务/智能体/能力/约束的短名与中文标签，智能体不确定参数时先查它，避免瞎猜短名。
-
-**建模 / 质量工具（5 个，完整列表以 MCP `tools/list` 返回为准）**
+入门只需掌握 **3 个核心工具**（完整 30 个清单与参数见文末《附录-速查表》§C）：
 
 | 工具 | 说明 |
 |---|---|
-| `guide_tbox_draft` | 引导式草拟 TBox（类 / 属性 / 公理） |
-| `validate_tbox_draft` | 校验草拟 TBox 的合法性 |
-| `validate_shapes` | 校验 SHACL Shapes（G4 闸门按 `@domain` 哨兵从领域包解析） |
-| `guide_cq_generation` | 引导生成本体能力问题（CQ） |
-| `validate_cqs` | 校验能力问题（CQ） |
+| `capability_match` | **主线**：R1/R2 能力匹配——哪些智能体可执行该任务，附推导链 |
+| `orchestrate` | **主线**：R3 任务编排——拆解依赖链、拓扑排序、逐环节匹配执行者 |
+| `entities` | **选参助手**：返回全部任务/智能体/能力/约束的短名与中文标签，不确定参数时先查它，避免瞎猜短名 |
+
+> 两点提前知道：
+> - `query_sparql` 等部分通用工具**受领域语义白名单控制**：默认 `agent_task` 领域启用了白名单，此时裸 SPARQL 会被拦（返回 `denied`），应改用受控的 `run_predefined_query`（见速查附录）。
+> - 完整工具清单始终以 MCP `tools/list` 返回为准。
 
 ## 第 4 步：对话演示完整链路
 
@@ -104,15 +79,27 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 
 1. **豆包听懂问题**：识别出这是"找任务执行者"的意图；
 2. **调用工具**：`capability_match(task="t_login_dev")`；
-3. **本体推理**：R1 属性链匹配，生成 `matches` 与推导链；
-4. **返回结果**：研发Agent（已认证）+ 初级研发Agent（未认证）；
-5. **组织回答**：豆包把 JSON 讲成人话，必要时还能追问"为什么选研发Agent"——触发 `explain` 工具。
+3. **本体推理**：R1 属性链匹配，生成 `matches` 与推导链。
 
-再体验一个编排场景：
+**在当前默认数据下，实际返回的是空态**：
+
+```json
+{
+  "task": "t_login_dev",
+  "task_label": "登录模块开发",
+  "requires_capabilities": ["编码实现"],
+  "matches": [],
+  "derivation": [{ "kind": "rule", "content": "匹配完成：无可执行该任务的 Agent（可补充能力或人工介入）" }]
+}
+```
+
+这正好演示了能力匹配的一个关键依赖：**任务要求的「编码实现」（中文标签）与 Agent 的 `has_capability=Coding`（英文短名）是同一能力、但两种写法没有对齐，所以匹配为空**。要让匹配成功，需要把能力标识统一（任务与智能体用同一种写法）——这就是"规范能力标识"的意义。
+
+编排场景同理：
 
 > **「新功能上线怎么安排？」**
 
-豆包会调用 `orchestrate(task="t_feature")`，本体按 `depends_on` 传递闭包排出执行顺序（需求分析 → 开发 → 审查 → 测试 → 部署），每个环节配好执行者——这就是篇 3 讲的 R3 在真实对话里的样子。
+豆包会调用 `orchestrate(task="t_feature")`，在当前数据下同样返回空步骤（`steps: []`），需要先把复合任务的子任务拆解与能力标识补齐。接入后第一件事，往往是**对照实际返回**调整能力/依赖数据，而不是照文档的示意结果来预期。
 
 ## 与 REST API 的关系
 
@@ -120,7 +107,7 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 |---|---|---|
 | 面向 | 前端页面、脚本、任何 HTTP 客户端 | 智能体（豆包连接器等 MCP 客户端） |
 | 协议 | HTTP + JSON | MCP（JSON-RPC / SSE） |
-| 工具/端点 | 29 个端点 | 26 个工具 |
+| 工具/端点 | 29 个端点 | 30 个工具 |
 | 依赖 | 独立进程 | 内嵌引擎，不依赖 REST |
 
 两者共享**同一套引擎与领域包**——这就是篇 5（搭建本体推理服务）所讲的服务"多通道出口"：**同一种能力，按消费方选通道**。脚本和前端走 REST；智能体走 MCP。
@@ -129,7 +116,7 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 
 1. **MCP = 智能体的 USB 接口**：能力封装成标准工具，智能体自动发现、按说明调用。
 2. **一行命令启动**：`docker compose up -d mcp`，内嵌引擎零依赖；豆包侧边栏加连接器即可接入。
-3. **26 个工具**：9 个领域工具随领域包（仅当领域提供 `mcp.py`）+ 12 个通用工具走引擎（SPARQL、个体、类、类型、属性、重推理、证明、守卫、闸门）+ 5 个建模工具（篇 8 用到）。
+3. **30 个工具**：9 个领域业务工具 + 6 个建模/质量工具（均随领域包，篇 8 用到）+ 15 个引擎通用工具；入门先掌握 `capability_match` / `orchestrate` / `entities`。
 4. **智能体听懂人话，本体算得准讲得清**——MCP 是两者的"合体通道"。
 
 **常见问题**
@@ -141,3 +128,5 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 
 ---
 **下一篇**：篇 7《智能体 × 本体协作实战》——总结分工模型与最佳实践，并教你判断"什么时候该用本体"。
+
+> AI生成

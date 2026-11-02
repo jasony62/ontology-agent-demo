@@ -31,7 +31,7 @@
 | **OWL 2 RL 推理引擎** | 加载 OWL 本体并物化推理；SPARQL / 类层次 / 个体 / 属性查询 | `scripts/query.py classes --local` |
 | **业务规则 R1–R4** | 能力匹配、任务聚合、依赖传递、合规冲突检测，输出可解释推导链 | `make demo` |
 | **REST API** | 29 个端点：推理 / 解释 / 一致性 / 分类 / SPARQL / OWL 上传 | `http://127.0.0.1:8000/docs` |
-| **MCP Server** | 26 个工具（领域 9 + 通用/建模 17），智能体（豆包等）一行配置接入 | `make mcp` |
+| **MCP Server** | 30 个工具（领域业务 9 + 建模/质量 6 + 引擎通用 15），智能体（豆包等）一行配置接入 | `make mcp` |
 | **图谱工作台** | React 工作台：三视图图谱、OWL 源码编辑、导入导出、可视化编辑 | `npm run dev` |
 | **CLI 双通道** | HTTP 优先、失败回退内嵌引擎（`--local` 零依赖） | `python scripts/query.py -h` |
 | **Docker 一键起** | 多阶段构建，compose 起 API + MCP | `docker compose up` |
@@ -390,19 +390,19 @@ ontology-agent-demo/
 ## MCP 接入（智能体直接调用）
 
 本体推理已封装为标准 MCP Server（`mcp/mcp_server.py`，内嵌引擎、复用**当前领域**），
-26 个工具按来源分三组：
+30 个工具按来源分三组：
 
-- **领域工具 9 个**随领域包走（`domains/<name>/mcp.py` 注册）：`capability_match` / `orchestrate` /
+- **领域业务工具 9 个**随领域包走（`domains/<name>/mcp.py` 注册）：`capability_match` / `orchestrate` /
   `assign` / `classify` / `consistency` / `explain` / `ontology` / `status` / `entities`
-- **通用工具 12 个**引擎直接提供（任意 `.owl` 可用）：`query_sparql` / `individuals` / `classes` /
-  `types_of` / `property_values` / `infer` / `explain_proof` / `predefined_queries` /
-  `run_predefined_query` / `active_facts` / `guard_status` / `pipeline_gate`
-- **建模 / 质量工具 5 个**：`guide_tbox_draft` / `validate_tbox_draft` / `validate_shapes` /
-  `guide_cq_generation` / `validate_cqs`
+- **建模 / 质量工具 6 个**也随领域包走（`domains/<name>/mcp.py` 注册）：`guide_tbox_draft` /
+  `validate_tbox_draft` / `validate_shapes` / `guide_cq_generation` / `validate_cqs` / `cq_regression`
+- **引擎通用工具 15 个**任意 `.owl` 可用：`query_sparql` / `individuals` / `classes` / `types_of` /
+  `property_values` / `infer` / `explain_proof` / `predefined_queries` / `run_predefined_query` /
+  `active_facts` / `guard_status` / `pipeline_gate` / `run_rules` / `list_rules` / `merge_check`
 
 调用护栏在同目录 `policy.py`（语义白名单门禁）与 `tool_guard.py`（预算熔断 / 循环拦截 /
 缓存复用 / 审计留痕），均随领域包配置，未启用时逐字节向后兼容。
-**换领域时领域工具随之更换**：有 `mcp.py` 的领域注册自有工具；未提供 `mcp.py` 的领域（如 `fault_diag`）只注册通用 / 建模工具，其 `diagnose` 仍可通过 REST 调用。
+**换领域时领域工具随之更换**：有 `mcp.py` 的领域注册自有工具；未提供 `mcp.py` 的领域（如 `fault_diag`）只注册引擎通用工具，其 `diagnose` 仍可通过 REST 调用。
 
 ```bash
 cd ontology-agent-demo
@@ -449,3 +449,5 @@ URL 填 `http://127.0.0.1:9000/mcp`，保存后即可在对话中直接调用。
 * 通过 API / MCP 执行「分配」会修改引擎内存中的分配记录并实时反映到图谱（assigned\_to 边）。
 
 * 许可证：MIT。
+
+> AI生成

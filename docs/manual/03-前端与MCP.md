@@ -40,7 +40,7 @@ docker compose up -d mcp
 2. 传输类型选 **HTTP**，MCP 服务器 URL 填 `http://127.0.0.1:9000/mcp`；
 3. 保存后即可在对话中直接调用本体推理工具。
 
-### 工具清单（26 个：领域 9 + 通用/建模 17）
+### 工具清单（30 个：领域业务 9 + 建模/质量 6 + 引擎通用 15）
 
 **通用工具**（`mcp/mcp_server.py`，与本体无关，任意 `.owl` 可用）：
 
@@ -57,6 +57,9 @@ docker compose up -d mcp
 | `active_facts(property, at?)` | 时序事实查询：validFrom/validTo 半开区间 `[from,to)`，失效进 inactive、非法时间戳进 warnings |
 | `guard_status()` | **调用护栏状态**：预算用量/循环阈值/缓存命中/审计尾部；未启用时如实返回 enabled=false（不报错） |
 | `pipeline_gate(ttl, abox?, gates?)` | **管线质量门禁**：建模草稿按 G1–G4 fail-fast 过闸，返回逐闸 `{status, evidence, remediation}` 与 `{overall, failed_at, next}` |
+| `run_rules(max_iterations?, dry_run?, rules?)` | **SHACL 规则执行**：执行领域包 rules/*.ttl 规则（W3C 标准、pyshacl 原生），CONSTRUCT 产出派生三元组 |
+| `list_rules(rules?)` | **SHACL 规则清单**：列出规则 id/类型/语义标注（只解析不执行） |
+| `merge_check(rdf_content, format?)` | **合并冲突预检**：外部本体与当前图做同义异定义/名称冲突/公理矛盾三类扫描，分级返回处置建议 |
 
 **领域工具**（`domains/agent_task/mcp.py`，绑定默认领域包，语义配置化）：
 
@@ -76,6 +79,7 @@ docker compose up -d mcp
 | `validate_shapes()` | SHACL 数据体检：按 `domains/agent_task/shapes/agent_task.ttl` 返回 {conforms, summary, violations} |
 | `guide_cq_generation(focus?)` | **CQ 自动出题-指南**：生成宿主 LLM 出题指令（四类题型配比、措辞规则、JSON 格式）；focus 提供全新领域时降级 from_description 模式 |
 | `validate_cqs(cqs)` | **CQ 自动出题-质检**：确定性质检（零 LLM 依赖）——句式/schema 术语锚点/查重/题型预标/覆盖度报告，返回 usable/revise/duplicate |
+| `cq_regression()` | **CQ 回归**：按 cq_tests.json 复放能力点断言（CQ）验证集，检查质检是否回归 |
 
 **受控语义接口（v1.3.0）**：配置领域包 `access_policy.json` 语义白名单后，MCP 只暴露允许的类/谓词（含子类继承），白名单外查询被拒并返回诚实提示；策略激活时 `query_sparql` 禁用。
 
@@ -89,3 +93,5 @@ docker compose up -d mcp
 | 审计留痕 | 环形缓冲保留最近 `audit_tail` 条，`guard_status` 在线可查——"每次调用有账可查" |
 
 **管线质量门禁（pipeline_gate，Unreleased）**：把建模草稿（Turtle）按四道闸门 fail-fast 过闸——**G1 DL 格式**（防 OWL-Full/数据属性主键陷阱）→ **G2 一致性**（owlrl 物化+矛盾检查，HermiT 可选增强）→ **G3 物化冒烟**（领域 `gates_smoke.json` 断言集）→ **G4 SHACL**（`包内 shapes/<domain>.ttl`）。遇 fail 即停（后续闸门标 `not_run`），`failed_at` 定位卡闸位置，每闸输出 `{status, evidence, remediation}`；`gates` 参数支持单闸调试。实测默认本体：四闸全过（`overall=pass, next=S4`）；加违规个体 `demo:t_bad_task a demo:SimpleTask` 后 G4 fail（violations 定位 `t_bad_task`、`path=requires_capability`）。
+
+> AI生成

@@ -26,7 +26,7 @@ if str(ROOT) not in sys.path:
 from reasoner import rules as rules_mod  # noqa: E402
 from reasoner.engine import OntologyEngine  # noqa: E402
 
-DEMO = "http://demo.example.org/agent-task-ontology#"
+DEMO = "http://ontology.localhost/agent-task#"
 
 
 def ns(name: str) -> URIRef:
@@ -137,14 +137,14 @@ def _sparql_rule(construct_query: str) -> str:
     """拼一份最小 SHACL SPARQL 规则 Turtle（targetClass=demo:Task，单值 sh:construct）。"""
     return (
         "@prefix sh: <http://www.w3.org/ns/shacl#> .\n"
-        "@prefix demo: <http://demo.example.org/agent-task-ontology#> .\n"
+        "@prefix demo: <http://ontology.localhost/agent-task#> .\n"
         "demo:S a sh:NodeShape ; sh:targetClass demo:Task ; sh:rule demo:R .\n"
         'demo:R a sh:SPARQLRule ; sh:construct """' + construct_query + '""" .\n'
     )
 
 
 NO_MATCH_RULE = _sparql_rule(
-    "PREFIX demo: <http://demo.example.org/agent-task-ontology#> "
+    "PREFIX demo: <http://ontology.localhost/agent-task#> "
     "CONSTRUCT { ?this demo:needs_manual_review true } "
     "WHERE { ?this demo:has_risk_level ?lvl . FILTER(?lvl >= 99) }"
 )
@@ -152,14 +152,14 @@ NO_MATCH_RULE = _sparql_rule(
 BAD_TTL = "@prefix sh: <http://www.w3.org/ns/shacl#> .\nthis is not turtle at all {{{"
 
 CHAIN_RULE = _sparql_rule(
-    "PREFIX demo: <http://demo.example.org/agent-task-ontology#> "
+    "PREFIX demo: <http://ontology.localhost/agent-task#> "
     "CONSTRUCT { ?this demo:echo ?s2 } "
     'WHERE { ?this demo:echo ?s . BIND(CONCAT(?s, "x") AS ?s2) }'
 )
 
 TRIPLE_RULE_TTL = """
 @prefix sh: <http://www.w3.org/ns/shacl#> .
-@prefix demo: <http://demo.example.org/agent-task-ontology#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
 demo:TrShape a sh:NodeShape ;
   sh:targetClass demo:Task ;
   sh:rule demo:R_triple .

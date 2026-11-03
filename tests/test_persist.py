@@ -98,7 +98,7 @@ def test_reload_failure_keeps_old_state(ext_dir):
     before = set(engine.individuals_of("SimpleTask"))
     # 写入损坏扩展文件（非法 turtle 语法）
     with open(os.path.join(ext_dir, "20261009-000000-test-broken.ttl"), "w") as f:
-        f.write("@prefix : <http://demo.example.org/agent-task-ontology#> .\n:broken a\n")
+        f.write("@prefix : <http://ontology.localhost/agent-task#> .\n:broken a\n")
     with pytest.raises(Exception):
         engine.reload()
     # 旧状态完好可用

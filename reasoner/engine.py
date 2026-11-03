@@ -69,7 +69,7 @@ def _resolve_onto_path() -> str:
 
 
 ONTO_PATH = _resolve_onto_path()
-DEFAULT_NS = "http://demo.example.org/agent-task-ontology#"
+DEFAULT_NS = "http://ontology.localhost/agent-task#"
 NS = Namespace(DEFAULT_NS)  # 默认本体命名空间（兼容旧引用；实例请用 self.NS）
 
 

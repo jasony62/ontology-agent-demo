@@ -32,7 +32,7 @@ ex:p a owl:ObjectProperty .
 """
 
 # SHACL 违规素材：现行本体 + 一个缺 requires_capability 的 SimpleTask 个体
-BAD_TASK_TTL = """@prefix demo: <http://demo.example.org/agent-task-ontology#> .
+BAD_TASK_TTL = """@prefix demo: <http://ontology.localhost/agent-task#> .
 demo:t_bad_task a demo:SimpleTask .
 """
 

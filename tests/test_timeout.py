@@ -27,7 +27,7 @@ _server_spec.loader.exec_module(mcp_server)
 
 mod = domain_module()
 
-FAST_SPARQL = "SELECT ?s WHERE { ?s <http://demo.example.org/agent-task-ontology#has_risk_level> ?o }"
+FAST_SPARQL = "SELECT ?s WHERE { ?s <http://ontology.localhost/agent-task#has_risk_level> ?o }"
 
 
 class _FakeRow:

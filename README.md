@@ -254,7 +254,7 @@ curl -s -X POST http://127.0.0.1:8000/api/reason \
 
 curl -s -X POST http://127.0.0.1:8000/api/query \
   -H "Content-Type: application/json" \
-  -d '{"sparql":"SELECT ?i WHERE { ?i a <http://demo.example.org/agent-task-ontology#Agent> }"}'
+  -d '{"sparql":"SELECT ?i WHERE { ?i a <http://ontology.localhost/agent-task#Agent> }"}'
 
 curl -s -X POST http://127.0.0.1:8000/api/individuals \
   -H "Content-Type: application/json" \

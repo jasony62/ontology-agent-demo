@@ -1,7 +1,7 @@
 {
   "name": "agent_task",
   "description": "「智能体任务编排」领域的 CQ 驱动 TBox 建模模板（guide 生成指令 + validate 校验参照）。",
-  "namespace_hint": "http://demo.example.org/agent-task-ontology#",
+  "namespace_hint": "http://ontology.localhost/agent-task#",
   "format_instruction": "只输出合法 Turtle。类用 owl:Class，属性用 owl:ObjectProperty；可以省略 @prefix，但要用一致的完整 IRI 或统一前缀。只定义类与属性（TBox），严禁写入任何个体/实例断言（ABox）。",
   "axiom_patterns": {
     "capability": "如需表达『谁可执行什么任务』，用 owl:propertyChainAxiom 定义推导属性（如 has_capability ◦ required_by ⊑ can_execute）。",

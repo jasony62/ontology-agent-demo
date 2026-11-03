@@ -9,7 +9,7 @@
 
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix demo: <http://demo.example.org/agent-task-ontology#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
 
 demo:HighRiskManualReviewShape a sh:NodeShape ;
   sh:targetClass demo:Task ;
@@ -19,7 +19,7 @@ demo:R5_high_risk_manual a sh:SPARQLRule ;
   rdfs:label "R5 高风险无人接手需人工介入" ;
   rdfs:comment "risk_level >= 4 且无任何 Agent 可整体执行 → needs_manual_review 置真" ;
   sh:construct """
-    PREFIX demo: <http://demo.example.org/agent-task-ontology#>
+    PREFIX demo: <http://ontology.localhost/agent-task#>
     CONSTRUCT { ?this demo:needs_manual_review true }
     WHERE {
       ?this demo:has_risk_level ?lvl .

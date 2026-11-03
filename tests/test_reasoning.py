@@ -149,7 +149,7 @@ def test_graph_export(adapter):
 
 def test_query_sparql(engine):
     rows = engine.query_sparql(
-        "SELECT ?a ?t WHERE { ?a <http://demo.example.org/agent-task-ontology#can_execute> ?t } LIMIT 5")
+        "SELECT ?a ?t WHERE { ?a <http://ontology.localhost/agent-task#can_execute> ?t } LIMIT 5")
     assert rows and "a" in rows[0] and "t" in rows[0]
     # 值应为短名
     assert all("/" not in str(r["a"]) and "#" not in str(r["a"]) for r in rows)
@@ -157,7 +157,7 @@ def test_query_sparql(engine):
 
 def test_query_sparql_type_individuals(engine):
     rows = engine.query_sparql(
-        "SELECT ?i WHERE { ?i a <http://demo.example.org/agent-task-ontology#Agent> }")
+        "SELECT ?i WHERE { ?i a <http://ontology.localhost/agent-task#Agent> }")
     assert {r["i"] for r in rows} >= {"req_agent", "dev_agent", "junior_dev", "test_agent", "deploy_agent"}
 
 

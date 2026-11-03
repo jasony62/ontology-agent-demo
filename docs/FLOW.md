@@ -189,7 +189,7 @@ def capability_match(task: str) -> dict:
 ```
 
 参数转换的关键：智能体传入的是**短名**（`t_login_dev`），`adapter.NS[task]`
-把它解析成本体命名空间下的完整 IRI（`http://demo.example.org/agent-task-ontology#t_login_dev`）。
+把它解析成本体命名空间下的完整 IRI（`http://ontology.localhost/agent-task#t_login_dev`）。
 
 ### 4.2 REST 通道：按 type 分支路由
 

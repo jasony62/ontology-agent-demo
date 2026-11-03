@@ -1,5 +1,5 @@
 @prefix sh: <http://www.w3.org/ns/shacl#> .
-@prefix demo: <http://demo.example.org/agent-task-ontology#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
 
 # agent_task 领域 SHACL 数据形状（G4 约束层）
 # 路径与命名对齐 docs/MODELING_PIPELINE.md §5.4 G4（pipeline/shapes/<domain>.ttl）。

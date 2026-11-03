@@ -25,8 +25,8 @@ MINI_OWL_WITH_BASE = """<?xml version="1.0"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
          xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
          xmlns:owl="http://www.w3.org/2002/07/owl#"
-         xml:base="http://demo.example.org/mini-domain">
-  <owl:Ontology rdf:about="http://demo.example.org/mini-domain"/>
+         xml:base="http://ontology.localhost/mini-domain">
+  <owl:Ontology rdf:about="http://ontology.localhost/mini-domain"/>
   <owl:Class rdf:about="#Operator"/>
   <owl:Class rdf:about="#Vehicle">
     <rdfs:subClassOf rdf:resource="#Device"/>
@@ -44,9 +44,9 @@ MINI_OWL_FULL_IRI = """<?xml version="1.0"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
          xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
          xmlns:owl="http://www.w3.org/2002/07/owl#">
-  <owl:Class rdf:about="http://demo.example.org/full-iri-domain#Operator"/>
-  <owl:NamedIndividual rdf:about="http://demo.example.org/full-iri-domain#bob">
-    <rdf:type rdf:resource="http://demo.example.org/full-iri-domain#Operator"/>
+  <owl:Class rdf:about="http://ontology.localhost/full-iri-domain#Operator"/>
+  <owl:NamedIndividual rdf:about="http://ontology.localhost/full-iri-domain#bob">
+    <rdf:type rdf:resource="http://ontology.localhost/full-iri-domain#Operator"/>
   </owl:NamedIndividual>
 </rdf:RDF>
 """
@@ -56,9 +56,9 @@ MINI_OWL_SLASH_IRI = """<?xml version="1.0"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
          xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
          xmlns:owl="http://www.w3.org/2002/07/owl#">
-  <owl:Class rdf:about="http://demo.example.org/slash/Operator"/>
-  <owl:NamedIndividual rdf:about="http://demo.example.org/slash/alice">
-    <rdf:type rdf:resource="http://demo.example.org/slash/Operator"/>
+  <owl:Class rdf:about="http://ontology.localhost/slash/Operator"/>
+  <owl:NamedIndividual rdf:about="http://ontology.localhost/slash/alice">
+    <rdf:type rdf:resource="http://ontology.localhost/slash/Operator"/>
   </owl:NamedIndividual>
 </rdf:RDF>
 """
@@ -76,21 +76,21 @@ def test_ns_from_xml_base(tmp_path):
     """xml:base 显式声明优先：推导出 mini-domain NS。"""
     path = _write(tmp_path, MINI_OWL_WITH_BASE, "mini_base.owl")
     engine = OntologyEngine(path)
-    assert str(engine.NS) == "http://demo.example.org/mini-domain#"
+    assert str(engine.NS) == "http://ontology.localhost/mini-domain#"
 
 
 def test_ns_from_iri_frequency(tmp_path):
     """无 xml:base 时按图中 IRI 高频前缀推导。"""
     path = _write(tmp_path, MINI_OWL_FULL_IRI, "mini_full.owl")
     engine = OntologyEngine(path)
-    assert str(engine.NS) == "http://demo.example.org/full-iri-domain#"
+    assert str(engine.NS) == "http://ontology.localhost/full-iri-domain#"
 
 
 def test_ns_from_slash_iri(tmp_path):
     """纯 '/' 分隔 IRI（无 '#'）也能推导出正确 NS。"""
     path = _write(tmp_path, MINI_OWL_SLASH_IRI, "mini_slash.owl")
     engine = OntologyEngine(path)
-    assert str(engine.NS) == "http://demo.example.org/slash/"
+    assert str(engine.NS) == "http://ontology.localhost/slash/"
 
 
 def test_ns_tie_picks_lexicographically_smallest(tmp_path):
@@ -122,7 +122,7 @@ def test_resolve_ns_excludes_standard_vocabularies(tmp_path):
     g = Graph()
     g.parse(path, format="xml")
     ns = resolve_ns(path, g)
-    assert ns == "http://demo.example.org/full-iri-domain#"
+    assert ns == "http://ontology.localhost/full-iri-domain#"
     assert ns not in {
         "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
         "http://www.w3.org/2000/01/rdf-schema#",
@@ -155,7 +155,7 @@ def test_sparql_and_individuals_consistent(tmp_path):
     path = _write(tmp_path, MINI_OWL_WITH_BASE, "mini_consistent.owl")
     engine = OntologyEngine(path)
     via_sparql = engine.query_sparql(
-        "SELECT ?i WHERE { ?i a <http://demo.example.org/mini-domain#Operator> }")
+        "SELECT ?i WHERE { ?i a <http://ontology.localhost/mini-domain#Operator> }")
     via_short = engine.individuals("Operator")
     assert sorted(r["i"] for r in via_sparql) == via_short == ["alice"]
 
@@ -180,7 +180,7 @@ def test_domain_adapter_ns_binding_still_works(tmp_path):
     create_adapter, DEFAULT_CONFIG = _d.create_adapter, _d.DEFAULT_CONFIG
     # 传入非本领域的引擎：适配器不得改绑其 NS（上游既定行为）
     adapter = create_adapter(engine, DEFAULT_CONFIG)
-    assert str(engine.NS) == "http://demo.example.org/mini-domain#"
+    assert str(engine.NS) == "http://ontology.localhost/mini-domain#"
 
 
 # 与 agent_task 语义同构的自定义本体（无 xml:base，走 IRI 高频前缀推导；
@@ -189,39 +189,39 @@ MINI_OWL_AGENT_TASK = """<?xml version="1.0"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
          xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
          xmlns:owl="http://www.w3.org/2002/07/owl#"
-         xmlns="http://demo.example.org/auto-agent#">
-  <owl:Class rdf:about="http://demo.example.org/auto-agent#Task"/>
-  <owl:Class rdf:about="http://demo.example.org/auto-agent#SimpleTask">
-    <rdfs:subClassOf rdf:resource="http://demo.example.org/auto-agent#Task"/>
+         xmlns="http://ontology.localhost/auto-agent#">
+  <owl:Class rdf:about="http://ontology.localhost/auto-agent#Task"/>
+  <owl:Class rdf:about="http://ontology.localhost/auto-agent#SimpleTask">
+    <rdfs:subClassOf rdf:resource="http://ontology.localhost/auto-agent#Task"/>
   </owl:Class>
-  <owl:Class rdf:about="http://demo.example.org/auto-agent#Agent"/>
-  <owl:Class rdf:about="http://demo.example.org/auto-agent#DevAgent">
-    <rdfs:subClassOf rdf:resource="http://demo.example.org/auto-agent#Agent"/>
+  <owl:Class rdf:about="http://ontology.localhost/auto-agent#Agent"/>
+  <owl:Class rdf:about="http://ontology.localhost/auto-agent#DevAgent">
+    <rdfs:subClassOf rdf:resource="http://ontology.localhost/auto-agent#Agent"/>
   </owl:Class>
-  <owl:Class rdf:about="http://demo.example.org/auto-agent#Capability"/>
-  <owl:Class rdf:about="http://demo.example.org/auto-agent#Coding">
-    <rdfs:subClassOf rdf:resource="http://demo.example.org/auto-agent#Capability"/>
+  <owl:Class rdf:about="http://ontology.localhost/auto-agent#Capability"/>
+  <owl:Class rdf:about="http://ontology.localhost/auto-agent#Coding">
+    <rdfs:subClassOf rdf:resource="http://ontology.localhost/auto-agent#Capability"/>
   </owl:Class>
-  <owl:ObjectProperty rdf:about="http://demo.example.org/auto-agent#has_capability"/>
-  <owl:ObjectProperty rdf:about="http://demo.example.org/auto-agent#requires_capability"/>
-  <owl:ObjectProperty rdf:about="http://demo.example.org/auto-agent#required_by">
-    <owl:inverseOf rdf:resource="http://demo.example.org/auto-agent#requires_capability"/>
+  <owl:ObjectProperty rdf:about="http://ontology.localhost/auto-agent#has_capability"/>
+  <owl:ObjectProperty rdf:about="http://ontology.localhost/auto-agent#requires_capability"/>
+  <owl:ObjectProperty rdf:about="http://ontology.localhost/auto-agent#required_by">
+    <owl:inverseOf rdf:resource="http://ontology.localhost/auto-agent#requires_capability"/>
   </owl:ObjectProperty>
-  <owl:ObjectProperty rdf:about="http://demo.example.org/auto-agent#can_execute">
+  <owl:ObjectProperty rdf:about="http://ontology.localhost/auto-agent#can_execute">
     <owl:propertyChainAxiom rdf:parseType="Collection">
-      <rdf:Description rdf:about="http://demo.example.org/auto-agent#has_capability"/>
-      <rdf:Description rdf:about="http://demo.example.org/auto-agent#required_by"/>
+      <rdf:Description rdf:about="http://ontology.localhost/auto-agent#has_capability"/>
+      <rdf:Description rdf:about="http://ontology.localhost/auto-agent#required_by"/>
     </owl:propertyChainAxiom>
   </owl:ObjectProperty>
-  <owl:NamedIndividual rdf:about="http://demo.example.org/auto-agent#t_front">
-    <rdf:type rdf:resource="http://demo.example.org/auto-agent#SimpleTask"/>
-    <rdf:type rdf:resource="http://demo.example.org/auto-agent#Task"/>
-    <requires_capability rdf:resource="http://demo.example.org/auto-agent#Coding"/>
+  <owl:NamedIndividual rdf:about="http://ontology.localhost/auto-agent#t_front">
+    <rdf:type rdf:resource="http://ontology.localhost/auto-agent#SimpleTask"/>
+    <rdf:type rdf:resource="http://ontology.localhost/auto-agent#Task"/>
+    <requires_capability rdf:resource="http://ontology.localhost/auto-agent#Coding"/>
   </owl:NamedIndividual>
-  <owl:NamedIndividual rdf:about="http://demo.example.org/auto-agent#dev_agent">
-    <rdf:type rdf:resource="http://demo.example.org/auto-agent#DevAgent"/>
-    <rdf:type rdf:resource="http://demo.example.org/auto-agent#Agent"/>
-    <has_capability rdf:resource="http://demo.example.org/auto-agent#Coding"/>
+  <owl:NamedIndividual rdf:about="http://ontology.localhost/auto-agent#dev_agent">
+    <rdf:type rdf:resource="http://ontology.localhost/auto-agent#DevAgent"/>
+    <rdf:type rdf:resource="http://ontology.localhost/auto-agent#Agent"/>
+    <has_capability rdf:resource="http://ontology.localhost/auto-agent#Coding"/>
   </owl:NamedIndividual>
 </rdf:RDF>
 """
@@ -236,7 +236,7 @@ def test_adapter_real_query_with_auto_ns(tmp_path):
     """
     path = _write(tmp_path, MINI_OWL_AGENT_TASK, "mini_auto_adapter.owl")
     engine = OntologyEngine(path)
-    assert str(engine.NS) == "http://demo.example.org/auto-agent#"
+    assert str(engine.NS) == "http://ontology.localhost/auto-agent#"
 
     _d = domain_module()
 

@@ -118,7 +118,7 @@ curl -s -X POST http://127.0.0.1:8000/api/reason \\
 # 4) SPARQL 通用查询：所有 Agent 个体
 curl -s -X POST http://127.0.0.1:8000/api/query \\
   -H 'Content-Type: application/json' \\
-  -d '{"sparql":"SELECT ?i WHERE { ?i a <http://demo.example.org/agent-task-ontology#Agent> }"}'
+  -d '{"sparql":"SELECT ?i WHERE { ?i a <http://ontology.localhost/agent-task#Agent> }"}'
 
 # 5) 物化 diff：原始断言 / 推理新增图数据
 curl -s http://127.0.0.1:8000/api/ontology/materialized

@@ -33,7 +33,7 @@ from owlready2 import (
 import rdflib
 from rdflib.namespace import RDF, OWL, RDFS
 
-ONTO_IRI = "http://demo.example.org/agent-task-ontology"
+ONTO_IRI = "http://ontology.localhost/agent-task"
 OUT_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "domains", "agent_task", "agent_task_ontology.owl")
 )

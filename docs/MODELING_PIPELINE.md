@@ -121,7 +121,7 @@ flowchart LR
 
 ```json
 {
-  "meta": { "domain": "agent_task", "iri": "http://demo.example.org/agent-task-ontology",
+  "meta": { "domain": "agent_task", "iri": "http://ontology.localhost/agent-task",
             "label": "智能体任务编排领域" },
   "tables": [
     {
@@ -392,7 +392,7 @@ def gate_materialization(owl_path: str, expect: dict) -> list[str]:
 ```turtle
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
-@prefix demo: <http://demo.example.org/agent-task-ontology#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
 
 demo:TaskShape a sh:NodeShape ;
   sh:targetClass demo:Task ;

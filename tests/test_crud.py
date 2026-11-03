@@ -191,7 +191,7 @@ def test_build_extra_checks_passes_on_real_ontology():
 
 def test_build_extra_checks_fails_on_injected_errors():
     """注入依赖环 / 悬空引用 / 缺标签 → 构建自检失败并给出定位。"""
-    ns = "http://demo.example.org/agent-task-ontology#"
+    ns = "http://ontology.localhost/agent-task#"
     g = Graph()
     q = lambda name: URIRef(f"{ns}{name}")
     g.add((q("Task"), RDF.type, OWL.Class))

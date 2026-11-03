@@ -40,7 +40,7 @@
       "id": "T2-05",
       "cq": "「登录模块测试执行」依赖哪些任务？请包含间接依赖。",
       "tool": "query_sparql",
-      "params": {"sparql": "SELECT ?dep WHERE { <http://demo.example.org/agent-task-ontology#t_login_test> <http://demo.example.org/agent-task-ontology#depends_on>+ ?dep }"},
+      "params": {"sparql": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_login_test> <http://ontology.localhost/agent-task#depends_on>+ ?dep }"},
       "expect": {"type": "set_exact", "pick": "results.dep", "set": ["t_login_review", "t_login_dev", "t_req"]},
       "rule": "R3"
     },
@@ -48,7 +48,7 @@
       "id": "T2-06",
       "cq": "「生产部署发布」间接依赖哪些任务？（不含直接依赖）",
       "tool": "query_sparql",
-      "params": {"sparql": "SELECT ?dep WHERE { <http://demo.example.org/agent-task-ontology#t_deploy> <http://demo.example.org/agent-task-ontology#depends_on>* ?dep . FILTER(?dep != <http://demo.example.org/agent-task-ontology#t_deploy> && ?dep != <http://demo.example.org/agent-task-ontology#t_login_test>) }"},
+      "params": {"sparql": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_deploy> <http://ontology.localhost/agent-task#depends_on>* ?dep . FILTER(?dep != <http://ontology.localhost/agent-task#t_deploy> && ?dep != <http://ontology.localhost/agent-task#t_login_test>) }"},
       "expect": {"type": "set_exact", "pick": "results.dep", "set": ["t_login_review", "t_login_dev", "t_req"]},
       "rule": "R3"
     },

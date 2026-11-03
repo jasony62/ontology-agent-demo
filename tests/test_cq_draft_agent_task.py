@@ -15,17 +15,17 @@ cq = submodule(domain_module(), "cq")
 # 合格草稿：类层次 + 属性链 + 传递 + 一致性良好
 GOOD_TTL = """@prefix owl: <http://www.w3.org/2002/07/owl#>.
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>.
-<http://demo.example.org/agent-task-ontology#Agent> a owl:Class.
-<http://demo.example.org/agent-task-ontology#Task> a owl:Class.
-<http://demo.example.org/agent-task-ontology#Capability> a owl:Class.
-<http://demo.example.org/agent-task-ontology#SimpleTask> rdfs:subClassOf <http://demo.example.org/agent-task-ontology#Task>.
-<http://demo.example.org/agent-task-ontology#DevAgent> rdfs:subClassOf <http://demo.example.org/agent-task-ontology#Agent>.
-<http://demo.example.org/agent-task-ontology#has_capability> a owl:ObjectProperty.
-<http://demo.example.org/agent-task-ontology#requires_capability> a owl:ObjectProperty.
-<http://demo.example.org/agent-task-ontology#can_execute> a owl:ObjectProperty;
-    owl:propertyChainAxiom (<http://demo.example.org/agent-task-ontology#has_capability>
-                            <http://demo.example.org/agent-task-ontology#required_by>).
-<http://demo.example.org/agent-task-ontology#depends_on> a owl:ObjectProperty, owl:TransitiveProperty.
+<http://ontology.localhost/agent-task#Agent> a owl:Class.
+<http://ontology.localhost/agent-task#Task> a owl:Class.
+<http://ontology.localhost/agent-task#Capability> a owl:Class.
+<http://ontology.localhost/agent-task#SimpleTask> rdfs:subClassOf <http://ontology.localhost/agent-task#Task>.
+<http://ontology.localhost/agent-task#DevAgent> rdfs:subClassOf <http://ontology.localhost/agent-task#Agent>.
+<http://ontology.localhost/agent-task#has_capability> a owl:ObjectProperty.
+<http://ontology.localhost/agent-task#requires_capability> a owl:ObjectProperty.
+<http://ontology.localhost/agent-task#can_execute> a owl:ObjectProperty;
+    owl:propertyChainAxiom (<http://ontology.localhost/agent-task#has_capability>
+                            <http://ontology.localhost/agent-task#required_by>).
+<http://ontology.localhost/agent-task#depends_on> a owl:ObjectProperty, owl:TransitiveProperty.
 """
 
 

@@ -45,10 +45,10 @@ MCP 侧对应 `capability_match` / `orchestrate` / `assign` / `consistency` / `e
 
 ```bash
 curl -s -X POST http://127.0.0.1:8000/api/query -H "Content-Type: application/json" \
-  -d '{"sparql":"SELECT ?i WHERE { ?i a <http://demo.example.org/agent-task-ontology#Agent> }"}'
+  -d '{"sparql":"SELECT ?i WHERE { ?i a <http://ontology.localhost/agent-task#Agent> }"}'
 
 # 属性路径传递闭包（依赖链；t_login_test 的全部传递依赖 = t_login_review / t_login_dev / t_req）
-# SELECT ?down WHERE { <http://demo.example.org/agent-task-ontology#t_login_test> <http://demo.example.org/agent-task-ontology#depends_on>+ ?down }
+# SELECT ?down WHERE { <http://ontology.localhost/agent-task#t_login_test> <http://ontology.localhost/agent-task#depends_on>+ ?down }
 ```
 
 **SPARQL 支持边界（判定 Bug 还是边界，先看这张表）**：

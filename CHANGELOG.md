@@ -35,6 +35,10 @@
   - 局限如实声明：Python 线程不可强杀（超时后后台线程跑完自然结束，单机规模无害）；彻底隔离的子进程方案为后续独立改造——不塞本 PR
   - 实现方式：rdflib 无超时参数——起后台线程跑查询、主线程按两段时限放弃结果
 
+### Changed
+
+- **示例本体默认 IRI 域名中性化**：`http://demo.example.org/agent-task-ontology#` → `http://ontology.localhost/agent-task#`（`.localhost` 为 RFC 6761 保留域，全仓库 30 文件 / 114 行一次替换）。`resolve_ns` 推导链与行为不变；示例本体实体 IRI 随之变化——已安装的运行态领域需 `ontologyctl domain install --from ./examples/agent_task --force` 重装跟进；历史保存的本体文件（`data/uploads/`）按各自文件内 `xml:base` 推导，功能不受影响
+
 ### Fixed
 
 - **启动可用性（#34/#35）**：`make setup/run/mcp`、`scripts/start.sh`、Dockerfile 统一通过 `ontologyctl domain ensure` 准备运行态领域；新增 CI `smoke`（装领域 → import → 起服务 → `/api/health`）与 `docker`（构建 + 容器健康检查）两个 job，避免“单测全绿但服务起不来”

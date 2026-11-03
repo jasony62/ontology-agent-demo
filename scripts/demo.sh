@@ -26,4 +26,4 @@ echo
 echo "== 5. 通用查询：全部 Agent 个体（SPARQL，与本体定义无关） =="
 curl -s -X POST "$BASE/api/query" \
   -H "Content-Type: application/json" \
-  -d '{"sparql":"SELECT ?i WHERE { ?i a <http://demo.example.org/agent-task-ontology#Agent> }"}' | python3 -m json.tool
+  -d '{"sparql":"SELECT ?i WHERE { ?i a <http://ontology.localhost/agent-task#Agent> }"}' | python3 -m json.tool

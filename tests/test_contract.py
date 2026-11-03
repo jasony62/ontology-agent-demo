@@ -225,7 +225,7 @@ def test_capability_handlers_skips_non_callable():
 
 # ---------------- 框架默认实现 ----------------
 
-T = "http://demo.example.org/t#"
+T = "http://ontology.localhost/t#"
 _NS = Namespace(T)
 
 

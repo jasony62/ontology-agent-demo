@@ -98,6 +98,8 @@ npm run build          # 生产构建（typecheck + vite build）
 - fix(engine): 修正属性链反演方向导致的漏匹配
 ```
 
+**SDK 契约变更（Breaking）**：`packages/ontology-plugin-sdk` 是领域包唯一允许依赖的包，外部使用者以 tag 为契约。任何触及 SDK 公开符号（`protocol` / `semantic` / `derivation` / `abox` / `context` / `engine` / `fakes`）的变更，必须登记到对应版本的 `### BREAKING CHANGE` 段（与第 6 节「派生使用方知会」配合，便于依赖 tag 基线的使用方低成本评估每个 tag 的跟进风险）。
+
 **发版时**：把 Unreleased 内容整体挪入新版本段（如 `## [0.2.0] - 2026-11-01`），并在底部追加版本对比链接。Unreleased 即 Release Notes 的素材。
 
 ## 5. 提 PR 前自查清单
@@ -111,6 +113,8 @@ npm run build          # 生产构建（typecheck + vite build）
 - [ ] 改动了命令或坑位（Makefile 目标、`scripts/` CLI 子命令、AGENTS.md Gotchas）时：已 grep `skills/` 确认无引用漂移（`tests/test_skills.py` 会做静态比对，但语义/输出形态变化它测不出）
 
 ## 6. 发版流程（维护者）
+
+> **⚠️ 派生使用方知会约定**：涉及**包名、仓库名、发布域名**任一变更时，须在打 tag 前通知依赖 tag 基线的派生使用方（于 Release 说明或 Issue 中同步），否则使用方会出现静默失配。纯内部变更（不涉及上述三项）无需此步。
 
 1. 确认 `CHANGELOG.md` 的 Unreleased 已整理并挪入新版本段
 2. 更新版本号：`pyproject.toml` 的 `version` 与本次版本一致

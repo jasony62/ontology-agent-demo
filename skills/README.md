@@ -19,7 +19,7 @@
 | 「选个新领域建本体 / 从零造一个领域包 / 给项目贡献新领域和 PR」 | domain-authoring | [domain-authoring/SKILL.md](domain-authoring/SKILL.md) |
 | 「备份 / 回滚 / 看服务状态」 | quickstart 的运维延伸节 | [quickstart/SKILL.md](quickstart/SKILL.md) |
 
-技能按 Agent Skills 规范书写（目录 + `SKILL.md`；frontmatter 的 description 供路由，正文统一六段式）。支持该格式的智能体可直接装载；不支持的当作普通文档照做，同样成立。前四个为使用侧（拉起服务→装领域包→CQ 建模→调推理），domain-authoring 为创作侧（从零造一个新领域并贡献上游），需同时改代码时读仓库 AGENTS.md。
+技能按 Agent Skills 规范书写（目录 + `SKILL.md`；frontmatter 的 description 供路由，正文统一六段式）。支持该格式的智能体可直接装载；不支持的当作普通文档照做，同样成立。前四个为使用侧（拉起服务→装领域包→CQ 建模→调推理），domain-authoring 为**贡献侧**技能（从零造一个新领域并贡献上游），需同时改代码时读仓库 AGENTS.md。**派生发行按需裁剪时，可整体移除 `skills/domain-authoring/` 目录，不影响其余四个使用侧技能。**
 
 ## 零技能机制环境的降级路径
 

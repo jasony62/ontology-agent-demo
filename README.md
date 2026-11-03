@@ -75,7 +75,7 @@ python3 -m venv .venv
 ### 运行测试与一键演示
 
 ```bash
-.venv/bin/python -m pytest tests/ -v      # 自动化测试套件（约 450+ 项，以 pytest 实测为准）
+.venv/bin/python -m pytest tests/ -v      # 自动化测试套件（约 430 项，以 pytest 实测为准）
 make demo                                  # 按顺序跑一遍核心接口（需服务已启动）
 ```
 
@@ -168,7 +168,7 @@ npm run build               # 产物 frontend/app/dist
                      ▲ 领域包唯一依赖
                      ▼
         运行态领域包 domains/<name>/（← examples/<name> 安装）
-          agent_task（默认）· fault_diag（异构）· _minimal（零复制样板）
+          agent_task（默认）· _minimal（零复制样板）
           本体 .owl + adapter.py + config.json + shapes/*.ttl + mcp.py
 ```
 
@@ -289,15 +289,16 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
 - **通用模式 vs 领域模式**：判据是"对外服务的引擎是否就是当前领域绑定的那个"（`in_domain_mode()`）；
   加载自定义本体后进入 generic 模式，领域推理不可用时接口会明确提示。
 - **领域自带的东西由领域自己声明**：能力处理器 `CAPABILITY_HANDLERS`、实体字段形状 `ENTITY_SCHEMA`、
-  图谱分组 `graph_group_members` 都交给领域包声明，框架不再写死进契约——这也是异构领域
-  `fault_diag`（自定义能力 `diagnose`、三级类层次、`owl:hasValue` 推故障等级）能被接纳的前提。
+  图谱分组 `graph_group_members` 都交给领域包声明，框架不再写死进契约。声明一个框架没预见的
+  能力（例如 `diagnose`）只要给出 `CAPABILITY_HANDLERS` 落点即可被接纳，异构领域因此
+  不必顺着任务编排的形状长。
 - **领域包可脱离本仓库运行**：唯一依赖 `ontology-plugin-sdk` 与 `rdflib`，配合 SDK 的 `FakeEngine`
   即可单测，无需启动宿主：
 
 ```python
 from ontology_plugin_sdk import FakeEngine, PluginContext
 
-engine = FakeEngine(ns="http://example.org/fault_diag#")
+engine = FakeEngine(ns="http://demo.example.org/agent-task-ontology#")
 ctx = PluginContext.for_module(domain_module, engine)
 adapter = domain_module.create_adapter_ctx(ctx)
 ```
@@ -357,7 +358,6 @@ adapter = AgentTaskAdapter(get_engine(), DEFAULT_CONFIG.update(
 │   └── installer.py                   # install / uninstall 与内容哈希
 ├── examples/                          # 随仓库分发的示例领域包（模板，不自动生效）
 │   ├── agent_task/                    # 完整业务领域（7 能力 / R2 R4 / ABox 写入 / 9 个 MCP 工具）
-│   ├── fault_diag/                    # 异构领域（诊断因果链 / 三级类层次 / 自定义能力 diagnose）
 │   └── _minimal/                      # 零复制验收物（1 类 3 个体，0 业务方法）
 ├── api/
 │   ├── main.py                        # FastAPI（领域端点走适配器 + 通用端点走引擎）
@@ -395,12 +395,12 @@ adapter = AgentTaskAdapter(get_engine(), DEFAULT_CONFIG.update(
 
 调用护栏在同目录 `policy.py`（语义白名单门禁）与 `tool_guard.py`（预算熔断 / 循环拦截 /
 缓存复用 / 审计留痕），均随领域包配置，未启用时逐字节向后兼容。
-**换领域时领域工具随之更换**：有 `mcp.py` 的领域注册自有工具；未提供 `mcp.py` 的领域（如 `fault_diag`）只注册引擎通用工具，其 `diagnose` 仍可通过 REST 调用。
+**换领域时领域工具随之更换**：有 `mcp.py` 的领域注册自有工具；未提供 `mcp.py` 的领域只注册引擎通用工具，其自有能力仍可通过 REST 调用。
 
 ```bash
 cd <项目根目录>
 .venv/bin/python mcp/mcp_server.py                                   # 默认领域；streamable-http
-.venv/bin/python mcp/mcp_server.py --domain fault_diag --port 9000    # 换领域
+.venv/bin/python mcp/mcp_server.py --domain agent_task --port 9000    # 换领域
 .venv/bin/python mcp/mcp_server.py --watch                            # 文件监听热重载（推荐）
 .venv/bin/python mcp/mcp_server.py --transport stdio                  # stdio（本地 Client）
 ```
@@ -429,7 +429,7 @@ URL 填 `http://127.0.0.1:9000/mcp`，保存后即可在对话中直接调用。
 
 ## 开发与贡献
 
-- **测试**：`make test`（pytest，约 450+ 项，含推理规则、插件契约、热切换与 SDK 边界）；CI 在 push / PR 时对 Python 3.10–3.12 全量跑。
+- **测试**：`make test`（pytest，约 430 项，含推理规则、插件契约、热切换与 SDK 边界）；CI 在 push / PR 时对 Python 3.10–3.12 全量跑。
 - **文档**：指南用 MkDocs 构建，推送 `main` 后由 CI 自动构建并部署文档站；本地 `make docs` 预览需 Python 3.10–3.12（当前机器 3.14 暂无 watchdog 轮子，故本地构建在 CI 上验证）。
 - **可安装包**：`pip install -e .`（pyproject.toml，依赖与 requirements.txt 一致）。领域插件 SDK 是
   同仓库的 workspace 包，`requirements.txt` 已含 `-e ./packages/ontology-plugin-sdk`，会一起装上。

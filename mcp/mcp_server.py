@@ -392,7 +392,7 @@ def main() -> int:
             "--from ./examples/agent_task，或用 --domain 指定。"
         )
     domain_mod = load_domain_module(domain_name, settings=settings)
-    # 领域包的 ONTO_FILE 可能是相对路径（如 fault_diag 的 "fault_diag.owl"）；
+    # 领域包的 ONTO_FILE 可能是相对路径（如 _minimal 的 "minimal.owl"）；
     # 统一经 package_onto_path 解析成包内绝对路径，避免 MCP 以 CWD 为基准找本体。
     onto_path = package_onto_path(domain_name, settings=settings)
     if not onto_path:

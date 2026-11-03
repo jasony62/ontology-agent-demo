@@ -38,7 +38,7 @@ def create_adapter(engine, config=None): ...     # 兼容工厂
 | `create(payload)` | 新增个体与自动分类：字段形状由领域 `ENTITY_SCHEMA` 决定，双重校验（违规 400） |
 | `explain` / `graph_export` | 推导链 / 图谱导出（`AdapterBase` 有默认实现） |
 
-领域可追加自有能力（如 fault_diag 的 `diagnose`）：走 `CAPABILITY_HANDLERS` 或适配器同名方法，必须声明落点且不得遮蔽框架 `REASON_KINDS`。推导链由 `derivation.json` 声明式展开（SDK 解释执行，不含领域词汇）。
+领域可追加自有能力（如 `diagnose`）：走 `CAPABILITY_HANDLERS` 或适配器同名方法，必须声明落点且不得遮蔽框架 `REASON_KINDS`。推导链由 `derivation.json` 声明式展开（SDK 解释执行，不含领域词汇）。
 
 ## 四、MCP stdio 全链路验证
 

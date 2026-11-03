@@ -18,16 +18,15 @@ python scripts/ontologyctl.py domain install --from ./examples/agent_task
 | 包 | 定位 | 用来证明什么 |
 |---|---|---|
 | `agent_task/` | 完整业务领域（智能体任务编排） | 框架能承载真实规模的领域：7 个能力、R2/R4 规则、ABox 写入、MCP 工具 |
-| `fault_diag/` | **异构**业务领域（设备故障诊断） | 框架的抽象是不是真通用：不实现任务编排四件套、声明自定义能力 `diagnose`、三级类层次、用 `owl:hasValue` 推出故障等级 |
 | `_minimal/` | 零复制验收物 | 新领域最少要写多少东西（1 类 + 3 个体 + 0 业务方法） |
 
 `agent_task` 和 `_minimal` 都是"顺着框架形状长"的——前者功能全，后者什么都不做。
-两者都证明不了通用性：一个领域只能证明"框架没把它搞坏"。`fault_diag` 是
-第一个形状对不上的领域，它照出过三处框架默认实现的真实缺陷（匿名类、
-多级类层次被压平、只展开两代），回归用例在 `tests/test_contract.py`。
 
-`fault_diag` 的测试里有一类标着【通用性】的用例，问的都是同一个问题：
-"这条抽象是真的通用，还是恰好对 agent_task 成立"。
+**异构形状不靠示例证明，靠测试守。** 匿名等价类（`owl:hasValue` 拆出的
+`owl:Restriction`）、多级类层次（三级且 `subClassOf` 带传递闭包）这两类偏离
+"任务-执行者"形态的结构，由 `tests/test_contract.py` 用合成夹具直接构造推理后的图
+来断言——`Widget / Gadget / SubGadget` 加一个匿名 `BNode`，不依赖任何示例包的 .owl。
+这样做的好处是：回归用例不受示例增删影响，也不会有人为了改断言去动本体。
 
 ## 新增示例的约定
 
@@ -49,12 +48,12 @@ python scripts/ontologyctl.py domain install --from ./examples/agent_task
 ## 领域包可以脱离本仓库运行
 
 领域包的唯一依赖是 `ontology-plugin-sdk`（本仓库的 workspace 包）与 `rdflib`。
-把 `fault_diag/` 整个拷到仓库外，只要 SDK 在 `sys.path` 上就能加载：
+把 `agent_task/` 整个拷到仓库外，只要 SDK 在 `sys.path` 上就能加载：
 
 ```python
 from ontology_plugin_sdk import FakeEngine, PluginContext
 
-engine = FakeEngine(ns="http://example.org/fault_diag#")
+engine = FakeEngine(ns="http://demo.example.org/agent-task-ontology#")
 ctx = PluginContext.for_module(domain_module, engine)
 adapter = domain_module.create_adapter_ctx(ctx)
 ```

@@ -14,7 +14,6 @@
 │   └── agent_task/      #   默认领域（adapter.py / mcp.py / config.json / shapes/）
 ├── examples/            # 领域包源，domain install 的来源
 │   ├── agent_task/      #   完整领域（7 能力 / R2 R4 / 9 个 MCP 工具）
-│   ├── fault_diag/      #   异构领域（自带 diagnose 能力，证明 not hardcoded）
 │   └── _minimal/        #   最小骨架（零 CLI 复制的验收物）
 ├── api/                 # FastAPI REST 服务（api/main.py，29 个端点）
 ├── mcp/                 # MCP Server（30 个工具：领域 9 / 通用 15 / 建模 6）
@@ -22,7 +21,7 @@
 │   ├── index.html       #   旧单页（回退）
 │   └── app/             #   本体图谱工作台（React 19 + Vite + Cytoscape）
 ├── scripts/             # start.sh / demo.sh / query.py（CLI）/ ontologyctl.py / build_ontology.py
-├── tests/               # 后端 pytest 自动化测试套件（约 450+ 项，以实测为准）
+├── tests/               # 后端 pytest 自动化测试套件（约 430 项，以实测为准）
 ├── config/              # 运行配置（domain.example.json / loader.py）
 ├── pipeline/            # 建模流水线闸门配置（gates.json）
 ├── docs/                # 设计文档 + 《本体上手指南》系列（docs/guide/）

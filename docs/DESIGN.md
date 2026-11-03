@@ -452,7 +452,7 @@ python3 -m venv .venv
 curl -s http://127.0.0.1:8000/api/health                      # 健康检查
 curl -s -X POST http://127.0.0.1:8000/api/reason \
   -H "Content-Type: application/json" -d '{"type":"capability_match","task":"t_login_dev"}'
-.venv/bin/python -m pytest tests/ -q                          # 自动化测试套件全绿（约 450+ 项，以 pytest 实测为准）
+.venv/bin/python -m pytest tests/ -q                          # 自动化测试套件全绿（约 430 项，以 pytest 实测为准）
 ```
 
 ### 10.4 Skill 封装（可选）
@@ -469,7 +469,7 @@ python scripts/query.py capability_match --task t_login_dev --local  # 内嵌引
 
 ## 11. 测试
 
-`tests/` 共约 450+ 项自动化测试，覆盖：
+`tests/` 共约 430 项自动化测试，覆盖：
 
 - `test_reasoning.py`：R1 属性链匹配、R2 复合任务委派、R3 传递闭包、R4 冲突、
   推导链结构（fact/rule/conclusion）、分类、语义覆盖；
@@ -560,7 +560,7 @@ adapter = AgentTaskAdapter(eng, DEFAULT_CONFIG.update(
 ├── mcp/mcp_server.py               # MCP Server 通用出口（:9000，--domain 动态加载领域工具）
 ├── frontend/                       # 图谱展示页
 ├── scripts/build_ontology.py       # 一键重建本体（含结构自检）
-├── tests/                          # 自动化测试套件（约 450+ 项，以 pytest 实测为准）
+├── tests/                          # 自动化测试套件（约 430 项，以 pytest 实测为准）
 └── requirements.txt
 ```
 

@@ -280,8 +280,8 @@ class _FakeEngine:
     def reparse(self):
         """刻意不推理：通用 create 只要求"重新推理"这个动作存在。
 
-        推理正确性由 fault_diag 的真实引擎用例守着（CriticalFault 由
-        owl:hasValue 推出），夹具这边不重复造一个不可信的推理器。
+        推理正确性由真实引擎的用例守着（`tests/test_api.py::test_create_entity`
+        断言 `risk_level=5` 推出 `HighRiskTask`），夹具这边不重复造一个不可信的推理器。
         """
 
     def types_of(self, individual):
@@ -422,9 +422,9 @@ def test_default_graph_export_skips_anonymous_subclass():
 
     owl:equivalentClass 在 OWL RL 推理后会拆成两条 subClassOf，匿名端点
     （owl:Restriction）于是作为主语进入 subjects(subClassOf, cls)。
-    若不过滤 BNode，图谱里会冒出 `N34ea94cb…` 这种名字的"类"——
-    这是 examples/fault_diag 的 CriticalFault（owl:hasValue 定义）照出来的，
-    agent_task 与 _minimal 都没有匿名类，所以一直没暴露。
+    若不过滤 BNode，图谱里会冒出 `N34ea94cb…` 这种名字的"类"。
+    这个洞是被一个"用 owl:hasValue 定义子类"的异构领域照出来的——
+    顺框架形状长的示例（agent_task / _minimal）都不含匿名类，所以一直没暴露。
     """
     anon = BNode()
     engine = _FakeEngine([
@@ -445,8 +445,7 @@ def test_default_graph_export_nests_multi_level_hierarchy():
     SubGadget（因为 SubGadget ⊑ Gadget ⊑ Widget 被推出 SubGadget ⊑ Widget）。
     默认实现若把 subjects 的结果全部当作"子类"，三级层次就会被压平——
     SubGadget 的 parent 写成 Widget。同时只展开两代还会让第三级整个消失。
-    agent_task 的类层次只有一级，这个洞由 fault_diag 的
-    Pump ⊑ Equipment ⊑ Asset 照出。
+    单层类层次的领域照不出这个洞：要暴露它需要至少三级，且推理会补出传递闭包。
     """
     engine = _FakeEngine([
         (f"{T}Widget", RDFS.label, "部件"),
@@ -614,7 +613,7 @@ def test_entity_schema_without_create_rejected(tmp_path, root):
 # ---------------- 图谱分组（graph_groups） ----------------
 #
 # 分组是领域的**展示约定**：组名 → 类键。它曾经只被两端各写一份
-# （fault_diag 走默认导出、agent_task 在自己的 graph_export 里拼字符串），
+# （默认导出与领域自写的 graph_export 各拼一份），
 # 现在收敛成一个函数，前端也从同一份声明取色。下面守三件事：
 #   1. 成员按子类收全（否则「Equipment 的子类 Pump 的个体」整组消失）；
 #   2. 顺序即声明顺序（图例与阅读顺序靠它）；

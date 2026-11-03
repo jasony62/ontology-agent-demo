@@ -12,7 +12,7 @@ description: 领域包开发：从模板新建、安装、热切换到脱离宿�
 ## 2. 前置自检
 
 - 服务能跑（quickstart 断言链全绿）；确认当前领域：`curl -s http://127.0.0.1:8000/api/domains`；
-- 读三套模板找参照：`examples/agent_task/`（完整业务：R2/R4 + ABox + 9 个 MCP 工具）、`examples/fault_diag/`（异构：自定义能力 diagnose、三级类层次）、`examples/_minimal/`（零复制验收物：1 类 3 个体、无业务方法）；
+- 读两套模板找参照：`examples/agent_task/`（完整业务：R2/R4 + ABox + 9 个 MCP 工具）、`examples/_minimal/`（零复制验收物：1 类 3 个体、无业务方法）；
 - 记住铁律：`examples/` 是源，`domains/` 是运行态安装副本（gitignored）——**改了 examples 必须重装，否则跑的还是旧副本**。
 
 ## 3. 标准作业流
@@ -23,7 +23,9 @@ description: 领域包开发：从模板新建、安装、热切换到脱离宿�
 |---|---|---|
 | 零起步/先跑通装载 | `_minimal` | 复制改名后只加类与个体，不写业务方法 |
 | 标准业务领域 | `agent_task` | 复制后改 .owl + config.json + adapter.py |
-| 异构结构（非任务-执行者形态） | `fault_diag` | 参照其自定义能力与多级类层次 |
+
+> 异构形状（非任务-执行者形态）没有现成模板可抄：把 `CAPABILITIES` 里用不上的
+> 能力显式排除（或声明 `()` 表示零能力），自定义能力走 `CAPABILITY_HANDLERS`。
 
 ```bash
 cp -r examples/_minimal examples/<你的领域名>

@@ -230,7 +230,7 @@ def test_plugin_api_compatible_v1_loads(tmp_path):
 
 def test_example_domains_declare_plugin_api():
     """示例领域包都应显式声明，给新领域一个照抄的样子。"""
-    for name in ("agent_task", "fault_diag", "_minimal"):
+    for name in ("agent_task", "_minimal"):
         src = (ROOT / "examples" / name / "__init__.py").read_text(encoding="utf-8")
         assert "PLUGIN_API" in src, f"{name} 未声明 PLUGIN_API"
 
@@ -268,15 +268,14 @@ mod = importlib.util.module_from_spec(spec)
 sys.modules["outside_domain"] = mod
 spec.loader.exec_module(mod)
 
-engine = sdk.FakeEngine(ns="http://example.org/fault_diag#")
+engine = sdk.FakeEngine(ns="http://demo.example.org/agent-task-ontology#")
 ctx = sdk.PluginContext.for_module(mod, engine)
 adapter = mod.create_adapter_ctx(ctx)
 
-engine.add_type("pump_01", "Pump")
-engine.add_triple("pump_01", "exhibits", "vibration_high")
-engine.add_triple("vibration_high", "impliesFault", "bearing_wear")
-result = adapter.diagnose("pump_01")
-assert result.get("most_likely") == "bearing_wear", result
+graph = adapter.graph_export()
+names = [c["name"] for c in graph["classes"]]
+assert "Agent" in names, names
+assert graph["classes"], "图谱为空：领域本体没有被加载"
 
 leaked = sorted(
     m for m in sys.modules
@@ -304,7 +303,7 @@ def test_domain_package_runs_outside_repo(tmp_path):
     dom_dir = tmp_path / "domain"
     ignore = shutil.ignore_patterns("__pycache__", "*.egg-info")
     shutil.copytree(SDK_SRC, sdk_dir, ignore=ignore)
-    shutil.copytree(ROOT / "examples" / "fault_diag", dom_dir, ignore=ignore)
+    shutil.copytree(ROOT / "examples" / "agent_task", dom_dir, ignore=ignore)
 
     probe = tmp_path / "probe.py"
     probe.write_text(_PROBE_SRC, encoding="utf-8")

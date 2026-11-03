@@ -16,7 +16,7 @@ P1-1 起契约**强制**：宿主加载器（本仓库里是 `domains.registry.l
 豁免方式只有一条——在领域包里声明 `CAPABILITIES`，把**不实现**的能力
 显式排除；声明了 `CAPABILITIES` 就等于承诺"清单内的方法我都实现了"。
 
-`CAPABILITIES` 允许出现框架没预见的名字（fault_diag 的 diagnose 就是探针）。
+`CAPABILITIES` 允许出现框架没预见的名字（`diagnose` 这类领域自定义能力就是探针）。
 这类"领域自有能力"由 `CAPABILITY_HANDLERS` 声明出口，加载器用
 `dangling_capabilities` 保证它至少有一个落点——见 `CAPABILITY_HANDLERS_ATTR`。
 
@@ -118,8 +118,8 @@ CAPABILITIES: tuple[str, ...] = REQUIRED_METHODS
 
 # 领域自声明能力的出口：适配器上可选的属性名，值为 {能力名: 处理器}。
 #
-# 为什么需要它：`CAPABILITIES` 里允许出现框架没预见的名字（例如 fault_diag
-# 的 diagnose），但出口层原先只认三张写死的推理表，声明了也无处可达——
+# 为什么需要它：`CAPABILITIES` 里允许出现框架没预见的名字（例如领域声明的
+# `diagnose`），但出口层原先只认三张写死的推理表，声明了也无处可达——
 # "声明即承诺"于是只剩一半：既不会被拒绝，也不会真的开门。
 # 处理器表把这个缺口补成对称的两半：
 #     CAPABILITIES 说"我有什么"，CAPABILITY_HANDLERS 说"从哪进来"。
@@ -552,8 +552,8 @@ def _has_named_between(g: Any, sub: Any, top: Any) -> bool:
 def _descendants(g: Any, cls: Any, name: str, hidden: set, label) -> list[dict]:
     """递归收集 cls 之下的具名子类，parent 指向**直接**父类。
 
-    三件事在推理图上必须显式处理，否则真实本体一上来就出错（都由
-    examples/fault_diag 的三级类层次照出）：
+    三件事在推理图上必须显式处理，否则真实本体一上来就出错（都由异构领域的
+    三级类层次照出）：
 
       1. 不是具名 URI 的主语不是类层次的一层。owl:equivalentClass 在 RL
          推理后拆成两条 subClassOf，匿名端点（owl:Restriction）会作为主语

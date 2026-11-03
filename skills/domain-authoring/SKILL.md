@@ -17,7 +17,7 @@ description: 从零新建领域包：为新业务领域完成选域、TBox/ABox 
 ## 2. 前置自检
 
 - 宿主能跑（quickstart 断言链绿）；当前领域 `curl -s http://127.0.0.1:8000/api/domains`；
-- 读模板三档找参照：`examples/_minimal/`（3 文件零业务方法，"新领域要写多少东西才能跑"的尺子）、`examples/fault_diag/`（异构：自定义能力 diagnose、三级类层次）、`examples/agent_task/`（全家桶：R2/R4 代码规则 + SHACL 规则 + CQ 族）；
+- 读模板两档找参照：`examples/_minimal/`（3 文件零业务方法，"新领域要写多少东西才能跑"的尺子）、`examples/agent_task/`（全家桶：R2/R4 代码规则 + SHACL 规则 + CQ 族）；
 - 领域知识源就位：用户的领域描述或知识库（业务规则不许发明，只能翻译）。
 
 ## 3. 标准作业流：六任务闭环

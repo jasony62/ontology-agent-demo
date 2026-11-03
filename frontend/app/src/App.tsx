@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from './store/appStore';
 import { api } from './api/client';
+import type { DomainInfo } from './api/client';
 import { parseRDF } from './lib/rdf/parser';
 import { CLASS_COLOR, INDIVIDUAL_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView } from './lib/graphGroups';
 import type { LegendFocus } from './lib/graphGroups';
@@ -41,6 +42,10 @@ export default function App() {
   const [designerOpen, setDesignerOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  // 领域包切换器：清单来自 /api/domains（切换不落盘，进程重启回默认领域）
+  const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null);
+  const [domainBusy, setDomainBusy] = useState(false);
+  const [domainNote, setDomainNote] = useState<string | null>(null);
   // #20：本体模式（default=默认本体/generic=通用模式），存 store 以便导入同步后即时刷新
   const ontologyMode = useAppStore((s) => s.ontologyMode);
   const setOntologyMode = useAppStore((s) => s.setOntologyMode);
@@ -102,62 +107,133 @@ export default function App() {
     });
   };
 
-  // 挂载初始化：健康检查 → 本体模式 → 物化数据 → 源码解析
+  // 挂载初始化 / 领域切换后刷新：健康检查 → 本体模式 → 物化数据 → 图谱分组 → 源码 → 领域清单
   // #19：health 失败提示"服务未启动"；materialized/source 失败提示"本体文件/加载问题"，不再误报
+  const loadWorkspace = useCallback(async () => {
+    try {
+      const health = await api.health();
+      setBackendOk(true, health);
+    } catch (e) {
+      setBackendOk(false);
+      setError(
+        `服务未启动：${e instanceof Error ? e.message : String(e)}\n请先启动推理 API（cd <项目根目录> && make run，或 uvicorn api.main:app --port 8000）。`,
+      );
+      return;
+    }
+    try {
+      const st = await api.status();
+      setOntologyMode(st.mode);
+    } catch {
+      setOntologyMode(null);
+    }
+    try {
+      const mat = await api.materialized();
+      setMaterialized(mat);
+      setGraphData(mat.asserted);
+    } catch (e) {
+      setError(`本体加载/物化失败：${e instanceof Error ? e.message : String(e)}\n请检查当前本体文件是否可读（通用模式下文件缺失时重载本体或重启服务恢复默认本体）。`);
+    }
+    // 图谱分组是**可选**的展示约定：拿不到就回落到 类/个体 两色，
+    // 所以这里静默降级、不进错误横幅——为了配色去拿一个红色提示打断读图，不值当。
+    try {
+      const { groups } = await api.graphGroups();
+      setGraphGroups(groups ?? []);
+    } catch {
+      setGraphGroups([]);
+    }
+    try {
+      const src = await api.source();
+      setSource(src.content, src.filename);
+      try {
+        const { ontology } = parseRDF(src.content);
+        setOntology(ontology);
+      } catch {
+        // 默认本体含 parser 未覆盖的公理时：保留后端图数据，模型置空
+        setOntology(null);
+      }
+    } catch (e) {
+      setError(`OWL 源码读取失败：${e instanceof Error ? e.message : String(e)}\n本体文件可能缺失，可重新加载本体或重启服务恢复默认本体。`);
+    }
+    // 领域清单是切换器的数据源：拿不到就禁用下拉，但读图不受影响
+    try {
+      setDomainInfo(await api.domains());
+    } catch {
+      setDomainInfo(null);
+    }
+  }, [setBackendOk, setMaterialized, setSource, setOntology, setGraphData, setGraphGroups, setError, setOntologyMode]);
+
   useEffect(() => {
-    (async () => {
-      try {
-        const health = await api.health();
-        setBackendOk(true, health);
-      } catch (e) {
-        setBackendOk(false);
-        setError(
-          `服务未启动：${e instanceof Error ? e.message : String(e)}\n请先启动推理 API（cd <项目根目录> && make run，或 uvicorn api.main:app --port 8000）。`,
-        );
-        return;
-      }
-      try {
-        const st = await api.status();
-        setOntologyMode(st.mode);
-      } catch {
-        setOntologyMode(null);
-      }
-      try {
-        const mat = await api.materialized();
-        setMaterialized(mat);
-        setGraphData(mat.asserted);
-      } catch (e) {
-        setError(`本体加载/物化失败：${e instanceof Error ? e.message : String(e)}\n请检查当前本体文件是否可读（通用模式下文件缺失时重载本体或重启服务恢复默认本体）。`);
-      }
-      // 图谱分组是**可选**的展示约定：拿不到就回落到 类/个体 两色，
-      // 所以这里静默降级、不进错误横幅——为了配色去拿一个红色提示打断读图，不值当。
-      try {
-        const { groups } = await api.graphGroups();
-        setGraphGroups(groups ?? []);
-      } catch {
-        setGraphGroups([]);
-      }
-      try {
-        const src = await api.source();
-        setSource(src.content, src.filename);
-        try {
-          const { ontology } = parseRDF(src.content);
-          setOntology(ontology);
-        } catch {
-          // 默认本体含 parser 未覆盖的公理时：保留后端图数据，模型置空
-          setOntology(null);
-        }
-      } catch (e) {
-        setError(`OWL 源码读取失败：${e instanceof Error ? e.message : String(e)}\n本体文件可能缺失，可重新加载本体或重启服务恢复默认本体。`);
-      }
-    })();
-  }, [setBackendOk, setMaterialized, setSource, setOntology, setGraphData, setGraphGroups, setError]);
+    void loadWorkspace();
+  }, [loadWorkspace]);
+
+  /**
+   * 领域切换 / 重载的公共流程。
+   *
+   * 后端把「失败保持原状」做在了 activate 里（400 + 旧领域继续服务），
+   * 所以这里失败只提示、不回滚任何前端状态——回滚反而会把正确的现状改坏。
+   */
+  const runDomainAction = async (label: string, action: () => Promise<{ domain: string; triples?: number }>) => {
+    if (domainBusy) return;
+    // 内存改动不会跟着领域走：切走就没了，先拦一道
+    if (editorDirty && !window.confirm(`在线编辑器有未保存的修改，${label}会丢掉这些修改。继续？`)) return;
+    setDomainBusy(true);
+    setDomainNote(`${label}中…`);
+    setError(null);
+    try {
+      const res = await action();
+      setSelectedId(null);
+      await loadWorkspace();
+      setDomainNote(`${label}完成：${res.domain}${typeof res.triples === 'number' ? ` · ${res.triples} 三元组` : ''}`);
+      window.setTimeout(() => setDomainNote(null), 4000);
+    } catch (e) {
+      setDomainNote(null);
+      setError(`${label}失败（后端保证当前领域仍可用）：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setDomainBusy(false);
+    }
+  };
 
   return (
     <div className="app">
       <header className="app-header">
         <h1>本体图谱工作台</h1>
         <span className="app-sub">OWL 2 RL 推理 API</span>
+        {/* 领域包切换：后端 L3 原子切换（失败保持旧领域），前端只负责重拉全量数据 */}
+        <div className="domain-switch" title={domainInfo?.description ?? '当前领域包（切换不落盘，重启服务回默认领域）'}>
+          <span className="domain-label">领域</span>
+          <select
+            value={domainInfo?.current ?? ''}
+            disabled={domainBusy || !domainInfo}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (!next || next === domainInfo?.current) return;
+              void runDomainAction('切换领域', () => api.activateDomain(next));
+            }}
+          >
+            {domainInfo ? (
+              <>
+                {/* 当前领域不在 installed 里（异常状态）也要能显式显示，避免下拉空白 */}
+                {!domainInfo.installed.includes(domainInfo.current) && (
+                  <option value={domainInfo.current}>{domainInfo.current}</option>
+                )}
+                {domainInfo.installed.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </>
+            ) : (
+              <option value="">—</option>
+            )}
+          </select>
+          <button
+            className="secondary domain-reload"
+            disabled={domainBusy || !domainInfo}
+            onClick={() => void runDomainAction('重载领域', () => api.reloadDomain())}
+            title="L2 重载：重读领域代码（adapter.py）并重建引擎；改了领域 Python 代码后用它（L1 重载本体不会重跑包代码）"
+          >
+            重载
+          </button>
+          {domainNote && <span className="domain-note">{domainNote}</span>}
+        </div>
         <div className="toolbar" style={{ marginLeft: 'auto' }}>
           <button onClick={() => setImportOpen(true)}>导入</button>
           <button onClick={() => setExportOpen(true)}>导出</button>

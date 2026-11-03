@@ -92,6 +92,30 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** 领域包状态（GET /api/domains）：当前领域 + 已安装清单 */
+export interface DomainInfo {
+  current: string;
+  root: string;
+  installed: string[];
+  /** domain=引擎属于领域；generic=加载了自定义本体，领域推理由此不可用 */
+  mode: 'domain' | 'generic';
+  name: string;
+  description?: string;
+  onto_path?: string;
+  loaded_at?: string;
+  capabilities?: string[];
+  triples?: number;
+}
+
+/** 切换 / 重载领域的返回（activate 带 capabilities，reload 不带） */
+export interface DomainSwitchResult {
+  status: string;
+  domain: string;
+  loaded_at: string;
+  capabilities?: string[];
+  triples: number;
+}
+
 export const api = {
   health: () => request<Record<string, unknown>>('/api/health'),
 
@@ -143,4 +167,17 @@ export const api = {
 
   /** 下载保存的本体文件 */
   downloadUrl: (name: string) => `/api/ontology/download?name=${encodeURIComponent(name)}`,
+
+  /** 已安装领域 + 当前领域（页头领域切换器） */
+  domains: () => request<DomainInfo>('/api/domains'),
+
+  /**
+   * L3 跨包切换。后端语义是「装好了再换」：失败（不存在/契约不满足/本体加载失败）
+   * 一律 400 且旧领域继续服务，所以前端失败时只需提示，不必回滚任何状态。
+   */
+  activateDomain: (name: string) =>
+    request<DomainSwitchResult>(`/api/domains/${encodeURIComponent(name)}/activate`, { method: 'POST' }),
+
+  /** L2 同包重载：重读领域代码（adapter.py）+ 重建引擎，改领域代码后用它 */
+  reloadDomain: () => request<DomainSwitchResult>('/api/domains/reload', { method: 'POST' }),
 };

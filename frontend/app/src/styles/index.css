@@ -92,6 +92,28 @@ body {
 .app-sub { font-size: 12px; color: #bcd3e4; }
 .health { margin-left: auto; font-size: 12px; background: #2c4d66; padding: 4px 12px; border-radius: 12px; }
 .health.ok { background: #1e6b3d; }
+/* 领域包切换器：深底浅字、与 .toolbar 的实心按钮区分——它切的是"当前上下文"，不是执行动作 */
+.domain-switch { display: flex; align-items: center; gap: 6px; font-size: 12px; position: relative; }
+.domain-switch .domain-label { color: #bcd3e4; }
+.domain-switch select {
+  background: #2c4d66; color: #fff; border: 1px solid #3f6280; border-radius: 6px;
+  padding: 4px 8px; font-size: 12px; cursor: pointer; max-width: 200px;
+}
+.domain-switch select:disabled { opacity: .55; cursor: not-allowed; }
+.domain-switch .domain-reload {
+  background: #2c4d66; color: #fff; border: 1px solid #3f6280; border-radius: 6px;
+  padding: 4px 10px; font-size: 12px; cursor: pointer;
+}
+.domain-switch .domain-reload:hover:not(:disabled) { background: #3a6280; }
+.domain-switch .domain-reload:disabled { opacity: .55; cursor: not-allowed; }
+/* 结果提示做成浮层：它只存在 4 秒，若占流内空间会把右侧工具条整排推开、
+   连带把"后端已连接"挤到第二行——短暂的状态提示不该引发布局跳动。 */
+.domain-switch .domain-note {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 30;
+  color: #1f3a52; background: #e8f2fa; border: 1px solid #b9d5e8;
+  padding: 4px 10px; border-radius: 8px; white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(15, 32, 51, .18);
+}
 /* #20：通用模式徽标与常驻横幅 */
 .mode-badge { font-size: 12px; background: #d83b01; color: #fff; padding: 3px 10px; border-radius: 12px; margin-left: 8px; }
 .mode-banner { background: #fdf1e9; border: 1px solid #f0c7a8; color: #7a3b12; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; margin-bottom: 14px; }

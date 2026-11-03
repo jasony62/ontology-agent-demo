@@ -39,6 +39,9 @@ export function groupColor(index: number): string {
 export const CLASS_COLOR = '#4a90a4';
 export const INDIVIDUAL_COLOR = '#c98a3d';
 
+/** 结构边（subClassOf 类层级 / rdf:type 实例归类）配色，图例与画布共用 */
+export const STRUCTURE_EDGE_COLOR = '#7a6fb0';
+
 export interface LegendItem {
   name: string;
   label: string;

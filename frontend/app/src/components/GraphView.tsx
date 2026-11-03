@@ -3,7 +3,7 @@ import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
 import type { Core, ElementDefinition, NodeSingular, StylesheetStyle, LayoutOptions } from 'cytoscape';
 import type { GraphData, GraphGroup } from '../api/client';
-import { CLASS_COLOR, INDIVIDUAL_COLOR, buildGroupView } from '../lib/graphGroups';
+import { CLASS_COLOR, INDIVIDUAL_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView } from '../lib/graphGroups';
 
 cytoscape.use(fcose);
 
@@ -81,6 +81,17 @@ const stylesheet: StylesheetStyle[] = [
     },
   },
   {
+    // 结构边：类层级（subClassOf）/ 实例归类（rdf:type），虚线紫色，与业务边 / 推理边区分
+    selector: 'edge.structure',
+    style: {
+      'line-style': 'dashed',
+      'line-color': STRUCTURE_EDGE_COLOR,
+      'target-arrow-color': STRUCTURE_EDGE_COLOR,
+      'width': 1.5,
+      'curve-style': 'bezier',
+    },
+  },
+  {
     selector: 'edge:selected',
     style: { 'line-color': '#0078d4', 'target-arrow-color': '#0078d4' },
   },
@@ -124,9 +135,15 @@ function elementsFromGraphData(
       const eid = `${e.source}--${e.label}--${e.target}`;
       if (seenEdges.has(eid)) continue;
       seenEdges.add(eid);
+      // 推理边统一绿色虚线；其余按业务/结构分类上色
+      const cls = isInferred
+        ? 'inferred'
+        : e.kind === 'structure'
+          ? 'structure'
+          : undefined;
       elements.push({
         data: { id: `edge|${eid}`, source: e.source, target: e.target, label: e.label },
-        classes: isInferred ? 'inferred' : undefined,
+        classes: cls,
       });
     }
   };

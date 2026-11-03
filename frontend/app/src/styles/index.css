@@ -152,6 +152,8 @@ body {
 .legend .line.dashed { border-top-style: dashed; }
 /* 分组图例：圆点表示个体分组（与"线"表示的边区分开，一眼能分辨图例在说节点还是边） */
 .legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.legend .legend-sep { font-weight: 600; color: #44566b; margin: 0 2px 0 8px; }
+.legend .legend-sep:first-child { margin-left: 0; }
 
 .graph-wrap { position: relative; width: 100%; height: 520px; background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 

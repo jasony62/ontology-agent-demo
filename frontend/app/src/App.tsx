@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from './store/appStore';
 import { api } from './api/client';
 import { parseRDF } from './lib/rdf/parser';
-import { CLASS_COLOR, INDIVIDUAL_COLOR, buildGroupView } from './lib/graphGroups';
+import { CLASS_COLOR, INDIVIDUAL_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView } from './lib/graphGroups';
 import GraphView from './components/GraphView';
 import GraphErrorBoundary from './components/GraphErrorBoundary';
 import Inspector from './components/Inspector';
@@ -172,7 +172,8 @@ export default function App() {
           <h2>本体图谱 · {sourceName || '—'}</h2>
           <MaterializedPanel />
           <div className="legend">
-            <span className="item"><span className="line" style={{ borderColor: CLASS_COLOR }}></span> 类（Class）</span>
+            <span className="legend-sep">节点</span>
+            <span className="item"><span className="dot" style={{ background: CLASS_COLOR }}></span> 类（Class）</span>
             {groupLegend.length > 0 ? (
               groupLegend.map((g) => (
                 <span className="item" key={g.name} title={`分组 ${g.name}（类 ${g.name}，含子类）`}>
@@ -180,8 +181,10 @@ export default function App() {
                 </span>
               ))
             ) : (
-              <span className="item"><span className="line" style={{ borderColor: INDIVIDUAL_COLOR }}></span> 个体（Individual）</span>
+              <span className="item"><span className="dot" style={{ background: INDIVIDUAL_COLOR }}></span> 个体（Individual）</span>
             )}
+            <span className="legend-sep">关系</span>
+            <span className="item"><span className="line dashed" style={{ borderColor: STRUCTURE_EDGE_COLOR }}></span> 结构边（类层级 / 实例归类）</span>
             <span className="item"><span className="line"></span> 原始断言边</span>
             <span className="item"><span className="line dashed" style={{ borderColor: '#2f8f6b' }}></span> 推理新增边（物化）</span>
           </div>

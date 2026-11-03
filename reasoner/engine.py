@@ -516,28 +516,39 @@ class OntologyEngine:
         return local(p) in self.META_PREDICATE_NAMES
 
     def _graph_data(self, graph: Graph) -> dict:
-        """通用图谱导出：节点=类/个体（label 用 rdfs:label 或短名），边=业务对象属性。
+        """通用图谱导出：节点=类/个体，边=业务对象属性 + 结构边（类层级/实例归类）。
 
         与领域语义完全无关，任意 .owl 可用；供前端 Cytoscape 渲染。
+
+        关键修正：类在 OWL 里通常只挂 rdf:type owl:Class / rdfs:subClassOf 这类元谓词边，
+        若只在"实体作为业务对象属性边的端点"时才建节点，类永远不会成为节点——
+        图例许诺的类配色永远落空。因此导出完整断言图（graph is self.raw）时，先预建
+        全部类 + 全部具名个体为节点，并把 subClassOf / rdf:type→类 画成结构边。
+        推理增量图（materialized 的 inferred diff）保持原语义，不注入结构边——
+        否则会把整张图染绿、淹没"推理新增了什么"。
         """
         nodes: dict[str, dict] = {}
         edges: list[dict] = []
+        full = self.g                 # 完整图：类身份判定与结构边来源
+        is_asserted = graph is self.raw
 
         def ensure_node(iri: URIRef) -> str:
             key = local(iri)
             if key not in nodes:
-                if (iri, RDF.type, OWL.Class) in graph:
+                # 类身份走完整图 full：增量推理图里可能缺 rdf:type owl:Class，
+                # 只看传入 graph 会把类误判成个体。
+                if (iri, RDF.type, OWL.Class) in full:
                     kind = "class"
                     types = [
                         local(o)
-                        for o in graph.objects(iri, RDFS.subClassOf)
+                        for o in full.objects(iri, RDFS.subClassOf)
                         if isinstance(o, URIRef) and o != OWL.Thing
                     ]
                 else:
                     kind = "individual"
                     types = [
                         local(o)
-                        for o in graph.objects(iri, RDF.type)
+                        for o in full.objects(iri, RDF.type)
                         if isinstance(o, URIRef) and o != OWL.NamedIndividual
                     ]
                 nodes[key] = {
@@ -549,6 +560,60 @@ class OntologyEngine:
             return key
 
         edge_seen = set()
+
+        if is_asserted:
+            # 1) 预建节点：全部类 + 全部具名个体（即使没有任何业务边也一定出现）
+            for s in graph.subjects(RDF.type, OWL.Class):
+                if isinstance(s, URIRef):
+                    ensure_node(s)
+            for s in graph.subjects(RDF.type, OWL.NamedIndividual):
+                if isinstance(s, URIRef):
+                    ensure_node(s)
+
+            # 2) 结构边：类层级（subClassOf）+ 实例归类（rdf:type→类）。
+            #    端点由本循环 ensure_node 顺带建出，不再单独兜底遍历全图——
+            #    否则 (Employee rdf:type owl:Class) 会把 owl:Class 也建成节点。
+            for s, p, o in graph:
+                if not isinstance(s, URIRef) or not isinstance(o, URIRef):
+                    continue
+                if p == RDFS.subClassOf and o != OWL.Thing:
+                    src = ensure_node(s)
+                    dst = ensure_node(o)
+                    eid = f"{src}--subClassOf--{dst}"
+                    if eid in edge_seen:
+                        continue
+                    edge_seen.add(eid)
+                    edges.append({
+                        "id": eid,
+                        "source": src,
+                        "target": dst,
+                        "label": "subClassOf",
+                        "kind": "structure",
+                        "provenance": "asserted",
+                    })
+                elif (
+                    p == RDF.type
+                    and o != OWL.NamedIndividual
+                    and o != OWL.Thing
+                    and (o, RDF.type, OWL.Class) in full
+                ):
+                    # 仅当 o 确实是类时才画「实例归类」结构边
+                    src = ensure_node(s)
+                    dst = ensure_node(o)
+                    eid = f"{src}--rdf:type--{dst}"
+                    if eid in edge_seen:
+                        continue
+                    edge_seen.add(eid)
+                    edges.append({
+                        "id": eid,
+                        "source": src,
+                        "target": dst,
+                        "label": "rdf:type",
+                        "kind": "structure",
+                        "provenance": "asserted",
+                    })
+
+        # 3) 业务对象属性边（排除元谓词）
         for s, p, o in graph:
             if not isinstance(s, URIRef) or not isinstance(o, URIRef):
                 continue
@@ -565,7 +630,7 @@ class OntologyEngine:
                 "source": src,
                 "target": dst,
                 "label": local(p),
-                "provenance": "asserted" if graph is self.raw else "inferred",
+                "provenance": "asserted" if is_asserted else "inferred",
             })
 
         return {"nodes": list(nodes.values()), "edges": edges}

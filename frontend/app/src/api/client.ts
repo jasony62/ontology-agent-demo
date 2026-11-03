@@ -17,6 +17,8 @@ export interface GraphEdge {
   target: string;
   label: string;
   provenance?: 'asserted' | 'inferred';
+  /** structure：类层级 / 实例归类的结构边（前端画虚线单独上色）；缺省=业务边 */
+  kind?: 'structure' | 'asserted' | 'inferred';
 }
 
 export interface GraphData {

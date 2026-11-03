@@ -49,9 +49,23 @@ export interface LegendItem {
   count: number;
 }
 
+/**
+ * 图例点击聚焦的目标。
+ *
+ * `class` / `individual` 是节点自身类型；`group` 是领域声明的分组（成员是个体）。
+ * 之所以不用「颜色」当筛选键：分组数超过调色板长度时会循环取色，
+ * 两个组同色就会一起亮——按名字筛才不会串组。
+ */
+export type LegendFocus =
+  | { kind: 'class' }
+  | { kind: 'individual' }
+  | { kind: 'group'; name: string };
+
 export interface GroupView {
   /** 个体短名 → 颜色。类节点不走这张表（类统一用一种颜色） */
   colorOf: Map<string, string>;
+  /** 个体短名 → 所属分组名。图例点击聚焦时用它反查成员，与 colorOf 共用「先声明者赢」 */
+  groupOf: Map<string, string>;
   /** 图例项：只含**有成员**的组 */
   legend: LegendItem[];
 }
@@ -68,6 +82,7 @@ export interface GroupView {
  */
 export function buildGroupView(groups: GraphGroup[]): GroupView {
   const colorOf = new Map<string, string>();
+  const groupOf = new Map<string, string>();
   const legend: LegendItem[] = [];
 
   groups.forEach((group, index) => {
@@ -75,7 +90,10 @@ export function buildGroupView(groups: GraphGroup[]): GroupView {
     if (members.length === 0) return;
     const color = groupColor(index);
     for (const name of members) {
-      if (!colorOf.has(name)) colorOf.set(name, color);
+      if (!colorOf.has(name)) {
+        colorOf.set(name, color);
+        groupOf.set(name, group.name);
+      }
     }
     legend.push({
       name: group.name,
@@ -86,5 +104,5 @@ export function buildGroupView(groups: GraphGroup[]): GroupView {
     });
   });
 
-  return { colorOf, legend };
+  return { colorOf, groupOf, legend };
 }

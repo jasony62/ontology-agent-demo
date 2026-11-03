@@ -3,6 +3,7 @@ import { useAppStore } from './store/appStore';
 import { api } from './api/client';
 import { parseRDF } from './lib/rdf/parser';
 import { CLASS_COLOR, INDIVIDUAL_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView } from './lib/graphGroups';
+import type { LegendFocus } from './lib/graphGroups';
 import GraphView from './components/GraphView';
 import GraphErrorBoundary from './components/GraphErrorBoundary';
 import Inspector from './components/Inspector';
@@ -73,6 +74,22 @@ export default function App() {
 
   // 图例与画布共用同一份分组视图：两处若各自算一遍，颜色迟早对不上
   const groupLegend = useMemo(() => buildGroupView(graphGroups).legend, [graphGroups]);
+
+  /** 图例聚焦：点一次只看该类/该组，再点一次恢复全图 */
+  const [focus, setFocus] = useState<LegendFocus | null>(null);
+
+  const sameFocus = (cur: LegendFocus | null, next: LegendFocus): boolean => {
+    if (!cur || cur.kind !== next.kind) return false;
+    if (cur.kind === 'group' && next.kind === 'group') return cur.name === next.name;
+    return true;
+  };
+
+  const toggleFocus = (next: LegendFocus) => setFocus((cur) => (sameFocus(cur, next) ? null : next));
+
+  // 换领域/重载本体后分组整体变了，旧焦点可能指向已不存在的组——继续留着会让全图变灰
+  useEffect(() => {
+    setFocus(null);
+  }, [graphGroups]);
 
   /** #21：编辑入口点击后锚点滚动到编辑区并短暂高亮，避免"点完无反应" */
   const scrollToEditor = (selector: string) => {
@@ -173,15 +190,38 @@ export default function App() {
           <MaterializedPanel />
           <div className="legend">
             <span className="legend-sep">节点</span>
-            <span className="item"><span className="dot" style={{ background: CLASS_COLOR }}></span> 类（Class）</span>
+            <button
+              type="button"
+              className={`item clickable${sameFocus(focus, { kind: 'class' }) ? ' active' : ''}`}
+              aria-pressed={sameFocus(focus, { kind: 'class' })}
+              onClick={() => toggleFocus({ kind: 'class' })}
+              title="点击聚焦：类保持原色，其余节点淡化；再次点击恢复"
+            >
+              <span className="dot" style={{ background: CLASS_COLOR }}></span> 类（Class）
+            </button>
             {groupLegend.length > 0 ? (
               groupLegend.map((g) => (
-                <span className="item" key={g.name} title={`分组 ${g.name}（类 ${g.name}，含子类）`}>
+                <button
+                  type="button"
+                  className={`item clickable${sameFocus(focus, { kind: 'group', name: g.name }) ? ' active' : ''}`}
+                  aria-pressed={sameFocus(focus, { kind: 'group', name: g.name })}
+                  key={g.name}
+                  onClick={() => toggleFocus({ kind: 'group', name: g.name })}
+                  title={`点击聚焦：分组 ${g.name}（${g.count} 个个体）保持原色，其余节点淡化；再次点击恢复`}
+                >
                   <span className="dot" style={{ background: g.color }}></span> {g.label}（{g.count}）
-                </span>
+                </button>
               ))
             ) : (
-              <span className="item"><span className="dot" style={{ background: INDIVIDUAL_COLOR }}></span> 个体（Individual）</span>
+              <button
+                type="button"
+                className={`item clickable${sameFocus(focus, { kind: 'individual' }) ? ' active' : ''}`}
+                aria-pressed={sameFocus(focus, { kind: 'individual' })}
+                onClick={() => toggleFocus({ kind: 'individual' })}
+                title="点击聚焦：个体保持原色，其余节点淡化；再次点击恢复"
+              >
+                <span className="dot" style={{ background: INDIVIDUAL_COLOR }}></span> 个体（Individual）
+              </button>
             )}
             <span className="legend-sep">关系</span>
             <span className="item"><span className="line dashed" style={{ borderColor: STRUCTURE_EDGE_COLOR }}></span> 结构边（类层级 / 实例归类）</span>
@@ -196,6 +236,7 @@ export default function App() {
                   asserted={viewMode === 'diff' ? null : graphData ?? materialized.asserted}
                   inferred={materialized.inferred}
                   groups={graphGroups}
+                  focus={focus}
                   onSelect={(id) => setSelectedId(id)}
                 />
               </GraphErrorBoundary>

@@ -4,6 +4,7 @@ import fcose from 'cytoscape-fcose';
 import type { Core, ElementDefinition, NodeSingular, StylesheetStyle, LayoutOptions } from 'cytoscape';
 import type { GraphData, GraphGroup } from '../api/client';
 import { CLASS_COLOR, INDIVIDUAL_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView } from '../lib/graphGroups';
+import type { GroupView, LegendFocus } from '../lib/graphGroups';
 
 cytoscape.use(fcose);
 
@@ -15,6 +16,8 @@ interface Props {
   inferred?: GraphData | null;
   /** 领域声明的分组（上色用）；缺省或空 = 按 类/个体 两色 */
   groups?: GraphGroup[];
+  /** 图例点击后的聚焦目标：命中的节点保持原色，其余淡化；null = 不过滤 */
+  focus?: LegendFocus | null;
   onSelect?: (id: string | null) => void;
 }
 
@@ -57,6 +60,18 @@ const stylesheet: StylesheetStyle[] = [
     },
   },
   {
+    // 图例聚焦时「不在焦点上」的节点：统一压成浅灰半透明。
+    // 刻意覆盖 background-color 而不只调 opacity——只降透明度会得到一堆脏兮兮的彩色块，
+    // 而读者要的是「这些不是我要看的」，灰色比淡色更能表达"退到背景里"。
+    selector: 'node.dim',
+    style: {
+      'background-color': '#c4c9d0',
+      'border-color': '#c4c9d0',
+      'color': '#aab0b8',
+      'opacity': 0.38,
+    },
+  },
+  {
     selector: 'edge',
     style: {
       width: 2,
@@ -95,17 +110,29 @@ const stylesheet: StylesheetStyle[] = [
     selector: 'edge:selected',
     style: { 'line-color': '#0078d4', 'target-arrow-color': '#0078d4' },
   },
+  {
+    // 两端都被淡化的边跟着淡化：只灰节点不灰边，画面上会留下一堆"悬空乱线"，
+    // 反而比不聚焦更乱。只要有一端在焦点内，这条边就仍有信息量，保持原样。
+    selector: 'edge.dim',
+    style: {
+      'line-color': '#d8dce1',
+      'target-arrow-color': '#d8dce1',
+      'color': '#c9ced6',
+      'opacity': 0.3,
+    },
+  },
 ];
 
 function elementsFromGraphData(
   asserted: GraphData | null | undefined,
   inferred: GraphData | null | undefined,
   viewMode: GraphViewMode,
-  colorOf: Map<string, string>,
+  groupView: GroupView,
 ): ElementDefinition[] {
   const elements: ElementDefinition[] = [];
   const seenNodes = new Set<string>();
   const seenEdges = new Set<string>();
+  const colorOf = groupView.colorOf;
 
   const addData = (graph: GraphData | null | undefined, isInferred: boolean) => {
     if (!graph) return;
@@ -118,6 +145,10 @@ function elementsFromGraphData(
       elements.push({
         data: {
           id,
+          // kind / group 是给「图例点击聚焦」用的筛选键：渲染只看 color，
+          // 但聚焦要按「类型 / 分组」判断，靠颜色反推不行（分组可能同色）
+          kind: n.type === 'class' ? 'class' : 'individual',
+          group: groupView.groupOf.get(id) ?? '',
           label: `${n.type === 'class' ? '◈' : '●'} ${(n.label ?? '').trim() || id}`,
           // diff 视图里推理新增一律走绿色（读者要一眼看出"这是新冒出来的"）；
           // 其余情况：类一种色、个体按领域声明的分组上色，未声明分组回落单色
@@ -157,7 +188,7 @@ function elementsFromGraphData(
   return elements;
 }
 
-export default function GraphView({ viewMode, asserted, inferred, groups, onSelect }: Props) {
+export default function GraphView({ viewMode, asserted, inferred, groups, focus, onSelect }: Props) {
   const groupView = useMemo(() => buildGroupView(groups ?? []), [groups]);
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -198,7 +229,7 @@ export default function GraphView({ viewMode, asserted, inferred, groups, onSele
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const elements = elementsFromGraphData(asserted, inferred, viewMode, groupView.colorOf);
+    const elements = elementsFromGraphData(asserted, inferred, viewMode, groupView);
 
     const nodeIds = elements.filter((el) => !('source' in el.data)).map((el) => String(el.data.id));
     const edgeIds = elements.filter((el) => 'source' in el.data).map((el) => String(el.data.id));
@@ -271,7 +302,30 @@ export default function GraphView({ viewMode, asserted, inferred, groups, onSele
       cy.layout({ name: 'fcose', animate: false, randomize: true, nodeSeparation: 60 } as LayoutOptions).run();
       cy.fit(undefined, 28);
     }
-  }, [viewMode, asserted, inferred, groupView.colorOf]);
+  }, [viewMode, asserted, inferred, groupView]);
+
+  // 图例点击聚焦：命中目标保持原色，其余节点压成浅灰半透明；focus 为 null 即全恢复。
+  // 依赖里带上数据源：节点是增量增删的，新加的节点不会自动继承上一轮的 dim。
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.batch(() => {
+      cy.elements().removeClass('dim');
+      if (!focus) return;
+      const hit = (n: NodeSingular) => {
+        const kind = n.data('kind') as string | undefined;
+        if (focus.kind === 'class') return kind === 'class';
+        if (focus.kind === 'individual') return kind === 'individual';
+        return (n.data('group') as string | undefined) === focus.name;
+      };
+      const keep = cy.nodes().filter(hit);
+      cy.nodes().difference(keep).addClass('dim');
+      // 两端都被淡化才淡化边：一端在焦点内时，这条边仍说明"焦点连向哪里"
+      cy.edges()
+        .filter((e) => e.source().hasClass('dim') && e.target().hasClass('dim'))
+        .addClass('dim');
+    });
+  }, [focus, viewMode, asserted, inferred, groupView]);
 
   // #23：节点搜索/聚焦——输入实体名，匹配节点高亮并居中
   useEffect(() => {

@@ -30,6 +30,14 @@ jobs:
         working-directory: frontend/app
     steps:
       - uses: actions/checkout@v4
+      # 防未来闸：frontend/app 基于 Microsoft Ontology-Playground（MIT）改造，
+      # LICENSE 与 README/CHANGELOG 两处来源声明必须共生——重构误删时在这里红灯，
+      # 而不是等到复制/分发方构成许可证违约。
+      - name: Third-party license guard (Microsoft MIT)
+        run: |
+          test -f LICENSE
+          grep -q "Microsoft Corporation" LICENSE
+          grep -q "Ontology-Playground" ../../README.md ../../CHANGELOG.md
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:

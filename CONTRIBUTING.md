@@ -1,6 +1,6 @@
 # 贡献指南（CONTRIBUTING）
 
-欢迎贡献！本文件说明如何在本仓库开发、提交与发版。无论是修 bug、加功能、补文档，都请先读一遍。
+欢迎贡献！本文件说明如何在本仓库开发、提交与发版。无论是修 bug、加功能、补文档，都请先读一遍。要将本工程复制为派生发行（二次交付 / 教学改造），见 [PORTING.md](PORTING.md)。
 
 ## 1. 项目结构与技术栈
 
@@ -39,6 +39,7 @@
 # 后端
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+.venv/bin/pip install "pytest>=8.0"         # 测试依赖（运行时清单之外）
 .venv/bin/python -m pytest tests/ -q        # 全部后端测试
 
 # 前端（改动 frontend/app/ 时）

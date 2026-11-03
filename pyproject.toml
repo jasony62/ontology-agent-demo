@@ -1,5 +1,6 @@
-# 项目元数据 + 可安装包（可选用法：pip install -e .）
-# 依赖清单与 requirements.txt 保持一致；常规快速开始仍用 pip install -r requirements.txt
+# 项目元数据 + 可安装包（可选用法：pip install -e ".[test]" / ".[docs]"）
+# dependencies 为运行时子集，与 requirements.txt 的运行时清单一致；
+# pytest 等测试依赖走 optional-dependencies，不进运行时环境
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -24,8 +25,14 @@ dependencies = [
     "requests>=2.31",
     "httpx>=0.27",
     "mcp>=2.0",
-    "pytest>=8.0",
+    "pyshacl>=0.40",
 ]
+
+# 可选安装档：容器/服务部署只装 dependencies 运行时子集；
+# pytest 此前混在运行时依赖里，随镜像与全量安装进入运行环境——现移出。
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+docs = ["mkdocs>=1.6", "mkdocs-material>=9.0"]
 
 [project.urls]
 

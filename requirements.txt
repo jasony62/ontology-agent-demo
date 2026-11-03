@@ -1,3 +1,7 @@
+# 运行时依赖清单（服务/容器部署用）。
+# 测试依赖 pytest 不在运行时清单（依赖分级）：开发环境安装
+#   pip install -r requirements.txt "pytest>=8.0"
+# 或按 pyproject 可选档：pip install -e ".[test]"
 owlready2>=0.51
 owlrl>=6.0
 rdflib>=7.0
@@ -5,7 +9,6 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 requests>=2.31
 httpx>=0.27
-pytest>=8.0
 mcp>=2.0            # MCP Server（mcp/mcp_server.py）
 pyshacl>=0.40       # SHACL 数据形状校验（validate_shapes 工具，形状文件在领域包的 shapes/）
 

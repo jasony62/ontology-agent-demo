@@ -9,7 +9,7 @@ help: ## 查看可用命令
 
 setup: ## 首次：创建虚拟环境、安装依赖并准备默认领域
 	python3 -m venv .venv
-	$(PIP) install -r requirements.txt
+	$(PIP) install -r requirements.txt "pytest>=8.0"
 	$(MAKE) ensure-domain
 
 ensure-domain: ## 确保运行态有可用领域（无则安装示例领域）

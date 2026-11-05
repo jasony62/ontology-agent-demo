@@ -28,17 +28,13 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
-      // 「服务能力」面板直接读这三条 OpenAPI 入口；开发期同样要转发，
+      // 「服务能力」面板直接读这两条 OpenAPI 入口；开发期同样要转发，
       // 否则 Vite 会回落到 index.html，面板拿到的是 HTML 而不是规范
       '/openapi.json': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
       '/docs': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '/redoc': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },

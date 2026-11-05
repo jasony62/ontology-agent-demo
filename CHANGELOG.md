@@ -16,6 +16,7 @@
 
 ### Removed
 
+- **关闭默认文档端点 `/redoc`**：它是 FastAPI 自动注册的第三个文档入口，项目从未认领——无文档入口、无测试、无前端引用，页面依赖 jsdelivr / Google Fonts 因而在离线环境白屏，且 `redoc@2` 对 OpenAPI 3.1 仅基础支持，本规范含 7 处 `anyOf` / 6 处 `null`，可选字段渲染不可信。三个入口同源 `/openapi.json`，关闭零信息损失，29 个路由与全部字段说明不变。对外文档入口收敛为 `/api-docs`（主推，支持在线调用）与 `/docs`（Swagger UI，保留）。同步移除 no-cache 白名单与 Vite 开发代理中的残留项，并补回归测试防止再次开启。
 - **`examples/fault_diag/`（设备故障诊断示例）与其测试**：随仓库分发的异构示例包和 `tests/test_fault_diag.py`（488 行 / 29 个用例）一并移除，`examples/` 只留 `agent_task`（完整业务）与 `_minimal`（零复制验收物）。它当初的职责是**证伪框架抽象**——用一个"不是任务-执行者形状"的领域照出默认实现的缺陷；但这份职责放在 `examples/` 里并不合适：用户会把它当成可抄的模板（它的 `diagnose` 入参还在 `params.asset` 与 `component` 之间摇摆），而回归断言一旦依赖示例包的本体，改断言就得动本体。三处真实缺陷（匿名等价类被当作类、多级类层次被压平、只展开两代）的回归用例**仍然在**，位于 `tests/test_contract.py`，且全部使用合成夹具（`Widget` / `Gadget` / `SubGadget` 加一个匿名 `BNode`），与任何示例包的存亡无关；真实引擎上「创建 → 推理定级」的闭环由 `tests/test_api.py::test_create_entity` 守着（`risk_level=5` 推出 `HighRiskTask`）。`tests/test_sdk.py` 的「领域包拷到仓库外仍可运行」用例改用 `agent_task` 作样本，断言从 `diagnose` 改为 `graph_export` 出类且含 `Agent`。
 
 ### Fixed

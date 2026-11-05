@@ -10,6 +10,10 @@
 - **页头领域包切换器**：工作台页头新增「领域」下拉 + 「重载」按钮，可直接在页面上切换已安装的业务包（`GET /api/domains` 列清单、`POST /api/domains/{name}/activate` 做 L3 原子切换），无需改命令行走 CLI。切换后自动重拉物化数据 / 图谱分组 / 本体源码，图谱标题里的本体文件名同步变更；失败时后端保证旧领域继续服务，前端只提示不回滚。顺带暴露 L2 重载（`POST /api/domains/reload`），改了领域 `adapter.py` 后可在页面上直接生效。切换是**内存态**的（重启服务回默认领域），当前领域不在安装清单时下拉仍显式显示，避免空白。
 - **图谱图例点击聚焦**：点击图例「节点」组（类 / 各分组 / 个体）后，命中节点保持原色、其余节点压成浅灰半透明（`node.dim`），再次点击恢复、点其他项即切换；边仅在两端都被淡化时一同淡化（一端在焦点内则保留，仍说明焦点连向何处）。分组筛选按**组名**而非颜色，避免分组数超过调色板长度循环取色时串组。
 
+### Changed
+
+- **「服务能力」的 REST API 改为 OpenAPI 在线接口文档，并提供独立页面 `/api-docs`**：接口文档不再塞在弹窗里，而是有可收藏、可分享的真实 URL（也支持 `/#/api-docs` 与 `?view=api-docs`），页头新增「API 文档」直达链接；「服务能力」弹窗只保留入口与 MCP 说明。文档读取后端 `GET /openapi.json`（OpenAPI 3.1），按 `openapi_tags` 分组，路由与参数字段随 FastAPI 自动同步。每个端点展开后可填写路径 / 查询 / Header 参数与 JSON 请求体、**在线发送请求**并查看状态码、耗时和响应体，也可一键复制 curl；文件上传端点（`/api/ontology/load`）提供文件选择器。后端 29 个路由补齐 tag 与中文 summary，所有请求模型字段与路径 / 查询 / 文件参数补齐 `description`（文档里的字段说明全部来自 OpenAPI 本身，不再靠前端另写）。针对 Swagger UI 默认停在「Example Value」、字段说明藏在「Schema」标签页的问题，`/openapi.json` 额外为每个请求体生成 `requestBody.description`（字段名 + 类型 + 说明），并把 Swagger UI 的 `defaultModelRendering` 设为 `model`，展开 `/docs` 端点即可直接看到说明；文档类响应统一 `Cache-Control: no-store`，后端补说明后刷新即可生效。`/docs`、`/openapi.json`、`/redoc` 同时加入 Vite 开发代理，直接 `npm run dev` 也能用。新增 `tests/test_openapi.py`（规范可生成、每个操作都有 tag/summary、请求体字段说明可直读、`/api-docs` 可直开、文档响应不缓存）与前端 `src/lib/openapi.test.ts`（分组 / 示例生成 / URL 与 curl 拼装 / 文档页路由识别）守护。
+
 ### Removed
 
 - **`examples/fault_diag/`（设备故障诊断示例）与其测试**：随仓库分发的异构示例包和 `tests/test_fault_diag.py`（488 行 / 29 个用例）一并移除，`examples/` 只留 `agent_task`（完整业务）与 `_minimal`（零复制验收物）。它当初的职责是**证伪框架抽象**——用一个"不是任务-执行者形状"的领域照出默认实现的缺陷；但这份职责放在 `examples/` 里并不合适：用户会把它当成可抄的模板（它的 `diagnose` 入参还在 `params.asset` 与 `component` 之间摇摆），而回归断言一旦依赖示例包的本体，改断言就得动本体。三处真实缺陷（匿名等价类被当作类、多级类层次被压平、只展开两代）的回归用例**仍然在**，位于 `tests/test_contract.py`，且全部使用合成夹具（`Widget` / `Gadget` / `SubGadget` 加一个匿名 `BNode`），与任何示例包的存亡无关；真实引擎上「创建 → 推理定级」的闭环由 `tests/test_api.py::test_create_entity` 守着（`risk_level=5` 推出 `HighRiskTask`）。`tests/test_sdk.py` 的「领域包拷到仓库外仍可运行」用例改用 `agent_task` 作样本，断言从 `diagnose` 改为 `graph_export` 出类且含 `Agent`。

@@ -1,0 +1,166 @@
+"""OpenAPI 文档契约：/openapi.json 必须能作为「服务能力」面板的数据源。
+
+工作台不再手写端点表，而是直接渲染这份规范。这里锁住三条最容易在
+新增路由时被忘掉的约束：每个操作都有分组 tag 和中文 summary；tag
+都在 openapi_tags 里声明过；规范版本是 OpenAPI 3.x。
+"""
+
+import os
+import sys
+
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from api.main import app  # noqa: E402
+
+client = TestClient(app)
+
+_HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
+
+def test_openapi_spec_is_openapi_3():
+    r = client.get("/openapi.json")
+    assert r.status_code == 200
+    spec = r.json()
+    assert spec["openapi"].startswith("3.")
+    assert spec["info"]["title"]
+    assert len(spec["paths"]) >= 29
+
+
+def test_every_operation_is_tagged_and_summarised():
+    spec = client.get("/openapi.json").json()
+    declared = {tag["name"] for tag in spec.get("tags", [])}
+    assert declared, "openapi_tags 未声明，前端无法按使用场景分组"
+
+    missing = []
+    for path, item in spec["paths"].items():
+        for method, op in item.items():
+            if method not in _HTTP_METHODS:
+                continue
+            if not op.get("tags") or not op.get("summary"):
+                missing.append(f"{method.upper()} {path}")
+            for tag in op.get("tags", []):
+                assert tag in declared, f"{method.upper()} {path} 使用了未声明的 tag: {tag}"
+
+    assert missing == [], f"以下端点缺少 tag/summary：{missing}"
+
+
+def test_request_parameters_and_fields_have_descriptions():
+    """参数说明必须来自 OpenAPI 本身，而不是前端另写一份。
+
+    `/api-docs` 的「请求字段说明」直接读 `schema.properties[*].description`，
+    这里守住：所有路由参数都有 description，所有自定义请求模型的字段都有
+    description（FastAPI 自带的 ValidationError 除外）。
+    """
+    spec = client.get("/openapi.json").json()
+
+    missing_params = []
+    for path, item in spec["paths"].items():
+        for method, op in item.items():
+            if method not in _HTTP_METHODS:
+                continue
+            for param in op.get("parameters", []):
+                if not param.get("description"):
+                    missing_params.append(f"{method.upper()} {path} → {param.get('in')}:{param.get('name')}")
+    assert missing_params == [], f"以下参数缺少说明：{missing_params}"
+
+    skipped = {"HTTPValidationError", "ValidationError"}
+    missing_fields = []
+    for name, schema in spec.get("components", {}).get("schemas", {}).items():
+        if name in skipped:
+            continue
+        for field, prop in schema.get("properties", {}).items():
+            if not prop.get("description"):
+                missing_fields.append(f"{name}.{field}")
+    assert missing_fields == [], f"以下请求字段缺少说明：{missing_fields}"
+
+
+def test_request_body_description_lists_fields():
+    """请求体描述要能直接看到字段说明，而不是只藏在 Schema 标签页。
+
+    Swagger UI 的请求体默认渲染「Example Value」，字段说明只在「Schema」
+    标签页；`_describe_request_bodies` 把同一份字段说明提升到
+    `requestBody.description`，这里守住它真的生成了。
+    """
+    spec = client.get("/openapi.json").json()
+
+    body = spec["paths"]["/api/reason"]["post"]["requestBody"]
+    desc = body.get("description", "")
+    for field in ("type", "task", "agent", "persist", "params"):
+        assert f"`{field}`" in desc, f"请求体说明缺少字段 {field}"
+    assert "推理类型" in desc
+
+    # 每个有字段说明的 JSON 请求体都应带描述，否则又回到「打开端点看不到说明」
+    missing = []
+    schemas = spec.get("components", {}).get("schemas", {})
+    for path, item in spec["paths"].items():
+        for method, op in item.items():
+            if method not in _HTTP_METHODS or not op.get("requestBody"):
+                continue
+            body = op["requestBody"]
+            for media in body.get("content", {}).values():
+                schema = media.get("schema", {})
+                if "$ref" in schema:
+                    schema = schemas.get(schema["$ref"].rsplit("/", 1)[-1], {})
+                described = [
+                    name for name, prop in schema.get("properties", {}).items()
+                    if prop.get("description")
+                ]
+                if not described:
+                    continue
+                text = body.get("description", "")
+                for name in described:
+                    if f"`{name}`" not in text:
+                        missing.append(f"{method.upper()} {path} → {name}")
+    assert missing == [], f"以下请求体字段没有出现在请求体说明里：{missing}"
+
+
+def test_docs_responses_are_not_cached():
+    """文档响应不缓存：补了说明后刷新就能看到，而不是浏览器给旧规范。"""
+    for path in ("/openapi.json", "/docs"):
+        r = client.get(path)
+        assert r.status_code == 200
+        assert r.headers.get("cache-control") == "no-store", path
+
+
+def test_swagger_ui_shows_schema_by_default():
+    """/docs 的 Swagger UI 配置：默认渲染 Schema，并显示请求耗时。
+
+    这不是唯一保障（requestBody.description 才是主路径），但它能减少
+    「字段说明在另一个标签页」的困惑。
+    """
+    r = client.get("/docs")
+    assert r.status_code == 200
+    assert '"defaultModelRendering": "model"' in r.text
+    assert "displayRequestDuration" in r.text
+
+
+def test_swagger_ui_is_served():
+    r = client.get("/docs")
+    assert r.status_code == 200
+    assert "swagger" in r.text.lower()
+
+
+def test_frontend_index_is_revalidated():
+    """index.html 引用带哈希的 /assets/*，重新构建后必须让浏览器重新校验。
+
+    否则浏览器拿旧 index.html 去请求已删除的旧哈希资源 → 404 → 整页空白
+    （表现为「工作台进不去」）。未构建前端时 `/` 返回提示 JSON，跳过。
+    """
+    r = client.get("/")
+    if r.headers.get("content-type", "").startswith("application/json"):
+        return
+    assert r.headers.get("cache-control") == "no-cache"
+
+
+def test_api_docs_page_is_standalone():
+    """独立文档页复用 SPA 入口：直接打开 /api-docs 不应 404。
+
+    CI 可能没有构建前端，此时与 `/` 一样返回构建提示 JSON；本地构建后
+    则是同一份 index.html，由前端按 pathname 渲染 ApiDocsPage。
+    """
+    r = client.get("/api-docs")
+    assert r.status_code == 200
+    home = client.get("/")
+    assert r.headers.get("content-type") == home.headers.get("content-type")

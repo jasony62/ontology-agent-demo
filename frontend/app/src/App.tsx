@@ -243,6 +243,7 @@ export default function App() {
             {designerOpen ? '关闭编辑器' : '可视化编辑'}
           </button>
           <button className="secondary" onClick={openEditor}>在线编辑</button>
+          <a className="toolbar-link secondary" href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
           <button className="secondary" onClick={() => setGuideOpen(true)}>服务能力</button>
         </div>
         <span className={`health ${backendOk ? 'ok' : ''}`}>{backendOk ? '后端已连接' : '后端未连接'}</span>

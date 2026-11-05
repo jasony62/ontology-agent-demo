@@ -27,26 +27,6 @@ function CopyBlock({ code }: { code: string }) {
   );
 }
 
-const API_TABLE: { method: string; path: string; desc: string; note?: string }[] = [
-  { method: 'GET', path: '/api/health', desc: '服务状态、默认本体、Agent/任务数量', note: '任意状态' },
-  { method: 'GET', path: '/api/ontology/graph-groups', desc: '领域声明的图谱分组（组名 / 类 / 成员），前端据此上色与出图例', note: '默认本体' },
-  { method: 'POST', path: '/api/reason', desc: '能力匹配 / 任务编排 / 分配（type 参数）', note: '默认本体' },
-  { method: 'POST', path: '/api/entities', desc: '按领域 schema 新建实体（先看 /api/entities/schema）', note: '默认本体' },
-  { method: 'POST', path: '/api/explain', desc: '最近一次查询的推导链（中文解释）', note: '默认本体' },
-  { method: 'POST', path: '/api/consistency', desc: '全量分配的一致性 / 合规冲突检查', note: '默认本体' },
-  { method: 'POST', path: '/api/query', desc: 'SPARQL SELECT 通用查询', note: '任意本体' },
-  { method: 'POST', path: '/api/individuals', desc: '指定类（含子类）的个体列表', note: '任意本体' },
-  { method: 'POST', path: '/api/classes', desc: '全部类层次（name/label/parent）', note: '任意本体' },
-  { method: 'POST', path: '/api/types', desc: '个体推理后的全部类型', note: '任意本体' },
-  { method: 'POST', path: '/api/property', desc: '主体-属性 取值列表', note: '任意本体' },
-  { method: 'POST', path: '/api/infer', desc: '重新执行推理，返回三元组统计', note: '任意本体' },
-  { method: 'POST', path: '/api/ontology/load', desc: '上传 .owl/.rdf 并加载（进入通用模式）', note: 'multipart' },
-  { method: 'GET', path: '/api/ontology/materialized', desc: '物化 diff：原始断言 / 推理新增图数据', note: '任意本体' },
-  { method: 'GET', path: '/api/ontology/source', desc: '当前本体原始 OWL 源码', note: '任意本体' },
-  { method: 'GET', path: '/api/ontology/export', desc: '导出物化后本体（turtle / rdfxml / n3）', note: '任意本体' },
-  { method: 'GET', path: '/api/ontology', desc: '领域本体结构（图谱数据）', note: '默认本体' },
-];
-
 const MCP_DOMAIN_TOOLS: [string, string][] = [
   ['capability_match', 'task — 任务可被哪些 Agent 执行（R1/R2，附推导链）'],
   ['orchestrate', 'task — 复合任务拆解 + 依赖拓扑编排'],
@@ -83,49 +63,21 @@ export default function ServiceGuideModal({ onClose }: Props) {
             能力匹配、任务编排、合规冲突检测、SPARQL 查询、物化推理等。
           </p>
 
-          <h3>一、REST API（http://127.0.0.1:8000）</h3>
-          <table className="guide-table">
-            <thead>
-              <tr><th>方法</th><th>端点</th><th>说明</th><th>可用性</th></tr>
-            </thead>
-            <tbody>
-              {API_TABLE.map((r) => (
-                <tr key={`${r.method}-${r.path}`}>
-                  <td><span className={`method ${r.method.toLowerCase()}`}>{r.method}</span></td>
-                  <td><code>{r.path}</code></td>
-                  <td>{r.desc}</td>
-                  <td className={r.note === '默认本体' ? 'note-domain' : ''}>{r.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <details className="guide-example">
-            <summary>常用调用示例（点击展开）</summary>
-            <CopyBlock code={`# 1) 健康检查
-curl -s http://127.0.0.1:8000/api/health
-
-# 2) 能力匹配：登录模块开发谁能做？（R1 属性链）
-curl -s -X POST http://127.0.0.1:8000/api/reason \\
-  -H 'Content-Type: application/json' \\
-  -d '{"type":"capability_match","task":"t_login_dev"}'
-
-# 3) 合规冲突检测：把合规报表开发分配给初级研发
-curl -s -X POST http://127.0.0.1:8000/api/reason \\
-  -H 'Content-Type: application/json' \\
-  -d '{"type":"assign","task":"t_compliance_dev","agent":"junior_dev"}'
-
-# 4) SPARQL 通用查询：所有 Agent 个体
-curl -s -X POST http://127.0.0.1:8000/api/query \\
-  -H 'Content-Type: application/json' \\
-  -d '{"sparql":"SELECT ?i WHERE { ?i a <http://ontology.localhost/agent-task#Agent> }"}'
-
-# 5) 物化 diff：原始断言 / 推理新增图数据
-curl -s http://127.0.0.1:8000/api/ontology/materialized
-
-# 6) 导出物化后本体（Turtle）
-curl -s "http://127.0.0.1:8000/api/ontology/export?format=turtle" -o materialized.ttl`} />
-          </details>
+          <h3>一、REST API · OpenAPI 在线文档</h3>
+          <p className="guide-intro">
+            端点、参数与请求体直接来自后端 <code>GET /openapi.json</code>（OpenAPI 3.1），
+            不再由前端手写维护。文档已独立为可收藏、可分享的页面：
+            展开任一端点即可填写参数、<b>在线发送请求</b>并查看响应，也可复制 curl 到脚本中复现。
+          </p>
+          <div className="guide-cta-row">
+            <a className="guide-cta" href="/api-docs" target="_blank" rel="noreferrer">
+              打开 OpenAPI 在线接口文档 ↗
+            </a>
+            <a className="guide-link" href="/docs" target="_blank" rel="noreferrer">
+              Swagger UI ↗
+            </a>
+            <span className="guide-intro">独立地址：<code>/api-docs</code></span>
+          </div>
 
           <h3>二、MCP Server（智能体直接调用，http://127.0.0.1:9000/mcp）</h3>
           <p className="guide-intro">

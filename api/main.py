@@ -41,7 +41,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Path as ApiPath
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from rdflib import RDF, OWL
@@ -110,15 +110,99 @@ def _sync_runtime(force: bool = False) -> None:
     ENGINE_LOADED_AT = DOMAINS.loaded_at
     _SYNCED_VERSION = DOMAINS.version
 
+# OpenAPI 分组：既是 /docs 的目录，也是工作台「服务能力」面板的数据源。
+# 分组按使用场景而非 HTTP 方法划分——调用方找的是「我要做什么」。
+OPENAPI_TAGS = [
+    {"name": "系统", "description": "健康检查与运行状态。"},
+    {"name": "领域推理", "description": "当前领域包的推理与实体操作；通用模式下返回 400。"},
+    {"name": "通用查询", "description": "任意 OWL 本体可用的 SPARQL、类、个体与属性查询。"},
+    {"name": "本体管理", "description": "本体加载、编辑、保存、导出、重载与物化。"},
+    {"name": "领域管理", "description": "已安装领域清单、L2 重载与 L3 原子切换。"},
+]
+
 app = FastAPI(
     title="本体 × 智能体协作 Demo API",
-    description="智能体任务编排本体的推理 API：能力匹配 / 编排 / 冲突检测 / 推导链 + 通用本体查询 + 本体管理",
+    description=(
+        "智能体任务编排本体的推理 API：能力匹配 / 编排 / 冲突检测 / 推导链 + "
+        "通用本体查询 + 本体管理。\n\n"
+        "本页由 FastAPI 按 OpenAPI 3.1 规范自动生成；工作台「服务能力」面板读取 "
+        "`/openapi.json` 渲染同一份文档，并支持在线调用。"
+    ),
     version="1.4.0",
+    openapi_tags=OPENAPI_TAGS,
+    swagger_ui_parameters={
+        # Swagger UI 的请求体默认停在「Example Value」标签页——那里只有示例
+        # JSON，逐字段说明藏在「Schema」标签页里，很容易被当成「没有说明」。
+        # 这里把模型/Schema 的默认渲染切到 model，并在下面的
+        # _describe_request_bodies 里把字段说明提升到请求体描述上，
+        # 展开端点即可看到，不再依赖用户主动切标签页。
+        "defaultModelRendering": "model",
+        "defaultModelsExpandDepth": 2,
+        "defaultModelExpandDepth": 2,
+        "displayRequestDuration": True,
+    },
 )
 
 APP_DIST = Path(__file__).resolve().parent.parent / "frontend" / "app" / "dist"
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _schema_type_label(prop: dict) -> str:
+    """取一个人类可读的类型名；可空字段是 anyOf[原类型, null]，取非 null 那个。"""
+    if prop.get("type"):
+        return str(prop["type"])
+    for variant in prop.get("anyOf", []):
+        kind = variant.get("type")
+        if kind and kind != "null":
+            return str(kind)
+    return ""
+
+
+def _describe_request_bodies(spec: dict) -> None:
+    """把字段说明提升到请求体描述上，展开端点即可看到。
+
+    FastAPI 已经把每个 Pydantic 字段的 description 写进
+    `components.schemas`，但 Swagger UI 的请求体默认停在「Example Value」
+    标签页——那里只有示例 JSON，逐字段说明要手动切到「Schema」才看得到，
+    很容易被当成「参数没有说明」。这里从同一份 schema 生成请求体级别的
+    描述（字段名 + 类型 + 说明），不必依赖渲染器的默认标签页。
+
+    纯展示层增强：只补 `requestBody.description`，不改校验行为。
+    """
+    schemas = spec.get("components", {}).get("schemas", {})
+    for item in spec.get("paths", {}).values():
+        for op in item.values():
+            if not isinstance(op, dict):
+                continue
+            body = op.get("requestBody")
+            if not body or body.get("description"):
+                continue
+            lines: list[str] = []
+            for media in body.get("content", {}).values():
+                schema = media.get("schema", {})
+                if "$ref" in schema:
+                    schema = schemas.get(schema["$ref"].rsplit("/", 1)[-1], {})
+                for name, prop in schema.get("properties", {}).items():
+                    desc = prop.get("description")
+                    if not desc:
+                        continue
+                    kind = _schema_type_label(prop)
+                    lines.append(f"- `{name}`" + (f"（{kind}）" if kind else "") + f"：{desc}")
+            if lines:
+                body["description"] = "**请求体字段**\n\n" + "\n".join(lines)
+
+
+_build_openapi = app.openapi
+
+
+def _openapi_with_field_docs() -> dict:
+    spec = _build_openapi()
+    _describe_request_bodies(spec)
+    return spec
+
+
+app.openapi = _openapi_with_field_docs
 
 
 @app.middleware("http")
@@ -130,6 +214,20 @@ async def _domain_sync_middleware(request, call_next):
     """
     _sync_runtime()
     return await call_next(request)
+
+
+@app.middleware("http")
+async def _no_cache_docs_middleware(request, call_next):
+    """文档类响应禁止浏览器缓存。
+
+    `/openapi.json` 没有 ETag / Last-Modified，浏览器会按启发式规则缓存，
+    结果后端补了字段说明、前端刷新却还是旧规范（Swagger UI 看起来像
+    「参数没有说明」）。文档本来就是随代码变化的，直接 no-store 最省事。
+    """
+    response = await call_next(request)
+    if request.url.path in {"/openapi.json", "/docs", "/redoc", "/api-docs"}:
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _uri(name: str):
@@ -179,16 +277,36 @@ def _require_capability(capability: str):
         )
 
 
-@app.get("/", include_in_schema=False)
-def index():
+def _frontend_index():
     # 优先返回新前端（frontend/app/dist，Vite 构建产物）；
-    # 未构建时给出明确提示，避免「静默回退旧页 → 误以为仍停在 demo 页」的误解
+    # 未构建时给出明确提示，避免「静默回退旧页 → 误以为仍停在 demo 页」的误解。
     if APP_DIST.exists() and (APP_DIST / "index.html").exists():
-        return FileResponse(str(APP_DIST / "index.html"))
+        # index.html 引用的是带内容哈希的 /assets/*：重新构建后旧文件名会消失。
+        # 浏览器若继续用缓存的旧 index.html，就会请求到 404 的旧哈希 → 整页空白。
+        # no-cache 让浏览器每次先用 ETag/Last-Modified 校验，而不是直接复用。
+        return FileResponse(
+            str(APP_DIST / "index.html"),
+            headers={"Cache-Control": "no-cache"},
+        )
     return {
         "message": "工作台前端未构建：请先运行 cd frontend/app && npm install && npm run build，然后刷新页面",
         "hint": "API 已运行；前端构建完成后无需重启服务，直接刷新即可加载 /assets/*",
     }
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    return _frontend_index()
+
+
+@app.get("/api-docs", include_in_schema=False)
+def api_docs():
+    """独立 OpenAPI 文档页：复用 SPA 入口，由前端按 pathname 渲染文档组件。
+
+    与 `/docs`（Swagger UI）并存：`/api-docs` 是工作台自己的在线文档页，
+    支持分组、在线调用和复制 curl；`/docs` 保留给习惯 Swagger UI 的调试者。
+    """
+    return _frontend_index()
 
 
 def _baseline_hash() -> str:
@@ -241,7 +359,7 @@ def _class_count(field: str) -> int:
         return 0
 
 
-@app.get("/api/health")
+@app.get("/api/health", tags=["系统"], summary="健康检查")
 def health():
     # 顶层保留 v1.x 的 agents/tasks/assignments 字段（既有调用方兼容）；
     # 新增 REQ-03 字段：version / loaded_at / dirty / pending_changes / changelog / counts
@@ -283,14 +401,14 @@ def health():
     }
 
 
-@app.get("/api/ontology")
+@app.get("/api/ontology", tags=["领域推理"], summary="领域图谱结构")
 def ontology():
     _require_default_ontology()
     _require_capability("graph_export")
     return ADAPTER.graph_export()
 
 
-@app.get("/api/ontology/graph-groups")
+@app.get("/api/ontology/graph-groups", tags=["领域推理"], summary="图谱分组")
 def ontology_graph_groups():
     """当前领域声明的图谱分组：group → 该类（含子类）的个体短名。
 
@@ -356,7 +474,7 @@ def _schema_summary(adapter) -> dict | None:
     }
 
 
-@app.post("/api/reason")
+@app.post("/api/reason", tags=["领域推理"], summary="结构化推理")
 def reason(req: ReasonRequest):
     _require_default_ontology()
     table = _reason_kinds(ADAPTER)
@@ -378,7 +496,7 @@ def reason(req: ReasonRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/api/entities/schema")
+@app.get("/api/entities/schema", tags=["领域推理"], summary="实体 schema")
 def entity_schema_endpoint():
     """当前领域的实体 schema（字段名 / 类型 / 是否必填）。
 
@@ -393,7 +511,7 @@ def entity_schema_endpoint():
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/entities")
+@app.post("/api/entities", tags=["领域推理"], summary="新建实体")
 def create_entity_endpoint(req: EntityRequest):
     """按当前领域的 ENTITY_SCHEMA 新建实体（校验 → 写图 → 推理）。
 
@@ -408,14 +526,14 @@ def create_entity_endpoint(req: EntityRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/explain")
+@app.post("/api/explain", tags=["领域推理"], summary="推导链解释")
 def explain():
     _require_default_ontology()
     _require_capability("explain")
     return ADAPTER.explain()
 
 
-@app.post("/api/consistency")
+@app.post("/api/consistency", tags=["领域推理"], summary="一致性检查")
 def consistency():
     _require_default_ontology()
     _require_capability("consistency")
@@ -424,7 +542,7 @@ def consistency():
 
 # ---------------- 通用查询接口（L1：与本体定义无关） ----------------
 
-@app.post("/api/query")
+@app.post("/api/query", tags=["通用查询"], summary="SPARQL 查询")
 def sparql_query(req: SparqlRequest):
     """SPARQL 查询入口（支持面见 README「SPARQL 支持边界」）。两段式超时
     （可选，环境变量 ONTOLOGY_SPARQL_FIRST_RESULT_TIMEOUT_MS /
@@ -441,36 +559,36 @@ def sparql_query(req: SparqlRequest):
         raise HTTPException(status_code=400, detail=f"SPARQL 执行失败: {exc}")
 
 
-@app.post("/api/individuals")
+@app.post("/api/individuals", tags=["通用查询"], summary="类个体列表")
 def individuals(req: IndividualsRequest):
     return {"class": req.class_name, "individuals": ENGINE.individuals(req.class_name)}
 
 
-@app.post("/api/classes")
+@app.post("/api/classes", tags=["通用查询"], summary="类层次")
 def classes():
     return {"classes": ENGINE.classes()}
 
 
-@app.post("/api/types")
+@app.post("/api/types", tags=["通用查询"], summary="个体推理类型")
 def types(req: TypesRequest):
     return {"individual": req.individual, "types": ENGINE.types_of(req.individual)}
 
 
-@app.post("/api/property")
+@app.post("/api/property", tags=["通用查询"], summary="属性取值")
 def property_values(req: PropertyRequest):
     return {"subject": req.subject, "property": req.property,
             "values": ENGINE.property_values(req.subject, req.property)}
 
 
-@app.post("/api/infer")
+@app.post("/api/infer", tags=["通用查询"], summary="重新推理")
 def infer():
     return ENGINE.infer()
 
 
 # ---------------- 本体管理（v1.3.0：加载 / 物化 / 源码 / 导出） ----------------
 
-@app.post("/api/ontology/load")
-async def load_ontology(file: UploadFile = File(...)):
+@app.post("/api/ontology/load", tags=["本体管理"], summary="上传并加载本体")
+async def load_ontology(file: UploadFile = File(..., description="要加载的本体文件，仅支持 .owl / .rdf / .xml；加载后进入通用模式。")):
     """上传 .owl/.rdf 并加载到推理引擎（进入通用模式，领域推理降级）。"""
     filename = (file.filename or "").lower()
     if not filename.endswith((".owl", ".rdf", ".xml")):
@@ -493,13 +611,13 @@ async def load_ontology(file: UploadFile = File(...)):
     }
 
 
-@app.get("/api/ontology/materialized")
+@app.get("/api/ontology/materialized", tags=["本体管理"], summary="物化 diff")
 def materialized():
     """物化 diff：原始断言图 + 推理新增图 + 统计（通用，与领域无关）。"""
     return ENGINE.materialized()
 
 
-@app.get("/api/ontology/source")
+@app.get("/api/ontology/source", tags=["本体管理"], summary="本体源码")
 def ontology_source():
     """当前本体原始 RDF/XML 文本。
 
@@ -518,8 +636,11 @@ def ontology_source():
         )
 
 
-@app.get("/api/ontology/export")
-def export_ontology(format: str = "turtle"):
+@app.get("/api/ontology/export", tags=["本体管理"], summary="导出物化本体")
+def export_ontology(format: str = Query(
+    "turtle",
+    description="导出格式：turtle / rdfxml / n3；其它值返回 400。",
+)):
     """导出推理后完整本体（含物化三元组）。format: turtle / rdfxml / n3。"""
     try:
         content = ENGINE.export_graph(format)
@@ -536,13 +657,13 @@ def export_ontology(format: str = "turtle"):
 
 # ---------------- 在线编辑（v1.4.0：编辑模型 / 保存写回 / 下载） ----------------
 
-@app.get("/api/ontology/edit-model")
+@app.get("/api/ontology/edit-model", tags=["本体管理"], summary="读取编辑模型")
 def edit_model():
     """当前本体 → 结构化编辑模型 JSON（任意 OWL 可提取，默认本体完整可编辑）。"""
     return ENGINE.edit_model()
 
 
-@app.post("/api/ontology/save")
+@app.post("/api/ontology/save", tags=["本体管理"], summary="保存编辑结果")
 def save_ontology(req: SaveOntologyRequest):
     """保存编辑结果：编辑模型 → RDF/XML 写盘 → 重建引擎 + 重推理。
 
@@ -603,8 +724,11 @@ def save_ontology(req: SaveOntologyRequest):
     }
 
 
-@app.get("/api/ontology/download")
-def download_ontology(name: str):
+@app.get("/api/ontology/download", tags=["本体管理"], summary="下载本体文件")
+def download_ontology(name: str = Query(
+    ...,
+    description="data/uploads/ 下的文件名；只接受 basename，不接受路径（防路径穿越）。",
+)):
     """下载 data/uploads/ 内保存的本体文件（仅允许该目录，防路径穿越）。"""
     safe = os.path.basename(name)
     path = UPLOAD_DIR / safe
@@ -619,7 +743,7 @@ def download_ontology(name: str):
 
 # ---------------- 本体管理（002 批次：热重载 / 状态 / 一致性） ----------------
 
-@app.post("/api/ontology/reload")
+@app.post("/api/ontology/reload", tags=["本体管理"], summary="热重载本体")
 def reload_ontology():
     """热重载（REQ-01.1）：重新加载核心 + extensions/ 全部增量并推理。
 
@@ -645,13 +769,13 @@ def reload_ontology():
 
 # ---------------- 领域管理（P2：列表 / 重载 / 切换） ----------------
 
-@app.get("/api/domains")
+@app.get("/api/domains", tags=["领域管理"], summary="领域清单")
 def list_domains_endpoint():
     """已安装领域 + 当前领域（给工作台的领域下拉与运维排查用）。"""
     return DOMAINS.info()
 
 
-@app.post("/api/domains/reload")
+@app.post("/api/domains/reload", tags=["领域管理"], summary="重载领域")
 def reload_domain():
     """L2 同包重载：重读领域代码（adapter.py / config.json）+ 重建引擎。
 
@@ -666,8 +790,8 @@ def reload_domain():
             "triples": len(handle.engine.g)}
 
 
-@app.post("/api/domains/{name}/activate")
-def activate_domain(name: str):
+@app.post("/api/domains/{name}/activate", tags=["领域管理"], summary="切换领域")
+def activate_domain(name: str = ApiPath(..., description="已安装领域包名；取值见 GET /api/domains 的 installed 列表。")):
     """L3 跨包切换：切到 root 下另一个已安装领域。
 
     失败（领域不存在 / 契约不满足 / 本体加载失败）一律 400，
@@ -681,7 +805,7 @@ def activate_domain(name: str):
             "capabilities": handle.capabilities, "triples": len(handle.engine.g)}
 
 
-@app.get("/api/ontology/status")
+@app.get("/api/ontology/status", tags=["本体管理"], summary="本体状态")
 def ontology_status():
     """本体状态与两端一致性（REQ-02/REQ-03）。
 
@@ -705,8 +829,12 @@ def ontology_status():
 
 # ---------------- CRUD（003 批次 REQ-09：删除 / 撤回 / 批量导入） ----------------
 
-@app.delete("/api/ontology/individual/{name}")
-def delete_individual(name: str, persist: bool = False, cascade: bool = False):
+@app.delete("/api/ontology/individual/{name}", tags=["领域推理"], summary="删除个体")
+def delete_individual(
+    name: str = ApiPath(..., description="要删除的个体短名（也可传完整 IRI）。"),
+    persist: bool = Query(False, description="是否把删除增量写入 extensions/（-del- 文件）；默认仅改内存。"),
+    cascade: bool = Query(False, description="被其它个体引用时是否级联删除引用边；默认 false，存在引用则拒绝。"),
+):
     """删除个体（A-box 断言）。被引用时拒绝（除非 cascade=true）。
 
     删除后重推理：capability_match / consistency 随图断言同步更新；
@@ -719,7 +847,7 @@ def delete_individual(name: str, persist: bool = False, cascade: bool = False):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@app.post("/api/ontology/revoke")
+@app.post("/api/ontology/revoke", tags=["领域推理"], summary="撤回分配")
 def revoke_assignment(req: RevokeRequest):
     """撤回分配：移除 assigned_to 图边，consistency 不再含该分配。"""
     _require_default_ontology()
@@ -729,7 +857,7 @@ def revoke_assignment(req: RevokeRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@app.post("/api/ontology/import")
+@app.post("/api/ontology/import", tags=["领域推理"], summary="批量导入个体")
 def import_individuals(req: ImportRequest):
     """批量导入任务个体（事务）：先全量校验（名称冲突/引用完整），
     全部通过才应用，部分失败整体回滚——不产生半套数据。

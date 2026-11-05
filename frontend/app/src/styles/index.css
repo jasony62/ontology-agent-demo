@@ -160,6 +160,13 @@ body {
 }
 .toolbar button.secondary { background: #5a6b7f; }
 .toolbar button:disabled { opacity: .5; cursor: not-allowed; }
+.toolbar a.toolbar-link {
+  background: var(--primary); color: #fff; border-radius: 6px;
+  padding: 6px 14px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center;
+}
+.toolbar a.toolbar-link.secondary { background: #5a6b7f; }
+.toolbar a.toolbar-link:hover { background: var(--primary-hover); }
+.toolbar a.toolbar-link.secondary:hover { background: #6b7c90; }
 
 .view-toggle { display: flex; gap: 4px; background: #eef2f8; border-radius: 8px; padding: 3px; }
 .view-toggle button {
@@ -305,13 +312,10 @@ textarea.source-editor {
 .ef-row.open { border-color: var(--border-strong); }
 
 /* ---------- 服务能力说明 ---------- */
-.modal.service-guide { width: min(760px, 94vw); }
+.modal.service-guide { width: min(1080px, 96vw); }
 /* #24：弹窗内部滚动容器 + 表格固定表头 */
 .modal.service-guide .modal-body { max-height: calc(100vh - 170px); overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
 .modal.service-guide .guide-table thead th { position: sticky; top: 0; z-index: 1; box-shadow: 0 1px 0 #e3e9f1; }
-.guide-example { margin: 6px 0; }
-.guide-example summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: #33455f; padding: 4px 0; }
-.guide-example[open] summary { color: #0b57a0; }
 .modal-header { display: flex; align-items: center; justify-content: space-between; }
 .modal-header h2 { font-size: 17px; color: #33455f; }
 .modal-close { background: none; border: none; font-size: 16px; cursor: pointer; color: #8a94a6; }
@@ -319,6 +323,14 @@ textarea.source-editor {
 .modal-body h3 { font-size: 15px; color: #33455f; margin: 10px 0 4px; border-bottom: 1px solid #eef1f5; padding-bottom: 6px; }
 .modal-body h4 { font-size: 13.5px; color: #44566b; margin: 10px 0 4px; }
 .guide-intro { font-size: 13px; color: #44566b; line-height: 1.7; margin: 0; }
+.guide-cta-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 2px 0 4px; }
+.guide-cta {
+  background: var(--primary); color: #fff; text-decoration: none;
+  border-radius: 6px; padding: 7px 14px; font-size: 13px; font-weight: 600;
+}
+.guide-cta:hover { background: var(--primary-hover); }
+.guide-link { color: var(--link); font-size: 12.5px; }
+.guide-link:hover { color: var(--primary-hover); }
 .guide-intro code, .guide-table code { background: #eef3f8; padding: 1px 5px; border-radius: 4px; font-size: 12px; color: #0b57a0; }
 .guide-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 4px 0; }
 .guide-table th { text-align: left; background: #f4f7fb; color: #44566b; font-weight: 600; padding: 6px 8px; border: 1px solid #e3e9f1; }
@@ -327,7 +339,9 @@ textarea.source-editor {
 .method { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
 .method.get { background: #e6f4ea; color: #137333; }
 .method.post { background: #e8f0fe; color: #1a73e8; }
-.note-domain { color: #b06000; }
+.method.put { background: #fff4e5; color: #b06000; }
+.method.patch { background: #f3e8fd; color: #7b3fa0; }
+.method.delete { background: #fce8e6; color: #c5221f; }
 .code-block { position: relative; background: #1e1e1e; border-radius: 8px; margin: 4px 0; }
 .code-block pre { margin: 0; padding: 12px; overflow: auto; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; line-height: 1.55; color: #d4d4d4; }
 .code-copy {
@@ -336,6 +350,151 @@ textarea.source-editor {
 }
 .code-copy:hover { background: rgba(255,255,255,.22); }
 .guide-notes { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; color: #44566b; line-height: 1.8; }
+
+/* ---------- OpenAPI 在线接口文档（ApiDocsPanel） ---------- */
+.apidoc {
+  display: flex; flex-direction: column; gap: 8px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel-2); padding: 10px;
+}
+.apidoc-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.apidoc-title { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--heading); }
+.apidoc-badge { background: #e8f0fe; color: #1a73e8; border-radius: 4px; font-size: 11px; font-weight: 700; padding: 2px 6px; }
+.apidoc-links { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.apidoc-links a { color: var(--link); text-decoration: none; }
+.apidoc-links a:hover { color: var(--primary-hover); text-decoration: underline; }
+.apidoc-links button {
+  border: 1px solid var(--border); background: #fff; color: var(--heading);
+  border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+}
+.apidoc-links button:hover:not(:disabled) { background: var(--surface-hover); }
+.apidoc-links button:disabled { opacity: .55; cursor: not-allowed; }
+.apidoc-filter { display: flex; align-items: center; gap: 10px; }
+.apidoc-filter input {
+  flex: 1; height: var(--control-h); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0 9px; font-size: 12.5px; color: var(--text); background: #fff;
+}
+.apidoc-filter input:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+.apidoc-muted { color: var(--muted); font-size: 11.5px; }
+.apidoc-group { display: flex; flex-direction: column; gap: 4px; }
+.apidoc-group h4 {
+  display: flex; align-items: center; gap: 6px; margin: 8px 0 2px;
+  font-size: 13px; color: var(--heading);
+}
+.apidoc-count {
+  background: #eef3f8; color: var(--muted); border-radius: var(--radius-full);
+  padding: 0 7px; font-size: 11px; font-weight: 600;
+}
+.apidoc-group-desc { margin: 0 0 2px; font-size: 12px; color: var(--muted); }
+.apidoc-op { border: 1px solid var(--border); border-radius: 8px; background: #fff; overflow: hidden; }
+.apidoc-op.open { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.apidoc-op.deprecated { opacity: .72; }
+.apidoc-op-head {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; background: none; border: none; cursor: pointer;
+  text-align: left; font: inherit;
+}
+.apidoc-op-head:hover { background: var(--surface-hover); }
+.apidoc-op-head:focus-visible { outline: none; box-shadow: inset var(--ring); }
+.apidoc-path { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; color: #1f3a52; white-space: nowrap; }
+.apidoc-op-summary {
+  font-size: 12px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.apidoc-deprecated { font-size: 10.5px; color: var(--danger); border: 1px solid var(--danger-border); border-radius: 3px; padding: 0 4px; }
+.apidoc-chevron { margin-left: auto; color: var(--muted); font-size: 11px; }
+.apidoc-op-body {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px; border-top: 1px solid var(--border); background: #fcfdff;
+}
+.apidoc-desc { margin: 0; font-size: 12.5px; color: #44566b; line-height: 1.7; white-space: pre-wrap; }
+.apidoc-meta { margin: 0; font-size: 11.5px; color: var(--muted); }
+.apidoc-meta code { color: var(--link); }
+.apidoc-section { display: flex; flex-direction: column; gap: 6px; }
+.apidoc-section h6 { font-size: 12px; color: var(--heading); font-weight: 600; }
+.apidoc-section h6 code { color: var(--link); font-weight: 400; }
+.apidoc-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.apidoc-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #44566b; min-width: 0; }
+.apidoc-field-label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.apidoc-field-label code { font-size: 12px; color: var(--link); }
+.apidoc-field-label em {
+  font-style: normal; font-size: 10.5px; color: var(--muted);
+  background: #eef3f8; border-radius: 3px; padding: 0 4px;
+}
+.apidoc-field input[type='text'], .apidoc-field input[type='file'], .apidoc-field select {
+  width: 100%; height: var(--control-h-sm); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0 8px; font-size: 12px; color: var(--text); background: #fff;
+}
+.apidoc-field input[type='file'] { padding: 3px 6px; height: auto; }
+.apidoc-field input:focus, .apidoc-field select:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+.apidoc-hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.apidoc-required { font-size: 10.5px; color: var(--danger); font-weight: 600; }
+.apidoc-type {
+  font-size: 10.5px; color: var(--muted); background: #eef3f8;
+  border-radius: 3px; padding: 0 4px; margin-left: 6px;
+}
+.apidoc-body-input {
+  width: 100%; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12px;
+  line-height: 1.55; border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px; background: #fff; color: #1f3a52; resize: vertical;
+}
+.apidoc-body-input:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+.apidoc-schema { font-size: 12px; color: #44566b; }
+.apidoc-schema summary { cursor: pointer; color: var(--link); font-size: 12px; }
+.apidoc-schema ul { margin: 6px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
+.apidoc-schema li code { color: var(--link); }
+.apidoc-multipart { display: flex; flex-direction: column; gap: 8px; }
+.apidoc-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.apidoc-actions button { border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.apidoc-send { background: var(--primary); color: #fff; }
+.apidoc-send:hover:not(:disabled) { background: var(--primary-hover); }
+.apidoc-actions button.secondary { background: #5a6b7f; color: #fff; }
+.apidoc-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.apidoc-url {
+  font-size: 11px; color: var(--muted); font-family: 'SF Mono', Menlo, Consolas, monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.apidoc-error {
+  background: var(--danger-bg); border: 1px solid var(--danger-border); color: var(--danger);
+  border-radius: 6px; padding: 7px 9px; font-size: 12px; line-height: 1.6;
+}
+.apidoc-result { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; }
+.apidoc-result-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 6px 9px; background: var(--panel-2); border-bottom: 1px solid var(--border);
+}
+.apidoc-status { font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+.apidoc-status.ok { background: var(--success-bg); color: var(--success); }
+.apidoc-status.bad { background: var(--danger-bg); color: var(--danger); }
+.apidoc-download { font-size: 11.5px; color: var(--link); }
+.apidoc-response {
+  margin: 0; padding: 10px; max-height: 320px; overflow: auto;
+  font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11.5px;
+  line-height: 1.55; background: #1e1e1e; color: #d4d4d4; white-space: pre-wrap;
+  word-break: break-word;
+}
+.apidoc-placeholder { color: var(--muted); font-size: 12.5px; padding: 12px; text-align: center; }
+.apidoc-toast {
+  position: sticky; bottom: 0; align-self: flex-end;
+  background: #1f3a52; color: #fff; font-size: 11.5px;
+  padding: 4px 10px; border-radius: var(--radius-full);
+}
+
+/* ---------- 独立 OpenAPI 文档页（/api-docs） ---------- */
+.apidoc-page { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+.apidoc-page-header {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; padding: 14px 24px; background: #1f3a52; color: #fff;
+}
+.apidoc-page-header h1 { font-size: 20px; font-weight: 600; }
+.apidoc-page-sub { margin-top: 4px; font-size: 12.5px; color: #bcd3e4; line-height: 1.6; }
+.apidoc-page-links { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 13px; }
+.apidoc-page-links a { color: #d6e8f5; text-decoration: none; }
+.apidoc-page-links a:hover { color: #fff; text-decoration: underline; }
+.apidoc-page-main { flex: 1; width: min(1200px, 100%); margin: 0 auto; padding: 16px; }
+.apidoc-standalone { background: #fff; box-shadow: var(--shadow-sm); }
+.apidoc-standalone .apidoc-op-body { background: #fbfcfe; }
+
 
 /* ---------- 在线编辑本体定义（OntologyEditor） ---------- */
 /* 与可视化编辑共用同一套设计 token（见 :root）与 .btn / .field 原语 */

@@ -154,6 +154,16 @@ def test_frontend_index_is_revalidated():
     assert r.headers.get("cache-control") == "no-cache"
 
 
+def test_redoc_is_disabled():
+    """只保留 /docs 与 /api-docs 两个文档入口。
+
+    /redoc 依赖 CDN 且对 OpenAPI 3.1 支持不完整；若哪天被重新开启，
+    这里红灯，而不是等离线部署时才发现页面是空的。
+    """
+    r = client.get("/redoc")
+    assert r.status_code == 404
+
+
 def test_api_docs_page_is_standalone():
     """独立文档页复用 SPA 入口：直接打开 /api-docs 不应 404。
 

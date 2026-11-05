@@ -130,6 +130,9 @@ app = FastAPI(
     ),
     version="1.4.0",
     openapi_tags=OPENAPI_TAGS,
+    # /redoc 是 FastAPI 默认注册的第三个文档入口：纯阅读、依赖 CDN、
+    # 对 OpenAPI 3.1 仅基础支持。保留 /docs 与工作台 /api-docs 两个入口。
+    redoc_url=None,
     swagger_ui_parameters={
         # Swagger UI 的请求体默认停在「Example Value」标签页——那里只有示例
         # JSON，逐字段说明藏在「Schema」标签页里，很容易被当成「没有说明」。
@@ -225,7 +228,7 @@ async def _no_cache_docs_middleware(request, call_next):
     「参数没有说明」）。文档本来就是随代码变化的，直接 no-store 最省事。
     """
     response = await call_next(request)
-    if request.url.path in {"/openapi.json", "/docs", "/redoc", "/api-docs"}:
+    if request.url.path in {"/openapi.json", "/docs", "/api-docs"}:
         response.headers["Cache-Control"] = "no-store"
     return response
 

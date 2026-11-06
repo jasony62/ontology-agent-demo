@@ -12,6 +12,9 @@
 
 ### Changed
 
+- **标识属性改用标准 `owl:hasKey`**：可视化编辑器的实例主键从私有注解 `<ont:isIdentifier>` 升级为 OWL 2 标准公理（写在类上、`rdf:parseType="Collection"` 引用数据属性 IRI），保存时单写新格式；解析层**双读**（`owl:hasKey` / 旧 `<ont:isIdentifier>` / `"Identifier property"` 注释），存量文件不改不坏、打开后保存一次即自动升级。多属性 `hasKey`（复合键）是合法构造，编辑器按单键处理只取第一个并返回 warning。不改 `ENTITY_SCHEMA.id_field`（API 契约）；领域加载时只做两者一致性检查，不一致给 warning 不阻断。
+- **可视化编辑校验收缩为「可写入性校验」**：取消对派生量 `EntityType.id` / `Relationship.id` 的命名风格强制（camelCase、snake_case 不再报必改），只校验空 id 与 IRI 非法字符；标识属性从「恰一个（0 和 >1 都必改）」改为「0 个不报、>1 个只给复合键建议」。默认本体的校验提示从 57 项（43 项必改）降为 0 必改，面板文案按最严重级别分档，全为建议时显示「校验通过；另有 N 项可优化建议」。文档补齐标识属性与 `owl:hasKey` 的写法、双读单写策略、复合键与唯一性边界。
+
 - **「服务能力」的 REST API 改为 OpenAPI 在线接口文档，并提供独立页面 `/api-docs`**：接口文档不再塞在弹窗里，而是有可收藏、可分享的真实 URL（也支持 `/#/api-docs` 与 `?view=api-docs`），页头新增「API 文档」直达链接；「服务能力」弹窗只保留入口与 MCP 说明。文档读取后端 `GET /openapi.json`（OpenAPI 3.1），按 `openapi_tags` 分组，路由与参数字段随 FastAPI 自动同步。每个端点展开后可填写路径 / 查询 / Header 参数与 JSON 请求体、**在线发送请求**并查看状态码、耗时和响应体，也可一键复制 curl；文件上传端点（`/api/ontology/load`）提供文件选择器。后端 29 个路由补齐 tag 与中文 summary，所有请求模型字段与路径 / 查询 / 文件参数补齐 `description`（文档里的字段说明全部来自 OpenAPI 本身，不再靠前端另写）。针对 Swagger UI 默认停在「Example Value」、字段说明藏在「Schema」标签页的问题，`/openapi.json` 额外为每个请求体生成 `requestBody.description`（字段名 + 类型 + 说明），并把 Swagger UI 的 `defaultModelRendering` 设为 `model`，展开 `/docs` 端点即可直接看到说明；文档类响应统一 `Cache-Control: no-store`，后端补说明后刷新即可生效。`/docs`、`/openapi.json`、`/redoc` 同时加入 Vite 开发代理，直接 `npm run dev` 也能用。新增 `tests/test_openapi.py`（规范可生成、每个操作都有 tag/summary、请求体字段说明可直读、`/api-docs` 可直开、文档响应不缓存）与前端 `src/lib/openapi.test.ts`（分组 / 示例生成 / URL 与 curl 拼装 / 文档页路由识别）守护。
 
 ### Removed

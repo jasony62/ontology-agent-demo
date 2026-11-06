@@ -14,7 +14,26 @@
 | **另存 / 覆盖 / 下载** | 另存为新本体（进入通用模式）或覆盖当前本体（默认本体覆盖后领域推理保留，需二次确认）；保存后可下载 OWL 文件 |
 | **物化统计** | 统计卡片显示三元组数量变化（原始断言 ∪ 推理新增） |
 
-**在线编辑边界**：编辑模型仅覆盖类 / 属性 / 个体子集——restriction、属性链等复杂公理不进入编辑模型；「覆盖当前本体」会重建 OWL 文件，含复杂公理的原文件覆盖后不保留（另存可保留）。校验规则刻意宽松（开放世界假设）：id 仅要求非空且无 IRI 危险字符，中文/下划线短名合法，对象断言可指向未声明实体。
+**在线编辑边界**：编辑模型仅覆盖类 / 属性 / 个体子集——restriction、属性链等复杂公理不进入编辑模型；「覆盖当前本体」会重建 OWL 文件，含复杂公理的原文件覆盖后不保留（另存可保留）。校验规则刻意宽松（开放世界假设）：id 仅要求非空且无 IRI 危险字符，中文/下划线短名合法，对象断言可指向未声明实体。**可视化编辑与在线编辑采用同一 id 判据**：都不检查派生的 `EntityType.id` 命名风格（camelCase / snake_case / 中文均可）。
+
+**校验边界**：可视化编辑的「校验」是**可写入性校验**（这份模型能否被本编辑器安全写回），不是语义校验。类不可满足、`disjoint` 冲突、`domain`/`range` 违反等本体质量问题由后端 SHACL / OWL RL / `validate_tbox_draft` 判定，前端不重复实现。因此打开默认本体时只剩「缺描述」「尚无属性」这类可优化建议，不会出现红色必改徽标。
+
+### 标识属性与 `owl:hasKey`
+
+实例主键用 OWL 2 标准公理 `owl:hasKey` 表达，写在类上：
+
+```xml
+<owl:Class rdf:about="http://example.org/ontology/fourth-coffee/Customer">
+  <owl:hasKey rdf:parseType="Collection">
+    <rdf:Description rdf:about="http://example.org/ontology/fourth-coffee/customer_customerId"/>
+  </owl:hasKey>
+</owl:Class>
+```
+
+- **双读、单写**：解析器同时识别 `owl:hasKey`、旧版私有注解 `<ont:isIdentifier>` 与 `rdfs:comment "Identifier property"`；序列化只写 `owl:hasKey`。旧文件打开不改不坏，在编辑器里保存一次即自动升级。同一类只要声明了 `hasKey`，就以 `hasKey` 为准。
+- **复合键限制**：`owl:hasKey` 允许多个属性，但编辑器按单个 `isIdentifier` 处理，第一版只读取第一个键并在解析结果中给出 warning；把标识属性改为多值属于后续破坏性改动。
+- **唯一性由谁保证**：不承诺「推理器会推出 `owl:sameAs`」（本项目未验证 `owlrl` 的 `eq-key` 规则）。主键唯一性目前由写入时重名检查（`protocol.py` 的 `create_entity`）保证；需要图级约束时用 SHACL（`sh:minCount` / 唯一性形状），不要用 `owl:InverseFunctionalProperty` 加在数据属性上——那会把本体拖入 OWL-Full（G1 闸门判为「主键陷阱」）。
+- **两套主键的分工**：编辑器里的标识属性声明的是语义主键；`POST /api/entities` 的个体 IRI 仍由领域包 `ENTITY_SCHEMA.id_field` 决定。两者是不同层级的契约，后端只在领域加载时做一致性检查（不一致给 warning，不阻断），不从 `hasKey` 反向生成 `id_field`。
 
 **安全边界**：`/api/ontology/import` 与 `/api/ontology/load`（导入/加载自定义本体）是单机演示功能，**无鉴权、无输入隔离——请勿将服务直接暴露公网**；如需公网部署请自行加鉴权与导入校验。
 

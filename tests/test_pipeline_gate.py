@@ -59,6 +59,23 @@ def test_g1_pk_trap_fails_with_violation_report():
     assert r["gate_trace"][1]["status"] == "not_run"  # fail-fast
 
 
+# 标准主键写法：owl:hasKey（前端序列化器产出的就是这个形状）。
+# 与 PK_TRAP 对照：hasKey 是 OWL 2 DL 合法构造，不触发 G1「主键陷阱」。
+HAS_KEY_TTL = """@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix ex: <http://example.org/o#> .
+ex:Customer a owl:Class ;
+    owl:hasKey ( ex:customer_customerId ) .
+ex:customer_customerId a owl:DatatypeProperty .
+"""
+
+
+def test_g1_accepts_owl_has_key():
+    """owl:hasKey 是标准主键表达，G1 必须放行（唯一性靠 SHACL / 写入检查）。"""
+    r = pipeline_gate.run_gates(HAS_KEY_TTL, gates=["G1"], domain="")
+    g1 = r["gate_trace"][0]
+    assert g1["status"] == "pass", g1
+
+
 def test_g2_conflict_fails_and_later_gates_not_run():
     """正例②：矛盾公理草稿（⊑ ∧ disjointWith）→ G2 fail、evidence 含矛盾类对、
     G3/G4 标 not_run（fail-fast）、next=回 S2 修公理。"""

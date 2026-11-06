@@ -4,6 +4,8 @@ import App from './App';
 import ApiDocsPage from './components/ApiDocsPage';
 import { isApiDocsLocation } from './lib/openapi';
 import './styles/index.css';
+// 工作区布局（视口锁定 + 可折叠双栏）单独成文件，且在 index.css 之后引入以覆盖旧规则
+import './styles/workspace-layout.css';
 
 // 独立文档页必须能被 URL 直接打开：/api-docs（生产环境由 FastAPI 回退到
 // index.html；开发环境由 Vite 的 SPA fallback 处理）。同时保留 hash / query

@@ -1,0 +1,177 @@
+/* ============================================================
+   工作区布局：视口锁定 + 可折叠双栏（图谱 ⇄ 编辑区）
+   ------------------------------------------------------------
+   与 index.css 分离：index.css 保留原有规则不动，这里只做「工作区」
+   覆盖（视口锁定、grid 分栏、40px 折叠条、拖柄、窄屏回退），
+   便于上游 rebase 时按文件取舍。
+   ============================================================ */
+
+/* ---- 视口锁定：页面本身不再滚动，滚动全部发生在面板内部 ---- */
+.app { height: 100vh; overflow: hidden; }
+.app-main { min-height: 0; overflow: hidden; }
+/* 横幅是偶发的，不该把工作区顶出视口；过长时自己滚 */
+.app-main > .error-banner,
+.app-main > .mode-banner { flex: 0 0 auto; max-height: 30vh; overflow-y: auto; }
+
+/* ---- 分栏容器（列宽由 JS 按折叠状态覆盖） ---- */
+.workspace-split {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 50% 6px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+/* grid 子项必须能收缩到内容以下，否则内容会把列撑出容器、overflow 失效 */
+.workspace-split > * { min-width: 0; min-height: 0; }
+.workspace-split.is-dragging { user-select: none; cursor: col-resize; }
+
+.pane { display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
+.pane.is-minimized {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+/* ---- 面板头 / 右侧 Tab 条 ---- */
+.pane-head {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  min-height: 24px; padding: 0 2px 8px;
+}
+.pane-title { font-size: 12px; font-weight: 600; color: var(--heading); }
+.pane-head-actions { display: flex; align-items: center; gap: 4px; }
+
+.pane-tabs { display: flex; gap: 4px; background: #eef2f8; border-radius: 8px; padding: 3px; }
+.pane-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; background: transparent; border-radius: 6px; padding: 5px 12px;
+  font-size: 13px; color: var(--muted); cursor: pointer;
+}
+.pane-tab:hover { color: var(--text); }
+.pane-tab.active { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.pane-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+
+.pane-icon-btn,
+.pane-rail-toggle,
+.pane-rail-tab {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 24px; height: 24px; padding: 0;
+  border: 1px solid transparent; border-radius: 6px; background: transparent;
+  color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer;
+}
+.pane-icon-btn:hover,
+.pane-rail-toggle:hover,
+.pane-rail-tab:hover { background: var(--surface-hover); color: var(--text); border-color: var(--border); }
+.pane-icon-btn:focus-visible,
+.pane-rail-toggle:focus-visible,
+.pane-rail-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* 页头不再有编辑入口：折叠成图标条时这两个按钮是唯一入口，给可见的按钮外观，别只剩 tooltip */
+.pane-rail-tab,
+.pane-rail-toggle { border-color: var(--border); background: var(--panel-2); color: var(--heading); }
+
+/* ---- 40px 折叠图标条：保留可点击的展开入口，不做 0 宽隐藏 ---- */
+.pane-rail {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  width: 100%; height: 100%; padding: 8px 4px; overflow: hidden;
+}
+.pane-rail-label {
+  margin-top: auto;
+  writing-mode: vertical-rl;
+  font-size: 11px; color: var(--muted); letter-spacing: 2px;
+}
+
+/* ---- 分隔拖柄 ---- */
+.split-handle {
+  position: relative;
+  cursor: col-resize;
+  background: var(--border-strong);
+  border-radius: 3px;
+  touch-action: none;
+}
+/* 命中区比视觉宽 3px：6px 的条太细，指针很容易滑掉 */
+.split-handle::after { content: ''; position: absolute; inset: 0 -3px; }
+.split-handle:hover,
+.workspace-split.is-dragging .split-handle { background: var(--primary); }
+.split-handle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.split-handle.is-disabled { cursor: default; background: var(--border); }
+.split-handle.is-disabled:hover { background: var(--border); }
+
+/* ---- 面板内容：确定高度 + 内部滚动 ---- */
+.workspace-pane-body {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0;
+  overflow: hidden;
+}
+.workspace-pane-panel {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column;
+  min-width: 0; min-height: 0;
+}
+/* 折叠 / 切 Tab 只隐藏不卸载：保住 Cytoscape 实例、dirty 与展开卡片 */
+.is-hidden { display: none !important; }
+
+/* ---- 图谱面板：撑满左栏，画布吃掉剩余高度（覆盖原 520px） ---- */
+.workspace-graph {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
+}
+.workspace-graph > * { flex: 0 0 auto; }
+.workspace-graph > .graph-row { flex: 1 1 auto; }
+.workspace-graph .graph-row { display: flex; gap: 12px; min-height: 0; }
+.workspace-graph .graph-col { flex: 1 1 480px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.workspace-graph .inspector-col { flex: 0 1 300px; min-width: 240px; min-height: 0; overflow-y: auto; }
+.workspace-graph .graph-shell { flex: 1 1 auto; min-height: 0; }
+.workspace-graph .graph-wrap { flex: 1 1 auto; height: auto; min-height: 0; }
+.workspace-graph .graph-fallback { height: 100%; min-height: 180px; }
+
+/* ---- 在线编辑器：去掉 calc(100vh - 250px)，高度由面板决定 ---- */
+.editor-panel {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
+}
+.editor-panel > .editor-toolbar,
+.editor-panel > .error-banner,
+.editor-panel > .notice-banner,
+.editor-panel > .editor-footnote { flex: 0 0 auto; }
+.editor-panel > .editor-grid { flex: 1 1 auto; height: auto; min-height: 0; }
+.editor-footnote { font-size: 12px; color: #8a94a6; margin-top: 8px; line-height: 1.7; }
+
+/* ---- 可视化编辑器：工具条固定，列表/详情在面板内滚动 ---- */
+.designer-shell { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.designer-shell > .designer-toolbar { flex: 0 0 auto; }
+.designer-shell > .designer-main { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.designer-shell > .validation-groups { flex: 0 0 auto; max-height: 42%; overflow-y: auto; margin-bottom: 0; }
+
+/* ---- 右侧无活动编辑区时的占位 ---- */
+.pane-placeholder {
+  flex: 1 1 auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  padding: 24px; text-align: center;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+.pane-placeholder-icon { font-size: 28px; line-height: 1; color: var(--border-strong); }
+.pane-placeholder p { max-width: 320px; font-size: 13px; color: var(--muted); line-height: 1.7; }
+.pane-placeholder-actions { display: flex; gap: 8px; }
+
+/* ---- 窄屏回退：标签页（< 1280px） ---- */
+.workspace-narrow { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.workspace-tabs {
+  flex: 0 0 auto; align-self: flex-start;
+  display: flex; gap: 4px; background: #eef2f8; border-radius: 8px; padding: 3px; margin-bottom: 12px;
+}
+.workspace-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; background: transparent; border-radius: 6px; padding: 6px 14px;
+  font-size: 13px; color: var(--muted); cursor: pointer;
+}
+.workspace-tab:hover { color: var(--text); }
+.workspace-tab.active { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.workspace-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.workspace-narrow-body { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }

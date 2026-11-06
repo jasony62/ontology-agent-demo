@@ -23,6 +23,8 @@ interface Props {
 
 const INFERRED_COLOR = '#2f8f6b';
 const EDGE_COLOR = '#9aa0a6';
+/** 容器窄于此值（折叠成 40px 图标条）时不做 resize，避免把图挤坏 */
+const MIN_RESIZE_WIDTH = 120;
 
 const stylesheet: StylesheetStyle[] = [
   {
@@ -224,6 +226,26 @@ export default function GraphView({ viewMode, asserted, inferred, groups, focus,
       cy.destroy();
       cyRef.current = null;
     };
+  }, []);
+
+  // 分栏拖拽 / 折叠 / 窄屏切 Tab 都会改变容器尺寸：让画布跟随 DOM 容器，
+  // 否则出现白边、节点错位与命中区域偏移。
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const cy = cyRef.current;
+      if (!cy) return;
+      // 收起成 40px 图标条时容器被压扁，此时 resize 只会把整张图挤坏；
+      // 展开后容器尺寸会再次变化，那一轮再补 resize。
+      const box = entries[0]?.contentRect;
+      const width = box?.width ?? el.clientWidth;
+      const height = box?.height ?? el.clientHeight;
+      if (width < MIN_RESIZE_WIDTH || height <= 0) return;
+      cy.resize();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   useEffect(() => {

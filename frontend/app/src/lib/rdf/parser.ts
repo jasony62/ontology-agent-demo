@@ -125,6 +125,44 @@ const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const RDFS_NS = 'http://www.w3.org/2000/01/rdf-schema#';
 const OWL_NS = 'http://www.w3.org/2002/07/owl#';
 
+/** 解析期提示：不阻断导入，供调用方按需展示（如复合键降级）。 */
+export interface RDFParseWarning {
+  message: string;
+  /** 可定位的目标实体 id（有则提供） */
+  targetId?: string;
+}
+
+function childLocalName(el: Element): string {
+  return el.localName || el.tagName.split(':').pop() || '';
+}
+
+function getChildAttr(el: Element, localName: string): string | null {
+  return el.getAttribute(`rdf:${localName}`) || el.getAttributeNS(RDF_NS, localName);
+}
+
+/**
+ * 读取类上的 owl:hasKey 引用的属性 IRI。
+ *
+ * RDF/XML 的 `rdf:parseType="Collection"` 在 DOMParser 里不会被展开成数组，
+ * 子元素仍是字面写下的 `<rdf:Description rdf:about="..."/>`；因此直接取
+ * 每个子元素的 rdf:about 即可。非集合写法（直接 rdf:resource）也一并兼容。
+ */
+function readHasKeyUris(classEl: Element): string[] {
+  const uris: string[] = [];
+  for (let i = 0; i < classEl.children.length; i++) {
+    const child = classEl.children[i];
+    if (childLocalName(child) !== 'hasKey') continue;
+    const direct = getChildAttr(child, 'resource');
+    if (direct) uris.push(direct);
+    for (let j = 0; j < child.children.length; j++) {
+      const item = child.children[j];
+      const about = getChildAttr(item, 'about') || getChildAttr(item, 'resource');
+      if (about) uris.push(about);
+    }
+  }
+  return uris;
+}
+
 interface ParsedDatatypeProperty {
   about: string;
   label: string;
@@ -142,7 +180,11 @@ interface ParsedDatatypeProperty {
 /**
  * Parse an RDF/XML (OWL) string into an Ontology and optional DataBindings.
  */
-export function parseRDF(rdfXml: string): { ontology: Ontology; bindings: DataBinding[] } {
+export function parseRDF(rdfXml: string): {
+  ontology: Ontology;
+  bindings: DataBinding[];
+  warnings: RDFParseWarning[];
+} {
   const parser = new DOMParser();
   const doc = parser.parseFromString(rdfXml, 'application/xml');
 
@@ -153,6 +195,7 @@ export function parseRDF(rdfXml: string): { ontology: Ontology; bindings: DataBi
   }
 
   const root = doc.documentElement;
+  const warnings: RDFParseWarning[] = [];
 
   // --- Extract ontology metadata ---
   let ontologyName = '';
@@ -168,6 +211,9 @@ export function parseRDF(rdfXml: string): { ontology: Ontology; bindings: DataBi
   // --- Extract OWL Classes → EntityTypes ---
   const classEls = root.getElementsByTagNameNS(OWL_NS, 'Class');
   const entityMap = new Map<string, EntityType>();
+  // 类 IRI → owl:hasKey 列出的属性 IRI（保持声明顺序）。
+  // 只记录非空列表：空 Collection 等于没声明键，按旧行为处理。
+  const keyUrisByClass = new Map<string, string[]>();
 
   for (let i = 0; i < classEls.length; i++) {
     const el = classEls[i];
@@ -189,6 +235,20 @@ export function parseRDF(rdfXml: string): { ontology: Ontology; bindings: DataBi
       color,
       properties: [],
     });
+
+    const keyUris = readHasKeyUris(el);
+    if (keyUris.length > 0) keyUrisByClass.set(about, keyUris);
+  }
+
+  // 复合键降级提示：编辑器按单布尔 isIdentifier 处理，只认第一个键。
+  // 不静默丢弃——多键是合法 OWL 构造，用户有权知道这一版只读了一个。
+  for (const [classUri, keyUris] of keyUrisByClass) {
+    if (keyUris.length <= 1) continue;
+    const entity = entityMap.get(classUri);
+    warnings.push({
+      message: `实体 "${entity?.name ?? localNameFromUri(classUri)}" 的 owl:hasKey 声明了 ${keyUris.length} 个属性（复合键），当前编辑器只按第一个处理`,
+      targetId: entity?.id,
+    });
   }
 
   // --- Extract DatatypeProperties → Properties + Relationship Attributes ---
@@ -204,13 +264,21 @@ export function parseRDF(rdfXml: string): { ontology: Ontology; bindings: DataBi
     const hasIdentifierComment = comments.some(c => /^identifier\s+property$/i.test(c.trim()));
     const descriptionComment = comments.find(c => !/^identifier\s+property$/i.test(c.trim())) ?? null;
 
+    const domainUri = getChildResource(el, 'domain');
+    // 双读、单写：owl:hasKey 是标准来源，<ont:isIdentifier> 与
+    // "Identifier property" 注释只用于打开存量文件（2027 年后可评估移除）。
+    // 同一类只要声明了 hasKey，就以 hasKey 为准——旧注解不再参与判定。
+    const keyUris = domainUri ? keyUrisByClass.get(domainUri) : undefined;
+    const legacyIdentifier = getChildText(el, 'isIdentifier') === 'true' || hasIdentifierComment;
+    const isIdentifier = keyUris ? keyUris[0] === about : legacyIdentifier;
+
     parsedDtProps.push({
       about,
       label: getChildText(el, 'label', RDFS_NS) || localNameFromUri(about),
-      domainUri: getChildResource(el, 'domain'),
+      domainUri,
       rangeUri: getChildResource(el, 'range'),
       comment: descriptionComment,
-      isIdentifier: getChildText(el, 'isIdentifier') === 'true' || hasIdentifierComment,
+      isIdentifier,
       unit: getChildText(el, 'unit'),
       enumValues: getChildText(el, 'enumValues'),
       propertyType: getChildText(el, 'propertyType'),
@@ -362,5 +430,5 @@ export function parseRDF(rdfXml: string): { ontology: Ontology; bindings: DataBi
     relationships,
   };
 
-  return { ontology, bindings };
+  return { ontology, bindings, warnings };
 }

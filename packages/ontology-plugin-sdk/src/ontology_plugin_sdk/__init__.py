@@ -77,7 +77,7 @@ PLUGIN_API = "1"
 # SDK 自身版本，仅用于诊断输出（不参与兼容性判断）。
 # 与 packages/ontology-plugin-sdk/pyproject.toml 的 version 保持一致：两处都得改，
 # 漏一处就会出现"装的是 1.1.0、对象自称 1.0.0"这种查起来很费劲的错位。
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 __all__ = [
     # 兼容性

@@ -19,6 +19,7 @@
 | `abox` | `AboxStore` | 增删个体、增量落盘、变更计数（事务由框架管） |
 | `context` | `PluginContext` / `ToolRegistrar` | 唯一入口，一次交付引擎与配置 |
 | `engine` | `EngineProtocol` / `local` / `resolve_ns` | 引擎契约与两个纯函数 |
+| `cq` | `gen`（出题指令 + 质检）/ `tbox`（schema 导出 + TBox 草稿 L1–L5）/ `prompts` | 出题与质检共用 `tbox.schema_map` 作锚点事实源，零 LLM 依赖 |
 | `fakes` | `FakeEngine` | 不依赖宿主跑单测 |
 
 ## 写一个领域包

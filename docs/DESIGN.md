@@ -391,17 +391,17 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
 ## 9. MCP 接入（智能体直接调用，端口 9000）
 
 推理服务封装为标准 **MCP Server**（`mcp/mcp_server.py`，streamable-http，路径 `/mcp`），
-共 30 个工具（领域业务 9 + 建模/质量 6 + 引擎通用 15）：
+共 31 个工具（领域业务 9 + 建模/质量 7 + 引擎通用 15）：
 
-`mcp/mcp_server.py` 是**通用出口层**（不含领域词汇）：9 个领域业务工具与 6 个建模/质量工具随领域包走
+`mcp/mcp_server.py` 是**通用出口层**（不含领域词汇）：9 个领域业务工具与 7 个建模/质量工具随领域包走
 （`domains/<name>/mcp.py` 的 `register_tools` 注册，见 5.3），其余 15 个由引擎直接提供
 （15 个通用工具）。
 
 - **9 个领域业务工具**（走适配器，默认 `domains/agent_task/mcp.py`）：capability_match /
   orchestrate / assign / classify / consistency / explain / ontology（图谱）/ status（状态自检）/
   entities（实体清单）；
-- **6 个建模 / 质量工具**（也随领域包走）：guide_tbox_draft / validate_tbox_draft / validate_shapes /
-  guide_cq_generation / validate_cqs / cq_regression；
+- **7 个建模 / 质量工具**（也随领域包走）：guide_tbox_draft / validate_tbox_draft / validate_shapes /
+  guide_cq_generation / validate_cqs / validate_cqs_declared / cq_regression；
 - **15 个引擎通用工具**（走引擎，任意 `.owl` 可用）：query_sparql / individuals / classes / types_of /
   property_values / infer / explain_proof / predefined_queries / run_predefined_query / active_facts /
   guard_status / pipeline_gate / run_rules / list_rules / merge_check。

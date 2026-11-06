@@ -7,6 +7,7 @@
 
 ### Added
 
+- **MCP 新增 `validate_cqs_declared` 工具（CQ `focus` 模式声明锚点）**：与旧 `validate_cqs` 并存，接受 `guide_cq_generation(focus=...)` 产出的 `{cq, expected_type, anchor_terms}` 数组，采信题内显式声明的锚点术语；不传声明时按普通质检处理。声明项受四重约束（必须真实出现在本题题干、长度 2–40、非 OWL 元词、不在领域停用词表 `declared_anchor_stopwords`），且本卷声明词表须有 6–8 个不同术语方整批生效——`系统里有什么？` + `anchor_terms: ["系统"]` 仍判 `revise`，不会变成「任意词自报即合法」。**协议只增不改**：`tools/list` 多一个工具，旧 `validate_cqs` 的签名与输入 schema 不变，旧客户端无需重新协商即可继续调用。
 - **页头领域包切换器**：工作台页头新增「领域」下拉 + 「重载」按钮，可直接在页面上切换已安装的业务包（`GET /api/domains` 列清单、`POST /api/domains/{name}/activate` 做 L3 原子切换），无需改命令行走 CLI。切换后自动重拉物化数据 / 图谱分组 / 本体源码，图谱标题里的本体文件名同步变更；失败时后端保证旧领域继续服务，前端只提示不回滚。顺带暴露 L2 重载（`POST /api/domains/reload`），改了领域 `adapter.py` 后可在页面上直接生效。切换是**内存态**的（重启服务回默认领域），当前领域不在安装清单时下拉仍显式显示，避免空白。
 - **图谱图例点击聚焦**：点击图例「节点」组（类 / 各分组 / 个体）后，命中节点保持原色、其余节点压成浅灰半透明（`node.dim`），再次点击恢复、点其他项即切换；边仅在两端都被淡化时一同淡化（一端在焦点内则保留，仍说明焦点连向何处）。分组筛选按**组名**而非颜色，避免分组数超过调色板长度循环取色时串组。
 
@@ -25,6 +26,8 @@
 
 ### Fixed
 
+- **CQ 出题与质检统一锚点事实源，并净化 OWL 元词**：`validate_cqs` 现在接受领域传入的运行时术语集（`schema_map(engine)`），与 `guide_cq_generation` 同源——此前出题看运行时图（27 类 / 15 属性）、质检只看 `cq_prompts.json` 手写表（16 类 / 9 属性），严格遵守出题指令的题会被质检打回（`哪些 IDE 被 GitRepo 使用？` → `revise / 过宽题`），现为 `usable`。同时 `tbox.schema_map` 先排除 OWL/RDF/RDFS/XSD 元命名空间与 `owl:Thing` / `owl:Nothing`（27/15 → 25/12），`Thing` / `Nothing` / `inverseOf` / `propertyChainAxiom` / `sameAs` 不再是合法锚点，过宽题拦截不放宽；最终质检锚点集 = 净化运行时表 ∪ 手写表（38 个短名，`HighRiskTask` 保留）。`guide_tbox_draft` / `validate_tbox_draft` 复用同一过滤口径，L1–L5 判定不变。
+- **中文题面在 `schema_anchored` 模式下仍需英文短名锚点**：本次锚点集只含 schema 类/属性的英文短名（不含 `label`），`哪些智能体可以执行「登录模块开发」？` 这类纯中文题仍判 `revise`。支持中文题面需出题 prompt 与质检锚点双侧同时纳入 `label`，并处理「能力 / 任务」这类泛词对过宽拦截的削弱——属独立需求，不在本次范围。
 - **图谱不显示类（Class）节点**：`_graph_data` 原先只在实体作为业务对象属性边的端点时才建节点，而类通常只挂 `rdf:type owl:Class` / `rdfs:subClassOf` 这类元谓词边（被过滤），导致类永远无法成为节点，图例承诺的类配色永远落空。改为导出完整断言图时**预建全部类 + 全部具名个体为节点**，并把 `subClassOf`（类层级）与 `rdf:type→类`（实例归类）画成 `kind="structure"` 的结构边；推理增量图（diff）保持原语义不注入结构边，避免整图染绿、淹没「推理新增了什么」。
 - 前端：结构边渲染为紫色虚线单独上色（`edge.structure`），图例拆「节点 / 关系」两组，类与个体改用**圆点**节点标记（原先误用横线，看起来像边）——修正「类（Class）对应的是边吗」的误导。
 
@@ -42,7 +45,7 @@
   - 三层测试网的运行期回归层：SDK CQ 工位（建模期 `validate_tbox_draft` L1-L5）→ 本工具（改动后即时回归，「牵一发动全身」的恐慌变「带安全带换轮胎」）→ 扰动式评估（破坏期，候补）
   - 判分三档（LLM-free 确定性、可复现）：`set_exact`（集合精确相等，含「空集期望」反例题——无人可执行也是有效期望，防幻觉列举）/ `contains`（业务类别必须齐；推理机内建类型随实现浮动不作硬断言）/ `exact_struct`（已知键精确匹配，值可为 null）
   - 失败项附期望 vs 实际对照 + 按 `rule` 生成的退化定位 hint（R1 属性链 / R2 委派 / R3 传递闭包 / R4 合规冲突）；失效检测精准不误伤（删一条推理边 → 仅依赖该边的 CQ 变红、其余保持绿）——回归工具的核心质量指标
-  - 首批 12 题平移自评测 Harness T2 隐含关系档（四类推理全覆盖 + 反例/边界），gold 全部由引擎/适配器确定性输出核验（无人工标注）；`cq_tests.json` 同时是 CQ 出题器 `validate_cqs` 的查重对拍对象（题库落地即激活查重）
+  - 首批 12 题平移自评测 Harness T2 隐含关系档（四类推理全覆盖 + 反例/边界），gold 全部由引擎/适配器确定性输出核验（无人工标注）；`cq_tests.json` 同时是 CQ 出题器 `validate_cqs` 的查重对拍对象（**待接入**：当前题库为 dict，`dedup_against_items` 只认 list）
   - 边界：题库为空/缺失 → 「先建题库」诚实提示（不返回 0/0 假成功）；case 工具名非法逐条 error 不拖垮全跑；`cq` 字段与 `guide_tbox_draft` 输入同型（同一问题文本可直喂建模工位）
 
 - 新增模块合并冲突预检 `merge_check`（通用 MCP 工具，`reasoner/merge_check.py`）：两个本体（团队词表 / 领域包）合并前的「冲突扫描仪」，**只体检、不合并**（处置决策是人的语义判断）
@@ -178,7 +181,7 @@
 
 - 新增 CQ 自动出题器（agent_task 领域包，`cq_prompts.json` 增补 `cq_generation` 段 + `cq_gen.py` 双工具）：补齐「自动出题 → CQ 建模（`guide_tbox_draft`）→ 判卷」三步链的最前端
   - `guide_cq_generation(focus?)`：生成宿主 LLM 出题指令（现有 schema 术语对照、四类题型定义 retrieval/derived/counting/negative 与建议配比 10:10:5:5、措辞规则、输出 JSON 格式）；`focus` 提供全新领域描述时降级 `from_description` 模式（无 schema 对照仍可用）
-  - `validate_cqs(cqs)`：服务端确定性质检（零 LLM 依赖）——问题句式 / schema 术语锚点（过宽题拦截）/ 本次输入内查重 + 对 `cq_tests.json` 既有题库查重（文件不存在时如实 `skipped`）/ 规则式题型预标（`predicted_type` 为建议标注，终审是挑题人）/ 四类题型覆盖度报告（分布 + 缺口提醒）
+  - `validate_cqs(cqs)`：服务端确定性质检（零 LLM 依赖）——问题句式 / schema 术语锚点（过宽题拦截；术语对照来自运行时 `schema_map(engine)`，非 `cq_prompts.json`）/ 本次输入内查重 + 对 `cq_tests.json` 既有题库查重（文件不存在时如实 `skipped`）/ 规则式题型预标（`predicted_type` 为建议标注，终审是挑题人）/ 四类题型覆盖度报告（分布 + 缺口提醒）
   - 动机：CQ 已从「建模前界定范围」升级为「生成→验收集成的判卷标尺」（CQ4OE 基准，arXiv 2609.26029）；LLM 出题覆盖度弱于领域专家、出题质量成为新瓶颈（arXiv 2604.16258）——出完必须过质检，不是出完就用
 - 新增 Agent 调用护栏（`mcp/tool_guard.py` + 领域包 `guard_config.json` + `guard_status` 查询工具）：为全部 10 个通用工具在注册管道统一加装「预算熔断 + 循环拦截 + 缓存复用 + 审计留痕」四道防线（读侧运行时防护，Agentic RAG 防失控共识的工程化落地）
   - 会话预算熔断：单会话工具执行次数超限返回结构化提示（`budget_exceeded`，含 `calls_used`/`budget`/调整指引），不崩、不静默；缓存命中不消耗预算

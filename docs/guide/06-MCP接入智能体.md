@@ -43,16 +43,16 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 2. 传输类型选 **HTTP**，MCP 服务器 URL 填 `http://127.0.0.1:9000/mcp`；
 3. 保存后即可在对话中直接调用本体推理工具。
 
-> 连接器本质：把"对话中能看到哪些工具"告诉豆包。保存后豆包就"认识"了本体的 30 个工具。
+> 连接器本质：把"对话中能看到哪些工具"告诉豆包。保存后豆包就"认识"了本体的 31 个工具。
 
 **怎么确认接上了？** 保存后直接问一句最轻的话，例如「登录模块开发谁能做？」——如果豆包调用到了本体工具（比如追问"为什么是他"能触发 `explain`），就说明接通了；如果没反应，先看容器日志 `docker compose logs mcp`，确认 `:9000` 起来、URL 没填错。
 
 ## 第 3 步：认识核心工具（完整清单见速查表 §C）
 
-服务共暴露 **30 个工具**，按来源分三类：
+服务共暴露 **31 个工具**，按来源分三类：
 
 - **领域业务工具 9 个**——随领域包注册（`capability_match`/`orchestrate`/`assign`/`classify`/`consistency`/`explain`/`ontology`/`entities`/`status`），换领域这组跟着换；
-- **建模 / 质量工具 6 个**——也随领域包注册（`guide_tbox_draft`/`validate_tbox_draft`/`validate_shapes`/`guide_cq_generation`/`validate_cqs`/`cq_regression`），做篇 8「造自己的领域」时才用；
+- **建模 / 质量工具 7 个**——也随领域包注册（`guide_tbox_draft`/`validate_tbox_draft`/`validate_shapes`/`guide_cq_generation`/`validate_cqs`/`validate_cqs_declared`/`cq_regression`），做篇 8「造自己的领域」时才用；
 - **引擎通用工具 15 个**——任意 `.owl` 可用（SPARQL、个体、类、类型、属性、重推理、证明、守卫、闸门、规则执行、合并预检等）。
 
 入门只需掌握 **3 个核心工具**（完整 30 个清单与参数见文末《附录-速查表》§C）：
@@ -107,7 +107,7 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 |---|---|---|
 | 面向 | 前端页面、脚本、任何 HTTP 客户端 | 智能体（豆包连接器等 MCP 客户端） |
 | 协议 | HTTP + JSON | MCP（JSON-RPC / SSE） |
-| 工具/端点 | 29 个端点 | 30 个工具 |
+| 工具/端点 | 29 个端点 | 31 个工具 |
 | 依赖 | 独立进程 | 内嵌引擎，不依赖 REST |
 
 两者共享**同一套引擎与领域包**——这就是篇 5（搭建本体推理服务）所讲的服务"多通道出口"：**同一种能力，按消费方选通道**。脚本和前端走 REST；智能体走 MCP。
@@ -116,7 +116,7 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 
 1. **MCP = 智能体的 USB 接口**：能力封装成标准工具，智能体自动发现、按说明调用。
 2. **一行命令启动**：`docker compose up -d mcp`，内嵌引擎零依赖；豆包侧边栏加连接器即可接入。
-3. **30 个工具**：9 个领域业务工具 + 6 个建模/质量工具（均随领域包，篇 8 用到）+ 15 个引擎通用工具；入门先掌握 `capability_match` / `orchestrate` / `entities`。
+3. **31 个工具**：9 个领域业务工具 + 7 个建模/质量工具（均随领域包，篇 8 用到）+ 15 个引擎通用工具；入门先掌握 `capability_match` / `orchestrate` / `entities`。
 4. **智能体听懂人话，本体算得准讲得清**——MCP 是两者的"合体通道"。
 
 **常见问题**

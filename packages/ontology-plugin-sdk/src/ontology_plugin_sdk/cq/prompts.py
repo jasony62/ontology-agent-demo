@@ -16,6 +16,7 @@
     axiom_patterns       dict  公理模式名 → 说明
     checklist            list  TBox 草稿自查清单
     schema_terms         dict  {classes: [...], properties: [...]}——L5 覆盖与锚点判定
+    declared_anchor_stopwords  list  `focus` 模式声明锚点的领域停用词（过泛通用词）
     cq_generation        dict  {type_taxonomy, suggested_mix, phrasing_rules}
 """
 

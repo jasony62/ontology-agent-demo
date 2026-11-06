@@ -242,11 +242,20 @@ def register_tools(server: MCPServer, get_adapter) -> None:
 
     @server.tool(description=(
         "CQ 自动出题器-质检（领域）：对宿主 LLM 产出的 CQ 问题数组做确定性质检——问题句式/"
-        "schema 术语锚点/本次输入内查重/对 008 cq_tests.json 题库查重（存在时）/规则式题型预标"
-        "（predicted_type 为建议标注）/四类题型覆盖度报告。返回 usable / revise / duplicate "
-        "三档与缺口提醒。出题质量是人把关：机器质检后仍需挑题人终审。"))
+        "schema 术语锚点（与 guide_cq_generation 共用运行时本体 schema）/本次输入内查重/"
+        "对 008 cq_tests.json 题库查重（存在时）/规则式题型预标（predicted_type 为建议标注）/"
+        "四类题型覆盖度报告。返回 usable / revise / duplicate 三档与缺口提醒。"
+        "出题质量是人把关：机器质检后仍需挑题人终审。"))
     def validate_cqs(cqs: list[str]) -> dict:
-        return cq.validate_cqs(cqs)
+        return cq.validate_cqs(cqs, engine=get_adapter().engine)
+
+    @server.tool(description=(
+        "CQ 自动出题器-质检（focus 模式声明锚点，领域）：专用于 guide_cq_generation(focus=...) "
+        "产出的 {cq, expected_type, anchor_terms} 数组——除普通质检外，采信每条题目的 "
+        "anchor_terms 声明锚点（受四重约束：题干真实出现 / 长度 2-40 / 非 OWL 元词 / 非领域"
+        "停用词），且本卷声明词表须有 6-8 个不同术语方整批生效。不传声明时按普通质检处理。"))
+    def validate_cqs_declared(cqs: list[dict]) -> dict:
+        return cq.validate_cqs_declared(cqs, engine=get_adapter().engine)
 
     @server.tool(description=(
         "CQ 回归套件（领域）：一键执行 cq_tests.json 题库全部断言（CQ + 工具调用 + 期望答案），"

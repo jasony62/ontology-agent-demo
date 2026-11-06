@@ -30,17 +30,46 @@ META_PRED = {
     "allValuesFrom", "hasValue", "onProperty", "Cardinality", "Restriction",
 }
 
+# 元命名空间：物化后的图会补出 owl:Thing / owl:Nothing、inverseOf / sameAs /
+# propertyChainAxiom 这类 OWL 词表自身的断言。它们不是领域术语，绝不能进
+# schema_map——否则「哪些 Thing 与 Nothing 通过 sameAs 关联？」会被当成合法锚点。
+# META_PRED 是短名兜底，_META_NS 是 IRI 口径，两者取并集（缺一不可）：
+# 兜底表拦得住换个前缀写法的同名词，命名空间判定则连兜底表没列全的元词一起挡。
+_META_NS = (
+    str(OWL),
+    str(RDF),
+    str(RDFS),
+    "http://www.w3.org/2001/XMLSchema#",
+)
+
+
+def _is_meta_iri(iri) -> bool:
+    """IRI 是否落在 OWL/RDF/RDFS/XSD 元命名空间内（非 URIRef 一律不算）。"""
+    if not isinstance(iri, URIRef):
+        return False
+    text = str(iri)
+    return any(text.startswith(ns) for ns in _META_NS)
+
+
+def _class_iris(g) -> set:
+    """图里的领域类 IRI（owl:Class 主体，排除元命名空间与内置类）。
+
+    schema_map 与 _extract_terms 共用同一份过滤口径：事实源只算一次，
+    任何一处再写一遍过滤逻辑都会重新长出第二个真相源。
+    """
+    return {c for c in g.subjects(RDF.type, OWL.Class)
+            if isinstance(c, URIRef) and not _is_meta_iri(c)}
+
 
 def schema_map(engine) -> dict:
     """从现有本体导出类/属性短名与 label（供 guide 参照）。
 
-    只依赖引擎的 `g` 与可选 `label()`，不假设任何领域术语。
+    只依赖引擎的 `g` 与可选 `label()`，不假设任何领域术语；元命名空间
+    （owl:Thing / inverseOf / sameAs……）一律不算领域术语。
     """
     g = engine.g
     classes = []
-    for c in sorted(set(g.subjects(RDF.type, OWL.Class)), key=str):
-        if not isinstance(c, URIRef):
-            continue
+    for c in sorted(_class_iris(g), key=str):
         classes.append({
             "name": local(c),
             "label": engine.label(c) if hasattr(engine, "label") else local(c),
@@ -52,13 +81,14 @@ def schema_map(engine) -> dict:
 def _property_iris(g) -> set:
     iris = set()
     for s in g.subjects(RDF.type, OWL.ObjectProperty):
-        if isinstance(s, URIRef):
+        if isinstance(s, URIRef) and not _is_meta_iri(s):
             iris.add(s)
     for s in g.subjects(RDF.type, OWL.DatatypeProperty):
-        if isinstance(s, URIRef):
+        if isinstance(s, URIRef) and not _is_meta_iri(s):
             iris.add(s)
     for _s, p, _o in g:
-        if isinstance(p, URIRef) and local(p) not in META_PRED:
+        if (isinstance(p, URIRef) and not _is_meta_iri(p)
+                and local(p) not in META_PRED):
             iris.add(p)
     return iris
 
@@ -243,6 +273,9 @@ def fix_suggestions(issues: list) -> list[str]:
 
 
 def _extract_terms(g: Graph) -> tuple[list, list]:
-    """提取 TBox 中的类与属性短名（类=owl:Class 主体；属性=Object/DatatypeProperty 主体或非元谓词）。"""
-    classes = [local(c) for c in g.subjects(RDF.type, OWL.Class) if isinstance(c, URIRef)]
+    """提取 TBox 中的类与属性短名（类=owl:Class 主体；属性=Object/DatatypeProperty 主体或非元谓词）。
+
+    与 schema_map 共用 `_class_iris` / `_property_iris`：元词过滤只在事实源做一次。
+    """
+    classes = [local(c) for c in sorted(_class_iris(g), key=str)]
     return classes, sorted(local(x) for x in _property_iris(g))

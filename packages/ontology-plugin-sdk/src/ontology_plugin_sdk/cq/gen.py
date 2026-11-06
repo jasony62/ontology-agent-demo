@@ -49,11 +49,82 @@ def normalize(text: str) -> str:
     return t.lower()
 
 
-def anchor_terms(cq: str, prompts: dict) -> list[str]:
-    """从题干提取 schema 中的类/属性术语锚点（命中即算锚点，用于过宽题判定）。"""
+def anchor_terms(cq: str, prompts: dict, extra_terms=None) -> list[str]:
+    """从题干提取 schema 中的类/属性术语锚点（命中即算锚点，用于过宽题判定）。
+
+    extra_terms 供调用方注入**运行时** schema 术语（如 `tbox.schema_map(engine)`
+    的短名集合），与 prompts 里的手写表取并集。SDK 不自己算术语：gen 必须保持
+    零 rdflib/owlrl 依赖，算术语是调用方（领域包）的事。
+    """
     terms = set(prompts.get("schema_terms", {}).get("classes", []))
     terms |= set(prompts.get("schema_terms", {}).get("properties", []))
+    terms |= set(extra_terms or ())
     return sorted(t for t in terms if t.lower() in cq.lower())
+
+
+# 声明锚点黑名单：OWL/RDF/RDFS 元词与内置类的**短名**口径，与 tbox.META_PRED /
+# tbox._META_NS 对齐。这里不能 import tbox（会把 rdflib/owlrl 拖进 gen），所以
+# 以短名复述一遍；新增元词时两处一起改，tests/test_cq_anchor_source.py 守着。
+_META_ANCHOR_TERMS = {
+    "thing", "nothing", "type", "subclassof", "subpropertyof", "label", "comment",
+    "domain", "range", "equivalentclass", "equivalentproperty", "disjointwith",
+    "intersectionof", "unionof", "complementof", "oneof", "first", "rest",
+    "somevaluesfrom", "allvaluesfrom", "hasvalue", "onproperty", "restriction",
+    "inverseof", "propertychainaxiom", "sameas", "cardinality",
+}
+
+# 声明锚点的本卷词表规模（对齐出题指令「提炼 6-8 个核心类与属性」）。
+# 低于下限一律不采信：只声明一个「系统」就放过过宽题，等于没有检查。
+_DECLARED_VOCAB_MIN = 6
+_DECLARED_VOCAB_MAX = 8
+
+
+def _declared_anchor_terms(raw, cq: str, prompts: dict) -> list[str]:
+    """采信 LLM 在 CQ 条目里显式声明的锚点（R5 的最低规格）。
+
+    只有 dict 入参才看得到 `anchor_terms`；`list[str]` 输入永远走 schema 锚点。
+    逐项过滤：必须是长度 2-40 的非空字符串、真实出现在本题题干里、不是 OWL
+    元词、不在领域停用词表（`prompts["declared_anchor_stopwords"]`）内。
+    """
+    if not isinstance(raw, dict):
+        return []
+    declared = raw.get("anchor_terms")
+    if not isinstance(declared, list):
+        return []
+    stopwords = {str(w).strip().lower()
+                 for w in prompts.get("declared_anchor_stopwords", []) if str(w).strip()}
+    text = cq.lower()
+    out: list[str] = []
+    for term in declared:
+        if not isinstance(term, str):
+            continue
+        term = term.strip()
+        if not (2 <= len(term) <= 40):
+            continue
+        low = term.lower()
+        if low in _META_ANCHOR_TERMS or low in stopwords:
+            continue
+        if low not in text:
+            continue
+        if term not in out:
+            out.append(term)
+    return out
+
+
+def _declared_vocab_ok(items: list, prompts: dict) -> bool:
+    """本卷声明词表规模是否达标（推荐规格的最后一道闸）。
+
+    从本批次所有 dict 的合法声明项汇总成「本卷词表」，要求不同术语数落在
+    6-8（对齐 `guide_cq_generation` 的「提炼 6-8 个核心类与属性」）。规模不足
+    时整批声明一律不采信——单题自报一个词就能过检的闸门等于不存在。
+    """
+    vocab = set()
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        cq = str(raw.get("cq", raw)).strip()
+        vocab |= set(_declared_anchor_terms(raw, cq, prompts))
+    return _DECLARED_VOCAB_MIN <= len(vocab) <= _DECLARED_VOCAB_MAX
 
 
 def predicted_type(cq: str) -> str:
@@ -182,11 +253,19 @@ def dedup_against_items(items: list, bank_path: str | None = None) -> dict:
 
 
 def validate_cqs(cqs: list, prompts: dict | None = None,
-                 bank_path: str | None = None) -> dict:
+                 bank_path: str | None = None, extra_terms=None,
+                 allow_declared_anchors: bool = False) -> dict:
     """服务端确定性质检：格式 / 查重 / 类型预标 / 覆盖度报告。
 
     返回三档标注（usable / revise / duplicate）与覆盖度统计。predicted_type 为
     建议标注（非权威判定，终审是挑题的人）。
+
+    extra_terms：调用方注入的运行时 schema 术语（`set[str]`），与 prompts 手写表
+    并集后参与过宽题判定；不传时行为与旧版逐字节一致。
+
+    allow_declared_anchors：为 True 时采信 dict 条目里的 `anchor_terms` 声明
+    （`focus` 模式的出题产物）。声明项受题干匹配 / 元词黑名单 / 领域停用词表 /
+    本卷词表规模（6-8）四重约束，且只影响「过宽题」判定。
     """
     if prompts is None:
         prompts = _default_prompts()
@@ -203,6 +282,8 @@ def validate_cqs(cqs: list, prompts: dict | None = None,
     dedup = dedup_against_items(items, bank_path)
     dup_norm = {normalize(d["cq"]) for d in dedup["duplicates"]}
 
+    declared_enabled = bool(allow_declared_anchors) and _declared_vocab_ok(items, prompts)
+
     results = []
     seen: dict[str, int] = {}  # 本次输入内的同义去重（normalized -> index）
     for i, raw in enumerate(items):
@@ -211,7 +292,9 @@ def validate_cqs(cqs: list, prompts: dict | None = None,
         if not cq:
             results.append({"cq": cq, "status": "revise", "reason": "空题干"})
             continue
-        anchor = anchor_terms(cq, prompts)
+        anchor = anchor_terms(cq, prompts, extra_terms)
+        declared = (_declared_anchor_terms(raw, cq, prompts)
+                    if declared_enabled else [])
         norm = normalize(cq)
 
         # 内部重复 / 题库撞题
@@ -230,13 +313,17 @@ def validate_cqs(cqs: list, prompts: dict | None = None,
         if not is_question(cq):
             results.append({"cq": cq, "status": "revise", "reason": "非问题句式：应为疑问句"})
             continue
-        if not anchor:
+        if not anchor and not declared:
             results.append({"cq": cq, "status": "revise", "reason": "过宽题：无 schema 术语锚点"})
             continue
 
-        results.append({"cq": cq, "status": "usable",
-                        "predicted_type": predicted_type(cq),
-                        "anchor_terms": anchor})
+        record = {"cq": cq, "status": "usable",
+                  "predicted_type": predicted_type(cq),
+                  "anchor_terms": sorted(set(anchor) | set(declared))}
+        if declared:
+            # 审计线索：本题至少有一个锚点是 LLM 声明、非 schema 命中。
+            record["anchor_source"] = "mixed" if anchor else "declared"
+        results.append(record)
         seen.setdefault(norm, len(results) - 1)
 
     usable = [r for r in results if r["status"] == "usable"]

@@ -10,8 +10,8 @@ import { COLORS } from './designerConstants';
 
 const GROUP_LABELS: { key: ValidationLevel; label: string }[] = [
   { key: 'blocker', label: '阻断（必须修复）' },
-  { key: 'required', label: '必改（命名/标识/合法性）' },
-  { key: 'suggestion', label: '建议（历史遗留可优化，不影响使用）' },
+  { key: 'required', label: '必改（类型/合法性）' },
+  { key: 'suggestion', label: '可优化建议（不影响使用）' },
 ];
 
 export default function Designer() {
@@ -188,11 +188,19 @@ export default function Designer() {
 
   // 仅当与快照有差异时「重置」才可用
   const dirty = baselineRef.current !== null && baselineRef.current !== JSON.stringify(ontology);
-  const worstLevel: ValidationLevel = errors.some((e) => e.level === 'blocker')
+  const blockerCount = errors.filter((e) => e.level === 'blocker').length;
+  const requiredCount = errors.filter((e) => e.level === 'required').length;
+  const worstLevel: ValidationLevel = blockerCount > 0
     ? 'blocker'
-    : errors.some((e) => e.level === 'required')
+    : requiredCount > 0
       ? 'required'
       : 'suggestion';
+  const suggestionCount = errors.length - blockerCount - requiredCount;
+  const validationSummary = worstLevel === 'suggestion'
+    ? `校验通过；另有 ${suggestionCount} 项可优化建议，点击条目可定位到对应实体。`
+    : worstLevel === 'required'
+      ? `校验发现 ${requiredCount} 项必改${suggestionCount > 0 ? `、另有 ${suggestionCount} 项可优化建议` : ''}，点击条目可定位到对应实体。`
+      : `校验发现 ${blockerCount} 项阻断${requiredCount > 0 ? `、${requiredCount} 项必改` : ''}${suggestionCount > 0 ? `、${suggestionCount} 项建议` : ''}，点击条目可定位到对应实体。`;
 
   return (
     <div className="panel designer-shell" id="designer-root">
@@ -248,7 +256,7 @@ export default function Designer() {
       {showValidation && errors.length > 0 && (
         <div className="validation-groups" id="designer-validation">
           <div className="validation-guide">
-            校验发现 {errors.length} 项提示（部分为默认本体历史遗留的命名/描述可优化项，不影响当前使用）；点击条目可定位到对应实体。
+            {validationSummary}
           </div>
           {GROUP_LABELS.map(({ key, label }) => {
             const list = errors.filter((e) => e.level === key);

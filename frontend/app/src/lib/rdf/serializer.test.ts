@@ -153,7 +153,9 @@ describe('serializeToRDF', () => {
     // String → xsd:string
     expect(rdf).toContain('rdf:about="http://example.org/ontology/test/item_id"');
     expect(rdf).toContain('XMLSchema#string"/>');
-    expect(rdf).toContain('<ont:isIdentifier');
+    // 标识属性写到类上：标准 owl:hasKey，不再写私有注解
+    expect(rdf).toContain('<owl:hasKey rdf:parseType="Collection">');
+    expect(rdf).not.toContain('<ont:isIdentifier');
 
     // Integer → xsd:integer
     expect(rdf).toContain('item_count');
@@ -180,6 +182,39 @@ describe('serializeToRDF', () => {
     expect(rdf).toContain('item_status');
     expect(rdf).toContain('<ont:enumValues>A,B,C</ont:enumValues>');
     expect(rdf).toContain('<ont:propertyType>enum</ont:propertyType>');
+  });
+
+  it('writes owl:hasKey with an IRI identical to the DatatypeProperty', () => {
+    const ontology: Ontology = {
+      name: 'Test',
+      description: '',
+      entityTypes: [
+        {
+          id: 'lineItem',
+          name: 'Line Item',
+          description: '',
+          icon: '📦',
+          color: '#000',
+          properties: [
+            { name: 'sku', type: 'string', isIdentifier: true },
+            { name: 'qty', type: 'integer' },
+          ],
+        },
+      ],
+      relationships: [],
+    };
+    const rdf = serializeToRDF(ontology);
+
+    // 类 IRI 走 capitalize，属性 IRI 不走——hasKey 必须引用后者
+    expect(rdf).toContain('owl:Class rdf:about="http://example.org/ontology/test/LineItem"');
+    expect(rdf).toContain(
+      '<owl:DatatypeProperty rdf:about="http://example.org/ontology/test/lineItem_sku">',
+    );
+    expect(rdf).toContain(
+      '<rdf:Description rdf:about="http://example.org/ontology/test/lineItem_sku"/>',
+    );
+    // 非标识属性不得进入键集合
+    expect(rdf).not.toContain('<rdf:Description rdf:about="http://example.org/ontology/test/lineItem_qty"/>');
   });
 
   it('serializes relationships as ObjectProperties', () => {

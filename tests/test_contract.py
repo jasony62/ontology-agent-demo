@@ -16,7 +16,11 @@ from rdflib import BNode, Graph, Literal, Namespace, OWL, RDF, RDFS, URIRef
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from config.loader import load_config  # noqa: E402
-from domains.registry import DomainContractError, load_domain  # noqa: E402
+from domains.registry import (  # noqa: E402
+    DomainContractError,
+    has_key_consistency_warnings,
+    load_domain,
+)
 from reasoner.engine import local  # noqa: E402
 from reasoner.protocol import (  # noqa: E402
     AdapterBase,
@@ -608,6 +612,76 @@ def test_entity_schema_without_create_rejected(tmp_path, root):
 
     with pytest.raises(DomainContractError, match="create"):
         load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
+
+
+# ---------------- owl:hasKey 与 ENTITY_SCHEMA.id_field 一致性 ----------------
+#
+# 背景：前端标识属性改用标准 owl:hasKey 后，本体的实例主键声明与接口主键
+# （ENTITY_SCHEMA.id_field）第一次有了交集。这里只做**一致性告警**：
+# 存量领域包没有 hasKey 是常态，阻断加载等于让所有老包起不来；
+# 而 id_field 是 API 契约，不能用 hasKey 反向覆写。
+
+
+def _engine_with_has_key(key_names):
+    """构造带 owl:hasKey（RDF Collection）的假引擎。"""
+    from rdflib.collection import Collection
+
+    engine = _FakeEngine([(f"{T}Widget", RDF.type, f"{T}Thing")])
+    head = BNode()
+    engine.g.add((_NS.Widget, OWL.hasKey, head))
+    Collection(engine.g, head, [_NS[name] for name in key_names])
+    return engine
+
+
+def test_has_key_consistency_warns_when_id_field_missing_from_key():
+    adapter = _adapter_with(_engine_with_has_key(["otherId"]), schema=_SCHEMA)
+
+    [warning] = has_key_consistency_warnings(adapter)
+
+    assert warning["code"] == "id_field_not_in_hasKey"
+    assert warning["evidence"]["id_field"] == "name"
+    assert warning["evidence"]["has_key"] == [f"{T}otherId"]
+    assert "owl:hasKey" in warning["message"]
+
+
+def test_has_key_consistency_silent_when_id_field_in_key():
+    adapter = _adapter_with(_engine_with_has_key(["name", "weight"]), schema=_SCHEMA)
+    assert has_key_consistency_warnings(adapter) == []
+
+
+def test_has_key_consistency_silent_without_has_key():
+    """没有 hasKey 不是缺陷：向后兼容，主键仍由 ENTITY_SCHEMA 单方面约定。"""
+    adapter = _adapter_with(_engine_with_parts(), schema=_SCHEMA)
+    assert has_key_consistency_warnings(adapter) == []
+
+
+def test_has_key_consistency_silent_without_schema():
+    adapter = _adapter_with(_engine_with_has_key(["otherId"]))
+    assert has_key_consistency_warnings(adapter) == []
+
+
+def test_mismatched_has_key_warns_but_still_loads(tmp_path, root):
+    """不一致只发 warning，领域照常加载——存量包不能因此起不来。"""
+    _pkg(root, "NAME = 'probe'\n"
+               "class A:\n"
+               "    CAPABILITIES = ()\n"
+               "    ENTITY_SCHEMA = {'class': 'Widget', 'id_field': 'name', "
+               "'fields': [{'name': 'name'}]}\n"
+               "    def __init__(self, engine):\n"
+               "        self.engine = engine\n"
+               "        from reasoner.semantic import SemanticConfig\n"
+               "        self.c = SemanticConfig()\n"
+               "    def create(self, payload, persist=False):\n"
+               "        return {}\n"
+               "def create_adapter(engine, config=None):\n"
+               "    return A(engine)\n")
+
+    with pytest.warns(UserWarning, match="owl:hasKey"):
+        adapter = load_domain(
+            _PROBE, _engine_with_has_key(["otherId"]),
+            settings=_settings(tmp_path, root),
+        )
+    assert adapter is not None
 
 
 # ---------------- 图谱分组（graph_groups） ----------------

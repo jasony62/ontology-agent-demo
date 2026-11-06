@@ -87,6 +87,18 @@ export function serializeToRDF(
     // Store icon and color as custom annotations
     rdf += `        <ont:icon>${escapeXml(entity.icon)}</ont:icon>\n`;
     rdf += `        <ont:color>${escapeXml(entity.color)}</ont:color>\n`;
+    // 实例主键用标准公理表达（OWL 2 DL 的 owl:hasKey），不再写私有
+    // <ont:isIdentifier>。属性 IRI 必须与下面 DatatypeProperty 循环使用
+    // 同一个公式 `${entity.id}_${prop.name}`——类 IRI 做了 capitalize，
+    // 属性 IRI 没有，这是既有约定，改一处就会产生悬空引用。
+    const keyProps = entity.properties.filter((p) => p.isIdentifier);
+    if (keyProps.length > 0) {
+      rdf += '        <owl:hasKey rdf:parseType="Collection">\n';
+      for (const prop of keyProps) {
+        rdf += `            <rdf:Description rdf:about="${baseUri}${entity.id}_${prop.name}"/>\n`;
+      }
+      rdf += '        </owl:hasKey>\n';
+    }
     rdf += '    </owl:Class>\n\n';
   }
 
@@ -110,9 +122,7 @@ export function serializeToRDF(
       if (prop.description) {
         rdf += `        <rdfs:comment>${escapeXml(prop.description)}</rdfs:comment>\n`;
       }
-      if (prop.isIdentifier) {
-        rdf += '        <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>\n';
-      }
+      // 标识属性已上移到所在类的 owl:hasKey（单写新格式，旧格式由 parser 兼容读取）
       if (prop.unit) {
         rdf += `        <ont:unit>${escapeXml(prop.unit)}</ont:unit>\n`;
       }

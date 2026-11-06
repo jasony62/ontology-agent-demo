@@ -152,6 +152,30 @@ describe('RDF round-trip tests', () => {
     expectOntologiesEqual(parsed, ontology);
   });
 
+  it('keeps owl:hasKey across serialize → parse', () => {
+    const ontology: Ontology = {
+      name: 'Key Test',
+      description: '',
+      entityTypes: [
+        {
+          id: 'customer',
+          name: 'Customer',
+          description: '',
+          icon: '👤',
+          color: '#000',
+          properties: [{ name: 'customerId', type: 'string', isIdentifier: true }],
+        },
+      ],
+      relationships: [],
+    };
+    const rdf = serializeToRDF(ontology);
+    expect(rdf).toContain('<owl:hasKey');
+
+    const { ontology: parsed, warnings } = parseRDF(rdf);
+    expect(parsed.entityTypes[0].properties[0].isIdentifier).toBe(true);
+    expect(warnings).toEqual([]);
+  });
+
   it('round-trips an empty ontology', () => {
     const ontology: Ontology = {
       name: 'Empty',

@@ -41,6 +41,7 @@ import importlib.util
 import json
 import shutil
 import sys
+import warnings
 from pathlib import Path
 from types import ModuleType
 
@@ -56,6 +57,7 @@ __all__ = [
     "DomainNotFoundError",
     "default_onto_path",
     "get_config",
+    "has_key_consistency_warnings",
     "list_domains",
     "load_domain",
     "load_domain_module",
@@ -331,9 +333,10 @@ def _validate_adapter(name: str, adapter) -> None:
     # 否则表现是"某个字段静默落成了字面量"或"建出来的个体少了一条边"，
     # 那类问题查起来比一条加载失败贵得多。
     raw_schema = entity_schema(adapter)
+    schema = None
     if raw_schema is not None:
         try:
-            validate_entity_schema(raw_schema)
+            schema = validate_entity_schema(raw_schema)
         except ValueError as exc:
             raise DomainContractError(
                 f"领域包 {name!r} 的 ENTITY_SCHEMA 不合法：{exc}"
@@ -343,6 +346,92 @@ def _validate_adapter(name: str, adapter) -> None:
                 f"领域包 {name!r} 声明了 ENTITY_SCHEMA 却没有 create 方法——"
                 f"schema 得有个入口用，继承 AdapterBase 即可白拿默认实现。"
             )
+
+    # 本体键声明与接口主键的一致性：**只告警，不阻断**。
+    # 存量领域包尚未写 owl:hasKey，若在这里抛错，所有老包都会加载失败；
+    # 而且 id_field 是 API 契约，反过来由 hasKey 覆写它属于本末倒置。
+    if schema is not None:
+        for item in has_key_consistency_warnings(adapter, schema):
+            warnings.warn(f"领域包 {name!r}：{item['message']}", stacklevel=2)
+
+
+def has_key_consistency_warnings(adapter, schema: dict | None = None) -> list[dict]:
+    """检查 `ENTITY_SCHEMA.id_field` 与类上 `owl:hasKey` 是否一致（非阻断）。
+
+    只回答一个问题：本体的实例主键声明（`owl:hasKey`）是否包含接口主键
+    （`ENTITY_SCHEMA.id_field` 对应属性）。返回 warning 列表，每条带
+    `evidence` 供排查；**不修改 schema、不抛 DomainContractError**：
+
+      - 无 `hasKey` → 返回空列表（主键仍由 ENTITY_SCHEMA 单方面约定，
+        这是存量领域包的常态，向后兼容）；
+      - `hasKey` 与 `id_field` 不一致 → 一条 warning；
+      - 一致 → 空列表。
+
+    不能让 `hasKey` 反向生成 `id_field`：后者决定 `POST /api/entities`
+    的 payload 形状，是接口契约，不是本体派生量。
+    """
+    if schema is None:
+        from ontology_plugin_sdk import entity_schema, validate_entity_schema
+
+        raw = entity_schema(adapter)
+        if raw is None:
+            return []
+        try:
+            schema = validate_entity_schema(raw)
+        except ValueError:
+            return []
+
+    engine = getattr(adapter, "engine", None)
+    graph = getattr(engine, "g", None)
+    ns = getattr(engine, "NS", None)
+    if graph is None or ns is None:
+        return []
+
+    # 延迟导入：registry 属于引导链，顶层 import rdflib 会拖慢引导且无必要。
+    from rdflib import OWL, URIRef
+    from rdflib.collection import Collection
+
+    cfg = getattr(adapter, "c", None)
+    resolve = getattr(cfg, "resolve", None)
+    if not callable(resolve):
+        resolve = lambda key: key  # noqa: E731 —— 与 SemanticConfig.resolve 同语义
+
+    id_field = next(
+        (f for f in schema["fields"] if f["name"] == schema["id_field"]), None
+    )
+    if id_field is None:
+        return []
+
+    class_uri = ns[resolve(schema["class"])]
+    id_uri = ns[resolve(id_field["property"])]
+    head = graph.value(class_uri, OWL.hasKey)
+    if head is None:
+        return []
+
+    keys: list = []
+    try:
+        keys = list(Collection(graph, head))
+    except Exception:  # noqa: BLE001 —— 坏 RDF 集合不应让领域加载失败
+        keys = []
+    if not keys and isinstance(head, URIRef):
+        keys = [head]                       # 非集合写法：直接引用单个属性
+    if not keys or id_uri in keys:
+        return []
+
+    return [{
+        "code": "id_field_not_in_hasKey",
+        "message": (
+            f"ENTITY_SCHEMA.id_field={schema['id_field']!r} 对应的属性 "
+            f"{id_field['property']!r} 不在类 {schema['class']!r} 的 owl:hasKey 中；"
+            f"接口主键与本体键声明不一致（不阻断加载）"
+        ),
+        "evidence": {
+            "class_uri": str(class_uri),
+            "id_field": schema["id_field"],
+            "id_field_property_uri": str(id_uri),
+            "has_key": [str(k) for k in keys],
+        },
+    }]
 
 
 def list_domains(*, settings: DomainConfig | None = None) -> list[dict]:

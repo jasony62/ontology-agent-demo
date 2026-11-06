@@ -104,6 +104,93 @@ describe('parseRDF', () => {
       expect(idProp?.isIdentifier).toBe(true);
     });
 
+    it('marks identifier from standard owl:hasKey', () => {
+      const rdf = `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+    <owl:Class rdf:about="http://example.org/ontology/test/Customer">
+        <rdfs:label>Customer</rdfs:label>
+        <owl:hasKey rdf:parseType="Collection">
+            <rdf:Description rdf:about="http://example.org/ontology/test/customer_code"/>
+        </owl:hasKey>
+    </owl:Class>
+    <owl:DatatypeProperty rdf:about="http://example.org/ontology/test/customer_code">
+        <rdfs:label>code</rdfs:label>
+        <rdfs:domain rdf:resource="http://example.org/ontology/test/Customer"/>
+        <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="http://example.org/ontology/test/customer_name">
+        <rdfs:label>name</rdfs:label>
+        <rdfs:domain rdf:resource="http://example.org/ontology/test/Customer"/>
+        <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    </owl:DatatypeProperty>
+</rdf:RDF>`;
+      const { ontology, warnings } = parseRDF(rdf);
+      const props = ontology.entityTypes[0].properties;
+      expect(props.find((p) => p.name === 'code')?.isIdentifier).toBe(true);
+      expect(props.find((p) => p.name === 'name')?.isIdentifier).toBeUndefined();
+      expect(warnings).toEqual([]);
+    });
+
+    it('prefers owl:hasKey over legacy ont:isIdentifier for the same class', () => {
+      const rdf = `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:ont="http://example.org/ontology/test/">
+    <owl:Class rdf:about="http://example.org/ontology/test/Customer">
+        <rdfs:label>Customer</rdfs:label>
+        <owl:hasKey rdf:parseType="Collection">
+            <rdf:Description rdf:about="http://example.org/ontology/test/customer_code"/>
+        </owl:hasKey>
+    </owl:Class>
+    <owl:DatatypeProperty rdf:about="http://example.org/ontology/test/customer_code">
+        <rdfs:label>code</rdfs:label>
+        <rdfs:domain rdf:resource="http://example.org/ontology/test/Customer"/>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="http://example.org/ontology/test/customer_legacy">
+        <rdfs:label>legacy</rdfs:label>
+        <rdfs:domain rdf:resource="http://example.org/ontology/test/Customer"/>
+        <ont:isIdentifier rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</ont:isIdentifier>
+    </owl:DatatypeProperty>
+</rdf:RDF>`;
+      const { ontology } = parseRDF(rdf);
+      const props = ontology.entityTypes[0].properties;
+      expect(props.find((p) => p.name === 'code')?.isIdentifier).toBe(true);
+      expect(props.find((p) => p.name === 'legacy')?.isIdentifier).toBeUndefined();
+    });
+
+    it('flags only the first property of a composite owl:hasKey and warns', () => {
+      const rdf = `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">
+    <owl:Class rdf:about="http://example.org/ontology/test/OrderLine">
+        <rdfs:label>Order Line</rdfs:label>
+        <owl:hasKey rdf:parseType="Collection">
+            <rdf:Description rdf:about="http://example.org/ontology/test/orderLine_orderId"/>
+            <rdf:Description rdf:about="http://example.org/ontology/test/orderLine_lineNo"/>
+        </owl:hasKey>
+    </owl:Class>
+    <owl:DatatypeProperty rdf:about="http://example.org/ontology/test/orderLine_orderId">
+        <rdfs:label>orderId</rdfs:label>
+        <rdfs:domain rdf:resource="http://example.org/ontology/test/OrderLine"/>
+    </owl:DatatypeProperty>
+    <owl:DatatypeProperty rdf:about="http://example.org/ontology/test/orderLine_lineNo">
+        <rdfs:label>lineNo</rdfs:label>
+        <rdfs:domain rdf:resource="http://example.org/ontology/test/OrderLine"/>
+    </owl:DatatypeProperty>
+</rdf:RDF>`;
+      const { ontology, warnings } = parseRDF(rdf);
+      const props = ontology.entityTypes[0].properties;
+      expect(props.find((p) => p.name === 'orderId')?.isIdentifier).toBe(true);
+      expect(props.find((p) => p.name === 'lineNo')?.isIdentifier).toBeUndefined();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toContain('复合键');
+      expect(warnings[0].targetId).toBe('orderLine');
+    });
+
     it('parses all property types correctly', () => {
       const rdf = `<?xml version="1.0" encoding="UTF-8"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"

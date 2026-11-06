@@ -122,7 +122,7 @@ export default function DesignerDetail(props: DesignerDetailProps) {
               + 新增属性
             </button>
           </div>
-          <p className="designer-section-hint">每个实体恰需要一个标识属性 🔑；点击左侧圆点切换标识（其余自动取消）。</p>
+          <p className="designer-section-hint">标识属性 🔑 可选（本体无强制主键）：点击左侧圆点设为实例主键，编辑器中每实体仅保留一个。</p>
           {entity.properties.length === 0 ? (
             <div className="designer-empty-inline">暂无属性，点击右上角「新增属性」开始定义。</div>
           ) : (

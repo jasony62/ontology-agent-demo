@@ -1,14 +1,21 @@
 import type { Ontology } from '../data/ontology';
 
 /**
- * 本体结构校验（自 Ontology-Playground designerStore 校验逻辑提炼）。
+ * 可写入性校验——检查「这份模型能否被本编辑器安全写回」，非语义校验。
+ * 本体语义质量（类不可满足、disjoint 冲突、domain/range 违反）由后端
+ * SHACL / OWL RL / validate_tbox_draft 判定，不在此处重复实现。
+ *
+ * ER 层只是本体的可操作面投影，不是模型全集：`EntityType.id` 是
+ * `uncapitalize(localName(IRI))` 算出来的派生量，不是用户写进 OWL 的字段，
+ * 因此这里不检查它的命名风格，只检查会破坏 IRI / 写入的非法字符。
+ *
  * 返回结构化校验条目（按严重度分组：blocker / required / suggestion）；
  * 空数组 = 通过。
  *
  * 分组语义：
  * - blocker     阻断级：id 冲突、引用缺失——必须修复
- * - required    必改级：命名规范、标识属性、类型/基数合法性——影响可维护性
- * - suggestion  建议级：缺描述等历史遗留可优化项——不影响使用
+ * - required    必改级：类型/基数/枚举合法性、缺失 id——影响可写入性
+ * - suggestion  建议级：缺描述、无属性、复合键降级——不影响使用
  */
 export type ValidationLevel = 'blocker' | 'required' | 'suggestion';
 
@@ -18,6 +25,9 @@ export interface ValidationIssue {
   /** 可点击定位的目标实体 id（有则提供） */
   targetId?: string;
 }
+
+/** IRI 中不允许出现、且用户可控制的字符（空格与 XML/URI 危险符号）。 */
+const ILLEGAL_ID_CHARS = /[\s<>"'{}|\\^`]/;
 
 export function validateOntology(o: Ontology): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -29,16 +39,27 @@ export function validateOntology(o: Ontology): ValidationIssue[] {
     }
     ids.add(e.id);
 
-    if (!e.id || !/^[a-z0-9][a-z0-9-]*$/.test(e.id)) {
-      issues.push({ level: 'required', message: `实体 "${e.name || '(未命名)'}" 的 id 必须是小写 slug（如 customer、work-order）`, targetId: e.id });
+    if (!e.id?.trim()) {
+      issues.push({ level: 'required', message: `实体 "${e.name || '(未命名)'}" 缺少 id`, targetId: e.id });
+    } else if (ILLEGAL_ID_CHARS.test(e.id)) {
+      issues.push({ level: 'required', message: `实体 "${e.name}" 的 id 含 IRI 非法字符`, targetId: e.id });
     }
     if (!e.name) issues.push({ level: 'required', message: '存在未命名实体', targetId: e.id });
-    if (!e.description) issues.push({ level: 'suggestion', message: `实体 "${e.name}" 缺少描述（历史遗留可优化项，不影响使用）`, targetId: e.id });
+    if (!e.description) issues.push({ level: 'suggestion', message: `实体 "${e.name}" 缺少描述（可优化项，不影响使用）`, targetId: e.id });
 
     const propNames = new Set<string>();
     const identifierProps = e.properties.filter((p) => p.isIdentifier);
-    if (identifierProps.length !== 1) {
-      issues.push({ level: 'required', message: `实体 "${e.name}" 需要恰一个标识属性（当前 ${identifierProps.length} 个）`, targetId: e.id });
+    // OWL 没有强制主键概念：0 个标识属性是外部本体的常态，不报任何级别。
+    // >1 是合法的复合键（owl:hasKey 允许），但本编辑器按单键处理，降为建议。
+    if (identifierProps.length > 1) {
+      issues.push({
+        level: 'suggestion',
+        message: `实体 "${e.name}" 声明了 ${identifierProps.length} 个标识属性（可能为复合键，当前编辑器按单键处理）`,
+        targetId: e.id,
+      });
+    }
+    if (e.properties.length === 0) {
+      issues.push({ level: 'suggestion', message: `实体 "${e.name}" 尚无属性`, targetId: e.id });
     }
     for (const p of e.properties) {
       if (!p.name) {
@@ -61,8 +82,10 @@ export function validateOntology(o: Ontology): ValidationIssue[] {
   for (const r of o.relationships) {
     if (relIds.has(r.id)) issues.push({ level: 'blocker', message: `关系 id 重复: ${r.id}` });
     relIds.add(r.id);
-    if (!r.id || !/^[a-z0-9][a-z0-9-]*$/.test(r.id)) {
-      issues.push({ level: 'required', message: `关系 "${r.name || '(未命名)'}" 的 id 必须是小写 slug` });
+    if (!r.id?.trim()) {
+      issues.push({ level: 'required', message: `关系 "${r.name || '(未命名)'}" 缺少 id` });
+    } else if (ILLEGAL_ID_CHARS.test(r.id)) {
+      issues.push({ level: 'required', message: `关系 "${r.name}" 的 id 含 IRI 非法字符` });
     }
     if (!o.entityTypes.some((e) => e.id === r.from)) {
       issues.push({ level: 'blocker', message: `关系 "${r.name}" 的 from 实体不存在: ${r.from}` });

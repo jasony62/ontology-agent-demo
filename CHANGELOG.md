@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-06
+
 ### Added
 
 - **MCP 新增 `validate_cqs_declared` 工具（CQ `focus` 模式声明锚点）**：与旧 `validate_cqs` 并存，接受 `guide_cq_generation(focus=...)` 产出的 `{cq, expected_type, anchor_terms}` 数组，采信题内显式声明的锚点术语；不传声明时按普通质检处理。声明项受四重约束（必须真实出现在本题题干、长度 2–40、非 OWL 元词、不在领域停用词表 `declared_anchor_stopwords`），且本卷声明词表须有 6–8 个不同术语方整批生效——`系统里有什么？` + `anchor_terms: ["系统"]` 仍判 `revise`，不会变成「任意词自报即合法」。**协议只增不改**：`tools/list` 多一个工具，旧 `validate_cqs` 的签名与输入 schema 不变，旧客户端无需重新协商即可继续调用。

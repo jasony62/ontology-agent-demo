@@ -11,7 +11,9 @@ P4 又从宿主 `reasoner/cq/` 搬到了这里。那次搬迁的理由不是"再
     from ontology_plugin_sdk.cq import gen, tbox, load_prompts
     P = load_prompts(os.path.join(_DIR, "cq_prompts.json"))
     gen.guide_cq_generation(P, engine=engine)
-    gen.validate_cqs(cqs, P, bank_path=os.path.join(_DIR, "cq_tests.json"))
+    gen.validate_cqs(cqs, P, bank_path=os.path.join(_DIR, "cq_tests.json"),
+                     extra_terms=runtime_terms)          # 与 guide 同源的运行时术语
+    gen.validate_cqs(cqs, P, allow_declared_anchors=True)  # focus 模式声明锚点
     tbox.validate_tbox_draft(ttl, cqs, P)
 
 不提供 prompts 时用框架中立默认模板（同目录 default_prompts.json），

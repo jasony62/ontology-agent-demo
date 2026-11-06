@@ -16,7 +16,7 @@
 │   ├── agent_task/      #   完整领域（7 能力 / R2 R4 / 9 个 MCP 工具）
 │   └── _minimal/        #   最小骨架（零 CLI 复制的验收物）
 ├── api/                 # FastAPI REST 服务（api/main.py，29 个端点）
-├── mcp/                 # MCP Server（30 个工具：领域 9 / 通用 15 / 建模 6）
+├── mcp/                 # MCP Server（31 个工具：领域 9 / 通用 15 / 建模 7）
 ├── frontend/            # 前端
 │   ├── index.html       #   旧单页（回退）
 │   └── app/             #   本体图谱工作台（React 19 + Vite + Cytoscape）

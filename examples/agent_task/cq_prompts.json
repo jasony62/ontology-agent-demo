@@ -26,6 +26,9 @@
       "composed_of", "requires_constraint", "has_certified", "has_risk_level", "assigned_to"
     ]
   },
+  "declared_anchor_stopwords": [
+    "系统", "东西", "数据", "信息", "内容", "情况", "相关", "全部", "所有"
+  ],
   "cq_generation": {
     "type_taxonomy": {
       "retrieval": "直接查询可答：『哪些 X 满足 Y？』『X 的 Z 是什么？』",

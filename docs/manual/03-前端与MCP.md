@@ -98,6 +98,7 @@ docker compose up -d mcp
 | `validate_shapes()` | SHACL 数据体检：按 `domains/agent_task/shapes/agent_task.ttl` 返回 {conforms, summary, violations} |
 | `guide_cq_generation(focus?)` | **CQ 自动出题-指南**：生成宿主 LLM 出题指令（四类题型配比、措辞规则、JSON 格式）；focus 提供全新领域时降级 from_description 模式 |
 | `validate_cqs(cqs)` | **CQ 自动出题-质检**：确定性质检（零 LLM 依赖）——句式/schema 术语锚点/查重/题型预标/覆盖度报告，返回 usable/revise/duplicate |
+| `validate_cqs_declared(cqs)` | **CQ 自动出题-质检（focus 模式）**：接受 `guide_cq_generation(focus=...)` 产出的 `{cq, expected_type, anchor_terms}` 数组，采信题内声明锚点（题干匹配 / 元词黑名单 / 领域停用词表 / 本卷词表 6–8 四重约束）；不传声明时按普通质检处理 |
 | `cq_regression()` | **CQ 回归**：按 cq_tests.json 复放能力点断言（CQ）验证集，检查质检是否回归 |
 
 **受控语义接口（v1.3.0）**：配置领域包 `access_policy.json` 语义白名单后，MCP 只暴露允许的类/谓词（含子类继承），白名单外查询被拒并返回诚实提示；策略激活时 `query_sparql` 禁用。

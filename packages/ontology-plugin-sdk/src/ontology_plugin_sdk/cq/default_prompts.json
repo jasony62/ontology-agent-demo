@@ -19,6 +19,7 @@
     "classes": [],
     "properties": []
   },
+  "declared_anchor_stopwords": [],
   "cq_generation": {
     "type_taxonomy": {
       "retrieval": "查取值/查关系：问『是什么』『有哪些』",

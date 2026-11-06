@@ -450,7 +450,7 @@ def export_materialized(owl_path: str, out_ttl: str) -> None:
 | 通道 | 消费者 | 数据 |
 |---|---|---|
 | REST `/api/reason` 等 | 程序 / 前端 | 领域查询 + 推导链 |
-| MCP `:9000/mcp` | 智能体（豆包） | 30 个工具 |
+| MCP `:9000/mcp` | 智能体（豆包） | 31 个工具 |
 | SPARQL（Fuseki/Oxigraph） | 分析工具 | 物化快照（S4 导出） |
 | GraphRAG API | 智能体 / 检索服务 | 物化快照 + 向量库 |
 

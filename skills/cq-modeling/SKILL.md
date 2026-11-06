@@ -38,6 +38,14 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 
 断言：句式检查过、锚点检查过、查重通过（对拍既有题库 `cq_tests.json`，不与已入库题重复）、覆盖度报告可接受。不过关 → 回 3.2 改题，**不要**为了过检硬凑句式。
 
+`focus` 模式出的题（指令要求你在输出 JSON 里声明 `anchor_terms`）走另一个入口——把 `{cq, expected_type, anchor_terms}` 数组原样送检：
+
+```json
+{"name": "validate_cqs_declared", "arguments": {"cqs": [{"cq": "<题1>", "expected_type": "retrieval", "anchor_terms": ["<术语1>", "<术语2>"]}, "..."]}}
+```
+
+声明锚点不是自报即合法：必须真实出现在该题题干、长度 2–40、非 OWL 元词（`Thing`/`sameAs` 等）、不在领域停用词表（`系统`/`数据` 等），且**整卷声明词表要有 6–8 个不同术语**才整批生效。规模不足或未声明 → 仍按普通质检判 `revise`。
+
 ### 3.4 TBox 草稿与分级评审
 
 ```json
@@ -77,6 +85,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 |---|---|
 | `guide_cq_generation` 没有 schema 术语 | 未接引擎或不带 engine 调用——按 schema_anchored 模式让服务端导出锚点；全新领域才走 `focus` 降级 |
 | `validate_cqs` 报与既有题重复 | 题库 `cq_tests.json` 是查重对拍对象——重复即换角度改题，不是调参数绕过 |
+| 术语有、但和质检口径不一致 | 查事实源：`validate_cqs` 的锚点来自运行时 `schema_map(engine)`，不是 `cq_prompts.json` 手写表——确认调用方把 engine 传下去了（`guide` 与 `validate` 必须同源） |
 | 回归报「先建题库」 | 题库为空/缺失是如实报错：先走 3.5 落库 |
 | 回归失败项不知道改哪 | 看失败项的 `rule` 退化 hint（R1 属性链 / R2 委派 / R3 传递闭包 / R4 合规冲突）定位受影响规则 |
 | TBox 草稿某级不过 | 分级评审逐级暴露问题：按 validate_tbox_draft 报告修对应等级，不从 L1 重头看 |

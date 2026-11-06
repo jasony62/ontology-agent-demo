@@ -87,15 +87,6 @@ export default function App() {
     setRightTab('designer');
   };
 
-  /** 页头「可视化编辑」按钮：已在该 Tab 就关闭右侧编辑区，否则切过去 */
-  const toggleDesigner = () => {
-    if (rightTab === 'designer') {
-      setRightTab(null);
-      return;
-    }
-    openDesigner();
-  };
-
   /** 关闭右侧编辑区：在线编辑走 dirty 确认，可视化编辑直接收起（组件保活） */
   const closeRightPane = () => {
     if (rightTab === 'editor') {
@@ -256,10 +247,7 @@ export default function App() {
           <button onClick={() => setExportOpen(true)}>导出</button>
           <button onClick={() => setSourceMode('view')} disabled={!sourceName}>OWL 源码</button>
           <button onClick={() => setSourceMode('edit')} disabled={!sourceName}>源码编辑</button>
-          <button className={rightTab === 'designer' ? '' : 'secondary'} onClick={toggleDesigner}>
-            {rightTab === 'designer' ? '关闭编辑器' : '可视化编辑'}
-          </button>
-          <button className="secondary" onClick={() => void openEditor()}>在线编辑</button>
+          {/* 编辑入口只在工作区：右侧面板 Tab 条 / 40px 图标条 / 窄屏标签页，页头不再重复一份 */}
           <a className="toolbar-link secondary" href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
           <button className="secondary" onClick={() => setGuideOpen(true)}>服务能力</button>
         </div>

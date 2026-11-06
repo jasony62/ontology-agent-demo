@@ -68,6 +68,9 @@
 .pane-icon-btn:focus-visible,
 .pane-rail-toggle:focus-visible,
 .pane-rail-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* 页头不再有编辑入口：折叠成图标条时这两个按钮是唯一入口，给可见的按钮外观，别只剩 tooltip */
+.pane-rail-tab,
+.pane-rail-toggle { border-color: var(--border); background: var(--panel-2); color: var(--heading); }
 
 /* ---- 40px 折叠图标条：保留可点击的展开入口，不做 0 宽隐藏 ---- */
 .pane-rail {

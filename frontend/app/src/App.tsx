@@ -15,6 +15,8 @@ import Designer from './components/Designer';
 import OntologyEditor from './components/OntologyEditor';
 import MaterializedPanel from './components/MaterializedPanel';
 import ServiceGuideModal from './components/ServiceGuideModal';
+import WorkspaceSplit from './components/WorkspaceSplit';
+import type { WorkspaceTab } from './components/WorkspaceSplit';
 import { useEditorStore } from './store/editorStore';
 
 type SourceMode = 'closed' | 'view' | 'edit';
@@ -39,9 +41,11 @@ export default function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [sourceMode, setSourceMode] = useState<SourceMode>('closed');
-  const [designerOpen, setDesignerOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
+  // 工作区右侧编辑区：tab 决定显示哪个编辑器，mounted 决定是否已挂载（首次打开才挂载）
+  const [rightTab, setRightTab] = useState<WorkspaceTab | null>(null);
+  const [designerMounted, setDesignerMounted] = useState(false);
+  const [editorMounted, setEditorMounted] = useState(false);
   // 领域包切换器：清单来自 /api/domains（切换不落盘，进程重启回默认领域）
   const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null);
   const [domainBusy, setDomainBusy] = useState(false);
@@ -56,14 +60,15 @@ export default function App() {
   const editorDirty = useEditorStore((s) => s.dirty);
   const editorCloseStore = useEditorStore((s) => s.closeEditor);
 
-  /** 打开在线编辑器：拉取后端编辑模型（任意 OWL 可编辑） */
+  /** 打开在线编辑器：首次打开才拉取后端编辑模型（重复切 Tab 不能覆盖未保存修改） */
   const openEditor = async () => {
-    setEditorOpen(true);
+    setEditorMounted(true);
+    setRightTab('editor');
+    if (useEditorStore.getState().model) return;
     editorSetLoading(true);
     try {
       const model = await api.editModel();
       editorOpenStore(model);
-      scrollToEditor('.editor-toolbar');
     } catch (e) {
       editorSetError(`编辑模型加载失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -74,7 +79,30 @@ export default function App() {
   const closeEditor = () => {
     if (editorDirty && !window.confirm('有未保存的编辑修改，确定关闭编辑器？')) return;
     editorCloseStore();
-    setEditorOpen(false);
+    setRightTab(null);
+  };
+
+  const openDesigner = () => {
+    setDesignerMounted(true);
+    setRightTab('designer');
+  };
+
+  /** 页头「可视化编辑」按钮：已在该 Tab 就关闭右侧编辑区，否则切过去 */
+  const toggleDesigner = () => {
+    if (rightTab === 'designer') {
+      setRightTab(null);
+      return;
+    }
+    openDesigner();
+  };
+
+  /** 关闭右侧编辑区：在线编辑走 dirty 确认，可视化编辑直接收起（组件保活） */
+  const closeRightPane = () => {
+    if (rightTab === 'editor') {
+      closeEditor();
+      return;
+    }
+    setRightTab(null);
   };
 
   // 图例与画布共用同一份分组视图：两处若各自算一遍，颜色迟早对不上
@@ -95,17 +123,6 @@ export default function App() {
   useEffect(() => {
     setFocus(null);
   }, [graphGroups]);
-
-  /** #21：编辑入口点击后锚点滚动到编辑区并短暂高亮，避免"点完无反应" */
-  const scrollToEditor = (selector: string) => {
-    requestAnimationFrame(() => {
-      const el = document.querySelector(selector);
-      if (!el) return;
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      el.classList.add('flash-highlight');
-      window.setTimeout(() => el.classList.remove('flash-highlight'), 1800);
-    });
-  };
 
   // 挂载初始化 / 领域切换后刷新：健康检查 → 本体模式 → 物化数据 → 图谱分组 → 源码 → 领域清单
   // #19：health 失败提示"服务未启动"；materialized/source 失败提示"本体文件/加载问题"，不再误报
@@ -239,10 +256,10 @@ export default function App() {
           <button onClick={() => setExportOpen(true)}>导出</button>
           <button onClick={() => setSourceMode('view')} disabled={!sourceName}>OWL 源码</button>
           <button onClick={() => setSourceMode('edit')} disabled={!sourceName}>源码编辑</button>
-          <button className={designerOpen ? '' : 'secondary'} onClick={() => { setDesignerOpen((v) => { const nv = !v; if (nv) scrollToEditor('#designer-root'); return nv; }); }}>
-            {designerOpen ? '关闭编辑器' : '可视化编辑'}
+          <button className={rightTab === 'designer' ? '' : 'secondary'} onClick={toggleDesigner}>
+            {rightTab === 'designer' ? '关闭编辑器' : '可视化编辑'}
           </button>
-          <button className="secondary" onClick={openEditor}>在线编辑</button>
+          <button className="secondary" onClick={() => void openEditor()}>在线编辑</button>
           <a className="toolbar-link secondary" href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
           <button className="secondary" onClick={() => setGuideOpen(true)}>服务能力</button>
         </div>
@@ -262,70 +279,80 @@ export default function App() {
           </div>
         )}
 
-        <div className="panel">
-          <h2>本体图谱 · {sourceName || '—'}</h2>
-          <MaterializedPanel />
-          <div className="legend">
-            <span className="legend-sep">节点</span>
-            <button
-              type="button"
-              className={`item clickable${sameFocus(focus, { kind: 'class' }) ? ' active' : ''}`}
-              aria-pressed={sameFocus(focus, { kind: 'class' })}
-              onClick={() => toggleFocus({ kind: 'class' })}
-              title="点击聚焦：类保持原色，其余节点淡化；再次点击恢复"
-            >
-              <span className="dot" style={{ background: CLASS_COLOR }}></span> 类（Class）
-            </button>
-            {groupLegend.length > 0 ? (
-              groupLegend.map((g) => (
+        <WorkspaceSplit
+          graph={(
+            <div className="panel workspace-graph">
+              <h2>本体图谱 · {sourceName || '—'}</h2>
+              <MaterializedPanel />
+              <div className="legend">
+                <span className="legend-sep">节点</span>
                 <button
                   type="button"
-                  className={`item clickable${sameFocus(focus, { kind: 'group', name: g.name }) ? ' active' : ''}`}
-                  aria-pressed={sameFocus(focus, { kind: 'group', name: g.name })}
-                  key={g.name}
-                  onClick={() => toggleFocus({ kind: 'group', name: g.name })}
-                  title={`点击聚焦：分组 ${g.name}（${g.count} 个个体）保持原色，其余节点淡化；再次点击恢复`}
+                  className={`item clickable${sameFocus(focus, { kind: 'class' }) ? ' active' : ''}`}
+                  aria-pressed={sameFocus(focus, { kind: 'class' })}
+                  onClick={() => toggleFocus({ kind: 'class' })}
+                  title="点击聚焦：类保持原色，其余节点淡化；再次点击恢复"
                 >
-                  <span className="dot" style={{ background: g.color }}></span> {g.label}（{g.count}）
+                  <span className="dot" style={{ background: CLASS_COLOR }}></span> 类（Class）
                 </button>
-              ))
-            ) : (
-              <button
-                type="button"
-                className={`item clickable${sameFocus(focus, { kind: 'individual' }) ? ' active' : ''}`}
-                aria-pressed={sameFocus(focus, { kind: 'individual' })}
-                onClick={() => toggleFocus({ kind: 'individual' })}
-                title="点击聚焦：个体保持原色，其余节点淡化；再次点击恢复"
-              >
-                <span className="dot" style={{ background: INDIVIDUAL_COLOR }}></span> 个体（Individual）
-              </button>
-            )}
-            <span className="legend-sep">关系</span>
-            <span className="item"><span className="line dashed" style={{ borderColor: STRUCTURE_EDGE_COLOR }}></span> 结构边（类层级 / 实例归类）</span>
-            <span className="item"><span className="line"></span> 原始断言边</span>
-            <span className="item"><span className="line dashed" style={{ borderColor: '#2f8f6b' }}></span> 推理新增边（物化）</span>
-          </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 480px', minWidth: 320 }}>
-              <GraphErrorBoundary>
-                <GraphView
-                  viewMode={viewMode}
-                  asserted={viewMode === 'diff' ? null : graphData ?? materialized.asserted}
-                  inferred={materialized.inferred}
-                  groups={graphGroups}
-                  focus={focus}
-                  onSelect={(id) => setSelectedId(id)}
-                />
-              </GraphErrorBoundary>
+                {groupLegend.length > 0 ? (
+                  groupLegend.map((g) => (
+                    <button
+                      type="button"
+                      className={`item clickable${sameFocus(focus, { kind: 'group', name: g.name }) ? ' active' : ''}`}
+                      aria-pressed={sameFocus(focus, { kind: 'group', name: g.name })}
+                      key={g.name}
+                      onClick={() => toggleFocus({ kind: 'group', name: g.name })}
+                      title={`点击聚焦：分组 ${g.name}（${g.count} 个个体）保持原色，其余节点淡化；再次点击恢复`}
+                    >
+                      <span className="dot" style={{ background: g.color }}></span> {g.label}（{g.count}）
+                    </button>
+                  ))
+                ) : (
+                  <button
+                    type="button"
+                    className={`item clickable${sameFocus(focus, { kind: 'individual' }) ? ' active' : ''}`}
+                    aria-pressed={sameFocus(focus, { kind: 'individual' })}
+                    onClick={() => toggleFocus({ kind: 'individual' })}
+                    title="点击聚焦：个体保持原色，其余节点淡化；再次点击恢复"
+                  >
+                    <span className="dot" style={{ background: INDIVIDUAL_COLOR }}></span> 个体（Individual）
+                  </button>
+                )}
+                <span className="legend-sep">关系</span>
+                <span className="item"><span className="line dashed" style={{ borderColor: STRUCTURE_EDGE_COLOR }}></span> 结构边（类层级 / 实例归类）</span>
+                <span className="item"><span className="line"></span> 原始断言边</span>
+                <span className="item"><span className="line dashed" style={{ borderColor: '#2f8f6b' }}></span> 推理新增边（物化）</span>
+              </div>
+              <div className="graph-row">
+                <div className="graph-col">
+                  <GraphErrorBoundary>
+                    <GraphView
+                      viewMode={viewMode}
+                      asserted={viewMode === 'diff' ? null : graphData ?? materialized.asserted}
+                      inferred={materialized.inferred}
+                      groups={graphGroups}
+                      focus={focus}
+                      onSelect={(id) => setSelectedId(id)}
+                    />
+                  </GraphErrorBoundary>
+                </div>
+                <div className="inspector-col">
+                  <Inspector />
+                </div>
+              </div>
             </div>
-            <div style={{ flex: '0 1 300px', minWidth: 260 }}>
-              <Inspector />
-            </div>
-          </div>
-        </div>
-
-        {designerOpen && <Designer />}
-        {editorOpen && <OntologyEditor onClose={closeEditor} />}
+          )}
+          activeTab={rightTab}
+          onOpenTab={(tab) => (tab === 'designer' ? openDesigner() : void openEditor())}
+          onCloseTab={closeRightPane}
+          dirty={{ editor: editorDirty }}
+          panes={{
+            // key 跟着本体文件走：切领域 / 重载本体后重建，避免「重置」把上一个本体的快照写回来
+            designer: designerMounted ? <Designer key={sourceName} /> : null,
+            editor: editorMounted ? <OntologyEditor onClose={() => setRightTab(null)} /> : null,
+          }}
+        />
       </main>
 
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}

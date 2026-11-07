@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from reasoner.engine import ONTO_PATH, DEFAULT_NS  # noqa: E402
 
-from _helpers import domain_module, submodule  # noqa: E402
+from _helpers import domain_module, make_adapter, submodule  # noqa: E402
 
 
 
@@ -120,7 +120,7 @@ def test_dirty_increment_on_classify():
     from api.main import app
     client = TestClient(app)
     before = client.get("/api/ontology/status").json()["pending_changes"]
-    r = client.post("/api/entities", json={"payload": {
+    r = client.post("/api/domains/current/entities", json={"payload": {
         "name": "t_dirty_probe", "capabilities": ["Coding"], "constraints": [],
         "risk_level": 3,
     }, "persist": False})
@@ -155,8 +155,8 @@ def test_mcp_tools_follow_adapter_factory():
     register_tools = submodule(domain_module(), "mcp").register_tools
 
     engine = OntologyEngine(ONTO_PATH)
-    a1 = AgentTaskAdapter(engine, DEFAULT_CONFIG)
-    a2 = AgentTaskAdapter(engine, DEFAULT_CONFIG)
+    a1 = make_adapter(_d, engine, DEFAULT_CONFIG)
+    a2 = make_adapter(_d, engine, DEFAULT_CONFIG)
     state = {"adapter": a1}
     server = _FakeServer()
     register_tools(server, lambda: state["adapter"])

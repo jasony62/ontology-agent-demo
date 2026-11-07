@@ -30,12 +30,39 @@ def test_openapi_spec_is_openapi_3():
     assert len(spec["paths"]) >= 29
 
 
-def test_capability_endpoints_replace_reason():
-    """读写分离：两个新入口成对出现，总数符合预期。"""
+# 领域模式专属端点：统一挂在 /api/domains/current/ 下（表 A）。
+# 旧路径不做任何兼容——保留这份清单是为了在 OpenAPI 里断言它们真的消失了。
+MOVED_PATHS = {
+    "/api/ontology",
+    "/api/ontology/graph-groups",
+    "/api/capabilities/query",
+    "/api/capabilities/apply",
+    "/api/entities/schema",
+    "/api/entities",
+    "/api/explain",
+    "/api/consistency",
+    "/api/ontology/individual/{name}",
+    "/api/ontology/revoke",
+    "/api/ontology/import",
+}
+
+
+def test_domain_endpoints_are_namespaced_under_current():
+    """领域端点统一前缀：11 个搬进 /api/domains/current/，旧路径一个不留。
+
+    路径总数不变（11 搬 + 19 留 = 30），变的只是 key。旧路径必须从
+    `spec["paths"]` 里彻底消失——不做别名、deprecated 或重定向。
+    """
     spec = client.get("/openapi.json").json()
-    assert "/api/capabilities/query" in spec["paths"]
-    assert "/api/capabilities/apply" in spec["paths"]
-    assert len(spec["paths"]) == 30
+    paths = spec["paths"]
+    prefixed = {
+        path for path in paths if path.startswith("/api/domains/current/")
+    }
+    assert len(prefixed) == len(MOVED_PATHS) == 11
+    assert not MOVED_PATHS & set(paths), (
+        f"旧路径仍在 OpenAPI 中：{sorted(MOVED_PATHS & set(paths))}"
+    )
+    assert len(paths) == 30
 
 
 def test_every_operation_is_tagged_and_summarised():
@@ -95,13 +122,13 @@ def test_request_body_description_lists_fields():
     """
     spec = client.get("/openapi.json").json()
 
-    body = spec["paths"]["/api/capabilities/query"]["post"]["requestBody"]
+    body = spec["paths"]["/api/domains/current/capabilities/query"]["post"]["requestBody"]
     desc = body.get("description", "")
     for field in ("type", "task", "agent", "params"):
         assert f"`{field}`" in desc, f"请求体说明缺少字段 {field}"
     assert "查询" in desc
 
-    apply_body = spec["paths"]["/api/capabilities/apply"]["post"]["requestBody"]
+    apply_body = spec["paths"]["/api/domains/current/capabilities/apply"]["post"]["requestBody"]
     apply_desc = apply_body.get("description", "")
     for field in ("type", "task", "agent", "persist", "params"):
         assert f"`{field}`" in apply_desc, f"请求体说明缺少字段 {field}"

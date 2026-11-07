@@ -59,7 +59,7 @@ npm run build          # 生产构建（typecheck + vite build）
 
 | 前缀 | 用途 | 示例 |
 |---|---|---|
-| `feat` | 新功能（用户可见） | `feat(api): 新增 /api/explain 端点` |
+| `feat` | 新功能（用户可见） | `feat(api): 新增 /api/domains/current/explain 端点` |
 | `fix` | Bug 修复（用户可见） | `fix(engine): 修正属性链反演方向` |
 | `docs` | 文档（指南/README/设计文档） | `docs(guide): 补第 5 篇 CLI 示例` |
 | `refactor` | 重构（行为不变） | `refactor(scripts): 合并重复的引擎导入` |
@@ -92,7 +92,7 @@ npm run build          # 生产构建（typecheck + vite build）
 ## [Unreleased]
 
 ### Added
-- feat(api): 新增 `/api/explain` 端点，返回最近一次推理的推导链
+- feat(api): 新增 `/api/domains/current/explain` 端点，返回最近一次推理的推导链
 
 ### Fixed
 - fix(engine): 修正属性链反演方向导致的漏匹配

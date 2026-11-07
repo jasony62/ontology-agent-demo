@@ -21,25 +21,25 @@ description: 领域能力查询与调用：能力匹配、任务编排、一致�
 
 ```bash
 # 能力匹配（R1/R2，纯读）：谁能做 t_login_dev？
-curl -s -X POST http://127.0.0.1:8000/api/capabilities/query -H "Content-Type: application/json" \
+curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query -H "Content-Type: application/json" \
   -d '{"type":"capability_match","task":"t_login_dev"}'
 
 # 任务编排（R3 依赖传递 + 逐环节匹配，纯读）
-curl -s -X POST http://127.0.0.1:8000/api/capabilities/query -H "Content-Type: application/json" \
+curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query -H "Content-Type: application/json" \
   -d '{"type":"orchestrate","task":"t_feature"}'
 
 # 分配（R4 合规冲突检测；写操作，改图）
-curl -s -X POST http://127.0.0.1:8000/api/capabilities/apply -H "Content-Type: application/json" \
+curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/apply -H "Content-Type: application/json" \
   -d '{"type":"assign","task":"t_compliance_dev","agent":"junior_dev"}'
 
 # 一致性 / 合规冲突检查
-curl -s -X POST http://127.0.0.1:8000/api/consistency -H "Content-Type: application/json" -d '{}'
+curl -s -X POST http://127.0.0.1:8000/api/domains/current/consistency -H "Content-Type: application/json" -d '{}'
 
 # 最近一次推理的推导链（事实 → 规则 → 结论）
-curl -s -X POST http://127.0.0.1:8000/api/explain -H "Content-Type: application/json" -d '{}'
+curl -s -X POST http://127.0.0.1:8000/api/domains/current/explain -H "Content-Type: application/json" -d '{}'
 ```
 
-MCP 侧对应 `capability_match` / `orchestrate` / `assign` / `consistency` / `explain` / `explain_proof`（机读证明：结论→规则→前提结构化导出）。**`/api/explain` 只对最近一次查询有效**，先查询再 explain；查询响应本身已带 `derivation`，可直接取用。
+MCP 侧对应 `capability_match` / `orchestrate` / `assign` / `consistency` / `explain` / `explain_proof`（机读证明：结论→规则→前提结构化导出）。**`/api/domains/current/explain` 只对最近一次查询有效**，先查询再 explain；查询响应本身已带 `derivation`，可直接取用。
 
 ### 3.2 SPARQL 查询（任意模式）
 
@@ -57,7 +57,7 @@ curl -s -X POST http://127.0.0.1:8000/api/query -H "Content-Type: application/js
 |---|---|
 | SELECT 基本语法 / FILTER / OPTIONAL / UNION / ORDER BY / 聚合 / 子查询 / BIND / VALUES | ✅ |
 | 属性路径（`+` `*` `/` `^`） | ✅ |
-| UPDATE（INSERT / DELETE） | ❌ 解析即拒——**写路径必须「先校验后留痕」**，更新走 `/api/entities`、`/api/ontology/import`、MCP `assign` 等带事务与变更记录的任务接口 |
+| UPDATE（INSERT / DELETE） | ❌ 解析即拒——**写路径必须「先校验后留痕」**，更新走 `/api/domains/current/entities`、`/api/domains/current/ontology/import`、MCP `assign` 等带事务与变更记录的任务接口 |
 | SERVICE（联邦查询） | ❌ 不作为产品能力承诺 |
 | ASK / CONSTRUCT / DESCRIBE | ❌ 仅 SELECT |
 
@@ -70,12 +70,12 @@ curl -s -X POST http://127.0.0.1:8000/api/query -H "Content-Type: application/js
 ### 3.4 实体写入（严格走任务接口）
 
 ```bash
-curl -s http://127.0.0.1:8000/api/entities/schema     # 先看领域声明的字段形状
-curl -s -X POST http://127.0.0.1:8000/api/entities \
+curl -s http://127.0.0.1:8000/api/domains/current/entities/schema     # 先看领域声明的字段形状
+curl -s -X POST http://127.0.0.1:8000/api/domains/current/entities \
   -H "Content-Type: application/json" -d '{"payload": {...按 schema...}}'
 ```
 
-未知字段/缺必填/类型不符 → 400（不是 500）；`persist: true` 才落盘。批量导入走 `/api/ontology/import`（任一校验失败整体拒绝，事务语义）。
+未知字段/缺必填/类型不符 → 400（不是 500）；`persist: true` 才落盘。批量导入走 `/api/domains/current/ontology/import`（任一校验失败整体拒绝，事务语义）。
 
 ### 3.5 CLI 兜底（无服务时）
 

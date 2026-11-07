@@ -3,17 +3,18 @@
 架构：通用引擎（reasoner.engine，与本体无关） + 领域适配器（domains/，运行时动态加载）。
 
 端点一览：
-    领域层（适配器由运行态配置决定，不再绑定某个具体领域）：
+    领域层（`/api/domains/current/*`：适配器由运行态配置决定，不再绑定某个具体领域；
+    热切换后同一 URL 指向另一个领域的实现）：
         GET  /                 前端 Demo 页面（图谱展示）
-        GET  /api/health       健康检查
-        GET  /api/ontology     本体结构（图谱渲染数据）
-        GET  /api/ontology/graph-groups 领域声明的图谱分组（前端上色 / 图例）
-        POST /api/capabilities/query 领域能力查询（纯读，不改图、不落盘，可安全重试）
-        POST /api/capabilities/apply 领域能力变更（改图，persist=true 落盘，不保证幂等）
-        GET  /api/entities/schema 当前领域的实体 schema（字段 / 类型 / 必填）
-        POST /api/entities     按领域 schema 新建实体（校验 → 写图 → 推理）
-        POST /api/explain      最近一次推理的推导链
-        POST /api/consistency  一致性 / 合规冲突检查
+        GET  /api/health       健康检查（运维探针，不随领域模式变化）
+        GET  /api/domains/current/ontology     本体结构（图谱渲染数据）
+        GET  /api/domains/current/ontology/graph-groups 领域声明的图谱分组（前端上色 / 图例）
+        POST /api/domains/current/capabilities/query 领域能力查询（纯读，不改图、不落盘，可安全重试）
+        POST /api/domains/current/capabilities/apply 领域能力变更（改图，persist=true 落盘，不保证幂等）
+        GET  /api/domains/current/entities/schema 当前领域的实体 schema（字段 / 类型 / 必填）
+        POST /api/domains/current/entities     按领域 schema 新建实体（校验 → 写图 → 推理）
+        POST /api/domains/current/explain      最近一次推理的推导链
+        POST /api/domains/current/consistency  一致性 / 合规冲突检查
     领域管理（P2：热切换，领域层端点随当前领域变化）：
         GET  /api/domains                 已安装领域 + 当前领域
         POST /api/domains/reload          L2 同包重载（领域代码改了）
@@ -330,6 +331,23 @@ def _require_capability(capability: str):
         )
 
 
+def _require_method(method: str):
+    """A-box 操作门禁：领域未实现该方法时返 501，而不是 AttributeError → 500。
+
+    为什么**不**复用 `_require_capability()`：后者会查领域 `CAPABILITIES`
+    声明，而 `delete_individual` / `revoke` / `import_individuals` 不是契约
+    方法，现有领域也都没有声明这三个名字——套用会把端点对所有领域变成 400。
+    这里只做方法存在性检查：服务端能力不足（该领域没有实现）→ 501，
+    与契约缺失同一语义，而不是客户端参数错误。
+    """
+    if not callable(getattr(ADAPTER, method, None)):
+        raise HTTPException(
+            status_code=501,
+            detail=f"当前领域「{getattr(ADAPTER, 'NAME', '?')}」未实现 A-box 方法 "
+                   f"{method}；该端点仅对提供此方法的领域可用。",
+        )
+
+
 def _frontend_index():
     # 优先返回新前端（frontend/app/dist，Vite 构建产物）；
     # 未构建时给出明确提示，避免「静默回退旧页 → 误以为仍停在 demo 页」的误解。
@@ -429,9 +447,9 @@ def _class_count(field: str) -> int:
 def health():
     """返回服务状态、本体版本、脏标记、当前领域与契约探针。
 
-    给调用方：`contract.query_kinds` 是 `POST /api/capabilities/query` 当前
-    可用只读能力的权威清单，`contract.apply_kinds` 对应
-    `POST /api/capabilities/apply`；两者都按领域 `CAPABILITIES` 过滤过。
+    给调用方：`contract.query_kinds` 是 `POST /api/domains/current/capabilities/query`
+    当前可用只读能力的权威清单，`contract.apply_kinds` 对应
+    `POST /api/domains/current/capabilities/apply`；两者都按领域 `CAPABILITIES` 过滤过。
     `counts` 与顶层 agents / tasks / assignments 是领域可选统计，领域没有
     这些方法时为 0，而不是报错。
     """
@@ -451,14 +469,14 @@ def health():
             # 声明了却没有落点的能力（加载器本该拒绝；这里再暴露一次，
             # 便于排查运行期手动换上的适配器）
             "dangling": dangling_capabilities(ADAPTER),
-            # 实际可从 POST /api/capabilities/query 触达的只读能力：
+            # 实际可从 POST /api/domains/current/capabilities/query 触达的只读能力：
             # 框架内置 ∪ 领域 QUERY_HANDLERS，再按领域声明过滤。
             "query_kinds": sorted(k for k in _query_kinds(ADAPTER) if supports(ADAPTER, k)),
-            # 实际可从 POST /api/capabilities/apply 触达的变更能力：
+            # 实际可从 POST /api/domains/current/capabilities/apply 触达的变更能力：
             # 框架内置 ∪ 领域 APPLY_HANDLERS，再按领域声明过滤。
             "apply_kinds": sorted(k for k in _apply_kinds(ADAPTER) if supports(ADAPTER, k)),
             # 实体创建：schema 的类 + 字段名清单。完整形状看
-            # GET /api/entities/schema（这里只做"有没有、有哪些字段"的快照）
+            # GET /api/domains/current/entities/schema（这里只做"有没有、有哪些字段"的快照）
             "entity_schema": _schema_summary(ADAPTER),
         },
         "dirty": ADAPTER.change_count > 0,
@@ -479,7 +497,7 @@ def health():
 
 
 @app.get(
-    "/api/ontology",
+    "/api/domains/current/ontology",
     tags=["领域推理"],
     summary="领域图谱结构",
     responses={
@@ -507,7 +525,7 @@ def ontology():
 
 
 @app.get(
-    "/api/ontology/graph-groups",
+    "/api/domains/current/ontology/graph-groups",
     tags=["领域推理"],
     summary="图谱分组",
     responses={
@@ -556,8 +574,8 @@ APPLY_KINDS = {
     "assign": lambda a, req: a.assign(_uri(req.task), _uri(req.agent), persist=req.persist),
 }
 
-QUERY_ENDPOINT = "POST /api/capabilities/query"
-APPLY_ENDPOINT = "POST /api/capabilities/apply"
+QUERY_ENDPOINT = "POST /api/domains/current/capabilities/query"
+APPLY_ENDPOINT = "POST /api/domains/current/capabilities/apply"
 
 
 def _query_kinds(adapter) -> dict:
@@ -643,7 +661,7 @@ def _schema_summary(adapter) -> dict | None:
 
 
 @app.post(
-    "/api/capabilities/query",
+    "/api/domains/current/capabilities/query",
     tags=["领域推理"],
     summary="领域能力查询",
     responses={
@@ -682,7 +700,7 @@ def capabilities_query(req: CapabilityQueryRequest):
 
 
 @app.post(
-    "/api/capabilities/apply",
+    "/api/domains/current/capabilities/apply",
     tags=["领域推理"],
     summary="领域能力变更",
     responses={
@@ -721,7 +739,7 @@ def capabilities_apply(req: ApplyRequest):
 
 
 @app.get(
-    "/api/entities/schema",
+    "/api/domains/current/entities/schema",
     tags=["领域推理"],
     summary="实体 schema",
     responses={
@@ -739,8 +757,8 @@ def capabilities_apply(req: ApplyRequest):
 def entity_schema_endpoint():
     """当前领域的实体 schema（字段名 / 类型 / 是否必填）。
 
-    集成方据此构造 payload，不必读源码或猜字段——`/api/entities` 的
-    校验规则就是这里返回的东西。
+    集成方据此构造 payload，不必读源码或猜字段——`/api/domains/current/entities`
+    的校验规则就是这里返回的东西。
     """
     _require_default_ontology()
     _require_capability("create")
@@ -751,7 +769,7 @@ def entity_schema_endpoint():
 
 
 @app.post(
-    "/api/entities",
+    "/api/domains/current/entities",
     tags=["领域推理"],
     summary="新建实体",
     responses={
@@ -769,8 +787,8 @@ def entity_schema_endpoint():
 def create_entity_endpoint(req: EntityRequest):
     """按当前领域的 ENTITY_SCHEMA 新建实体（校验 → 写图 → 推理）。
 
-    与 `/api/capabilities/apply` 一样，领域的 ValueError 一律转 400：payload
-    不合领域声明的形状属于客户端错误。
+    与 `/api/domains/current/capabilities/apply` 一样，领域的 ValueError
+    一律转 400：payload 不合领域声明的形状属于客户端错误。
     """
     _require_default_ontology()
     _require_capability("create")
@@ -781,7 +799,7 @@ def create_entity_endpoint(req: EntityRequest):
 
 
 @app.post(
-    "/api/explain",
+    "/api/domains/current/explain",
     tags=["领域推理"],
     summary="推导链解释（模板填槽）",
     responses={
@@ -813,7 +831,7 @@ def explain():
 
 
 @app.post(
-    "/api/consistency",
+    "/api/domains/current/consistency",
     tags=["领域推理"],
     summary="一致性检查",
     responses={
@@ -834,6 +852,88 @@ def consistency():
     _require_default_ontology()
     _require_capability("consistency")
     return ADAPTER.consistency()
+
+
+# ---------------- CRUD（003 批次 REQ-09：删除 / 撤回 / 批量导入） ----------------
+
+@app.delete(
+    "/api/domains/current/ontology/individual/{name}",
+    tags=["领域推理"],
+    summary="删除个体",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "删除结果：individual / deleted / removed_triples / cascade / persisted；"
+                "形状由框架 AboxStore 返回。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def delete_individual(
+    name: str = ApiPath(..., description="要删除的个体短名（也可传完整 IRI）。"),
+    persist: bool = Query(False, description="是否把删除增量写入 extensions/（-del- 文件）；默认仅改内存。"),
+    cascade: bool = Query(False, description="被其它个体引用时是否级联删除引用边；默认 false，存在引用则拒绝。"),
+):
+    """删除个体（A-box 断言）。被引用时拒绝（除非 cascade=true）。
+
+    删除后重推理：capability_match / consistency 随图断言同步更新；
+    persist=true 写删除增量（-del- 文件），reload 可恢复删除状态。
+    """
+    _require_default_ontology()
+    _require_method("delete_individual")
+    try:
+        return ADAPTER.delete_individual(name, persist=persist, cascade=cascade)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post(
+    "/api/domains/current/ontology/revoke",
+    tags=["领域推理"],
+    summary="撤回分配",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "撤回结果：task / agent / revoked / persisted；形状由框架 AboxStore 返回。",
+        },
+        **ERROR_400,
+    },
+)
+def revoke_assignment(req: RevokeRequest):
+    """撤回分配：移除 assigned_to 图边，consistency 不再含该分配。"""
+    _require_default_ontology()
+    _require_method("revoke")
+    try:
+        return ADAPTER.revoke(req.task, req.agent, persist=req.persist)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post(
+    "/api/domains/current/ontology/import",
+    tags=["领域推理"],
+    summary="批量导入个体",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "批量导入结果：imported / individuals / persisted；事务失败时整体返回 400。",
+        },
+        **ERROR_400,
+    },
+)
+def import_individuals(req: ImportRequest):
+    """批量导入任务个体（事务）：先全量校验（名称冲突/引用完整），
+    全部通过才应用，部分失败整体回滚——不产生半套数据。
+    """
+    _require_default_ontology()
+    _require_method("import_individuals")
+    try:
+        return ADAPTER.import_individuals(
+            [i.model_dump() for i in req.individuals], persist=req.persist)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ---------------- 通用查询接口（L1：与本体定义无关） ----------------
@@ -1358,85 +1458,6 @@ def ontology_status():
         "assignments": len(getattr(ADAPTER, "assignments", None) or {}),
         "loaded_at": ENGINE_LOADED_AT,
     }
-
-
-# ---------------- CRUD（003 批次 REQ-09：删除 / 撤回 / 批量导入） ----------------
-
-@app.delete(
-    "/api/ontology/individual/{name}",
-    tags=["领域推理"],
-    summary="删除个体",
-    responses={
-        200: {
-            "model": OpenEnvelope,
-            "description": (
-                "删除结果：individual / deleted / removed_triples / cascade / persisted；"
-                "形状由框架 AboxStore 返回。"
-            ),
-        },
-        **ERROR_400,
-    },
-)
-def delete_individual(
-    name: str = ApiPath(..., description="要删除的个体短名（也可传完整 IRI）。"),
-    persist: bool = Query(False, description="是否把删除增量写入 extensions/（-del- 文件）；默认仅改内存。"),
-    cascade: bool = Query(False, description="被其它个体引用时是否级联删除引用边；默认 false，存在引用则拒绝。"),
-):
-    """删除个体（A-box 断言）。被引用时拒绝（除非 cascade=true）。
-
-    删除后重推理：capability_match / consistency 随图断言同步更新；
-    persist=true 写删除增量（-del- 文件），reload 可恢复删除状态。
-    """
-    _require_default_ontology()
-    try:
-        return ADAPTER.delete_individual(name, persist=persist, cascade=cascade)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@app.post(
-    "/api/ontology/revoke",
-    tags=["领域推理"],
-    summary="撤回分配",
-    responses={
-        200: {
-            "model": OpenEnvelope,
-            "description": "撤回结果：task / agent / revoked / persisted；形状由框架 AboxStore 返回。",
-        },
-        **ERROR_400,
-    },
-)
-def revoke_assignment(req: RevokeRequest):
-    """撤回分配：移除 assigned_to 图边，consistency 不再含该分配。"""
-    _require_default_ontology()
-    try:
-        return ADAPTER.revoke(req.task, req.agent, persist=req.persist)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@app.post(
-    "/api/ontology/import",
-    tags=["领域推理"],
-    summary="批量导入个体",
-    responses={
-        200: {
-            "model": OpenEnvelope,
-            "description": "批量导入结果：imported / individuals / persisted；事务失败时整体返回 400。",
-        },
-        **ERROR_400,
-    },
-)
-def import_individuals(req: ImportRequest):
-    """批量导入任务个体（事务）：先全量校验（名称冲突/引用完整），
-    全部通过才应用，部分失败整体回滚——不产生半套数据。
-    """
-    _require_default_ontology()
-    try:
-        return ADAPTER.import_individuals(
-            [i.model_dump() for i in req.individuals], persist=req.persist)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # 新前端静态资源（frontend/app/dist/assets）——始终挂载，不依赖启动时目录是否存在：

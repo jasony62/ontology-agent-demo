@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from reasoner.engine import OntologyEngine, ONTO_PATH, DEFAULT_NS, local  # noqa: E402
 
-from _helpers import domain_module, submodule  # noqa: E402
+from _helpers import domain_module, make_adapter, submodule  # noqa: E402
 
 _d = domain_module()
 
@@ -110,7 +110,7 @@ def test_reload_failure_keeps_old_state(ext_dir):
 
 def test_assign_writes_graph_assertion(ext_dir):
     engine = _make_engine(ext_dir)
-    adapter = AgentTaskAdapter(engine, DEFAULT_CONFIG)
+    adapter = make_adapter(_d, engine, DEFAULT_CONFIG)
     adapter.assign("t_compliance_dev", "dev_agent")
     # 图断言为权威源：subject_objects 可查（不再只存在内存 dict）
     pairs = dict(engine.subject_objects("assigned_to"))
@@ -124,7 +124,7 @@ def test_assign_writes_graph_assertion(ext_dir):
 
 def test_classify_persist_roundtrip(ext_dir, tmp_path):
     engine = _make_engine(ext_dir)
-    adapter = AgentTaskAdapter(engine, DEFAULT_CONFIG)
+    adapter = make_adapter(_d, engine, DEFAULT_CONFIG)
     before_bytes = open(ONTO_PATH, "rb").read()
 
     r = adapter.classify("t_persist_task", ["Coding"], ["ComplianceRequirement"],
@@ -140,7 +140,7 @@ def test_classify_persist_roundtrip(ext_dir, tmp_path):
 
     # 模拟重启：全新引擎 + 全新适配器，从 extensions 恢复
     engine2 = _make_engine(ext_dir)
-    adapter2 = AgentTaskAdapter(engine2, DEFAULT_CONFIG)
+    adapter2 = make_adapter(_d, engine2, DEFAULT_CONFIG)
     inds = {local(t) for t in adapter2.tasks()}
     assert "t_persist_task" in inds
     # 基础类型断言恢复（SimpleTask 为 OWL 事实）
@@ -152,7 +152,7 @@ def test_classify_persist_roundtrip(ext_dir, tmp_path):
 
 def test_assign_persist_restart(ext_dir):
     engine = _make_engine(ext_dir)
-    adapter = AgentTaskAdapter(engine, DEFAULT_CONFIG)
+    adapter = make_adapter(_d, engine, DEFAULT_CONFIG)
     r = adapter.assign("t_compliance_dev", "junior_dev", persist=True)
     assert r["persisted"] is not None
     assert os.path.exists(r["persisted"]["path"])
@@ -165,7 +165,7 @@ def test_assign_persist_restart(ext_dir):
 
 def test_classify_without_persist_no_file(ext_dir):
     engine = _make_engine(ext_dir)
-    adapter = AgentTaskAdapter(engine, DEFAULT_CONFIG)
+    adapter = make_adapter(_d, engine, DEFAULT_CONFIG)
     r = adapter.classify("t_nopersist", ["Coding"], [], persist=False)
     assert r["persisted"] is None
     assert os.listdir(ext_dir) == []          # 未写任何扩展文件
@@ -175,7 +175,7 @@ def test_classify_without_persist_no_file(ext_dir):
 
 def test_classify_duplicate_name_suffix(ext_dir):
     engine = _make_engine(ext_dir)
-    adapter = AgentTaskAdapter(engine, DEFAULT_CONFIG)
+    adapter = make_adapter(_d, engine, DEFAULT_CONFIG)
     # 本体已内置 t_login_dev，重名依次加后缀
     r1 = adapter.classify("t_login_dev", ["Coding"], [], persist=False)
     assert r1["individual"] == "t_login_dev_2"

@@ -36,6 +36,7 @@ __all__ = [
     "ENV_DOMAIN",
     "ENV_ROOT",
     "PROJECT_ROOT",
+    "RESERVED_DOMAIN_NAMES",
     "check_domain_name",
     "load_config",
 ]
@@ -72,6 +73,12 @@ class ConfigError(RuntimeError):
     """配置文件损坏、字段非法或路径越界。"""
 
 
+# 保留领域名：`current` 是 API 的单例路径段（/api/domains/current/...）。
+# 若允许同名领域包，`/api/domains/current/...` 会同时像「当前领域」和
+# 「名为 current 的领域」，同一 URL 指向两个东西。安装期与加载期都拒绝。
+RESERVED_DOMAIN_NAMES = frozenset({"current"})
+
+
 def check_domain_name(name: Any) -> str:
     """校验领域标识：必须是合法 Python 标识符。
 
@@ -88,6 +95,11 @@ def check_domain_name(name: Any) -> str:
         raise ConfigError(
             f"非法领域名 {name!r}：必须是合法 Python 标识符"
             "（字母或下划线开头，只含字母、数字、下划线；不能有路径分隔符、横线、点）"
+        )
+    if name in RESERVED_DOMAIN_NAMES:
+        raise ConfigError(
+            f"领域名 {name!r} 为保留字：API 用 /api/domains/{name}/... 表示当前运行态领域，"
+            "同名领域包会让路径产生歧义，请换一个名字"
         )
     return name
 
@@ -240,6 +252,8 @@ class DomainConfig:
         for entry in sorted(self.root.iterdir()):
             if not entry.is_dir() or entry.name.startswith((".", "_")):
                 continue
+            if entry.name in RESERVED_DOMAIN_NAMES:
+                continue                  # 与 /api/domains/current/... 争义，忽略
             if (entry / "__init__.py").is_file():
                 found.append(entry.name)
         return found

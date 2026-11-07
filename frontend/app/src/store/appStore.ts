@@ -10,7 +10,7 @@ interface AppState {
   backendInfo: Record<string, unknown> | null;
   // 当前本体（本地模型，来自默认本体 / 导入解析 / 源码编辑回读）
   ontology: Ontology | null;
-  // 后端图数据（/api/ontology，领域图）与物化数据
+  // 后端图数据（/api/domains/current/ontology，领域图）与物化数据
   graphData: GraphData | null;
   // 领域声明的图谱分组（上色 / 图例）；未声明的领域为空数组
   graphGroups: GraphGroup[];

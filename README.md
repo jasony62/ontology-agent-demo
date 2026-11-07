@@ -178,17 +178,20 @@ npm run build               # 产物 frontend/app/dist
 
 ## 推理 API
 
+> 领域模式专属端点统一挂在 `/api/domains/current/` 前缀下：同一 URL 在热切换后指向另一个领域实现。不带该前缀的端点（通用查询 / 本体管理 / 状态探针 / 领域管理）对任意 `.owl` 可用；用旧路径调用会直接 404，不提供兼容跳转。
+
 | 方法   | 路径                 | 功能                                                           |
 | ---- | ------------------ | ------------------------------------------------------------ |
 | GET  | `/`                | Demo 页面（图谱展示）                                             |
 | GET  | `/api/health`      | 健康检查                                                         |
-| GET  | `/api/ontology`    | 本体结构（图谱渲染数据）                                                 |
-| GET  | `/api/ontology/graph-groups` | 领域声明的图谱分组 `{groups: [{name, class, label, members}]}`；前端据此上色与出图例，未声明时为空数组 |
-| POST | `/api/capabilities/query` | `{type, task, agent, params}`；纯读，不改图、不落盘、可安全重试。内置 `capability_match` / `orchestrate`，领域可通过 `QUERY_HANDLERS` 追加只读能力（参数放 `params`） |
-| POST | `/api/capabilities/apply` | `{type, task, agent, persist, params}`；会改图，`persist=true` 落 `extensions/`，不保证幂等。内置 `assign`，领域可通过 `APPLY_HANDLERS` 追加变更能力 |
-| POST | `/api/entities`    | `{payload, persist?}`；字段形状由领域的 `ENTITY_SCHEMA` 声明，先看 `GET /api/entities/schema` |
-| POST | `/api/explain`     | 最近一次查询的推导链（模板填槽，非公理反查；查询响应本身已带 `derivation`） |
-| POST | `/api/consistency` | 一致性 / 合规冲突检查                                                 |
+| GET  | `/api/domains/current/ontology`    | 本体结构（图谱渲染数据）                                                 |
+| GET  | `/api/domains/current/ontology/graph-groups` | 领域声明的图谱分组 `{groups: [{name, class, label, members}]}`；前端据此上色与出图例，未声明时为空数组 |
+| POST | `/api/domains/current/capabilities/query` | `{type, task, agent, params}`；纯读，不改图、不落盘、可安全重试。内置 `capability_match` / `orchestrate`，领域可通过 `QUERY_HANDLERS` 追加只读能力（参数放 `params`） |
+| POST | `/api/domains/current/capabilities/apply` | `{type, task, agent, persist, params}`；会改图，`persist=true` 落 `extensions/`，不保证幂等。内置 `assign`，领域可通过 `APPLY_HANDLERS` 追加变更能力 |
+| GET  | `/api/domains/current/entities/schema` | 领域自声明的实体字段形状（`ENTITY_SCHEMA`），先看它再 POST `/api/domains/current/entities` |
+| POST | `/api/domains/current/entities`    | `{payload, persist?}`；字段形状由领域的 `ENTITY_SCHEMA` 声明 |
+| POST | `/api/domains/current/explain`     | 最近一次查询的推导链（模板填槽，非公理反查；查询响应本身已带 `derivation`） |
+| POST | `/api/domains/current/consistency` | 一致性 / 合规冲突检查                                                 |
 
 运维 / CRUD 接口（v0.2.0 起，003 批次 REQ-04/05/06/07）：
 
@@ -196,9 +199,9 @@ npm run build               # 产物 frontend/app/dist
 | ---- | ------------------ | ------------------------------------------------------------ |
 | POST | `/api/ontology/reload` | 热重载本体（新引擎构造+推理全部成功才原子替换，失败返回 400 旧状态可用） |
 | GET  | `/api/ontology/status` | 本体状态（baseline_file_hash / dirty / pending_changes / changelog / last_commit / counts；v1.5.0 起含 `mode`：default=默认本体 / generic=通用模式） |
-| DELETE | `/api/ontology/individual/{name}` | 删除个体 `?persist&cascade`（被引用时保护，cascade 连带清理反向引用） |
-| POST | `/api/ontology/revoke` | 撤销任务分配 `{task, agent, persist}` |
-| POST | `/api/ontology/import` | 批量导入任务个体（事务：任一校验失败整体拒绝）`{individuals, persist}` |
+| DELETE | `/api/domains/current/ontology/individual/{name}` | 删除个体 `?persist&cascade`（被引用时保护，cascade 连带清理反向引用） |
+| POST | `/api/domains/current/ontology/revoke` | 撤销任务分配 `{task, agent, persist}` |
+| POST | `/api/domains/current/ontology/import` | 批量导入任务个体（事务：任一校验失败整体拒绝）`{individuals, persist}` |
 
 领域管理接口（v0.6.0 起，多领域与热切换）：
 
@@ -226,7 +229,6 @@ npm run build               # 产物 frontend/app/dist
 | POST | `/api/types`       | 个体推理后的全部类型 `{individual}`                                   |
 | POST | `/api/property`    | 主体-属性取值列表 `{subject, property}`                              |
 | POST | `/api/infer`       | 重新执行推理，返回三元组/个体统计                                          |
-| GET  | `/api/entities/schema` | 领域自声明的实体字段形状（`ENTITY_SCHEMA`），先看它再 POST `/api/entities` |
 | POST | `/api/ontology/load` | 加载指定 OWL 到当前引擎（自定义本体 → 通用模式入口）                        |
 | GET  | `/api/ontology/materialized` | 物化后的本体（raw ∪ 推理新增）                                  |
 | GET  | `/api/ontology/source` | 当前本体的 OWL/RDF 源码                                              |
@@ -242,7 +244,7 @@ npm run build               # 产物 frontend/app/dist
 | 属性路径（`+` / `*` / `/` / `^` 等，如依赖闭包 `depends_on+`） | ✅ | 实测通过 |
 | 聚合与表达式（COUNT / SUM / AVG / GROUP BY、BIND、VALUES、STR / CONTAINS 等内置函数） | ✅ | 实测通过 |
 | 子查询 | ✅ | 实测通过 |
-| UPDATE（INSERT / DELETE） | ❌ | 解析即拒绝。**为什么不开放裸写入**：本服务的写路径必须「先校验、后留痕」——更新请走 `/api/entities`、`/api/ontology/import`、MCP `assign` / `classify` 等任务接口（带事务与变更记录），而不是让数据「改完就走」 |
+| UPDATE（INSERT / DELETE） | ❌ | 解析即拒绝。**为什么不开放裸写入**：本服务的写路径必须「先校验、后留痕」——更新请走 `/api/domains/current/entities`、`/api/domains/current/ontology/import`、MCP `assign` / `classify` 等任务接口（带事务与变更记录），而不是让数据「改完就走」 |
 | SERVICE（联邦查询） | ❌ | 不在支持面：运行时会尝试外呼远端端点（连不上报网络错误），但缺隔离与超时控制，不作为产品能力承诺 |
 | ASK / CONSTRUCT / DESCRIBE | ❌ | 仅 SELECT：非 SELECT 形式当前报错拒绝（错误文案暂为底层异常信息，改进中） |
 
@@ -251,7 +253,7 @@ npm run build               # 产物 frontend/app/dist
 示例：
 
 ```
-curl -s -X POST http://127.0.0.1:8000/api/capabilities/query \
+curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
   -H "Content-Type: application/json" \
   -d '{"type":"capability_match","task":"t_login_dev"}'
 

@@ -10,17 +10,17 @@ curl -s "$BASE/api/health" | python3 -m json.tool
 
 echo
 echo "== 2. 能力匹配：「登录模块开发谁能做？」 =="
-curl -s -X POST "$BASE/api/capabilities/query" \
+curl -s -X POST "$BASE/api/domains/current/capabilities/query" \
   -H "Content-Type: application/json" \
   -d '{"type":"capability_match","task":"t_login_dev"}' | python3 -m json.tool
 
 echo
 echo "== 3. 推导链（上一步为什么这么答） =="
-curl -s -X POST "$BASE/api/explain" -H "Content-Type: application/json" -d '{}' | python3 -m json.tool
+curl -s -X POST "$BASE/api/domains/current/explain" -H "Content-Type: application/json" -d '{}' | python3 -m json.tool
 
 echo
 echo "== 4. 合规冲突检查 =="
-curl -s -X POST "$BASE/api/consistency" -H "Content-Type: application/json" -d '{}' | python3 -m json.tool
+curl -s -X POST "$BASE/api/domains/current/consistency" -H "Content-Type: application/json" -d '{}' | python3 -m json.tool
 
 echo
 echo "== 5. 通用查询：全部 Agent 个体（SPARQL，与本体定义无关） =="

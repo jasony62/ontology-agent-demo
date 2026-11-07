@@ -23,7 +23,7 @@
    │  理解问题 → 选择工具（按工具定义匹配）→ 识别实体（按参数槽位 + entities）→ 填参数
    ▼
 ③ 调用工具 → 路由到适配器（工具名 → 适配器方法；短名 → URIRef）
-   │  MCP 通道（mcp.py 注册）与 REST 通道（/api/capabilities/query、/api/capabilities/apply）殊途同归
+   │  MCP 通道（mcp.py 注册）与 REST 通道（/api/domains/current/capabilities/query、/api/domains/current/capabilities/apply）殊途同归
    │  REST 通道为程序直连（无智能体，跳过 ①-②，直接到 ③）
    ▼
 ④ 领域适配器（domains/agent_task/adapter.py）
@@ -62,7 +62,7 @@
 > 通用工具（SPARQL/个体/类/类型/属性/重推理）由引擎直接提供。
 > 多领域部署时：先选领域/服务（能力面），再谈工具匹配；单领域 Demo 中这一步是隐含的默认配置。
 >
-> 前端 `frontend/index.html` 是**纯图谱展示**（只调 `/api/health`、`/api/ontology`），
+> 前端 `frontend/index.html` 是**纯图谱展示**（只调 `/api/health`、`/api/domains/current/ontology`），
 > 不含对话输入框——自然语言入口在豆包侧，前端负责把推理结果（类/个体/边）画出来。
 
 ---
@@ -197,19 +197,19 @@ def capability_match(task: str) -> dict:
 `APPLY_KINDS`（两者各自并入领域注册的 `QUERY_HANDLERS` / `APPLY_HANDLERS`）：
 
 ```python
-@app.post("/api/capabilities/query")
+@app.post("/api/domains/current/capabilities/query")
 def capabilities_query(req: CapabilityQueryRequest):
     return _run_capability(req, _query_kinds(ADAPTER), QUERY_ENDPOINT,
                            _apply_kinds(ADAPTER), APPLY_ENDPOINT, "变更能力")
 
-@app.post("/api/capabilities/apply")
+@app.post("/api/domains/current/capabilities/apply")
 def capabilities_apply(req: ApplyRequest):
     return _run_capability(req, _apply_kinds(ADAPTER), APPLY_ENDPOINT,
                            _query_kinds(ADAPTER), QUERY_ENDPOINT, "查询能力")
 ```
 
 `QUERY_KINDS` 内置 `capability_match` / `orchestrate`，`APPLY_KINDS` 内置 `assign`。
-把 `assign` 传给读端点会得到指路 400（请改用 `/api/capabilities/apply`），反过来同理。
+把 `assign` 传给读端点会得到指路 400（请改用 `/api/domains/current/capabilities/apply`），反过来同理。
 
 两条通道最终都落到**同一个适配器方法**——所以智能体（MCP）与程序（API）看到的行为完全一致。
 

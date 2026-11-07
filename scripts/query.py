@@ -53,22 +53,22 @@ def _http_call(method: str, path: str, payload: dict | None = None) -> dict:
 
 def http_query(kind: str, args) -> dict:
     if kind == "ontology":
-        return _http_call("GET", "/api/ontology")
+        return _http_call("GET", "/api/domains/current/ontology")
     if kind == "consistency":
-        return _http_call("POST", "/api/consistency")
+        return _http_call("POST", "/api/domains/current/consistency")
     if kind == "explain":
-        return _http_call("POST", "/api/explain")
+        return _http_call("POST", "/api/domains/current/explain")
     if kind in ("capability_match", "orchestrate"):
         payload = {"type": kind, "task": args.task, "agent": args.agent}
-        return _http_call("POST", "/api/capabilities/query", payload)
+        return _http_call("POST", "/api/domains/current/capabilities/query", payload)
     if kind == "assign":
         # 写端点与读端点物理分离：assign 会改图，走 capabilities/apply。
         payload = {"type": kind, "task": args.task, "agent": args.agent}
-        return _http_call("POST", "/api/capabilities/apply", payload)
+        return _http_call("POST", "/api/domains/current/capabilities/apply", payload)
     if kind in ("create", "classify"):
         # 通用实体创建：payload 的形状由领域 ENTITY_SCHEMA 声明，
         # CLI 这几个开关只是 agent_task 这一种领域的便利包装。
-        return _http_call("POST", "/api/entities", {
+        return _http_call("POST", "/api/domains/current/entities", {
             "payload": {
                 "name": args.name,
                 "capabilities": args.capabilities,

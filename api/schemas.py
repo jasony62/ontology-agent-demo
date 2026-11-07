@@ -31,7 +31,7 @@ class CapabilityQueryRequest(BaseModel):
     )
     task: str = Field(
         "",
-        description="任务个体短名（也可传完整 IRI）；取值见 GET /api/ontology 返回的 individuals。",
+        description="任务个体短名（也可传完整 IRI）；取值见 GET /api/domains/current/ontology 返回的 individuals。",
     )
     agent: str = Field(
         "",
@@ -63,7 +63,7 @@ class ApplyRequest(BaseModel):
     )
     task: str = Field(
         "",
-        description="任务个体短名（也可传完整 IRI）；取值见 GET /api/ontology 返回的 individuals。",
+        description="任务个体短名（也可传完整 IRI）；取值见 GET /api/domains/current/ontology 返回的 individuals。",
     )
     agent: str = Field(
         "",
@@ -85,14 +85,14 @@ class EntityRequest(BaseModel):
     这里刻意只有一个自由字典：上一版的 `ClassifyRequest` 把
     `capabilities / constraints / risk_level` 三个字段写进了框架，
     等于要求每个领域都长成「智能体任务编排」。字段形状属于领域，
-    框架只负责按领域声明去校验——见 `GET /api/entities/schema`。
+    框架只负责按领域声明去校验——见 `GET /api/domains/current/entities/schema`。
     """
 
     payload: dict[str, Any] = Field(
         default_factory=dict,
         description=(
             "实体字段键值；字段名、类型与必填项由当前领域的 ENTITY_SCHEMA 决定，"
-            "完整形状见 GET /api/entities/schema。"
+            "完整形状见 GET /api/domains/current/entities/schema。"
         ),
     )
     persist: bool = Field(
@@ -164,7 +164,7 @@ class IndividualsRequest(BaseModel):
 
     class_name: str = Field(
         ...,
-        description="类短名（含子类展开）；可用 POST /api/classes 或 GET /api/ontology 查看现有类。",
+        description="类短名（含子类展开）；可用 POST /api/classes 或 GET /api/domains/current/ontology 查看现有类。",
     )
 
 

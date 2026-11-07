@@ -199,7 +199,7 @@
   }
 
   function loadGraph() {
-    return fetchJSON("/api/ontology").then(function (d) {
+    return fetchJSON("/api/domains/current/ontology").then(function (d) {
       graphData = d;
       renderGraph();
     }).catch(function (e) { detailBox.textContent = "图谱加载失败：" + e.message; });

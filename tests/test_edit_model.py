@@ -132,7 +132,7 @@ def test_save_new_enters_generic_mode(restore_engine):
     model = client.get("/api/ontology/edit-model").json()
     r = client.post("/api/ontology/save", json={"model": model, "mode": "new"})
     assert r.status_code == 200
-    ont = client.get("/api/ontology")
+    ont = client.get("/api/domains/current/ontology")
     assert ont.status_code == 400
     assert "通用模式" in ont.json()["detail"]
 
@@ -152,7 +152,7 @@ def test_save_overwrite_keeps_domain(isolated_api):
     assert r.status_code == 200
     assert r.json()["mode"] == "overwrite"
     assert isolated_api.module.ENGINE.onto_path == onto_path   # 覆盖的是当前领域本体
-    ont = client.get("/api/ontology")
+    ont = client.get("/api/domains/current/ontology")
     assert ont.status_code == 200                              # 领域能力保留
     m2 = client.get("/api/ontology/edit-model").json()
     assert any(c["label"] == "改过的类名" for c in m2["classes"])   # 编辑已生效

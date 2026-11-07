@@ -33,9 +33,9 @@
 - **双读、单写**：解析器同时识别 `owl:hasKey`、旧版私有注解 `<ont:isIdentifier>` 与 `rdfs:comment "Identifier property"`；序列化只写 `owl:hasKey`。旧文件打开不改不坏，在编辑器里保存一次即自动升级。同一类只要声明了 `hasKey`，就以 `hasKey` 为准。
 - **复合键限制**：`owl:hasKey` 允许多个属性，但编辑器按单个 `isIdentifier` 处理，第一版只读取第一个键并在解析结果中给出 warning；把标识属性改为多值属于后续破坏性改动。
 - **唯一性由谁保证**：不承诺「推理器会推出 `owl:sameAs`」（本项目未验证 `owlrl` 的 `eq-key` 规则）。主键唯一性目前由写入时重名检查（`protocol.py` 的 `create_entity`）保证；需要图级约束时用 SHACL（`sh:minCount` / 唯一性形状），不要用 `owl:InverseFunctionalProperty` 加在数据属性上——那会把本体拖入 OWL-Full（G1 闸门判为「主键陷阱」）。
-- **两套主键的分工**：编辑器里的标识属性声明的是语义主键；`POST /api/entities` 的个体 IRI 仍由领域包 `ENTITY_SCHEMA.id_field` 决定。两者是不同层级的契约，后端只在领域加载时做一致性检查（不一致给 warning，不阻断），不从 `hasKey` 反向生成 `id_field`。
+- **两套主键的分工**：编辑器里的标识属性声明的是语义主键；`POST /api/domains/current/entities` 的个体 IRI 仍由领域包 `ENTITY_SCHEMA.id_field` 决定。两者是不同层级的契约，后端只在领域加载时做一致性检查（不一致给 warning，不阻断），不从 `hasKey` 反向生成 `id_field`。
 
-**安全边界**：`/api/ontology/import` 与 `/api/ontology/load`（导入/加载自定义本体）是单机演示功能，**无鉴权、无输入隔离——请勿将服务直接暴露公网**；如需公网部署请自行加鉴权与导入校验。
+**安全边界**：`/api/domains/current/ontology/import` 与 `/api/ontology/load`（导入/加载自定义本体）是单机演示功能，**无鉴权、无输入隔离——请勿将服务直接暴露公网**；如需公网部署请自行加鉴权与导入校验。
 
 ## 3.2 MCP Server（智能体接入）
 

@@ -117,6 +117,6 @@ def test_load_switches_to_generic_mode(tmp_path, restore_engine):
     assert m.json()["stats"]["triples_materialized"] >= m.json()["stats"]["triples_asserted"]
 
     # 领域端点降级（守卫）
-    ont = client.get("/api/ontology")
+    ont = client.get("/api/domains/current/ontology")
     assert ont.status_code == 400
     assert "通用模式" in ont.json()["detail"]

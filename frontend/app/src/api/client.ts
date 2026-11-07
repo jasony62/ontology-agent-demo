@@ -27,7 +27,7 @@ export interface GraphData {
 }
 
 /**
- * 领域声明的图谱分组（GET /api/ontology/graph-groups）。
+ * 领域声明的图谱分组（GET /api/domains/current/ontology/graph-groups）。
  *
  * 分组是**领域**的展示约定（`config.json` 的 `graph_groups`：组名 → 类键），
  * 不是框架概念——前端因此不猜任何类名，只按这份声明上色、出图例。
@@ -123,10 +123,10 @@ export const api = {
   status: () => request<{ mode: 'default' | 'generic'; ontology: string; dirty: boolean; pending_changes: number }>('/api/ontology/status'),
 
   /** 领域图数据（图谱渲染） */
-  ontology: () => request<GraphData>('/api/ontology'),
+  ontology: () => request<GraphData>('/api/domains/current/ontology'),
 
   /** 领域声明的图谱分组（只读展示约定；未声明时 groups 为空数组） */
-  graphGroups: () => request<{ groups: GraphGroup[] }>('/api/ontology/graph-groups'),
+  graphGroups: () => request<{ groups: GraphGroup[] }>('/api/domains/current/ontology/graph-groups'),
 
   /** 物化 diff：原始断言 / 推理新增 */
   materialized: () => request<MaterializedResponse>('/api/ontology/materialized'),

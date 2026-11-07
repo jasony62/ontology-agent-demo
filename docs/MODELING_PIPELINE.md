@@ -449,7 +449,7 @@ def export_materialized(owl_path: str, out_ttl: str) -> None:
 
 | 通道 | 消费者 | 数据 |
 |---|---|---|
-| REST `/api/capabilities/query`、`/api/capabilities/apply` 等 | 程序 / 前端 | 领域查询 + 推导链 / 领域变更 |
+| REST `/api/domains/current/capabilities/query`、`/api/domains/current/capabilities/apply` 等 | 程序 / 前端 | 领域查询 + 推导链 / 领域变更 |
 | MCP `:9000/mcp` | 智能体（豆包） | 31 个工具 |
 | SPARQL（Fuseki/Oxigraph） | 分析工具 | 物化快照（S4 导出） |
 | GraphRAG API | 智能体 / 检索服务 | 物化快照 + 向量库 |

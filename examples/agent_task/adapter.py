@@ -49,7 +49,7 @@ CAPABILITIES = (
     "create",
 )
 
-# 实体 schema（框架的通用创建入口 /api/entities 按它校验 payload）。
+# 实体 schema（框架的通用创建入口 /api/domains/current/entities 按它校验 payload）。
 # 字段名是**本领域的**：框架不认识 capabilities / risk_level，只按这份声明
 # 校验、写图、推理。换一个领域的 schema 形状可以完全不同，框架代码不动。
 ENTITY_SCHEMA = {
@@ -100,7 +100,7 @@ class AgentTaskAdapter:
         self.c = config
         self.NAME = NAME                       # 领域标识（health / 日志 / 运行时发现）
         self.CAPABILITIES = CAPABILITIES       # 能力声明（端点门禁读实例属性）
-        self.ENTITY_SCHEMA = ENTITY_SCHEMA     # 实体形状（框架按它校验 /api/entities）
+        self.ENTITY_SCHEMA = ENTITY_SCHEMA     # 实体形状（框架按它校验 /api/domains/current/entities）
         # /api/health 的推理器描述：R2/R4 是本领域的规则编号，框架不知道，
         # 由领域自己声明（异构领域没有这两条规则，不该被框架统一贴上）
         self.REASONER_SUMMARY = "OWL 2 RL (owlrl) + 业务规则 R2/R4"
@@ -408,7 +408,7 @@ class AgentTaskAdapter:
         }
 
     def create(self, payload: dict, persist: bool = False) -> dict:
-        """通用实体创建入口（`POST /api/entities`）。
+        """通用实体创建入口（`POST /api/domains/current/entities`）。
 
         分工：**校验交给框架**（按 ENTITY_SCHEMA 验字段名 / 必填 / 类型），
         **语义留在这里**（投影到 classify，保留分类规则与匹配结果）。

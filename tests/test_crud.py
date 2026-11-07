@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from reasoner.engine import OntologyEngine, ONTO_PATH, DEFAULT_NS, local  # noqa: E402
 from scripts.build_ontology import _extra_checks  # noqa: E402
 
-from _helpers import domain_module, submodule  # noqa: E402
+from _helpers import domain_module, make_adapter, submodule  # noqa: E402
 
 _d = domain_module()
 AgentTaskAdapter, DEFAULT_CONFIG = _d.AgentTaskAdapter, _d.DEFAULT_CONFIG
@@ -48,7 +48,7 @@ def ext_dir(tmp_path):
 # ---------------- P3-5 delete ----------------
 
 def test_delete_individual_updates_queries(ext_dir):
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     adapter.classify("t_crud_del", ["Coding"], [], 2)
     assert "t_crud_del" in [local(t) for t in adapter.tasks()]
 
@@ -61,14 +61,14 @@ def test_delete_individual_updates_queries(ext_dir):
 
 
 def test_delete_individual_protected_without_cascade(ext_dir):
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     # t_login_dev 被 t_feature composed_of 与 t_login_review depends_on 引用
     with pytest.raises(ValueError, match="引用"):
         adapter.delete_individual("t_login_dev")
 
 
 def test_delete_individual_cascade_cleans_refs(ext_dir):
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     r = adapter.delete_individual("t_login_dev", cascade=True)
     assert r["deleted"] is True and r["cascade"] is True
     # 引用边连带清理：t_feature 的 composed_of 不再含 t_login_dev
@@ -81,7 +81,7 @@ def test_delete_individual_cascade_cleans_refs(ext_dir):
 
 def test_delete_persist_reload(ext_dir):
     """delete persist=true 写 -del- 增量；新引擎重载后删除状态恢复。"""
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     adapter.classify("t_crud_del_p", ["Coding"], [], 2, persist=True)
     r = adapter.delete_individual("t_crud_del_p", persist=True)
     assert r["persisted"] is not None
@@ -95,7 +95,7 @@ def test_delete_persist_reload(ext_dir):
 # ---------------- P3-6 revoke ----------------
 
 def test_revoke_removes_assignment(ext_dir):
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     adapter.assign(NS["t_compliance_dev"], NS["dev_agent"], with_derivation=False)
     assert adapter.consistency(with_derivation=False)["assignment_count"] == 1
 
@@ -110,19 +110,19 @@ def test_revoke_removes_assignment(ext_dir):
 
 
 def test_revoke_persist_reload(ext_dir):
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     adapter.assign(NS["t_compliance_dev"], NS["dev_agent"], with_derivation=False, persist=True)
     adapter.revoke("t_compliance_dev", "dev_agent", persist=True)
 
     engine2 = _make_engine(ext_dir)
-    adapter2 = AgentTaskAdapter(engine2, DEFAULT_CONFIG)
+    adapter2 = make_adapter(_d, engine2, DEFAULT_CONFIG)
     assert adapter2.consistency(with_derivation=False)["assignment_count"] == 0
 
 
 # ---------------- P3-7 import 事务 ----------------
 
 def test_import_transaction_atomic(ext_dir):
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     items = [
         {"name": "t_import_ok", "capabilities": ["Coding"], "risk_level": 2},
         {"name": "t_req", "capabilities": ["Coding"], "risk_level": 2},   # 已存在 → 整体拒绝
@@ -134,14 +134,14 @@ def test_import_transaction_atomic(ext_dir):
 
 
 def test_import_unknown_capability_rejected(ext_dir):
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     with pytest.raises(ValueError, match="未知能力类"):
         adapter.import_individuals([{"name": "t_import_bad", "capabilities": ["NoSuchCap"]}])
 
 
 def test_import_empty_list_is_noop_no_dirty(ext_dir):
     """issue #7：空数组导入视为无操作——不 reparse、不写 changelog、不置 dirty。"""
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     before = (adapter.change_count, len(adapter.changelog))
     r = adapter.import_individuals([])
     assert r == {"imported": 0, "individuals": [], "persisted": None}
@@ -152,7 +152,7 @@ def test_import_empty_list_is_noop_no_dirty(ext_dir):
 
 
 def test_import_ok_persist_reload(ext_dir):
-    adapter = AgentTaskAdapter(_make_engine(ext_dir), DEFAULT_CONFIG)
+    adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     r = adapter.import_individuals([
         {"name": "t_import_a", "capabilities": ["Coding"], "risk_level": 2},
         {"name": "t_import_b", "capabilities": ["Testing"], "constraints": ["ComplianceRequirement"], "risk_level": 6},

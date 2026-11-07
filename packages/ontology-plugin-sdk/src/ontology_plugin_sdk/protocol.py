@@ -128,8 +128,8 @@ CAPABILITIES: tuple[str, ...] = REQUIRED_METHODS
 # 处理器表把这个缺口补成对称的两半：
 #     CAPABILITIES 说"我有什么"，QUERY_HANDLERS / APPLY_HANDLERS 说"从哪进来"。
 #
-# 为什么拆成两张：REST 出口按副作用物理分离（`/api/capabilities/query` 纯读、
-# `/api/capabilities/apply` 改图）。一张表会让"这个处理器会不会改图"只能靠
+# 为什么拆成两张：REST 出口按副作用物理分离（`/api/domains/current/capabilities/query` 纯读、
+# `/api/domains/current/capabilities/apply` 改图）。一张表会让"这个处理器会不会改图"只能靠
 # 读实现来判断；拆开后挂错表就是加载期错误，而不是运行期的副作用惊喜。
 #     QUERY_HANDLERS 只读：不改图、不落盘，可安全重试与缓存
 #     APPLY_HANDLERS 变更：改图，persist=true 时落盘，不保证幂等

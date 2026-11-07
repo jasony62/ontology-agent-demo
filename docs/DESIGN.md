@@ -353,16 +353,18 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 
 ### 8.1 领域端点（走适配器，绑定当前加载的领域）
 
+统一前缀 `/api/domains/current/`：`current` 表示当前运行态领域，热切换后同一 URL 指向不同实现。旧的无前缀路径已直接 404，不保留兼容层。
+
 | 方法 | 路径 | 请求 | 说明 |
 |---|---|---|---|
-| GET | `/api/ontology` | — | 图谱数据（类/个体/边） |
-| GET | `/api/ontology/graph-groups` | — | 领域声明的图谱分组（`name` / `class` / `label` / `members`），前端据此上色与出图例 |
-| POST | `/api/capabilities/query` | `{type: capability_match\|orchestrate, task, agent?, params?}` | 领域查询（纯读，不改图） |
-| POST | `/api/capabilities/apply` | `{type: assign, task, agent?, persist?, params?}` | 领域变更（改图，`persist` 落盘） |
-| POST | `/api/entities` | `{payload, persist?}` | 按领域 `ENTITY_SCHEMA` 新建实体 |
-| GET | `/api/entities/schema` | — | 当前领域的实体字段声明 |
-| POST | `/api/explain` | — | 最近一次推导链 |
-| POST | `/api/consistency` | — | 一致性 / 合规冲突 |
+| GET | `/api/domains/current/ontology` | — | 图谱数据（类/个体/边） |
+| GET | `/api/domains/current/ontology/graph-groups` | — | 领域声明的图谱分组（`name` / `class` / `label` / `members`），前端据此上色与出图例 |
+| POST | `/api/domains/current/capabilities/query` | `{type: capability_match\|orchestrate, task, agent?, params?}` | 领域查询（纯读，不改图） |
+| POST | `/api/domains/current/capabilities/apply` | `{type: assign, task, agent?, persist?, params?}` | 领域变更（改图，`persist` 落盘） |
+| POST | `/api/domains/current/entities` | `{payload, persist?}` | 按领域 `ENTITY_SCHEMA` 新建实体 |
+| GET | `/api/domains/current/entities/schema` | — | 当前领域的实体字段声明 |
+| POST | `/api/domains/current/explain` | — | 最近一次推导链 |
+| POST | `/api/domains/current/consistency` | — | 一致性 / 合规冲突 |
 
 ### 8.2 通用端点（走引擎，与本体无关，任意 .owl 可用）
 
@@ -378,7 +380,7 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 示例：
 
 ```bash
-curl -s -X POST http://127.0.0.1:8000/api/capabilities/query \
+curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
   -H "Content-Type: application/json" \
   -d '{"type":"capability_match","task":"t_login_dev"}'
 
@@ -451,7 +453,7 @@ python3 -m venv .venv
 
 ```bash
 curl -s http://127.0.0.1:8000/api/health                      # 健康检查
-curl -s -X POST http://127.0.0.1:8000/api/capabilities/query \
+curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
   -H "Content-Type: application/json" -d '{"type":"capability_match","task":"t_login_dev"}'
 .venv/bin/python -m pytest tests/ -q                          # 自动化测试套件全绿（约 430 项，以 pytest 实测为准）
 ```

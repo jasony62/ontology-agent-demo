@@ -24,7 +24,7 @@ def test_health():
 
 
 def test_ontology():
-    r = client.get("/api/ontology")
+    r = client.get("/api/domains/current/ontology")
     assert r.status_code == 200
     d = r.json()
     assert len(d["individuals"]) == 13
@@ -47,14 +47,14 @@ def test_index_page():
 # ---------- 能力端点（读写分离） ----------
 
 def test_query_capability_match():
-    r = client.post("/api/capabilities/query", json={"type": "capability_match", "task": "t_login_dev"})
+    r = client.post("/api/domains/current/capabilities/query", json={"type": "capability_match", "task": "t_login_dev"})
     assert r.status_code == 200
     names = {m["agent"] for m in r.json()["matches"]}
     assert {"dev_agent", "junior_dev"} <= names
 
 
 def test_query_orchestrate():
-    r = client.post("/api/capabilities/query", json={"type": "orchestrate", "task": "t_feature"})
+    r = client.post("/api/domains/current/capabilities/query", json={"type": "orchestrate", "task": "t_feature"})
     assert r.status_code == 200
     plan = r.json()
     assert len(plan["steps"]) == 5
@@ -62,7 +62,7 @@ def test_query_orchestrate():
 
 
 def test_apply_assign_conflict():
-    r = client.post("/api/capabilities/apply",
+    r = client.post("/api/domains/current/capabilities/apply",
                     json={"type": "assign", "task": "t_compliance_dev", "agent": "junior_dev"})
     assert r.status_code == 200
     assert r.json()["conflict"] is not None
@@ -78,7 +78,7 @@ def test_query_endpoint_never_mutates_graph():
         {"type": "capability_match", "task": "t_login_dev"},
         {"type": "orchestrate", "task": "t_feature"},
     ):
-        assert client.post("/api/capabilities/query", json=payload).status_code == 200
+        assert client.post("/api/domains/current/capabilities/query", json=payload).status_code == 200
 
     after = client.get("/api/health").json()
     assert len(M.ENGINE.g) == before_len
@@ -88,15 +88,15 @@ def test_query_endpoint_never_mutates_graph():
 
 def test_capability_cross_endpoint_hints():
     """走错门要指路，而不是笼统报「不支持」。"""
-    r = client.post("/api/capabilities/query",
+    r = client.post("/api/domains/current/capabilities/query",
                     json={"type": "assign", "task": "t_compliance_dev", "agent": "junior_dev"})
     assert r.status_code == 400
-    assert "POST /api/capabilities/apply" in r.json()["detail"]
+    assert "POST /api/domains/current/capabilities/apply" in r.json()["detail"]
 
-    r = client.post("/api/capabilities/apply",
+    r = client.post("/api/domains/current/capabilities/apply",
                     json={"type": "capability_match", "task": "t_login_dev"})
     assert r.status_code == 400
-    assert "POST /api/capabilities/query" in r.json()["detail"]
+    assert "POST /api/domains/current/capabilities/query" in r.json()["detail"]
 
 
 def test_apply_assign_mutates_graph_without_persist(isolated_api):
@@ -104,7 +104,7 @@ def test_apply_assign_mutates_graph_without_persist(isolated_api):
     import api.main as M
 
     before_len = len(M.ENGINE.g)
-    r = isolated_api.client.post("/api/capabilities/apply", json={
+    r = isolated_api.client.post("/api/domains/current/capabilities/apply", json={
         "type": "assign", "task": "t_compliance_dev", "agent": "junior_dev",
     })
     assert r.status_code == 200
@@ -124,7 +124,7 @@ def test_apply_assign_persist_writes_extensions(isolated_api):
     import api.main as M
 
     before_len = len(M.ENGINE.g)
-    r = isolated_api.client.post("/api/capabilities/apply", json={
+    r = isolated_api.client.post("/api/domains/current/capabilities/apply", json={
         "type": "assign", "task": "t_compliance_dev", "agent": "junior_dev",
         "persist": True,
     })
@@ -138,7 +138,7 @@ def test_apply_assign_persist_writes_extensions(isolated_api):
 
 def test_create_entity():
     """通用创建入口：只把 payload 交给领域，字段名由 ENTITY_SCHEMA 决定。"""
-    r = client.post("/api/entities", json={"payload": {
+    r = client.post("/api/domains/current/entities", json={"payload": {
         "name": "t_api_classify", "capabilities": ["Coding"],
         "constraints": ["ComplianceRequirement"], "risk_level": 5,
     }})
@@ -148,14 +148,14 @@ def test_create_entity():
 
 def test_create_entity_rejects_unknown_field():
     """未知字段拒绝而不是忽略：拼错字段名能让调用方以为生效了。"""
-    r = client.post("/api/entities", json={"payload": {"name": "t_bad", "riskLevel": 5}})
+    r = client.post("/api/domains/current/entities", json={"payload": {"name": "t_bad", "riskLevel": 5}})
     assert r.status_code == 400
     assert "riskLevel" in r.json()["detail"]
 
 
 def test_entity_schema_endpoint():
     """schema 端点给出可用字段——集成方不必读源码。"""
-    r = client.get("/api/entities/schema")
+    r = client.get("/api/domains/current/entities/schema")
     assert r.status_code == 200
     body = r.json()
     assert body["class"]
@@ -163,15 +163,15 @@ def test_entity_schema_endpoint():
 
 
 def test_explain():
-    client.post("/api/capabilities/query", json={"type": "capability_match", "task": "t_login_dev"})
-    r = client.post("/api/explain")
+    client.post("/api/domains/current/capabilities/query", json={"type": "capability_match", "task": "t_login_dev"})
+    r = client.post("/api/domains/current/explain")
     assert r.status_code == 200
     assert r.json()["query_kind"] == "capability_match"
     assert len(r.json()["derivation"]) > 0
 
 
 def test_consistency():
-    r = client.post("/api/consistency")
+    r = client.post("/api/domains/current/consistency")
     assert r.status_code == 200
     assert "consistent" in r.json()
 
@@ -179,12 +179,12 @@ def test_consistency():
 # ---------- 图谱分组（分组由领域声明，前端据此上色） ----------
 
 def test_graph_groups_endpoint():
-    """/api/ontology/graph-groups 报出 domain config 声明的分组。
+    """/api/domains/current/ontology/graph-groups 报出 domain config 声明的分组。
 
     agent_task 的分组曾经只活在 graph_export 的字符串里（"Agent" / "Task"），
     配置里加一组个体导出会静默丢掉；现在两边同源，这条用例守住"报得出"。
     """
-    r = client.get("/api/ontology/graph-groups")
+    r = client.get("/api/domains/current/ontology/graph-groups")
     assert r.status_code == 200
     groups = r.json()["groups"]
     assert [g["name"] for g in groups] == ["Agent", "Task"]
@@ -205,9 +205,9 @@ def test_graph_groups_agree_with_graph_export():
     """
     groups = {
         g["name"]: set(g["members"])
-        for g in client.get("/api/ontology/graph-groups").json()["groups"]
+        for g in client.get("/api/domains/current/ontology/graph-groups").json()["groups"]
     }
     exported: dict[str, set[str]] = {}
-    for ind in client.get("/api/ontology").json()["individuals"]:
+    for ind in client.get("/api/domains/current/ontology").json()["individuals"]:
         exported.setdefault(ind["group"], set()).add(ind["name"])
     assert groups == exported

@@ -6,7 +6,7 @@
     3. **切换失败时旧领域继续服务**——这条比成功更重要：热切换一旦失败就
        让服务停在半路，比不支持热切换还糟。
 
-测试用独立的 root（tmp_path 下两个领域包），不碰运行态 domains/。
+测试用独立的 root（tmp_path 下三个领域包），不碰运行态 domains/。
 """
 
 import ast
@@ -24,6 +24,7 @@ from domains import DomainManager, DomainContractError, DomainNotFoundError  # n
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 AGENT_TASK = os.path.join(REPO, "examples", "agent_task")
 MINIMAL = os.path.join(REPO, "examples", "_minimal")
+ONTO_PLAYGROUND = os.path.join(REPO, "examples", "onto_playground")
 
 
 def _settings(root) -> DomainConfig:
@@ -40,20 +41,21 @@ def _settings(root) -> DomainConfig:
 
 @pytest.fixture
 def two_domains(tmp_path):
-    """把 examples 下的两个领域包装进独立 root，返回 (root, settings)。"""
+    """把 examples 下的三个领域包装进独立 root，返回 (root, settings)。"""
     root = tmp_path / "domains"
     root.mkdir()
     shutil.copytree(AGENT_TASK, root / "agent_task")
     shutil.copytree(MINIMAL, root / "minimal")   # 去掉下划线前缀，才能被 installed() 发现
+    shutil.copytree(ONTO_PLAYGROUND, root / "onto_playground")
     return root, _settings(root)
 
 
 # ---------------------------------------------------------------- 列表与激活
 
-def test_installed_lists_both(two_domains):
+def test_installed_lists_packages(two_domains):
     root, cfg = two_domains
     mgr = DomainManager(cfg)
-    assert sorted(mgr.installed()) == ["agent_task", "minimal"]
+    assert sorted(mgr.installed()) == ["agent_task", "minimal", "onto_playground"]
 
 
 def test_activate_switches_domain(two_domains):
@@ -239,7 +241,7 @@ def test_api_domains_endpoint(switched_api):
     assert r.status_code == 200
     d = r.json()
     assert d["current"] == "agent_task"
-    assert sorted(d["installed"]) == ["agent_task", "minimal"]
+    assert sorted(d["installed"]) == ["agent_task", "minimal", "onto_playground"]
     assert d["mode"] == "domain"
 
 
@@ -292,12 +294,54 @@ def test_api_undeclared_capability_returns_400(switched_api):
     client = TestClient(M.app)
     client.post("/api/domains/minimal/activate")
 
-    r = client.post("/api/capabilities/query", json={"type": "capability_match", "task": "x"})
+    r = client.post("/api/domains/current/capabilities/query", json={"type": "capability_match", "task": "x"})
     assert r.status_code == 400
     assert "capability_match" in r.json()["detail"]
 
     # 声明了的能力照常工作（minimal 的图谱导出走框架默认实现）
-    assert client.get("/api/ontology").status_code == 200
+    assert client.get("/api/domains/current/ontology").status_code == 200
+
+
+def test_api_abox_endpoints_return_501_when_domain_lacks_methods(switched_api):
+    """A-box 端点补门禁：领域漏实现时返 501，而不是 AttributeError → 500。
+
+    用 onto_playground（只声明 graph_export / explain / create 与三条领域
+    自有能力，没有 delete_individual / revoke / import_individuals）代表
+    任意异构领域；minimal 同样没有这三个方法。**不能**复用
+    `_require_capability()`：这三个名字不在契约里，也没有领域在
+    CAPABILITIES 中声明它们，走声明检查会把所有领域判成 400。
+    """
+    from fastapi.testclient import TestClient
+
+    M, mgr = switched_api
+    client = TestClient(M.app)
+    assert client.post("/api/domains/onto_playground/activate").status_code == 200
+
+    calls = [
+        ("delete", "/api/domains/current/ontology/individual/t_feature", None),
+        ("post", "/api/domains/current/ontology/revoke",
+         {"task": "t_feature", "agent": "dev_agent"}),
+        ("post", "/api/domains/current/ontology/import",
+         {"individuals": [{"name": "t_imported"}]}),
+    ]
+    for method, path, payload in calls:
+        r = getattr(client, method)(path, json=payload) if payload else getattr(client, method)(path)
+        assert r.status_code == 501, (method.upper(), path, r.status_code, r.text)
+        assert "A-box" in r.json()["detail"]
+
+
+def test_domain_current_routes_precede_param_route():
+    """`current` 是静态段，必须注册在 `/api/domains/{name}/...` 之前。
+
+    基线里 activate 是 3 段、新路径 4 段以上，当前不会冲突；这条约束防的
+    是将来新增 `GET /api/domains/{name}` 时把 `current` 当领域名解析。
+    """
+    import api.main as M
+
+    paths = [getattr(route, "path", "") for route in M.app.routes]
+    current = [i for i, p in enumerate(paths) if p.startswith("/api/domains/current/")]
+    assert current, "未找到 /api/domains/current/ 路由"
+    assert max(current) < paths.index("/api/domains/{name}/activate")
 
 
 def test_capability_kinds_are_contract_methods(switched_api):

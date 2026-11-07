@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from reasoner.engine import OntologyEngine, ONTO_PATH, NS  # noqa: E402
 
-from _helpers import domain_module, submodule  # noqa: E402
+from _helpers import domain_module, make_adapter, submodule  # noqa: E402
 
 @pytest.fixture(scope="module")
 def engine():
@@ -20,7 +20,7 @@ def engine():
 def adapter(engine):
     _d = domain_module()
     AgentTaskAdapter, DEFAULT_CONFIG = _d.AgentTaskAdapter, _d.DEFAULT_CONFIG
-    return AgentTaskAdapter(engine, DEFAULT_CONFIG)
+    return make_adapter(_d, engine, DEFAULT_CONFIG)
 
 
 # ---------- R1 能力匹配（OWL 属性链） ----------
@@ -209,7 +209,7 @@ def test_semantic_config_switch(engine):
     cfg = DEFAULT_CONFIG.update(
         compliance_constraint_class="SecurityRequirement",  # 把合规约束换成安全要求
     )
-    alt = AgentTaskAdapter(engine, cfg)
+    alt = make_adapter(_d, engine, cfg)
     # 换个约束类后，原 ComplianceRequirement 不再触发 R4（本体里任务绑定的是 ComplianceRequirement）
     conflict = alt._compliance_conflict(alt.NS["t_compliance_dev"], alt.NS["junior_dev"])
     assert conflict is None

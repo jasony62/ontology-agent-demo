@@ -150,9 +150,12 @@ def test_bad_watch_values_raise(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "bad", ["", "  ", ".", "..", "../etc", "a/b", "a\\b", ".hidden", "my-domain", "9lives"]
+    "bad",
+    ["", "  ", ".", "..", "../etc", "a/b", "a\\b", ".hidden", "my-domain",
+     "9lives", "current"],
 )
 def test_check_domain_name_rejects(bad):
+    """`current` 是保留名：/api/domains/current/... 已占用该路径段。"""
     with pytest.raises(ConfigError):
         check_domain_name(bad)
 
@@ -175,6 +178,7 @@ def test_installed_lists_only_real_packages(tmp_path):
     _make_domain(root, "alpha")
     _make_domain(root, "beta")
     _make_domain(root, "_private")
+    _make_domain(root, "current")           # 保留名：与 API 单例路径争义，忽略
     (root / "not_a_pkg").mkdir()            # 无 __init__.py，不算安装
     (root / "README.md").write_text("x", encoding="utf-8")
 

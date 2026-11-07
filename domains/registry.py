@@ -45,7 +45,7 @@ import warnings
 from pathlib import Path
 from types import ModuleType
 
-from config import ConfigError, DomainConfig, load_config
+from config import ConfigError, DomainConfig, check_domain_name, load_config
 
 # 注意：本模块属于**引导链**——`reasoner/__init__.py` 会在 import 期固化
 # ONTO_PATH，而 ONTO_PATH 又依赖本模块的 default_onto_path()。若在此处顶层
@@ -171,6 +171,7 @@ def load_domain_module(
       （同一进程里出现两份 `AgentTaskAdapter` 会让 isinstance 判断失效）；
     - reload=True 先移除旧模块再重建，失败则整体回滚到加载前的状态。
     """
+    name = check_domain_name(name)          # 同时挡住保留名（current）
     pkg_dir = _package_dir(name, settings, root)
     init_py = pkg_dir / "__init__.py"
     if not init_py.is_file():
@@ -376,7 +377,7 @@ def has_key_consistency_warnings(adapter, schema: dict | None = None) -> list[di
       - `hasKey` 与 `id_field` 不一致 → 一条 warning；
       - 一致 → 空列表。
 
-    不能让 `hasKey` 反向生成 `id_field`：后者决定 `POST /api/entities`
+    不能让 `hasKey` 反向生成 `id_field`：后者决定 `POST /api/domains/current/entities`
     的 payload 形状，是接口契约，不是本体派生量。
     """
     if schema is None:

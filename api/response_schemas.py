@@ -34,7 +34,7 @@ class OpenEnvelope(BaseModel):
             "description": (
                 "开放对象：返回形状由当前领域决定，不在此冻结字段。"
                 "当前形状可结合 GET /api/health 的 contract 与 "
-                "GET /api/entities/schema 判断。"
+                "GET /api/domains/current/entities/schema 判断。"
             )
         },
     )
@@ -72,7 +72,7 @@ class EntitySchemaSummary(BaseModel):
     )
     fields: list[str] = Field(
         default_factory=list,
-        description="实体字段名列表；完整字段类型与必填项见 GET /api/entities/schema。",
+        description="实体字段名列表；完整字段类型与必填项见 GET /api/domains/current/entities/schema。",
     )
 
 
@@ -94,14 +94,14 @@ class HealthContract(BaseModel):
     query_kinds: list[str] = Field(
         default_factory=list,
         description=(
-            "当前 POST /api/capabilities/query 可用的只读能力"
+            "当前 POST /api/domains/current/capabilities/query 可用的只读能力"
             "（框架内置 ∪ 领域 QUERY_HANDLERS，按领域声明过滤）。"
         ),
     )
     apply_kinds: list[str] = Field(
         default_factory=list,
         description=(
-            "当前 POST /api/capabilities/apply 可用的变更能力"
+            "当前 POST /api/domains/current/capabilities/apply 可用的变更能力"
             "（框架内置 ∪ 领域 APPLY_HANDLERS，按领域声明过滤）。"
         ),
     )

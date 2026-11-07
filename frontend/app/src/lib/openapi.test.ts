@@ -21,7 +21,7 @@ const spec: OpenAPISpec = {
     { name: '通用查询', description: '通用能力' },
   ],
   paths: {
-    '/api/capabilities/query': {
+    '/api/domains/current/capabilities/query': {
       post: {
         tags: ['领域推理'],
         summary: '领域能力查询',
@@ -37,7 +37,7 @@ const spec: OpenAPISpec = {
         responses: { '200': { description: 'ok' } },
       },
     },
-    '/api/capabilities/apply': {
+    '/api/domains/current/capabilities/apply': {
       post: {
         tags: ['领域推理'],
         summary: '领域能力变更',
@@ -112,12 +112,12 @@ describe('operationsFromSpec', () => {
     const ops = operationsFromSpec(spec);
     expect(ops).toHaveLength(4);
 
-    const query = ops.find((op) => op.path === '/api/capabilities/query');
+    const query = ops.find((op) => op.path === '/api/domains/current/capabilities/query');
     expect(query?.method).toBe('post');
     expect(query?.group).toBe('领域推理');
     expect(query?.summary).toBe('领域能力查询');
 
-    const apply = ops.find((op) => op.path === '/api/capabilities/apply');
+    const apply = ops.find((op) => op.path === '/api/domains/current/capabilities/apply');
     expect(apply?.summary).toBe('领域能力变更');
 
     const sparql = ops.find((op) => op.path === '/api/query');
@@ -129,7 +129,7 @@ describe('operationsFromSpec', () => {
 
   it('解析请求体里的 $ref', () => {
     const ops = operationsFromSpec(spec);
-    const query = ops.find((op) => op.path === '/api/capabilities/query');
+    const query = ops.find((op) => op.path === '/api/domains/current/capabilities/query');
     const schema = query?.requestBody?.content?.['application/json']?.schema;
     expect(schema?.type).toBe('object');
     expect(Object.keys(schema?.properties ?? {})).toEqual(['type', 'task', 'params']);
@@ -222,12 +222,12 @@ describe('requestUrl', () => {
 
 describe('请求初值 / curl', () => {
   it('JSON 请求体从 schema 生成示例', () => {
-    const query = operationsFromSpec(spec).find((op) => op.path === '/api/capabilities/query');
+    const query = operationsFromSpec(spec).find((op) => op.path === '/api/domains/current/capabilities/query');
     expect(query).toBeDefined();
     const body = JSON.parse(initialBodyText(query!));
     expect(body).toEqual({ type: 'capability_match', task: '', params: {} });
 
-    const apply = operationsFromSpec(spec).find((op) => op.path === '/api/capabilities/apply');
+    const apply = operationsFromSpec(spec).find((op) => op.path === '/api/domains/current/capabilities/apply');
     expect(JSON.parse(initialBodyText(apply!))).toEqual({
       type: 'assign', task: '', agent: '', persist: false,
     });

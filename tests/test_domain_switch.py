@@ -111,7 +111,7 @@ def test_activate_broken_domain_keeps_current(two_domains):
     (pkg / "__init__.py").write_text(
         "NAME = 'broken'\n"
         "CAPABILITIES = ('capability_match',)\n"
-        "def create_adapter(engine, config=None):\n"
+        "def create_adapter_ctx(ctx):\n"
         "    return object()\n",
         encoding="utf-8",
     )
@@ -128,7 +128,7 @@ def test_missing_ontology_rejected(two_domains):
     pkg.mkdir()
     (pkg / "__init__.py").write_text(
         "NAME = 'nontology'\nCAPABILITIES = ()\n"
-        "def create_adapter(engine, config=None):\n    return object()\n",
+        "def create_adapter_ctx(ctx):\n    return object()\n",
         encoding="utf-8",
     )
     mgr = DomainManager(cfg)
@@ -174,7 +174,7 @@ def test_reload_rejects_broken_code(two_domains):
     before = mgr.adapter
 
     init = root / "minimal" / "__init__.py"
-    init.write_text("NAME = 'minimal'\ndef create_adapter(e, c=None): raise RuntimeError('boom')\n",
+    init.write_text("NAME = 'minimal'\ndef create_adapter_ctx(ctx): raise RuntimeError('boom')\n",
                     encoding="utf-8")
     with pytest.raises(Exception):  # noqa: B017 —— 任何加载期异常都应保持旧状态
         mgr.reload()

@@ -7,26 +7,32 @@
 
 ```bash
 python scripts/ontologyctl.py domain install --from ./examples/agent_task
+python scripts/ontologyctl.py domain install --from ./examples/onto_playground
 ```
 
-安装后 `domains/agent_task/` 是本地副本（已在 `.gitignore` 中），可以直接修改：
+安装后 `domains/<name>/` 是本地副本（已在 `.gitignore` 中），可以直接修改：
 它是运行态，不是示例源码。重新安装会覆盖，`--force` 时旧版本先备份到
-`backups/domains/<name>-<时间戳>/`。
+`backups/domains/<name>-<时间戳>/`。安装后可用 `POST /api/domains/{name}/activate`
+在两个领域之间热切换，无需重启。
 
-## 两个示例的分工
+## 三个示例的分工
 
 | 包 | 定位 | 用来证明什么 |
 |---|---|---|
-| `agent_task/` | 完整业务领域（智能体任务编排） | 框架能承载真实规模的领域：7 个能力、R2/R4 规则、ABox 写入、MCP 工具 |
+| `agent_task/` | 完整业务领域（智能体任务编排） | 框架能承载真实规模的领域：多个能力、R2/R4 规则、ABox 写入、MCP 工具 |
 | `_minimal/` | 零复制验收物 | 新领域最少要写多少东西（1 类 + 3 个体 + 0 业务方法） |
+| `onto_playground/` | 异构领域（本体平台元模型） | 框架不预设「任务-执行者」形状：能力名、类层次与公理全由领域自己定 |
 
-`agent_task` 和 `_minimal` 都是"顺着框架形状长"的——前者功能全，后者什么都不做。
+`agent_task` 与 `_minimal` 顺着同一形状长（一个功能全、一个什么都不做）；
+`onto_playground` 是**异构样本**——它把本仓库自身的构件世界（领域包 / 软件模块 /
+适配器 / 能力 / 落点 / 闸门 / 通道 / 规则 / 违规）建成可推理本体：四条 OWL 公理
+（属性链可达、传递依赖、等价类违规、对逆属性）+ 三个领域自有只读能力 +
+`ENTITY_SCHEMA` + 包内 SHACL 形状。安装后无需改任何框架代码即可切换使用。
 
-**异构形状不靠示例证明，靠测试守。** 匿名等价类（`owl:hasValue` 拆出的
-`owl:Restriction`）、多级类层次（三级且 `subClassOf` 带传递闭包）这两类偏离
-"任务-执行者"形态的结构，由 `tests/test_contract.py` 用合成夹具直接构造推理后的图
-来断言——`Widget / Gadget / SubGadget` 加一个匿名 `BNode`，不依赖任何示例包的 .owl。
-这样做的好处是：回归用例不受示例增删影响，也不会有人为了改断言去动本体。
+**更偏的结构仍由测试守。** 匿名等价类（`owl:hasValue` 拆出的 `owl:Restriction`）、
+多级类层次（三级且 `subClassOf` 带传递闭包）这两类结构，由 `tests/test_contract.py`
+用合成夹具直接构造推理后的图来断言——不依赖任何示例包的 .owl，回归用例不受
+示例增删影响，也不会有人为了改断言去动本体。
 
 ## 新增示例的约定
 
@@ -34,7 +40,7 @@ python scripts/ontologyctl.py domain install --from ./examples/agent_task
 
 | 文件 | 必需 | 作用 |
 |---|---|---|
-| `__init__.py` | 是 | 暴露 `NAME` / `DESCRIPTION` / `ONTO_FILE` / `create_adapter`（或 `create_adapter_ctx`）；建议加 `PLUGIN_API = "1"` |
+| `__init__.py` | 是 | 暴露 `NAME` / `DESCRIPTION` / `ONTO_FILE` / `create_adapter_ctx`；建议加 `PLUGIN_API = "1"` |
 | `*.owl` | 是 | 本体定义（文件名由 `ONTO_FILE` 指向，或包内唯一的 `.owl`） |
 | `config.json` | 否 | 语义配置（类角色映射、图谱分组） |
 | `derivation.json` | 否 | 推导链展示模板 |

@@ -27,7 +27,7 @@
 ## 3. 可依赖的约定
 
 - 目录职责与 SDK 依赖规则：仓库 `AGENTS.md`（权威）
-- 领域包最小契约（`NAME` / `create_adapter(engine, config)` / 可选件）：`packages/ontology-plugin-sdk` 的 `protocol` + `examples/_minimal/`
+- 领域包最小契约（`NAME` / `create_adapter_ctx(ctx)` / 可选件）：`packages/ontology-plugin-sdk` 的 `protocol` + `examples/_minimal/`
 - 发版纪律：tag 即契约；SDK 公开符号变更登记 `### BREAKING CHANGE`；包名 / 仓库名 / 发布域名变更打 tag 前知会派生使用方（`CONTRIBUTING.md` §4 / §6）
 - 测试基线：后端 pytest / 前端 vitest，项数以实测为准（文档不写死数字）
 - 依赖分级：运行时子集见 `requirements.txt`；测试/文档依赖走 pyproject 可选档（`.[test]` / `.[docs]`）

@@ -20,7 +20,7 @@
     DESCRIPTION   str    领域说明
     ONTO_FILE     str    本体文件名（可选，缺省在包内找 *.owl）
     CAPABILITIES  list   声明本领域提供哪些能力（声明即承诺，见下）
-    create_adapter(engine, config=None) -> 适配器实例
+    create_adapter_ctx(ctx) -> 适配器实例（唯一工厂）
 
 CAPABILITIES 的三态语义（P1-1 起强制校验）：
     缺省 / None   视为全量能力 → 7 个契约方法缺一个就在加载时失败
@@ -254,25 +254,23 @@ def _validate_api_version(name: str, module: ModuleType) -> None:
 
 def _validate_contract(name: str, module: ModuleType) -> None:
     _validate_api_version(name, module)
-    if not callable(getattr(module, "create_adapter", None)) and not callable(
-        getattr(module, "create_adapter_ctx", None)
-    ):
+    if not callable(getattr(module, "create_adapter_ctx", None)):
         raise DomainContractError(
-            f"领域包 {name!r} 未提供 create_adapter(engine, config=None) 或 "
-            f"create_adapter_ctx(ctx)，模块 {getattr(module, '__name__', '?')} 不满足最小契约"
+            f"领域包 {name!r} 未提供 create_adapter_ctx(ctx)，"
+            f"模块 {getattr(module, '__name__', '?')} 不满足最小契约"
         )
 
 
 def load_domain(name: str, engine, config=None, *, settings: DomainConfig | None = None):
     """按标识加载领域适配器，并**在加载时**校验契约。
 
-    config 是**领域自己的适配器配置**（原样传给 create_adapter），
+    config 是**领域自己的适配器配置**（放进 PluginContext 交给领域），
     与运行态配置 DomainConfig（settings）不是一回事。
 
-    工厂约定（P1-4 起）：
-        优先 create_adapter_ctx(ctx)——框架能力一次性交付，领域不必
-        import 四个不同的 reasoner 内部模块；
-        没有时退回 create_adapter(engine, config)——老领域包零改动加载。
+    工厂约定：领域包只暴露 `create_adapter_ctx(ctx)` 一个工厂。框架把引擎、
+    包目录、配置与原语一次性交付，领域不 import 任何宿主内部模块，包内
+    资源统一用 `ctx.path()` 读取。没有第二个工厂，也没有回退分支——
+    契约简单到不可能"导漏一个就静默降级"。
 
     契约校验（P1-1）：缺方法且未在 CAPABILITIES 里显式排除 →
     DomainContractError。把"漏实现"从"某个请求 500"提前到"启动即失败"，
@@ -280,16 +278,12 @@ def load_domain(name: str, engine, config=None, *, settings: DomainConfig | None
     """
     module = load_domain_module(name, settings=settings)
     _validate_contract(name, module)
-    factory = getattr(module, "create_adapter_ctx", None)
-    if callable(factory):
-        # 从 SDK 取上下文，而不是绕 reasoner.plugin：后者现在只是兼容 shim，
-        # 宿主自己再走 shim 没有意义，且会触发 reasoner/__init__ 的引导期副作用。
-        from ontology_plugin_sdk import PluginContext
+    # 从 SDK 取上下文，而不是绕 reasoner.plugin：后者只是兼容 shim，
+    # 宿主自己再走 shim 会触发 reasoner/__init__ 的引导期副作用。
+    from ontology_plugin_sdk import PluginContext
 
-        ctx = PluginContext.for_module(module, engine, config)
-        adapter = factory(ctx)
-    else:
-        adapter = module.create_adapter(engine, config)
+    ctx = PluginContext.for_module(module, engine, config)
+    adapter = module.create_adapter_ctx(ctx)
     _validate_adapter(name, adapter)
     return adapter
 

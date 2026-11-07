@@ -7,7 +7,7 @@ description: 领域包开发：从模板新建、安装、热切换到脱离宿�
 
 ## 1. 何时用我
 
-用户要新建领域包、改造示例领域、把领域包装进运行态、或切换当前领域。「换领域 = 提供一个领域包（暴露 `NAME` / `DESCRIPTION` / `create_adapter`，依赖 `ontology_plugin_sdk`），核心引擎、API、MCP、CLI 无需改动」。
+用户要新建领域包、改造示例领域、把领域包装进运行态、或切换当前领域。「换领域 = 提供一个领域包（暴露 `NAME` / `DESCRIPTION` / `create_adapter_ctx`，依赖 `ontology_plugin_sdk`），核心引擎、API、MCP、CLI 无需改动」。
 
 ## 2. 前置自检
 
@@ -42,8 +42,8 @@ DESCRIPTION = "一句话领域描述"
 ONTO_FILE = "<name>.owl"          # 包内 .owl 文件名；或留给加载器取包内唯一 .owl
 PLUGIN_API = "1"                  # 建议：显式声明契约版本
 
-def create_adapter(engine, config=None):
-    ...                           # 返回实现适配器协议的对象
+def create_adapter_ctx(ctx):
+    ...                           # 返回适配器；ctx 带包目录/配置/引擎
 ```
 
 可选文件（按需省略）：`adapter.py`（业务规则）、`config.json`（类角色映射/图谱分组 graph_groups/属性名覆盖）、`derivation.json`（推导链文案模板）、`shapes/*.ttl`（SHACL 形状，G4 闸门用）、`mcp.py`（领域 MCP 工具注册）、`rules/*.ttl`（SHACL 业务规则）。

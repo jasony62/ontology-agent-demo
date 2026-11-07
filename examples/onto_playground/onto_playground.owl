@@ -1,0 +1,515 @@
+<?xml version="1.0"?>
+<rdf:RDF xmlns="http://example.org/onto_playground#"
+     xml:base="http://example.org/onto_playground"
+     xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+     xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+     xmlns:owl="http://www.w3.org/2002/07/owl#"
+     xmlns:xsd="http://www.w3.org/2001/XMLSchema#">
+
+  <owl:Ontology rdf:about="http://example.org/onto_playground">
+    <rdfs:label>本体平台元模型</rdfs:label>
+    <rdfs:comment>描述 ontology-agent-demo 自身的构件世界：领域包 / 宿主模块 / SDK / 适配器 / 能力 / 落点 / 闸门 / 通道 / 规则。知识源为项目文档与代码，规则只翻译不发明。</rdfs:comment>
+  </owl:Ontology>
+
+  <!-- ============ 类：PlatformArtifact 顶层 ============ -->
+  <owl:Class rdf:about="#PlatformArtifact">
+    <rdfs:label>平台构件</rdfs:label>
+    <rdfs:comment>本体平台中一切可被谈论的构件的总称</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#DomainPackage">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>领域包</rdfs:label>
+    <rdfs:comment>一个业务一个自包含目录，可插拔可拷贝；只在运行态下生效</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#SoftwareModule">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>软件模块</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#HostModule">
+    <rdfs:subClassOf rdf:resource="#SoftwareModule"/>
+    <rdfs:label>宿主模块</rdfs:label>
+    <rdfs:comment>核心层代码，必须零领域词汇</rdfs:comment>
+  </owl:Class>
+  <owl:Class rdf:about="#CoreEngine">
+    <rdfs:subClassOf rdf:resource="#HostModule"/>
+    <rdfs:label>核心引擎</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#ServiceModule">
+    <rdfs:subClassOf rdf:resource="#HostModule"/>
+    <rdfs:label>服务模块</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#SdkModule">
+    <rdfs:subClassOf rdf:resource="#SoftwareModule"/>
+    <rdfs:label>SDK 模块</rdfs:label>
+    <rdfs:comment>领域包唯一可依赖的自有包</rdfs:comment>
+  </owl:Class>
+  <owl:Class rdf:about="#ExternalLibrary">
+    <rdfs:subClassOf rdf:resource="#SoftwareModule"/>
+    <rdfs:label>外部库</rdfs:label>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Adapter">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>适配器</rdfs:label>
+    <rdfs:comment>把通用引擎包装为该领域的查询语义</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Capability">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>能力</rdfs:label>
+    <rdfs:comment>声明即承诺；清单外视为不提供</rdfs:comment>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Landing">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>落点</rdfs:label>
+    <rdfs:comment>声明的能力必须有落点，否则悬空拒载</rdfs:comment>
+  </owl:Class>
+  <owl:Class rdf:about="#ContractMethod">
+    <rdfs:subClassOf rdf:resource="#Landing"/>
+    <rdfs:label>契约方法落点</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#Handler">
+    <rdfs:subClassOf rdf:resource="#Landing"/>
+    <rdfs:label>处理器落点</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#AdapterMethod">
+    <rdfs:subClassOf rdf:resource="#Landing"/>
+    <rdfs:label>适配器同名方法落点</rdfs:label>
+  </owl:Class>
+
+  <owl:Class rdf:about="#Rule">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>规则</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#ExecutionLayer">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>执行层</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#Gate">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>闸门</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#Channel">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>通道</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#OntologyArtifact">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>包内工件</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#Violation">
+    <rdfs:subClassOf rdf:resource="#PlatformArtifact"/>
+    <rdfs:label>违规</rdfs:label>
+  </owl:Class>
+
+  <!-- A3 等价类：依赖宿主的领域包 = 不合规领域包（由推理器自动归类） -->
+  <owl:Class rdf:about="#NonCompliantPackage">
+    <rdfs:label>不合规领域包</rdfs:label>
+    <owl:equivalentClass>
+      <owl:Class>
+        <owl:intersectionOf rdf:parseType="Collection">
+          <rdf:Description rdf:about="#DomainPackage"/>
+          <owl:Restriction>
+            <owl:onProperty rdf:resource="#dependsOn"/>
+            <owl:someValuesFrom rdf:resource="#HostModule"/>
+          </owl:Restriction>
+        </owl:intersectionOf>
+      </owl:Class>
+    </owl:equivalentClass>
+  </owl:Class>
+
+  <!-- ============ 对象属性 ============ -->
+  <owl:ObjectProperty rdf:about="#declaresCapability">
+    <rdfs:domain rdf:resource="#DomainPackage"/>
+    <rdfs:range rdf:resource="#Capability"/>
+    <owl:inverseOf rdf:resource="#declaredBy"/>
+    <rdfs:label>声明能力</rdfs:label>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="#declaredBy">
+    <rdfs:domain rdf:resource="#Capability"/>
+    <rdfs:range rdf:resource="#DomainPackage"/>
+    <owl:inverseOf rdf:resource="#declaresCapability"/>
+    <rdfs:label>由某包声明</rdfs:label>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#hasLanding">
+    <rdfs:domain rdf:resource="#Capability"/>
+    <rdfs:range rdf:resource="#Landing"/>
+    <rdfs:label>有落点</rdfs:label>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#provides">
+    <rdfs:domain rdf:resource="#DomainPackage"/>
+    <rdfs:range rdf:resource="#Adapter"/>
+    <owl:inverseOf rdf:resource="#providedBy"/>
+    <rdfs:label>提供适配器</rdfs:label>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="#providedBy">
+    <rdfs:domain rdf:resource="#Adapter"/>
+    <rdfs:range rdf:resource="#DomainPackage"/>
+    <owl:inverseOf rdf:resource="#provides"/>
+    <rdfs:label>属于某包</rdfs:label>
+  </owl:ObjectProperty>
+
+  <!-- A2 传递属性 1/2 -->
+  <owl:ObjectProperty rdf:about="#dependsOn">
+    <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+    <rdfs:domain rdf:resource="#PlatformArtifact"/>
+    <rdfs:range rdf:resource="#SoftwareModule"/>
+    <rdfs:label>依赖于</rdfs:label>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#servedOn">
+    <rdfs:domain rdf:resource="#DomainPackage"/>
+    <rdfs:range rdf:resource="#Channel"/>
+    <rdfs:label>服务在通道</rdfs:label>
+  </owl:ObjectProperty>
+
+  <!-- A1 属性链：declaredBy ◦ servedOn ⊑ reachableVia -->
+  <owl:ObjectProperty rdf:about="#reachableVia">
+    <rdfs:domain rdf:resource="#Capability"/>
+    <rdfs:range rdf:resource="#Channel"/>
+    <rdfs:label>可达通道</rdfs:label>
+    <rdfs:comment>由属性链推出，不手工断言</rdfs:comment>
+    <owl:propertyChainAxiom>
+      <rdf:Description>
+        <rdf:first rdf:resource="#declaredBy"/>
+        <rdf:rest>
+          <rdf:Description>
+            <rdf:first rdf:resource="#servedOn"/>
+            <rdf:rest rdf:resource="http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"/>
+          </rdf:Description>
+        </rdf:rest>
+      </rdf:Description>
+    </owl:propertyChainAxiom>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#implementedIn">
+    <rdfs:domain rdf:resource="#Rule"/>
+    <rdfs:range rdf:resource="#ExecutionLayer"/>
+    <rdfs:label>实现于层</rdfs:label>
+  </owl:ObjectProperty>
+
+  <!-- A2 传递属性 2/2 -->
+  <owl:ObjectProperty rdf:about="#precedes">
+    <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+    <rdfs:domain rdf:resource="#Gate"/>
+    <rdfs:range rdf:resource="#Gate"/>
+    <rdfs:label>先于</rdfs:label>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#validates">
+    <rdfs:domain rdf:resource="#Gate"/>
+    <rdfs:range rdf:resource="#OntologyArtifact"/>
+    <rdfs:label>校验工件</rdfs:label>
+  </owl:ObjectProperty>
+
+  <owl:ObjectProperty rdf:about="#hasViolation">
+    <rdfs:domain rdf:resource="#DomainPackage"/>
+    <rdfs:range rdf:resource="#Violation"/>
+    <rdfs:label>存在违规</rdfs:label>
+  </owl:ObjectProperty>
+
+  <!-- ============ 数据属性 ============ -->
+  <owl:DatatypeProperty rdf:about="#has_mode">
+    <rdfs:domain rdf:resource="#Channel"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <rdfs:label>运行模式</rdfs:label>
+    <rdfs:comment>取值 domain_mode / generic_mode；generic 模式下领域端点返 400</rdfs:comment>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="#has_reload_level">
+    <rdfs:domain rdf:resource="#PlatformArtifact"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+    <rdfs:label>重载等级</rdfs:label>
+    <rdfs:comment>取值 L1 / L2 / L3</rdfs:comment>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="#has_port">
+    <rdfs:domain rdf:resource="#Channel"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#integer"/>
+    <rdfs:label>端口</rdfs:label>
+  </owl:DatatypeProperty>
+  <owl:DatatypeProperty rdf:about="#has_order">
+    <rdfs:domain rdf:resource="#Gate"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#integer"/>
+    <rdfs:label>顺序号</rdfs:label>
+  </owl:DatatypeProperty>
+
+  <!-- ============ 个体：领域包 ============ -->
+  <owl:NamedIndividual rdf:about="#agent_task">
+    <rdf:type rdf:resource="#DomainPackage"/>
+    <rdfs:label>任务编排领域包</rdfs:label>
+    <dependsOn rdf:resource="#ontology_plugin_sdk"/>
+    <provides rdf:resource="#AgentTaskAdapter"/>
+    <servedOn rdf:resource="#rest_api_8000"/>
+    <servedOn rdf:resource="#mcp_server_9000"/>
+    <declaresCapability rdf:resource="#capability_match"/>
+    <declaresCapability rdf:resource="#orchestrate"/>
+    <declaresCapability rdf:resource="#assign"/>
+    <declaresCapability rdf:resource="#classify"/>
+    <declaresCapability rdf:resource="#consistency"/>
+    <declaresCapability rdf:resource="#explain"/>
+    <declaresCapability rdf:resource="#graph_export"/>
+    <declaresCapability rdf:resource="#create"/>
+  </owl:NamedIndividual>
+
+  <owl:NamedIndividual rdf:about="#fault_diag">
+    <rdf:type rdf:resource="#DomainPackage"/>
+    <rdfs:label>故障诊断领域包</rdfs:label>
+    <dependsOn rdf:resource="#ontology_plugin_sdk"/>
+    <provides rdf:resource="#FaultDiagnosisAdapter"/>
+    <servedOn rdf:resource="#rest_api_8000"/>
+    <declaresCapability rdf:resource="#diagnose"/>
+    <declaresCapability rdf:resource="#consistency"/>
+    <declaresCapability rdf:resource="#explain"/>
+    <declaresCapability rdf:resource="#graph_export"/>
+    <declaresCapability rdf:resource="#create"/>
+  </owl:NamedIndividual>
+
+  <owl:NamedIndividual rdf:about="#minimal">
+    <rdf:type rdf:resource="#DomainPackage"/>
+    <rdfs:label>最小领域包</rdfs:label>
+    <dependsOn rdf:resource="#ontology_plugin_sdk"/>
+    <provides rdf:resource="#MinimalAdapter"/>
+    <servedOn rdf:resource="#rest_api_8000"/>
+    <declaresCapability rdf:resource="#graph_export"/>
+  </owl:NamedIndividual>
+
+  <!-- 反事实个体：仅用于验证 A3 等价类，非真实存在 -->
+  <owl:NamedIndividual rdf:about="#wip_bad_package">
+    <rdf:type rdf:resource="#DomainPackage"/>
+    <rdfs:label>验证用反事实包</rdfs:label>
+    <rdfs:comment>刻意声明依赖宿主模块 reasoner，用于验证会被推理器归入 NonCompliantPackage；非项目真实存在</rdfs:comment>
+    <dependsOn rdf:resource="#reasoner"/>
+  </owl:NamedIndividual>
+
+  <!-- ============ 个体：软件模块 ============ -->
+  <owl:NamedIndividual rdf:about="#reasoner">
+    <rdf:type rdf:resource="#CoreEngine"/>
+    <rdfs:label>推理核心</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#api">
+    <rdf:type rdf:resource="#ServiceModule"/>
+    <rdfs:label>REST 服务模块</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#mcp">
+    <rdf:type rdf:resource="#ServiceModule"/>
+    <rdfs:label>MCP 服务模块</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#scripts">
+    <rdf:type rdf:resource="#ServiceModule"/>
+    <rdfs:label>命令行脚本模块</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#ontology_plugin_sdk">
+    <rdf:type rdf:resource="#SdkModule"/>
+    <rdfs:label>插件 SDK</rdfs:label>
+    <dependsOn rdf:resource="#rdflib"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#rdflib">
+    <rdf:type rdf:resource="#ExternalLibrary"/>
+    <rdfs:label>RDF 库</rdfs:label>
+  </owl:NamedIndividual>
+
+  <!-- ============ 个体：适配器与落点 ============ -->
+  <owl:NamedIndividual rdf:about="#AgentTaskAdapter">
+    <rdf:type rdf:resource="#Adapter"/>
+    <rdfs:label>任务编排适配器</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#FaultDiagnosisAdapter">
+    <rdf:type rdf:resource="#Adapter"/>
+    <rdfs:label>故障诊断适配器</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#MinimalAdapter">
+    <rdf:type rdf:resource="#Adapter"/>
+    <rdfs:label>最小适配器</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#protocol_contract_method">
+    <rdf:type rdf:resource="#ContractMethod"/>
+    <rdfs:label>契约方法落点</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#handler_diagnose">
+    <rdf:type rdf:resource="#Handler"/>
+    <rdfs:label>诊断处理器落点</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#adapter_same_name_method">
+    <rdf:type rdf:resource="#AdapterMethod"/>
+    <rdfs:label>适配器同名方法落点</rdfs:label>
+  </owl:NamedIndividual>
+
+  <!-- ============ 个体：能力 ============ -->
+  <owl:NamedIndividual rdf:about="#capability_match">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>能力匹配</rdfs:label>
+    <hasLanding rdf:resource="#protocol_contract_method"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#orchestrate">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>任务编排</rdfs:label>
+    <hasLanding rdf:resource="#protocol_contract_method"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#assign">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>任务指派</rdfs:label>
+    <hasLanding rdf:resource="#protocol_contract_method"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#classify">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>实体归类</rdfs:label>
+    <hasLanding rdf:resource="#adapter_same_name_method"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#consistency">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>一致性检查</rdfs:label>
+    <hasLanding rdf:resource="#protocol_contract_method"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#explain">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>推导链解释</rdfs:label>
+    <hasLanding rdf:resource="#protocol_contract_method"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#graph_export">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>图谱导出</rdfs:label>
+    <hasLanding rdf:resource="#protocol_contract_method"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#create">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>实体创建</rdfs:label>
+    <hasLanding rdf:resource="#protocol_contract_method"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#diagnose">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>故障诊断</rdfs:label>
+    <hasLanding rdf:resource="#handler_diagnose"/>
+  </owl:NamedIndividual>
+  <!-- 故意无落点：用于验证悬空能力判定 -->
+  <owl:NamedIndividual rdf:about="#experimental_capability">
+    <rdf:type rdf:resource="#Capability"/>
+    <rdfs:label>实验能力（无落点）</rdfs:label>
+    <rdfs:comment>验证夹具：无 hasLanding 断言，用于验证悬空能力被 SHACL 判违规</rdfs:comment>
+  </owl:NamedIndividual>
+
+  <!-- ============ 个体：规则与执行层 ============ -->
+  <owl:NamedIndividual rdf:about="#owl_axiom">
+    <rdf:type rdf:resource="#ExecutionLayer"/>
+    <rdfs:label>OWL 公理层</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#adapter_code">
+    <rdf:type rdf:resource="#ExecutionLayer"/>
+    <rdfs:label>适配器代码层</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#shacl_rule">
+    <rdf:type rdf:resource="#ExecutionLayer"/>
+    <rdfs:label>SHACL 规则层</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#R1">
+    <rdf:type rdf:resource="#Rule"/>
+    <rdfs:label>能力匹配规则</rdfs:label>
+    <implementedIn rdf:resource="#owl_axiom"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#R2">
+    <rdf:type rdf:resource="#Rule"/>
+    <rdfs:label>复合委派规则</rdfs:label>
+    <implementedIn rdf:resource="#adapter_code"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#R3">
+    <rdf:type rdf:resource="#Rule"/>
+    <rdfs:label>依赖传递规则</rdfs:label>
+    <implementedIn rdf:resource="#owl_axiom"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#R4">
+    <rdf:type rdf:resource="#Rule"/>
+    <rdfs:label>合规冲突规则</rdfs:label>
+    <implementedIn rdf:resource="#adapter_code"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#R5">
+    <rdf:type rdf:resource="#Rule"/>
+    <rdfs:label>高风险人工介入规则</rdfs:label>
+    <implementedIn rdf:resource="#shacl_rule"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#R6">
+    <rdf:type rdf:resource="#Rule"/>
+    <rdfs:label>高风险双人复核规则</rdfs:label>
+    <implementedIn rdf:resource="#shacl_rule"/>
+  </owl:NamedIndividual>
+
+  <!-- ============ 个体：闸门 ============ -->
+  <owl:NamedIndividual rdf:about="#G1">
+    <rdf:type rdf:resource="#Gate"/>
+    <rdfs:label>DL 格式闸门</rdfs:label>
+    <has_order rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">1</has_order>
+    <precedes rdf:resource="#G2"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#G2">
+    <rdf:type rdf:resource="#Gate"/>
+    <rdfs:label>一致性闸门</rdfs:label>
+    <has_order rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">2</has_order>
+    <precedes rdf:resource="#G3"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#G3">
+    <rdf:type rdf:resource="#Gate"/>
+    <rdfs:label>物化冒烟闸门</rdfs:label>
+    <has_order rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">3</has_order>
+    <precedes rdf:resource="#G4"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#G4">
+    <rdf:type rdf:resource="#Gate"/>
+    <rdfs:label>SHACL 与测试闸门</rdfs:label>
+    <has_order rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">4</has_order>
+  </owl:NamedIndividual>
+
+  <!-- ============ 个体：通道 ============ -->
+  <owl:NamedIndividual rdf:about="#rest_api_8000">
+    <rdf:type rdf:resource="#Channel"/>
+    <rdfs:label>REST 服务通道</rdfs:label>
+    <has_port rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">8000</has_port>
+    <has_mode>domain_mode</has_mode>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#mcp_server_9000">
+    <rdf:type rdf:resource="#Channel"/>
+    <rdfs:label>MCP 服务通道</rdfs:label>
+    <has_port rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">9000</has_port>
+    <has_mode>domain_mode</has_mode>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#cli_local">
+    <rdf:type rdf:resource="#Channel"/>
+    <rdfs:label>命令行本地通道</rdfs:label>
+    <has_mode>domain_mode</has_mode>
+  </owl:NamedIndividual>
+
+  <!-- ============ 个体：包内工件与违规 ============ -->
+  <owl:NamedIndividual rdf:about="#agent_task_owl">
+    <rdf:type rdf:resource="#OntologyArtifact"/>
+    <rdfs:label>示例领域本体文件</rdfs:label>
+    <has_reload_level>L1</has_reload_level>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#agent_task_shapes">
+    <rdf:type rdf:resource="#OntologyArtifact"/>
+    <rdfs:label>示例 SHACL 形状文件</rdfs:label>
+    <has_reload_level>L1</has_reload_level>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#agent_task_rules_R5">
+    <rdf:type rdf:resource="#OntologyArtifact"/>
+    <rdfs:label>示例 R5 规则文件</rdfs:label>
+    <has_reload_level>L1</has_reload_level>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#agent_task_config">
+    <rdf:type rdf:resource="#OntologyArtifact"/>
+    <rdfs:label>示例语义配置文件</rdfs:label>
+    <has_reload_level>L2</has_reload_level>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#dangling_capability">
+    <rdf:type rdf:resource="#Violation"/>
+    <rdfs:label>悬空能力</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#host_import">
+    <rdf:type rdf:resource="#Violation"/>
+    <rdfs:label>宿主依赖</rdfs:label>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#label_duplicated">
+    <rdf:type rdf:resource="#Violation"/>
+    <rdfs:label>标签双写</rdfs:label>
+  </owl:NamedIndividual>
+</rdf:RDF>

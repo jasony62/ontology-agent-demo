@@ -77,13 +77,8 @@ TEMPLATES = _DER.templates
 DERIVATIONS = _DER.derivations
 
 
-def create_adapter(engine, config: SemanticConfig | None = None):
-    """按约定暴露的工厂：加载领域适配器实例（config 缺省用 config.json 驱动的默认语义配置）。"""
-    return AgentTaskAdapter(engine, config or DEFAULT_CONFIG)
-
-
 def create_adapter_ctx(ctx: PluginContext):
-    """P1-4 起的首选工厂：框架能力由 ctx 一次性交付，领域不再 import 内部模块。"""
+    """领域包唯一工厂：框架能力由 ctx 一次性交付，包内资源经 ctx.path() 读取。"""
     return AgentTaskAdapter(ctx.engine, ctx.config or DEFAULT_CONFIG, ctx=ctx)
 
 
@@ -98,9 +93,9 @@ class AgentTaskAdapter:
       - 图谱导出      graph_export（供前端渲染）
     """
 
-    def __init__(self, engine, config: SemanticConfig, ctx: PluginContext | None = None):
-        # ctx 缺省时自建：让 `AgentTaskAdapter(engine, cfg)` 这种旧式构造继续可用
-        self.ctx = ctx or PluginContext.for_engine(engine)
+    def __init__(self, engine, config: SemanticConfig, ctx: PluginContext):
+        # ctx 由唯一工厂 create_adapter_ctx 传入：包目录、配置与引擎原语都在里面
+        self.ctx = ctx
         self.engine = engine
         self.c = config
         self.NAME = NAME                       # 领域标识（health / 日志 / 运行时发现）

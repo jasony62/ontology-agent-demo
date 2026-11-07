@@ -110,35 +110,38 @@ _CTX_FACTORY = (
     "def create_adapter_ctx(ctx):\n"
     "    return _A(engine=ctx.engine, base_dir=ctx.base_dir, via='ctx')\n"
 )
-_OLD_FACTORY = (
+_LEGACY_FACTORY = (
     _ADAPTER_CLASS +
     "def create_adapter(engine, config=None):\n"
     "    return _A(engine=engine, via='legacy')\n"
 )
 
 
-def test_loader_prefers_ctx_factory(tmp_path):
+def test_loader_uses_ctx_factory_with_package_dir(tmp_path):
+    """唯一工厂：加载器把带包目录的 ctx 交给领域，没有回退分支。"""
     from config.loader import DomainConfig
     from domains import load_domain
 
-    _make_pkg(tmp_path, "both", _CTX_FACTORY + _OLD_FACTORY)
+    _make_pkg(tmp_path, "ctx", _CTX_FACTORY)
     cfg = DomainConfig(root=tmp_path, default=None, watch_enabled=False,
                       watch_interval=0.0, sources={}, servers={})
 
-    adapter = load_domain("both", _EngineStub(), settings=cfg)
+    adapter = load_domain("ctx", _EngineStub(), settings=cfg)
     assert adapter.via == "ctx"
-    assert adapter.base_dir == tmp_path / "both"
+    assert adapter.base_dir == tmp_path / "ctx"
 
 
-def test_loader_falls_back_to_legacy_factory(tmp_path):
+def test_loader_rejects_legacy_only_factory(tmp_path):
+    """只有旧工厂的包不再被加载：契约收敛后必须明确报错，而不是静默兼容。"""
     from config.loader import DomainConfig
-    from domains import load_domain
+    from domains import DomainContractError, load_domain
 
-    _make_pkg(tmp_path, "legacy", _OLD_FACTORY)
+    _make_pkg(tmp_path, "legacy", _LEGACY_FACTORY)
     cfg = DomainConfig(root=tmp_path, default=None, watch_enabled=False,
                       watch_interval=0.0, sources={}, servers={})
 
-    assert load_domain("legacy", _EngineStub(), settings=cfg).via == "legacy"
+    with pytest.raises(DomainContractError, match="create_adapter_ctx"):
+        load_domain("legacy", _EngineStub(), settings=cfg)
 
 
 def test_loader_rejects_package_without_any_factory(tmp_path):
@@ -149,7 +152,7 @@ def test_loader_rejects_package_without_any_factory(tmp_path):
     cfg = DomainConfig(root=tmp_path, default=None, watch_enabled=False,
                       watch_interval=0.0, sources={}, servers={})
 
-    with pytest.raises(DomainContractError, match="create_adapter"):
+    with pytest.raises(DomainContractError, match="create_adapter_ctx"):
         load_domain("empty", _EngineStub(), settings=cfg)
 
 

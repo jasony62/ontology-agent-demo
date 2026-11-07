@@ -65,8 +65,8 @@ def _make_pkg(root, name, *, with_creator=True, init_extra="", sub_value=None):
             "        self.engine = engine",
             "        self.config = config",
             "        self.name = NAME",
-            "def create_adapter(engine, config=None):",
-            "    return _Adapter(engine, config)",
+            "def create_adapter_ctx(ctx):",
+            "    return _Adapter(ctx.engine, ctx.config)",
         ]
     if sub_value is not None:
         (pkg / "sub.py").write_text(f"VALUE = {sub_value}\n", encoding="utf-8")
@@ -85,7 +85,7 @@ def test_loads_package_from_arbitrary_root(tmp_path, root):
 
     mod = load_domain_module("probe", settings=cfg)
     assert mod.NAME == "probe"
-    assert callable(mod.create_adapter)
+    assert callable(mod.create_adapter_ctx)
     assert mod.__name__ == "domains.probe"
 
 
@@ -212,11 +212,11 @@ def test_missing_package_raises_with_hint(tmp_path, root):
     assert "good" in str(exc.value)      # 提示当前 root 下有哪些
 
 
-def test_missing_create_adapter_raises(tmp_path, root):
+def test_missing_create_adapter_ctx_raises(tmp_path, root):
     _make_pkg(root, "nocreator", with_creator=False)
     cfg = _settings(tmp_path, root)
 
-    with pytest.raises(DomainContractError, match="create_adapter"):
+    with pytest.raises(DomainContractError, match="create_adapter_ctx"):
         load_domain("nocreator", object(), settings=cfg)
 
 
@@ -251,7 +251,7 @@ def test_list_domains_enumerates_installed(tmp_path, root):
     assert names == ["good", "nocreator"]
     assert items[0]["name"] == "good"
     assert "领域" in items[0]["description"]
-    # 缺 create_adapter 只影响 load_domain，不影响枚举
+    # 缺 create_adapter_ctx 只影响 load_domain，不影响枚举
     assert "error" not in items[1]
 
 

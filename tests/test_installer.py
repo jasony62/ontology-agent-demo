@@ -31,7 +31,7 @@ def make_pkg(parent, name="src_pkg", *, creator=True, extra_init="", files=None,
     lines.append("DESCRIPTION = 'demo 领域'")
     if creator:
         lines += [
-            "def create_adapter(engine, config=None):",
+            "def create_adapter_ctx(ctx):",
             "    return {}",
         ]
     lines.append(extra_init)
@@ -151,11 +151,11 @@ def test_missing_init_py(tmp_path):
     _assert_no_residue(root, "not_a_pkg")
 
 
-def test_missing_create_adapter(tmp_path):
+def test_missing_create_adapter_ctx(tmp_path):
     src = make_pkg(tmp_path / "examples", "p", creator=False)
     root = tmp_path / "domains"
 
-    with pytest.raises(InstallError, match="create_adapter"):
+    with pytest.raises(InstallError, match="create_adapter_ctx"):
         install(src, root=root)
     assert not (root / "p").exists()
 

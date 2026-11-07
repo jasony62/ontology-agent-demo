@@ -122,11 +122,9 @@ def validate_package(pkg_dir: Path, *, expect_name: str | None = None) -> dict:
 
     module = _probe_import(pkg_dir)
     try:
-        creators = [getattr(module, n, None) for n in ("create_adapter", "create_adapter_ctx")]
-        if not any(callable(c) for c in creators):
+        if not callable(getattr(module, "create_adapter_ctx", None)):
             raise InstallError(
-                f"领域包 {pkg_dir.name!r} 未提供 create_adapter(engine, config=None) "
-                f"或 create_adapter_ctx(ctx)"
+                f"领域包 {pkg_dir.name!r} 未提供 create_adapter_ctx(ctx)"
             )
 
         declared_name = getattr(module, "NAME", None)

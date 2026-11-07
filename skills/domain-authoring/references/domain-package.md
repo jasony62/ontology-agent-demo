@@ -19,8 +19,7 @@ CAPABILITIES = ("graph_export",)   # 声明即承诺：没声明的能力端点�
 
 class MyAdapter(AdapterBase): ...   # 可只继承框架默认实现（explain/graph_export 白拿）
 
-def create_adapter_ctx(ctx: PluginContext): ...  # 首选工厂：配置从包目录读
-def create_adapter(engine, config=None): ...     # 兼容工厂
+def create_adapter_ctx(ctx: PluginContext): ...  # 唯一工厂：配置从包目录读
 ```
 
 **可选件**（全部按需省略）：`adapter.py`（业务规则 R2/R4 + 查询服务面）、`config.json`（类角色映射 / `graph_groups` 图谱分组 / 属性名覆盖）、`derivation.json`（推导链文案）、`shapes/*.ttl`（SHACL 形状，G4 闸门）、`rules/*.ttl`（SHACL 业务规则）、`mcp.py`（`register_tools(server, get_adapter)` 领域 MCP 工具注册）、`access_policy.json` / `guard_config.json`（语义门禁/调用护栏，默认关闭逐字节兼容）、`cq.py` / `cq_tests.json` / `cq_prompts.json`（CQ 工位与回归题库）。

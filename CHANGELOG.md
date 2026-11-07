@@ -7,12 +7,14 @@
 
 ### Added
 
+- **新增 `examples/onto_playground/` 异构领域示例，随仓库一同分发**：把本仓库自身的构件世界（领域包 / 软件模块 / 适配器 / 能力 / 落点 / 闸门 / 通道 / 规则 / 违规）建成可推理本体。含四条 OWL 公理（属性链 `declaredBy ◦ servedOn ⊑ reachableVia`、传递依赖、等价类 `NonCompliantPackage`、对逆属性）、三个领域自有只读能力 `reachability` / `activation_check` / `compliance_check`（`QUERY_HANDLERS` 注册）、领域自声明的 `ENTITY_SCHEMA` 与 `shapes/onto_playground.ttl` SHACL 形状。安装后可直接热切换到该领域，框架代码无需改动；`examples/README.md` 补上"异构样本"的分工说明，`tests/test_examples.py` 守住三个示例都可安装、只暴露唯一工厂、且能真正加载推理。
 - **API 文档补齐成功响应、业务错误码与真实 media type**：`GET /openapi.json` 的 29 个操作不再统一是 `Successful Response` + 空 schema——形状稳定的端点（健康检查、SPARQL、个体 / 类 / 类型 / 属性、本体加载 / 保存 / 重载 / 状态、领域重载 / 切换等）给出字段级中文说明，形状随领域变化的端点用带中文说明的开放对象占位；新增统一 `ErrorResponse`，并在实际会抛出的端点上声明 `400` / `404` / `408` / `501`；`GET /api/ontology/export` 与 `/download` 按实际返回声明 `text/turtle` / `application/rdf+xml` / `text/n3`，不再误标为 `application/json`。全部通过 `responses={"model": ...}` 做纯文档声明，**不使用 `response_model=`**，运行时返回值不变。新增 `api/response_schemas.py`，`tests/test_openapi.py` 增四条契约断言（成功响应说明、业务错误码、非 JSON media type、端点说明）守护。
 - **「服务能力」接口文档新增「响应」区**：展开任一端点即可看到每个状态码的中文说明与响应字段表（复用请求字段的 `BodyHints`，标题区分「请求字段说明 / 响应字段说明」），并显示响应 media type；不再需要切到 Swagger UI 才能知道接口返回什么。新增 `ApiDocsPanel` 渲染测试。
 - **图谱选中节点高亮直连邻域**：在图上点选一个节点后，该节点及其直接相连的节点、连线保持原色，其余节点与连线统一压成浅灰半透明；点空白处取消选中即恢复。选区优先于图例聚焦（图例把某组压灰后，点开组内节点仍能看到它连向哪里），选中边或选中项已不在图中时退回图例规则；搜索高亮不受影响。淡化计算抽到 `lib/graphSelection.ts`，并用无头 Cytoscape 覆盖邻域、聚焦叠加与回退场景。
 
 ### Changed
 
+- **领域包工厂收敛为唯一签名 `create_adapter_ctx(ctx)`（破坏性）**：加载器与安装器不再探测、也不再回退 `create_adapter(engine, config)`，只认带 `PluginContext` 的工厂。ctx 一次性交付引擎、包目录、配置与原语，包内资源统一用 `ctx.path()` 读取；过去「导出漏一个就静默降级到无包目录上下文」的失效模式随之消失。三个示例包、全部测试夹具与 SDK / 设计 / 指南 / 技能文档同步改为单工厂；缺工厂的包在加载期与安装期都会明确报 `create_adapter_ctx`，不静默兼容。已有只暴露旧工厂的领域包需改写工厂签名——本项目仍处初期，不为旧契约保留兼容分支。
 - **领域能力出口按读写分离：删除 `POST /api/reason`，拆为 `POST /api/capabilities/query`（纯读）与 `POST /api/capabilities/apply`（变更）**：旧端点直接 404，不提供别名、`deprecated`、重定向或双写。`query` 只读、不改图、不落盘，可安全重试与缓存；`apply` 会改图，`persist=true` 写 `extensions/`，不保证幂等。请求模型拆为 `CapabilityQueryRequest` / `ApplyRequest`（`type` 仍不用 `Literal` 枚举，领域运行时可换）；`GET /api/health` 的 `contract.reason_kinds` 拆为 `contract.query_kinds` + `contract.apply_kinds`。SDK 侧 `CAPABILITY_HANDLERS` 拆为 `QUERY_HANDLERS` / `APPLY_HANDLERS`，`capability_handlers()` 拆为 `query_handlers()` / `apply_handlers()`；加载期新增硬校验：同一能力名不得同时出现在两张表（否则读端点可能执行写逻辑）。三态门禁不变（未知类型 400 附清单 / 声明未实现 501 / 实现未声明 400），新增跨端点指路：`assign` 传给 `query` 返回「请改用 `POST /api/capabilities/apply`」，反之亦然。`/api/explain` 路径与行为不变（会话态缓存不属于读写分离意义上的写），仅更新说明：推导链来自模板填槽、非公理反查，查询响应本身已带 `derivation`。`GET /openapi.json` 路径数 29 → 30，同步更新 skills（`reason-query` → `capability-query`）、CLI/演示脚本与全部文档。
 - **`/api-docs` 响应区重做：说明卡片与响应体不再共用类名**：`index.css` 里 `.apidoc-response` 被定义两次（浅色说明卡片 + 深色实际响应体），后定义覆盖前者，于是 200 / 400 / 422 / 501 四块说明卡片全被套上深黑代码块皮肤，还继承了 `max-height: 320px` 与内部滚动条。现按语义拆成 `.apidoc-response-item`（浅底卡片 + 左侧 2xx 绿 / 4xx 琥珀 / 5xx 红色条）与 `.apidoc-response-body`（深色 `<pre>`，只用于「发送请求」后的真实结果），说明卡片不再有等宽字体、高度上限与内滚动。响应字段改用定义列表两列网格（字段名与说明各自成列，窄屏 <520px 回落单列）；400 / 501 等共用同一错误体的状态码只在响应区顶部渲染一次「通用错误响应字段」，卡片内改为指向它；2xx 默认展开、4xx / 5xx 默认折叠并显示字段数，标题右侧提供「展开全部 / 收起全部」。状态码改为带底色 pill（ok / warn / bad 三态），状态描述升到 12.5px 主文本色，media type 做成 chip，「重置」「复制 curl」退成描边按钮，蓝色实心只留给「发送请求」。`ApiDocsPanel.test.tsx` 补 5 条断言：类名不混用、`pre.apidoc-response-body` 只在实际调用后出现、共用错误体只渲染一次（422 独立）、4xx/5xx 默认折叠且可一键展开、`index.css` 不再存在裸 `.apidoc-response` 定义。
 - **图谱整体信息移到右侧栏，未选中时显示「图谱概览」**：三元组统计（原始 / 物化后 / 推理新增）、图例与同步提示不再横铺在画布上方，改为占用原「检视器」所在的右列；选中节点或边时同一列切换为检视器，取消选中即回到概览。图谱上方原先的统计条与图例行整体移除，画布净增约 100px 高度；画布工具栏同时收进「原始断言 / 物化后（并集）/ 仅差异」模式切换，搜索与缩放仍在同一行，面板内边距 14→10px、右栏基准宽度 300→280px，进一步把空间让给图谱。新增 `GraphOverview` / `GraphSidePanel` / `ViewModeToggle`，删除已被拆分的 `MaterializedPanel`。
@@ -20,6 +22,7 @@
 
 ### Fixed
 
+- **发布包补齐示例的 `.owl` 与 SHACL 形状**：`pyproject.toml` 的 `[tool.setuptools.package-data]` 此前只为 `examples` 登记了 `*.json` / `*.md`，构建出的 wheel / sdist 里没有 `*.owl`、`shapes/*.ttl`、`rules/*.ttl`——照 README 装出来的示例领域会缺本体。现补 `*/*.owl` 与 `*/*/*.ttl`，新增的 `examples/onto_playground/` 也能随版本完整发布。
 - **`/api/ontology/export?format=n3` 返回 `text/n3`**：此前 N3 被归到 `application/rdf+xml`，文件后缀也写成 `.rdf`，按规范生成客户端的调用方会拿 XML 解析器去读 N3。现按格式如实映射 media type 与文件后缀（turtle → `.ttl` / rdfxml → `.rdf` / n3 → `.n3`），响应正文不变；OpenAPI 同步声明三种 media type。
 
 ## [0.7.1] - 2026-11-06

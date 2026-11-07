@@ -183,7 +183,7 @@ def _probe_package(tmp_path, api_version, *, factory=True):
             "    CAPABILITIES = ()",      # 零能力领域：合法，不实现任何业务方法
             "",
             "",
-            "def create_adapter(engine, config=None):",
+            "def create_adapter_ctx(ctx):",
             "    return _Adapter()",
         ]
     (pkg / "__init__.py").write_text("\n".join(lines) + "\n", encoding="utf-8")

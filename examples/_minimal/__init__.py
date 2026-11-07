@@ -48,18 +48,6 @@ class MinimalAdapter(AdapterBase):
 
 
 def create_adapter_ctx(ctx: PluginContext) -> MinimalAdapter:
-    """首选工厂：配置从包目录读，不硬编码路径。"""
+    """领域包唯一工厂：配置从包目录读，不硬编码路径。"""
     semantic = ctx.load_domain_config(ctx.path("config.json")).config
     return MinimalAdapter(ctx.engine, semantic)
-
-
-def create_adapter(engine, config=None):
-    """兼容工厂：不给 ctx 时用包内默认配置（与 ctx 版同一份 config.json）。"""
-    import os
-
-    from ontology_plugin_sdk import load_domain_config
-
-    if config is None:
-        here = os.path.dirname(os.path.abspath(__file__))
-        config = load_domain_config(os.path.join(here, "config.json")).config
-    return MinimalAdapter(engine, config)

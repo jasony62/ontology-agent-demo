@@ -85,7 +85,7 @@ ALL_METHODS_BODY = "\n".join(
 def test_missing_methods_rejected_at_load(tmp_path, root):
     """什么都没声明也没实现 → 加载即失败，而不是等请求进来。"""
     _pkg(root, "NAME = 'probe'\n"
-              "def create_adapter(engine, config=None):\n"
+              "def create_adapter_ctx(ctx):\n"
               "    return object()\n")
 
     with pytest.raises(DomainContractError) as exc:
@@ -98,7 +98,7 @@ def test_full_implementation_passes(tmp_path, root):
     _pkg(root, "NAME = 'probe'\n"
                "class A:\n"
                f"{ALL_METHODS_BODY}\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     adapter = load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
@@ -112,7 +112,7 @@ def test_declared_subset_is_allowed(tmp_path, root):
                "    CAPABILITIES = ('capability_match',)\n"
                "    def capability_match(self, *a, **k):\n"
                "        return {}\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     adapter = load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
@@ -128,7 +128,7 @@ def test_declared_but_unimplemented_is_rejected(tmp_path, root):
                "    CAPABILITIES = ('capability_match', 'orchestrate')\n"
                "    def capability_match(self, *a, **k):\n"
                "        return {}\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     with pytest.raises(DomainContractError, match="orchestrate"):
@@ -140,7 +140,7 @@ def test_zero_capability_domain_loads(tmp_path, root):
     _pkg(root, "NAME = 'probe'\n"
                "class A:\n"
                "    CAPABILITIES = ()\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     adapter = load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
@@ -162,7 +162,7 @@ def test_custom_capability_with_query_handler_loads(tmp_path, root):
                "class A:\n"
                "    CAPABILITIES = ('diagnose',)\n"
                "    QUERY_HANDLERS = {'diagnose': lambda a, r: {'ok': True}}\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     adapter = load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
@@ -179,7 +179,7 @@ def test_custom_capability_with_apply_handler_loads(tmp_path, root):
                "class A:\n"
                "    CAPABILITIES = ('rebalance',)\n"
                "    APPLY_HANDLERS = {'rebalance': lambda a, r: {'ok': True}}\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     adapter = load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
@@ -200,7 +200,7 @@ def test_custom_capability_mcp_only_method_loads(tmp_path, root):
                "    CAPABILITIES = ('diagnose',)\n"
                "    def diagnose(self, *a, **k):\n"
                "        return {}\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     adapter = load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
@@ -217,7 +217,7 @@ def test_custom_capability_without_landing_is_rejected(tmp_path, root):
     _pkg(root, "NAME = 'probe'\n"
                "class A:\n"
                "    CAPABILITIES = ('diagnoze',)\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     with pytest.raises(DomainContractError) as exc:
@@ -233,7 +233,7 @@ def test_same_capability_in_both_tables_is_rejected(tmp_path, root):
                "    CAPABILITIES = ('diagnose',)\n"
                "    QUERY_HANDLERS = {'diagnose': lambda a, r: {}}\n"
                "    APPLY_HANDLERS = {'diagnose': lambda a, r: {}}\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     with pytest.raises(DomainContractError) as exc:
@@ -642,7 +642,7 @@ def test_bad_entity_schema_rejected_at_load(tmp_path, root):
                "    ENTITY_SCHEMA = {'class': 'W', 'fields': [{'name': 'a', 'kind': 'nodex'}]}\n"
                "    def create(self, payload, persist=False):\n"
                "        return {}\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     with pytest.raises(DomainContractError, match="ENTITY_SCHEMA"):
@@ -656,7 +656,7 @@ def test_entity_schema_without_create_rejected(tmp_path, root):
                "    CAPABILITIES = ()\n"
                "    ENTITY_SCHEMA = {'class': 'W', 'id_field': 'a', "
                "'fields': [{'name': 'a'}]}\n"
-               "def create_adapter(engine, config=None):\n"
+               "def create_adapter_ctx(ctx):\n"
                "    return A()\n")
 
     with pytest.raises(DomainContractError, match="create"):
@@ -722,8 +722,8 @@ def test_mismatched_has_key_warns_but_still_loads(tmp_path, root):
                "        self.c = SemanticConfig()\n"
                "    def create(self, payload, persist=False):\n"
                "        return {}\n"
-               "def create_adapter(engine, config=None):\n"
-               "    return A(engine)\n")
+               "def create_adapter_ctx(ctx):\n"
+               "    return A(ctx.engine)\n")
 
     with pytest.warns(UserWarning, match="owl:hasKey"):
         adapter = load_domain(

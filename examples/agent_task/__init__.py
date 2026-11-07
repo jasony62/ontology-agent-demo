@@ -1,8 +1,12 @@
 """「智能体任务编排」领域包（domains/agent_task）。
 
-业务逻辑见 `adapter.py`（AgentTaskAdapter / create_adapter / 领域数据常量）；
+业务逻辑见 `adapter.py`（AgentTaskAdapter / create_adapter_ctx / 领域数据常量）；
 本文件只做导出，保证 `load_domain("agent_task", ...)` 与
 `from domains.agent_task import AgentTaskAdapter, DEFAULT_CONFIG` 等既有调用方式不变。
+
+领域包只暴露 `create_adapter_ctx` 一个工厂：加载器把包目录、配置与引擎原语
+一次性放进 `PluginContext` 交进来，包内资源统一用 `ctx.path()` 读取。
+框架侧也只认这一个签名，没有第二个工厂、没有回退分支。
 """
 
 from .adapter import (
@@ -14,10 +18,6 @@ from .adapter import (
     TEMPLATES,
     DERIVATIONS,
     AgentTaskAdapter,
-    create_adapter,
-    # P1-4 起加载器优先探测 create_adapter_ctx。这里不导出它，加载器就永远
-    # 读不到（getattr(module,...) 查的是本文件），于是悄悄退回老签名——
-    # ctx 路径形同虚设，且 AgentTaskAdapter 拿到的 base_dir 是 None。
     create_adapter_ctx,
 )
 
@@ -36,6 +36,5 @@ __all__ = [
     "TEMPLATES",
     "DERIVATIONS",
     "AgentTaskAdapter",
-    "create_adapter",
     "create_adapter_ctx",
 ]

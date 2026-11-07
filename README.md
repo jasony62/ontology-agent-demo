@@ -62,6 +62,8 @@ python3 -m venv .venv
 
 # 2. 安装示例领域（首次必做；domains/ 是运行态目录，不随仓库分发）
 .venv/bin/python scripts/ontologyctl.py domain install --from ./examples/agent_task
+#    可选：安装异构示例，之后用 POST /api/domains/{name}/activate 热切换
+.venv/bin/python scripts/ontologyctl.py domain install --from ./examples/onto_playground
 
 # 3. 构建本体（可选，装好的领域包里已带 agent_task_ontology.owl）
 .venv/bin/python scripts/build_ontology.py
@@ -279,7 +281,7 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
 ```
 
 - **领域包契约**（最小必需）：`__init__.py` 暴露 `NAME` / `DESCRIPTION` / `ONTO_FILE` /
-  `create_adapter(engine, config=None)`，建议加 `PLUGIN_API = "1"`；本体 `*.owl` 由 `ONTO_FILE` 指向
+  `create_adapter_ctx(ctx)`，建议加 `PLUGIN_API = "1"`；本体 `*.owl` 由 `ONTO_FILE` 指向
   （或取包内唯一的 `.owl`）。`adapter.py` / `config.json` / `derivation.json` / `shapes/*.ttl` /
   `mcp.py` 均可按需省略。
 - **运行时装载**：`domains/manager.py` 的 `DomainManager` 持有"当前领域"这一个唯一真相源。
@@ -315,7 +317,7 @@ adapter = domain_module.create_adapter_ctx(ctx)
 **语义配置与推导链展开均为引擎配套的通用机制**（`ontology_plugin_sdk/semantic.py` 配置容器+JSON 加载、
 `ontology_plugin_sdk/derivation.py` 声明式推导链解释器，均不含领域词汇），领域包只提供数据。
 **领域数据可编辑**：改领域包里的 `config.json` 即改领域语义与推导链叙事，无需动 Python。
-换领域 = 提供一个领域包（暴露 `NAME / DESCRIPTION / create_adapter`，依赖 `ontology_plugin_sdk`），
+换领域 = 提供一个领域包（暴露 `NAME / DESCRIPTION / create_adapter_ctx`，依赖 `ontology_plugin_sdk`），
 核心引擎、API、MCP、CLI 无需改动。
 
 ```python
@@ -359,8 +361,9 @@ adapter = AgentTaskAdapter(get_engine(), DEFAULT_CONFIG.update(
 │   ├── manager.py                     # DomainManager：当前领域唯一真相源 + L1/L2/L3 切换
 │   └── installer.py                   # install / uninstall 与内容哈希
 ├── examples/                          # 随仓库分发的示例领域包（模板，不自动生效）
-│   ├── agent_task/                    # 完整业务领域（7 能力 / R2 R4 / ABox 写入 / 9 个 MCP 工具）
-│   └── _minimal/                      # 零复制验收物（1 类 3 个体，0 业务方法）
+│   ├── agent_task/                    # 完整业务领域（多能力 / R2 R4 / ABox 写入 / MCP 工具）
+│   ├── _minimal/                      # 零复制验收物（1 类 3 个体，0 业务方法）
+│   └── onto_playground/               # 异构领域（元模型 4 公理 / 3 只读能力 / SHACL）
 ├── api/
 │   ├── main.py                        # FastAPI（领域端点走适配器 + 通用端点走引擎）
 │   └── schemas.py                     # 请求模型

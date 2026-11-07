@@ -1,0 +1,37 @@
+{
+  "semantic": {
+    "domain_package_class": "DomainPackage",
+    "module_class": "SoftwareModule",
+    "host_module_class": "HostModule",
+    "sdk_module_class": "SdkModule",
+    "adapter_class": "Adapter",
+    "capability_class": "Capability",
+    "landing_class": "Landing",
+    "channel_class": "Channel",
+    "gate_class": "Gate",
+    "rule_class": "Rule",
+    "layer_class": "ExecutionLayer",
+    "artifact_class": "OntologyArtifact",
+    "violation_class": "Violation",
+    "top_classes": [
+      "DomainPackage",
+      "SoftwareModule",
+      "Adapter",
+      "Capability",
+      "Landing",
+      "Rule",
+      "ExecutionLayer",
+      "Gate",
+      "Channel",
+      "OntologyArtifact",
+      "Violation"
+    ],
+    "hidden_label_classes": ["NonCompliantPackage"],
+    "graph_groups": {
+      "领域包": "domain_package_class",
+      "软件模块": "module_class",
+      "能力": "capability_class",
+      "通道": "channel_class"
+    }
+  }
+}

@@ -55,3 +55,10 @@ def domain_module(name: str | None = None) -> ModuleType:
 def submodule(module: ModuleType, name: str) -> ModuleType:
     """包内子模块（等价 `from domains.<pkg> import <name>`）。"""
     return importlib.import_module(f"{module.__name__}.{name}")
+
+
+def make_adapter(module: ModuleType, engine, config=None):
+    """按领域包唯一工厂构造适配器（ctx 带包目录，与加载器走同一条路径）。"""
+    from ontology_plugin_sdk import PluginContext
+
+    return module.create_adapter_ctx(PluginContext.for_module(module, engine, config))

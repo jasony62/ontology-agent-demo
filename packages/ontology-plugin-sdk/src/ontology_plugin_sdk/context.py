@@ -20,8 +20,8 @@
     ctx.expand(...)           # 推导链展开
     ctx.abox(...)             # ABox 事务仓库（业务谓词由领域声明）
 
-兼容性：宿主加载器优先调 `create_adapter_ctx(ctx)`，没有再退回
-`create_adapter(engine, config)`。老领域包不用改就能继续加载。
+领域包的工厂只有一个：`create_adapter_ctx(ctx)`。加载器不再探测其它签名，
+也不做回退——ctx 里没有包目录之类的"半套上下文"不复存在。
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ class PluginContext:
 
     @classmethod
     def for_engine(cls, engine, config=None, **kw) -> "PluginContext":
-        """没有包目录时的最小上下文（测试 / 旧式 create_adapter(engine, config)）。"""
+        """没有包目录时的最小上下文（SDK 自身单测用；领域包走 for_module）。"""
         return cls(engine, config=config, **kw)
 
     @classmethod

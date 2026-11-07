@@ -66,7 +66,7 @@
 
 1. `get_engine()` 按 `ONTO_PATH` 加载 `.owl`，owlrl 执行 OWL 2 RL 推理（展开属性链、传递闭包）；
 2. `load_domain("agent_task", engine)`：注册表 import 领域包 → 模块级加载
-   `config.json`（语义）与 `derivation.json`（推导链配置）→ `create_adapter(engine, config)`；
+   `config.json`（语义）与 `derivation.json`（推导链配置）→ `create_adapter_ctx(ctx)`；
 3. `adapter.capability_match(task)`：用引擎原语（`individuals_of` / `objects_of` / 图上三元组判定）
    计算匹配，按业务规则判定 R1/R2；
 4. 结果打包为上下文 → `expand(derivations[kind], ctx, templates)` 展开中文推导链；
@@ -127,7 +127,7 @@
 ### 3.4 领域注册表 `domains/registry.py`
 
 - `list_domains()`：扫描 `domains/` 下非 `_` 开头的目录，动态 import，收集 `NAME/DESCRIPTION`；
-- `load_domain(name, engine, config=None)`：`importlib` 动态加载并调用 `create_adapter(engine, config)`。
+- `load_domain(name, engine, config=None)`：`importlib` 动态加载并调用 `create_adapter_ctx(ctx)`。
 
 `domains/__init__.py` 只做导出，业务逻辑在 `registry.py`——两级 `__init__.py` 均为纯导出。
 
@@ -202,7 +202,7 @@
 ```
 domains/<name>/
 ├── __init__.py            # 纯导出：转发 adapter / mcp 的符号（领域包门面）
-├── adapter.py             # 业务逻辑：create_adapter + 适配器类（必暴露 NAME/DESCRIPTION/ONTO_FILE）
+├── adapter.py             # 业务逻辑：create_adapter_ctx + 适配器类（必暴露 NAME/DESCRIPTION/ONTO_FILE）
 ├── config.json            # 领域语义配置（semantic 块）
 ├── derivation.json        # 推导链配置（templates + derivations 块）
 ├── mcp.py                 # 领域 MCP 工具注册（register_tools(server, adapter)）
@@ -223,8 +223,8 @@ DESCRIPTION = "一句话说明"                    # 展示给智能体 / 用户
 ONTO_FILE = ...                             # 本体文件绝对路径（领域包自声明，服务按此加载）
 DEFAULT_CONFIG = ...                        # 默认语义配置
 
-def create_adapter(engine, config=None):    # 注册表约定的工厂
-    return MyAdapter(engine, config or DEFAULT_CONFIG)
+def create_adapter_ctx(ctx):                 # 领域包唯一工厂
+    return MyAdapter(ctx.engine, ctx.config or DEFAULT_CONFIG, ctx=ctx)
 
 class MyAdapter:
     def __init__(self, engine, config): ... # 包装引擎实例，持有语义配置

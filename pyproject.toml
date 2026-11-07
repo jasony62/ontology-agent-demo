@@ -40,11 +40,13 @@ docs = ["mkdocs>=1.6", "mkdocs-material>=9.0"]
 include = ["api*", "reasoner*", "domains*", "mcp*", "scripts*", "config*", "examples*"]
 
 # 运行时资源（不是代码，find 不会带）：领域本体与配置、配置模板。
+# 示例包里的 .owl / shapes/*.ttl / rules/*.ttl 是领域的一部分，漏登记会让
+# 安装出来的示例缺本体和 SHACL 形状（此前只登记了 json/md）。
 # CQ 工位的中立默认 prompts 随子包搬进了 SDK（packages/ontology-plugin-sdk），
 # 由那里的 package-data 负责分发，不在这里登记。
 [tool.setuptools.package-data]
 "config" = ["*.json"]
-"examples" = ["*/*.json", "*.md"]
+"examples" = ["*.md", "*/*.json", "*/*.owl", "*/*/*.ttl"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

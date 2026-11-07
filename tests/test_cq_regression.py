@@ -12,7 +12,7 @@ import json
 
 from reasoner.engine import OntologyEngine
 
-from _helpers import domain_module, submodule  # noqa: E402
+from _helpers import domain_module, make_adapter, submodule  # noqa: E402
 
 mod = domain_module()
 cq_reg = submodule(mod, "cq_regression")
@@ -23,7 +23,7 @@ BANK = cq_reg._BANK
 def _adapter():
     """独立 engine + adapter（反例不污染真实本体，每用例全新实例）。"""
     engine = OntologyEngine(mod.ONTO_FILE)
-    return mod.create_adapter(engine)
+    return make_adapter(mod, engine)
 
 
 # ---------------- 正例 ----------------
@@ -87,7 +87,7 @@ def test_removed_inference_edge_flags_only_dependent_cq():
     故直接删物化边模拟「推理结论退化」——这正是运行期回归层要抓的退化形态。
     """
     engine = OntologyEngine(mod.ONTO_FILE)
-    a = mod.create_adapter(engine)
+    a = make_adapter(mod, engine)
     engine.remove_triples("junior_dev", "can_execute", "t_login_dev")
     r = cq_reg.run_suite(a)
     assert r["passed"] == 11 and r["failed"] == 1

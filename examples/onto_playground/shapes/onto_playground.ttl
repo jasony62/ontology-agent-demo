@@ -1,0 +1,47 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix op: <http://example.org/onto_playground#> .
+
+# 能力必须有落点：契约方法 / 处理器 / 适配器同名方法，三选一
+# 悬空能力在加载期即被 dangling_capabilities 拒载，这里给出声明式口径
+op:CapabilityShape a sh:NodeShape ;
+    sh:targetClass op:Capability ;
+    sh:property [
+        sh:path op:hasLanding ;
+        sh:minCount 1 ;
+        sh:severity sh:Violation ;
+        sh:message "能力必须有落点（契约方法 / 处理器 / 适配器同名方法），否则悬空拒载" ;
+    ] ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "能力应有中文标签（唯一事实源是 .owl 的 rdfs:label）" ;
+    ] .
+
+# 领域包必须声明至少一个能力，并依赖 SDK
+op:DomainPackageShape a sh:NodeShape ;
+    sh:targetClass op:DomainPackage ;
+    sh:property [
+        sh:path op:declaresCapability ;
+        sh:minCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "领域包应至少声明一个能力（零能力领域合法但不常见）" ;
+    ] ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "领域包应有中文标签" ;
+    ] .
+
+# 闸门必须有顺序号
+op:GateShape a sh:NodeShape ;
+    sh:targetClass op:Gate ;
+    sh:property [
+        sh:path op:has_order ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "闸门应有唯一顺序号（G1→G4 顺序固定）" ;
+    ] .

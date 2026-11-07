@@ -21,7 +21,7 @@
         guard_status +（护栏启用时）全部通用工具附带预算/循环/缓存/审计防护
 
 领域包约定（domains/<name>/ 必须暴露）：
-    NAME / DESCRIPTION / ONTO_FILE / create_adapter(engine, config=None) / mcp.register_tools(server, get_adapter)
+    NAME / DESCRIPTION / ONTO_FILE / create_adapter_ctx(ctx) / mcp.register_tools(server, get_adapter)
 
 热重载（002 批次，REQ-01.2，双通道）：
     · kill -HUP <pid> → 重建引擎（核心 + extensions/）与适配器，工具调用即时生效；

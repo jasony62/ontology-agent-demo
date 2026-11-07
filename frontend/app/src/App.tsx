@@ -37,6 +37,7 @@ export default function App() {
   const graphGroups = useAppStore((s) => s.graphGroups);
   const viewMode = useAppStore((s) => s.viewMode);
   const sourceName = useAppStore((s) => s.sourceName);
+  const selectedId = useAppStore((s) => s.selectedId);
 
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -320,6 +321,7 @@ export default function App() {
                       inferred={materialized.inferred}
                       groups={graphGroups}
                       focus={focus}
+                      selectedId={selectedId}
                       onSelect={(id) => setSelectedId(id)}
                     />
                   </GraphErrorBoundary>

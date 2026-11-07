@@ -5,6 +5,7 @@ import type { Core, ElementDefinition, NodeSingular, StylesheetStyle, LayoutOpti
 import type { GraphData, GraphGroup } from '../api/client';
 import { CLASS_COLOR, INDIVIDUAL_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView } from '../lib/graphGroups';
 import type { GroupView, LegendFocus } from '../lib/graphGroups';
+import { applyGraphDim } from '../lib/graphSelection';
 
 cytoscape.use(fcose);
 
@@ -18,6 +19,8 @@ interface Props {
   groups?: GraphGroup[];
   /** 图例点击后的聚焦目标：命中的节点保持原色，其余淡化；null = 不过滤 */
   focus?: LegendFocus | null;
+  /** 当前选中项（节点 id 或 "edge|..."）；选中节点时高亮其直接邻域 */
+  selectedId?: string | null;
   onSelect?: (id: string | null) => void;
 }
 
@@ -195,7 +198,7 @@ function elementsFromGraphData(
   return elements;
 }
 
-export default function GraphView({ viewMode, asserted, inferred, groups, focus, onSelect }: Props) {
+export default function GraphView({ viewMode, asserted, inferred, groups, focus, selectedId, onSelect }: Props) {
   const groupView = useMemo(() => buildGroupView(groups ?? []), [groups]);
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -331,28 +334,13 @@ export default function GraphView({ viewMode, asserted, inferred, groups, focus,
     }
   }, [viewMode, asserted, inferred, groupView]);
 
-  // 图例点击聚焦：命中目标保持原色，其余节点压成浅灰半透明；focus 为 null 即全恢复。
+  // 聚焦淡化：选中节点时看「节点 + 直连邻域」，否则沿用图例聚焦（详见 lib/graphSelection）。
   // 依赖里带上数据源：节点是增量增删的，新加的节点不会自动继承上一轮的 dim。
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    cy.batch(() => {
-      cy.elements().removeClass('dim');
-      if (!focus) return;
-      const hit = (n: NodeSingular) => {
-        const kind = n.data('kind') as string | undefined;
-        if (focus.kind === 'class') return kind === 'class';
-        if (focus.kind === 'individual') return kind === 'individual';
-        return (n.data('group') as string | undefined) === focus.name;
-      };
-      const keep = cy.nodes().filter(hit);
-      cy.nodes().difference(keep).addClass('dim');
-      // 两端都被淡化才淡化边：一端在焦点内时，这条边仍说明"焦点连向哪里"
-      cy.edges()
-        .filter((e) => e.source().hasClass('dim') && e.target().hasClass('dim'))
-        .addClass('dim');
-    });
-  }, [focus, viewMode, asserted, inferred, groupView]);
+    applyGraphDim(cy, selectedId ?? null, focus ?? null);
+  }, [focus, selectedId, viewMode, asserted, inferred, groupView]);
 
   // #23：节点搜索/聚焦——输入实体名，匹配节点高亮并居中
   useEffect(() => {

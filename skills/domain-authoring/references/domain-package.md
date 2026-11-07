@@ -25,7 +25,7 @@ def create_adapter(engine, config=None): ...     # 兼容工厂
 
 **可选件**（全部按需省略）：`adapter.py`（业务规则 R2/R4 + 查询服务面）、`config.json`（类角色映射 / `graph_groups` 图谱分组 / 属性名覆盖）、`derivation.json`（推导链文案）、`shapes/*.ttl`（SHACL 形状，G4 闸门）、`rules/*.ttl`（SHACL 业务规则）、`mcp.py`（`register_tools(server, get_adapter)` 领域 MCP 工具注册）、`access_policy.json` / `guard_config.json`（语义门禁/调用护栏，默认关闭逐字节兼容）、`cq.py` / `cq_tests.json` / `cq_prompts.json`（CQ 工位与回归题库）。
 
-硬约束（加载期校验，违者拒绝）：`CAPABILITIES` 声明的每个能力必须有落点（契约方法 / `CAPABILITY_HANDLERS` 条目 / 适配器同名属性）；领域包只许 import `ontology_plugin-sdk` 与 `rdflib`；中文名标签只写 `.owl` 的 `rdfs:label`；`graph_groups` 按领域声明，框架与前端不写死组名。
+硬约束（加载期校验，违者拒绝）：`CAPABILITIES` 声明的每个能力必须有落点（契约方法 / `QUERY_HANDLERS`（只读）或 `APPLY_HANDLERS`（变更）条目 / 适配器同名属性），同一能力名不得同时进两张表；领域包只许 import `ontology_plugin-sdk` 与 `rdflib`；中文名标签只写 `.owl` 的 `rdfs:label`；`graph_groups` 按领域声明，框架与前端不写死组名。
 
 ## 三、服务面（与示例领域 agent_task 同型）
 
@@ -38,7 +38,7 @@ def create_adapter(engine, config=None): ...     # 兼容工厂
 | `create(payload)` | 新增个体与自动分类：字段形状由领域 `ENTITY_SCHEMA` 决定，双重校验（违规 400） |
 | `explain` / `graph_export` | 推导链 / 图谱导出（`AdapterBase` 有默认实现） |
 
-领域可追加自有能力（如 `diagnose`）：走 `CAPABILITY_HANDLERS` 或适配器同名方法，必须声明落点且不得遮蔽框架 `REASON_KINDS`。推导链由 `derivation.json` 声明式展开（SDK 解释执行，不含领域词汇）。
+领域可追加自有能力（如 `diagnose`）：只读走 `QUERY_HANDLERS`、变更走 `APPLY_HANDLERS`（或适配器同名方法），必须声明落点且不得遮蔽框架 `QUERY_KINDS` / `APPLY_KINDS`。推导链由 `derivation.json` 声明式展开（SDK 解释执行，不含领域词汇）。
 
 ## 四、MCP stdio 全链路验证
 

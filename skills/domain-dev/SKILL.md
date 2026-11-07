@@ -25,7 +25,7 @@ description: 领域包开发：从模板新建、安装、热切换到脱离宿�
 | 标准业务领域 | `agent_task` | 复制后改 .owl + config.json + adapter.py |
 
 > 异构形状（非任务-执行者形态）没有现成模板可抄：把 `CAPABILITIES` 里用不上的
-> 能力显式排除（或声明 `()` 表示零能力），自定义能力走 `CAPABILITY_HANDLERS`。
+> 能力显式排除（或声明 `()` 表示零能力），自定义能力只读走 `QUERY_HANDLERS`、变更走 `APPLY_HANDLERS`。
 
 ```bash
 cp -r examples/_minimal examples/<你的领域名>
@@ -48,7 +48,7 @@ def create_adapter(engine, config=None):
 
 可选文件（按需省略）：`adapter.py`（业务规则）、`config.json`（类角色映射/图谱分组 graph_groups/属性名覆盖）、`derivation.json`（推导链文案模板）、`shapes/*.ttl`（SHACL 形状，G4 闸门用）、`mcp.py`（领域 MCP 工具注册）、`rules/*.ttl`（SHACL 业务规则）。
 
-两条硬约束：**中文名标签只写在 .owl 的 `rdfs:label`**（唯一事实源，不进 config.json）；**`CAPABILITIES` 声明的每个能力必须有落点**（契约方法 / `CAPABILITY_HANDLERS` 条目 / 适配器同名方法），悬空能力加载即拒。
+两条硬约束：**中文名标签只写在 .owl 的 `rdfs:label`**（唯一事实源，不进 config.json）；**`CAPABILITIES` 声明的每个能力必须有落点**（契约方法 / `QUERY_HANDLERS`（只读）或 `APPLY_HANDLERS`（变更）条目 / 适配器同名方法），悬空能力加载即拒，同一能力名同时进两张表也加载即拒。
 
 ### 3.3 安装与验证
 
@@ -60,8 +60,8 @@ def create_adapter(engine, config=None):
 .venv/bin/python scripts/ontologyctl.py domain list
 # 验证2：L3 跨包切换（失败返回 400，旧领域继续服务——不会"先拆后装"）
 curl -s -X POST http://127.0.0.1:8000/api/domains/<你的领域名>/activate
-# 验证3：切过去后能推理
-curl -s -X POST http://127.0.0.1:8000/api/reason -H "Content-Type: application/json" \
+# 验证3：切过去后能查询（只读能力走 capabilities/query；变更能力走 capabilities/apply）
+curl -s -X POST http://127.0.0.1:8000/api/capabilities/query -H "Content-Type: application/json" \
   -d '{"type":"<你的能力名>","params":{...}}'
 # 验证4：能切回
 curl -s -X POST http://127.0.0.1:8000/api/domains/agent_task/activate
@@ -106,7 +106,7 @@ adapter = domain_module.create_adapter_ctx(ctx)
 | 症状 | 原因与自救 |
 |---|---|
 | 改了 examples 里的代码但行为没变 | 运行态装的是 `domains/<name>/` 的副本——`domain install --from <path> --force` 重装，再 L2 重载 |
-| 安装报「悬空能力」 | `CAPABILITIES` 里声明的能力没有落点（契约方法/CAPABILITY_HANDLERS 包内同名方法三选一），补落点或删声明 |
+| 安装报「悬空能力」 | `CAPABILITIES` 里声明的能力没有落点（契约方法 / QUERY_HANDLERS 或 APPLY_HANDLERS 条目 / 包内同名方法三选一；同名不得同时进两张表），补落点或删声明 |
 | 图谱工作台没有配色分组 | 领域需在 `config.json` 声明 `graph_groups`（组名→类键）；框架不会写死组名 |
 | activate 返回 400 | 看响应 detail：契约缺方法 / 本体加载失败 / 领域不存在——旧领域仍在服务，修复后重试 |
 | MCP 工具列表还是旧领域的 | MCP 工具启动期注册不热切换：重启 MCP Server（`make mcp` 或按 quickstart §3.4） |

@@ -292,7 +292,7 @@ def test_api_undeclared_capability_returns_400(switched_api):
     client = TestClient(M.app)
     client.post("/api/domains/minimal/activate")
 
-    r = client.post("/api/reason", json={"type": "capability_match", "task": "x"})
+    r = client.post("/api/capabilities/query", json={"type": "capability_match", "task": "x"})
     assert r.status_code == 400
     assert "capability_match" in r.json()["detail"]
 
@@ -300,19 +300,21 @@ def test_api_undeclared_capability_returns_400(switched_api):
     assert client.get("/api/ontology").status_code == 200
 
 
-def test_reason_kinds_are_contract_methods(switched_api):
-    """P2-4：能力表与契约同源——表里的每个键都必须是契约方法。
+def test_capability_kinds_are_contract_methods(switched_api):
+    """能力表与契约同源——表里的每个键都必须是契约方法。
 
-    这条不是形式主义：此前 `reason` 端点用 if/elif 硬编码三种类型，加一种
-    推理类型要同时改 schema、分支、门禁三处，且没有一处能回答"当前领域
-    支持哪些"。表驱动后，支持清单 = 表的键 ∩ 领域 CAPABILITIES。
+    读写分离后有两张表：QUERY_KINDS 只含只读能力，APPLY_KINDS 只含变更能力。
+    这里同时守住"表与契约同源"和"两张表不交叉"。
     """
     from reasoner.protocol import REQUIRED_METHODS
 
     M, mgr = switched_api
-    assert set(M.REASON_KINDS) <= set(REQUIRED_METHODS)
-    # agent_task 声明全量能力 → 三种推理类型都可用
-    assert set(M.REASON_KINDS) <= set(mgr.adapter.CAPABILITIES)
+    assert set(M.QUERY_KINDS) <= set(REQUIRED_METHODS)
+    assert set(M.APPLY_KINDS) <= set(REQUIRED_METHODS)
+    assert not set(M.QUERY_KINDS) & set(M.APPLY_KINDS)
+    # agent_task 声明全量能力 → 三种类型都可用
+    assert set(M.QUERY_KINDS) <= set(mgr.adapter.CAPABILITIES)
+    assert set(M.APPLY_KINDS) <= set(mgr.adapter.CAPABILITIES)
 
 
 # ---------------------------------------------------------------- 架构约束

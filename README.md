@@ -23,7 +23,7 @@
 | ---- | ---- | ---- |
 | **OWL 2 RL 推理引擎** | 加载 OWL 本体并物化推理；SPARQL / 类层次 / 个体 / 属性查询 | `scripts/query.py classes --local` |
 | **业务规则 R1–R4** | 能力匹配、任务聚合、依赖传递、合规冲突检测，输出可解释推导链 | `make demo` |
-| **REST API** | 29 个端点：推理 / 解释 / 一致性 / 分类 / SPARQL / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
+| **REST API** | 30 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
 | **MCP Server** | 31 个工具（领域业务 9 + 建模/质量 7 + 引擎通用 15），智能体（豆包等）一行配置接入 | `make mcp` |
 | **图谱工作台** | React 工作台：三视图图谱、OWL 源码编辑、导入导出、可视化编辑 | `npm run dev` |
 | **CLI 双通道** | HTTP 优先、失败回退内嵌引擎（`--local` 零依赖） | `python scripts/query.py -h` |
@@ -182,9 +182,10 @@ npm run build               # 产物 frontend/app/dist
 | GET  | `/api/health`      | 健康检查                                                         |
 | GET  | `/api/ontology`    | 本体结构（图谱渲染数据）                                                 |
 | GET  | `/api/ontology/graph-groups` | 领域声明的图谱分组 `{groups: [{name, class, label, members}]}`；前端据此上色与出图例，未声明时为空数组 |
-| POST | `/api/reason`      | `{type, task, agent, params}`；内置 `capability_match` / `orchestrate` / `assign`，领域可通过 `CAPABILITY_HANDLERS` 追加自有类型（如 `diagnose`，参数放 `params`） |
+| POST | `/api/capabilities/query` | `{type, task, agent, params}`；纯读，不改图、不落盘、可安全重试。内置 `capability_match` / `orchestrate`，领域可通过 `QUERY_HANDLERS` 追加只读能力（参数放 `params`） |
+| POST | `/api/capabilities/apply` | `{type, task, agent, persist, params}`；会改图，`persist=true` 落 `extensions/`，不保证幂等。内置 `assign`，领域可通过 `APPLY_HANDLERS` 追加变更能力 |
 | POST | `/api/entities`    | `{payload, persist?}`；字段形状由领域的 `ENTITY_SCHEMA` 声明，先看 `GET /api/entities/schema` |
-| POST | `/api/explain`     | 最近一次推理的推导链                                                   |
+| POST | `/api/explain`     | 最近一次查询的推导链（模板填槽，非公理反查；查询响应本身已带 `derivation`） |
 | POST | `/api/consistency` | 一致性 / 合规冲突检查                                                 |
 
 运维 / CRUD 接口（v0.2.0 起，003 批次 REQ-04/05/06/07）：
@@ -248,7 +249,7 @@ npm run build               # 产物 frontend/app/dist
 示例：
 
 ```
-curl -s -X POST http://127.0.0.1:8000/api/reason \
+curl -s -X POST http://127.0.0.1:8000/api/capabilities/query \
   -H "Content-Type: application/json" \
   -d '{"type":"capability_match","task":"t_login_dev"}'
 
@@ -288,9 +289,10 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
   L3 跨包切换（`/api/domains/{name}/activate`）。**改了领域 Python 代码必须用 L2**，L1 不会重读包代码。
 - **通用模式 vs 领域模式**：判据是"对外服务的引擎是否就是当前领域绑定的那个"（`in_domain_mode()`）；
   加载自定义本体后进入 generic 模式，领域推理不可用时接口会明确提示。
-- **领域自带的东西由领域自己声明**：能力处理器 `CAPABILITY_HANDLERS`、实体字段形状 `ENTITY_SCHEMA`、
-  图谱分组 `graph_group_members` 都交给领域包声明，框架不再写死进契约。声明一个框架没预见的
-  能力（例如 `diagnose`）只要给出 `CAPABILITY_HANDLERS` 落点即可被接纳，异构领域因此
+- **领域自带的东西由领域自己声明**：能力处理器 `QUERY_HANDLERS`（只读）/ `APPLY_HANDLERS`（变更）、
+  实体字段形状 `ENTITY_SCHEMA`、图谱分组 `graph_group_members` 都交给领域包声明，框架不再写死进契约。
+  声明一个框架没预见的只读能力（例如 `diagnose`）只要给出 `QUERY_HANDLERS` 落点即可被接纳，
+  需要改图的则挂 `APPLY_HANDLERS`；同一能力名不得同时出现在两张表里（加载期拒绝）。异构领域因此
   不必顺着任务编排的形状长。
 - **领域包可脱离本仓库运行**：唯一依赖 `ontology-plugin-sdk` 与 `rdflib`，配合 SDK 的 `FakeEngine`
   即可单测，无需启动宿主：

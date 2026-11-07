@@ -15,7 +15,7 @@
 | 「把这个仓库拉起来 / 部署 / 启动 / 跑通」 | quickstart | [quickstart/SKILL.md](quickstart/SKILL.md) |
 | 「帮我开发一个新领域 / 换领域 / 装领域包」 | domain-dev | [domain-dev/SKILL.md](domain-dev/SKILL.md) |
 | 「帮本体出题（能力问题 CQ） / 质检 / TBox 草稿 / 改动后回归」 | cq-modeling | [cq-modeling/SKILL.md](cq-modeling/SKILL.md) |
-| 「查一下谁能做这个任务 / 一致性检查 / SPARQL 查询 / 解释结论」 | reason-query | [reason-query/SKILL.md](reason-query/SKILL.md) |
+| 「查一下谁能做这个任务 / 一致性检查 / SPARQL 查询 / 解释结论」 | capability-query | [capability-query/SKILL.md](capability-query/SKILL.md) |
 | 「选个新领域建本体 / 从零造一个领域包 / 给项目贡献新领域和 PR」 | domain-authoring | [domain-authoring/SKILL.md](domain-authoring/SKILL.md) |
 | 「备份 / 回滚 / 看服务状态」 | quickstart 的运维延伸节 | [quickstart/SKILL.md](quickstart/SKILL.md) |
 

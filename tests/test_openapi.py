@@ -30,6 +30,14 @@ def test_openapi_spec_is_openapi_3():
     assert len(spec["paths"]) >= 29
 
 
+def test_capability_endpoints_replace_reason():
+    """读写分离：两个新入口成对出现，总数符合预期。"""
+    spec = client.get("/openapi.json").json()
+    assert "/api/capabilities/query" in spec["paths"]
+    assert "/api/capabilities/apply" in spec["paths"]
+    assert len(spec["paths"]) == 30
+
+
 def test_every_operation_is_tagged_and_summarised():
     spec = client.get("/openapi.json").json()
     declared = {tag["name"] for tag in spec.get("tags", [])}
@@ -87,11 +95,17 @@ def test_request_body_description_lists_fields():
     """
     spec = client.get("/openapi.json").json()
 
-    body = spec["paths"]["/api/reason"]["post"]["requestBody"]
+    body = spec["paths"]["/api/capabilities/query"]["post"]["requestBody"]
     desc = body.get("description", "")
-    for field in ("type", "task", "agent", "persist", "params"):
+    for field in ("type", "task", "agent", "params"):
         assert f"`{field}`" in desc, f"请求体说明缺少字段 {field}"
-    assert "推理类型" in desc
+    assert "查询" in desc
+
+    apply_body = spec["paths"]["/api/capabilities/apply"]["post"]["requestBody"]
+    apply_desc = apply_body.get("description", "")
+    for field in ("type", "task", "agent", "persist", "params"):
+        assert f"`{field}`" in apply_desc, f"请求体说明缺少字段 {field}"
+    assert "persist" in apply_desc
 
     # 每个有字段说明的 JSON 请求体都应带描述，否则又回到「打开端点看不到说明」
     missing = []

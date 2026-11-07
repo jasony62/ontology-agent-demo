@@ -21,16 +21,32 @@ const spec: OpenAPISpec = {
     { name: '通用查询', description: '通用能力' },
   ],
   paths: {
-    '/api/reason': {
+    '/api/capabilities/query': {
       post: {
         tags: ['领域推理'],
-        summary: '结构化推理',
-        description: '能力匹配 / 编排 / 分配',
-        operationId: 'reason',
+        summary: '领域能力查询',
+        description: '能力匹配 / 编排（纯读）',
+        operationId: 'capabilities_query',
         requestBody: {
           content: {
             'application/json': {
-              schema: { $ref: '#/components/schemas/ReasonRequest' },
+              schema: { $ref: '#/components/schemas/CapabilityQueryRequest' },
+            },
+          },
+        },
+        responses: { '200': { description: 'ok' } },
+      },
+    },
+    '/api/capabilities/apply': {
+      post: {
+        tags: ['领域推理'],
+        summary: '领域能力变更',
+        description: '分配（写）',
+        operationId: 'capabilities_apply',
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ApplyRequest' },
             },
           },
         },
@@ -62,12 +78,22 @@ const spec: OpenAPISpec = {
   },
   components: {
     schemas: {
-      ReasonRequest: {
+      CapabilityQueryRequest: {
         type: 'object',
         required: ['type'],
         properties: {
           type: { type: 'string', example: 'capability_match' },
           task: { type: 'string' },
+          params: { type: 'object' },
+        },
+      },
+      ApplyRequest: {
+        type: 'object',
+        required: ['type'],
+        properties: {
+          type: { type: 'string', example: 'assign' },
+          task: { type: 'string' },
+          agent: { type: 'string' },
           persist: { type: 'boolean', default: false },
         },
       },
@@ -84,15 +110,18 @@ const spec: OpenAPISpec = {
 describe('operationsFromSpec', () => {
   it('只取 HTTP 方法，按 tag 分组并补 summary', () => {
     const ops = operationsFromSpec(spec);
-    expect(ops).toHaveLength(3);
+    expect(ops).toHaveLength(4);
 
-    const reason = ops.find((op) => op.path === '/api/reason');
-    expect(reason?.method).toBe('post');
-    expect(reason?.group).toBe('领域推理');
-    expect(reason?.summary).toBe('结构化推理');
+    const query = ops.find((op) => op.path === '/api/capabilities/query');
+    expect(query?.method).toBe('post');
+    expect(query?.group).toBe('领域推理');
+    expect(query?.summary).toBe('领域能力查询');
 
-    const query = ops.find((op) => op.path === '/api/query');
-    expect(query?.summary).toBe('第一行说明');
+    const apply = ops.find((op) => op.path === '/api/capabilities/apply');
+    expect(apply?.summary).toBe('领域能力变更');
+
+    const sparql = ops.find((op) => op.path === '/api/query');
+    expect(sparql?.summary).toBe('第一行说明');
 
     const download = ops.find((op) => op.path === '/api/ontology/download');
     expect(download?.group).toBe('本体管理');
@@ -100,10 +129,10 @@ describe('operationsFromSpec', () => {
 
   it('解析请求体里的 $ref', () => {
     const ops = operationsFromSpec(spec);
-    const reason = ops.find((op) => op.path === '/api/reason');
-    const schema = reason?.requestBody?.content?.['application/json']?.schema;
+    const query = ops.find((op) => op.path === '/api/capabilities/query');
+    const schema = query?.requestBody?.content?.['application/json']?.schema;
     expect(schema?.type).toBe('object');
-    expect(Object.keys(schema?.properties ?? {})).toEqual(['type', 'task', 'persist']);
+    expect(Object.keys(schema?.properties ?? {})).toEqual(['type', 'task', 'params']);
   });
 
   it('groupOperations 按规范声明顺序排列，未知分组追加在后', () => {
@@ -193,10 +222,15 @@ describe('requestUrl', () => {
 
 describe('请求初值 / curl', () => {
   it('JSON 请求体从 schema 生成示例', () => {
-    const reason = operationsFromSpec(spec).find((op) => op.path === '/api/reason');
-    expect(reason).toBeDefined();
-    const body = JSON.parse(initialBodyText(reason!));
-    expect(body).toEqual({ type: 'capability_match', task: '', persist: false });
+    const query = operationsFromSpec(spec).find((op) => op.path === '/api/capabilities/query');
+    expect(query).toBeDefined();
+    const body = JSON.parse(initialBodyText(query!));
+    expect(body).toEqual({ type: 'capability_match', task: '', params: {} });
+
+    const apply = operationsFromSpec(spec).find((op) => op.path === '/api/capabilities/apply');
+    expect(JSON.parse(initialBodyText(apply!))).toEqual({
+      type: 'assign', task: '', agent: '', persist: false,
+    });
   });
 
   it('路径参数预填示例，查询参数为空时不预填', () => {

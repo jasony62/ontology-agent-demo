@@ -23,7 +23,7 @@
    │  理解问题 → 选择工具（按工具定义匹配）→ 识别实体（按参数槽位 + entities）→ 填参数
    ▼
 ③ 调用工具 → 路由到适配器（工具名 → 适配器方法；短名 → URIRef）
-   │  MCP 通道（mcp.py 注册）与 REST 通道（/api/reason）殊途同归
+   │  MCP 通道（mcp.py 注册）与 REST 通道（/api/capabilities/query、/api/capabilities/apply）殊途同归
    │  REST 通道为程序直连（无智能体，跳过 ①-②，直接到 ③）
    ▼
 ④ 领域适配器（domains/agent_task/adapter.py）
@@ -191,21 +191,25 @@ def capability_match(task: str) -> dict:
 参数转换的关键：智能体传入的是**短名**（`t_login_dev`），`adapter.NS[task]`
 把它解析成本体命名空间下的完整 IRI（`http://ontology.localhost/agent-task#t_login_dev`）。
 
-### 4.2 REST 通道：按 type 分支路由
+### 4.2 REST 通道：读写两张表，按 type 分支路由
 
-`api/main.py`：
+`api/main.py` 把能力表按副作用拆开，读端点只认 `QUERY_KINDS`，写端点只认
+`APPLY_KINDS`（两者各自并入领域注册的 `QUERY_HANDLERS` / `APPLY_HANDLERS`）：
 
 ```python
-@app.post("/api/reason")
-def reason(req: ReasonRequest):
-    if req.type == "capability_match":
-        return ADAPTER.capability_match(_uri(req.task))
-    if req.type == "orchestrate":
-        return ADAPTER.orchestrate(_uri(req.task))
-    if req.type == "assign":
-        return ADAPTER.assign(_uri(req.task), _uri(req.agent))
-    raise HTTPException(status_code=400, detail=f"不支持的推理类型: {req.type}")
+@app.post("/api/capabilities/query")
+def capabilities_query(req: CapabilityQueryRequest):
+    return _run_capability(req, _query_kinds(ADAPTER), QUERY_ENDPOINT,
+                           _apply_kinds(ADAPTER), APPLY_ENDPOINT, "变更能力")
+
+@app.post("/api/capabilities/apply")
+def capabilities_apply(req: ApplyRequest):
+    return _run_capability(req, _apply_kinds(ADAPTER), APPLY_ENDPOINT,
+                           _query_kinds(ADAPTER), QUERY_ENDPOINT, "查询能力")
 ```
+
+`QUERY_KINDS` 内置 `capability_match` / `orchestrate`，`APPLY_KINDS` 内置 `assign`。
+把 `assign` 传给读端点会得到指路 400（请改用 `/api/capabilities/apply`），反过来同理。
 
 两条通道最终都落到**同一个适配器方法**——所以智能体（MCP）与程序（API）看到的行为完全一致。
 
@@ -445,7 +449,7 @@ def __init__(self, onto_path, ns=None):
 
 | 改动 | 文件 | 说明 |
 |---|---|---|
-| 新增工具/端点 | `domains/<name>/mcp.py` + `api/main.py` | 注册 `@server.tool` / 加 reason 分支 |
+| 新增工具/端点 | `domains/<name>/mcp.py` + `api/main.py` | 注册 `@server.tool` / 在能力表或处理器表里加分支 |
 | 新增查询方法 | `domains/<name>/adapter.py` | 引擎原语 + 业务规则 |
 | 推导链叙事 | `domains/<name>/derivation.json` | `derivations` 加同名 key + `templates` 文案 |
 | 换本体 | 领域包 `.owl` + `config.json` | 引擎/API/MCP 零改动 |

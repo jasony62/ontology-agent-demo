@@ -77,7 +77,7 @@ class EntitySchemaSummary(BaseModel):
 
 
 class HealthContract(BaseModel):
-    """适配器契约探针：领域声明了什么、还缺什么、当前可推理什么。"""
+    """适配器契约探针：领域声明了什么、还缺什么、当前可查询 / 变更什么。"""
 
     missing: list[str] = Field(
         default_factory=list,
@@ -91,9 +91,19 @@ class HealthContract(BaseModel):
         default_factory=list,
         description="声明了却没有落点的能力名；加载器本应拒绝，此处用于排查运行期手动换上的适配器。",
     )
-    reason_kinds: list[str] = Field(
+    query_kinds: list[str] = Field(
         default_factory=list,
-        description="当前 POST /api/reason 可用的类型（框架内置 ∪ 领域处理器，按领域声明过滤）。",
+        description=(
+            "当前 POST /api/capabilities/query 可用的只读能力"
+            "（框架内置 ∪ 领域 QUERY_HANDLERS，按领域声明过滤）。"
+        ),
+    )
+    apply_kinds: list[str] = Field(
+        default_factory=list,
+        description=(
+            "当前 POST /api/capabilities/apply 可用的变更能力"
+            "（框架内置 ∪ 领域 APPLY_HANDLERS，按领域声明过滤）。"
+        ),
     )
     entity_schema: EntitySchemaSummary | None = Field(
         None,
@@ -129,7 +139,7 @@ class HealthResponse(BaseModel):
     loaded_at: str | None = Field(None, description="当前领域/引擎的加载时刻（ISO 8601）。")
     reasoner: str = Field(..., description="推理器摘要，如 OWL 2 RL (owlrl)。")
     domain: str = Field(..., description="当前领域包名。")
-    contract: HealthContract = Field(..., description="适配器契约探针与当前可用的推理类型。")
+    contract: HealthContract = Field(..., description="适配器契约探针与当前可用的查询 / 变更能力。")
     dirty: bool = Field(..., description="当前领域是否有尚未落盘的变更。")
     pending_changes: int = Field(..., description="尚未落盘的变更条数。")
     changelog: list[dict[str, Any]] = Field(

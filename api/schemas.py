@@ -10,21 +10,23 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-class ReasonRequest(BaseModel):
-    """结构化推理查询。
+class CapabilityQueryRequest(BaseModel):
+    """领域能力查询（纯读）。
 
-    `type` 刻意不用 Literal 枚举：推理类型由「框架内置三种 ∪ 领域
-    CAPABILITY_HANDLERS 注册的键」共同决定，而领域是运行时可换的，
-    枚举会在进程启动那一刻就把类型列表冻结成某个领域的形状。
-    代价是 OpenAPI 文档里少一个下拉列表，用 description 补偿。
+    语义硬约束：本端点的处理器**不改图、不落盘**，因此可安全重试与缓存。
+    处理器由 `QUERY_HANDLERS` 注册，读端点不会看到 `APPLY_HANDLERS` 里的写逻辑。
+
+    `type` 刻意不用 Literal 枚举：能力类型由「框架内置 ∪ 领域处理器」共同
+    决定，而领域是运行时可换的，枚举会在进程启动那一刻就把类型列表冻结成
+    某个领域的形状。代价是 OpenAPI 文档里少一个下拉列表，用 description 补偿。
     """
 
     type: str = Field(
         "",
         description=(
-            "推理类型：框架内置 capability_match / orchestrate / assign，"
-            "或当前领域通过 CAPABILITY_HANDLERS 注册的类型。"
-            "当前可用值见 GET /api/health 的 contract.reason_kinds。"
+            "能力类型：框架内置 capability_match / orchestrate，"
+            "或当前领域通过 QUERY_HANDLERS 注册的只读能力。"
+            "当前可用值见 GET /api/health 的 contract.query_kinds。"
         ),
     )
     task: str = Field(
@@ -33,18 +35,47 @@ class ReasonRequest(BaseModel):
     )
     agent: str = Field(
         "",
-        description="智能体个体短名（也可传完整 IRI）；assign 必填，capability_match / orchestrate 可留空。",
+        description="智能体个体短名（也可传完整 IRI）；查询类能力通常可留空。",
+    )
+    # 领域自定义参数：内置类型用不到，领域处理器从 req.params 取。
+    # 用自由字典而不是继续往这里加字段——每加一个字段都是把某个领域的
+    # 形状钉进框架（classify 的 capabilities/constraints 就是前车之鉴）。
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="领域自定义参数；仅领域注册的查询能力使用，内置类型不需要。",
+    )
+
+
+class ApplyRequest(BaseModel):
+    """领域能力变更（会改图）。
+
+    语义硬约束：本端点的处理器**可以改图**；`persist=true` 时把增量写入
+    `extensions/`，重启后仍在。不保证幂等——调用方请自行防重，不要盲目重试。
+    处理器由 `APPLY_HANDLERS` 注册。
+    """
+
+    type: str = Field(
+        "",
+        description=(
+            "能力类型：框架内置 assign，或当前领域通过 APPLY_HANDLERS 注册的变更能力。"
+            "当前可用值见 GET /api/health 的 contract.apply_kinds。"
+        ),
+    )
+    task: str = Field(
+        "",
+        description="任务个体短名（也可传完整 IRI）；取值见 GET /api/ontology 返回的 individuals。",
+    )
+    agent: str = Field(
+        "",
+        description="智能体个体短名（也可传完整 IRI）；assign 必填。",
     )
     persist: bool = Field(
         False,
-        description="assign 时是否把分配增量写入 extensions/；默认 false，仅改内存。",
+        description="是否把变更增量写入 extensions/；默认 false，仅改内存，重启即丢。",
     )
-    # 领域自定义参数：内置三种推理类型用不到，领域处理器从 req.params 取。
-    # 用自由字典而不是继续往这里加字段——每加一个字段都是把某个领域的
-    # 形状钉进框架（classify 的 capabilities/constraints 就是前车之鉴）。
-    params: dict[str, Any] | None = Field(
-        None,
-        description="领域自定义参数；仅领域注册的推理类型使用，内置三种不需要。",
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="领域自定义参数；仅领域注册的变更能力使用，内置 assign 不需要。",
     )
 
 

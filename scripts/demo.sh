@@ -10,7 +10,7 @@ curl -s "$BASE/api/health" | python3 -m json.tool
 
 echo
 echo "== 2. 能力匹配：「登录模块开发谁能做？」 =="
-curl -s -X POST "$BASE/api/reason" \
+curl -s -X POST "$BASE/api/capabilities/query" \
   -H "Content-Type: application/json" \
   -d '{"type":"capability_match","task":"t_login_dev"}' | python3 -m json.tool
 

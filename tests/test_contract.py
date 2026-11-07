@@ -25,12 +25,14 @@ from reasoner.engine import local  # noqa: E402
 from reasoner.protocol import (  # noqa: E402
     AdapterBase,
     REQUIRED_METHODS,
-    capability_handlers,
+    apply_handlers,
+    conflicting_handlers,
     create_entity,
     dangling_capabilities,
     graph_group_members,
     missing_methods,
     normalize_entity_payload,
+    query_handlers,
     supports,
     undeclared_missing,
     validate_entity_schema,
@@ -146,18 +148,20 @@ def test_zero_capability_domain_loads(tmp_path, root):
     assert [m for m in REQUIRED_METHODS if supports(adapter, m)] == []
 
 
-# ---------------- 领域自有能力（CAPABILITY_HANDLERS） ----------------
+# ---------------- 领域自有能力（QUERY_HANDLERS / APPLY_HANDLERS） ----------------
 #
 # 背景：CAPABILITIES 允许出现框架没预见的名字，但出口层原先只认三张写死的
 # 推理表，"声明了"既不开门也不报错——最坏的一种状态：静默无效。
+# 读写分离后拆成两张表：只读处理器进 QUERY_HANDLERS，变更处理器进
+# APPLY_HANDLERS，同名同时出现视为契约错误（读端点可能执行写逻辑）。
 
 
-def test_custom_capability_with_handler_loads(tmp_path, root):
-    """领域自有能力 + 注册了处理器 → 加载通过，且端点门禁认可它。"""
+def test_custom_capability_with_query_handler_loads(tmp_path, root):
+    """领域自有只读能力 + 注册了处理器 → 加载通过，且端点门禁认可它。"""
     _pkg(root, "NAME = 'probe'\n"
                "class A:\n"
                "    CAPABILITIES = ('diagnose',)\n"
-               "    CAPABILITY_HANDLERS = {'diagnose': lambda a, r: {'ok': True}}\n"
+               "    QUERY_HANDLERS = {'diagnose': lambda a, r: {'ok': True}}\n"
                "def create_adapter(engine, config=None):\n"
                "    return A()\n")
 
@@ -165,6 +169,24 @@ def test_custom_capability_with_handler_loads(tmp_path, root):
     assert dangling_capabilities(adapter) == []
     # 关键：对象上并没有 diagnose 方法，只有处理器——旧判定会给 400
     assert supports(adapter, "diagnose")
+    assert set(query_handlers(adapter)) == {"diagnose"}
+    assert apply_handlers(adapter) == {}
+
+
+def test_custom_capability_with_apply_handler_loads(tmp_path, root):
+    """变更处理器同样算落点，但只出现在写表里。"""
+    _pkg(root, "NAME = 'probe'\n"
+               "class A:\n"
+               "    CAPABILITIES = ('rebalance',)\n"
+               "    APPLY_HANDLERS = {'rebalance': lambda a, r: {'ok': True}}\n"
+               "def create_adapter(engine, config=None):\n"
+               "    return A()\n")
+
+    adapter = load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
+    assert dangling_capabilities(adapter) == []
+    assert supports(adapter, "rebalance")
+    assert set(apply_handlers(adapter)) == {"rebalance"}
+    assert query_handlers(adapter) == {}
 
 
 def test_custom_capability_mcp_only_method_loads(tmp_path, root):
@@ -183,7 +205,8 @@ def test_custom_capability_mcp_only_method_loads(tmp_path, root):
 
     adapter = load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
     assert dangling_capabilities(adapter) == []
-    assert capability_handlers(adapter) == {}        # 没有声明 REST 出口
+    assert query_handlers(adapter) == {}        # 没有声明 REST 出口
+    assert apply_handlers(adapter) == {}
 
 
 def test_custom_capability_without_landing_is_rejected(tmp_path, root):
@@ -200,10 +223,34 @@ def test_custom_capability_without_landing_is_rejected(tmp_path, root):
     with pytest.raises(DomainContractError) as exc:
         load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
     assert "diagnoze" in str(exc.value)
-    assert "CAPABILITY_HANDLERS" in str(exc.value)
+    assert "QUERY_HANDLERS" in str(exc.value)
 
 
-def test_capability_handlers_tolerates_non_dict():
+def test_same_capability_in_both_tables_is_rejected(tmp_path, root):
+    """同一能力名同时注册进读表与写表 → 加载即拒（读写分离会失效）。"""
+    _pkg(root, "NAME = 'probe'\n"
+               "class A:\n"
+               "    CAPABILITIES = ('diagnose',)\n"
+               "    QUERY_HANDLERS = {'diagnose': lambda a, r: {}}\n"
+               "    APPLY_HANDLERS = {'diagnose': lambda a, r: {}}\n"
+               "def create_adapter(engine, config=None):\n"
+               "    return A()\n")
+
+    with pytest.raises(DomainContractError) as exc:
+        load_domain(_PROBE, object(), settings=_settings(tmp_path, root))
+    assert "diagnose" in str(exc.value)
+    assert "读写分离" in str(exc.value)
+
+
+def test_conflicting_handlers_reports_intersection():
+    class _Both:
+        QUERY_HANDLERS = {"a": lambda: None, "b": lambda: None}
+        APPLY_HANDLERS = {"b": lambda: None, "c": lambda: None}
+
+    assert conflicting_handlers(_Both()) == ["b"]
+
+
+def test_query_handlers_tolerate_non_dict():
     """处理器表写错形状时按"没注册"处理，而不是抛类型错误。
 
     加载器要的是"哪些能力没落点"的完整清单；在第一个属性上炸掉，
@@ -211,20 +258,22 @@ def test_capability_handlers_tolerates_non_dict():
     """
     class _Bad:
         CAPABILITIES = ("diagnose",)
-        CAPABILITY_HANDLERS = ("diagnose",)      # 误写成元组
+        QUERY_HANDLERS = ("diagnose",)      # 误写成元组
 
-    assert capability_handlers(_Bad()) == {}
+    assert query_handlers(_Bad()) == {}
     assert dangling_capabilities(_Bad()) == ["diagnose"]
 
 
-def test_capability_handlers_skips_non_callable():
-    """值不是可调用对象 → 视为没注册。"""
+def test_handlers_skip_non_callable():
+    """值不是可调用对象 → 视为没注册（两张表同口径）。"""
     class _Half:
-        CAPABILITIES = ("diagnose",)
-        CAPABILITY_HANDLERS = {"diagnose": "不是函数"}
+        CAPABILITIES = ("diagnose", "rebalance")
+        QUERY_HANDLERS = {"diagnose": "不是函数"}
+        APPLY_HANDLERS = {"rebalance": None}
 
-    assert capability_handlers(_Half()) == {}
-    assert dangling_capabilities(_Half()) == ["diagnose"]
+    assert query_handlers(_Half()) == {}
+    assert apply_handlers(_Half()) == {}
+    assert dangling_capabilities(_Half()) == ["diagnose", "rebalance"]
 
 
 # ---------------- 框架默认实现 ----------------

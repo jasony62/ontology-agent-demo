@@ -17,8 +17,9 @@ P1-1 起契约**强制**：宿主加载器（本仓库里是 `domains.registry.l
 显式排除；声明了 `CAPABILITIES` 就等于承诺"清单内的方法我都实现了"。
 
 `CAPABILITIES` 允许出现框架没预见的名字（`diagnose` 这类领域自定义能力就是探针）。
-这类"领域自有能力"由 `CAPABILITY_HANDLERS` 声明出口，加载器用
-`dangling_capabilities` 保证它至少有一个落点——见 `CAPABILITY_HANDLERS_ATTR`。
+这类"领域自有能力"由 `QUERY_HANDLERS`（只读）/ `APPLY_HANDLERS`（变更）
+声明出口，加载器用 `dangling_capabilities` 保证它至少有一个落点——
+见 `QUERY_HANDLERS_ATTR` / `APPLY_HANDLERS_ATTR`。
 
 框架提供 vs 领域实现：
     - `explain` / `graph_export` / `create` 只依赖引擎原语与**领域自声明的配置**，
@@ -70,9 +71,12 @@ __all__ = [
     "FRAMEWORK_METHODS",
     "REQUIRED_METHODS",
     "CAPABILITIES",
-    "CAPABILITY_HANDLERS_ATTR",
+    "QUERY_HANDLERS_ATTR",
+    "APPLY_HANDLERS_ATTR",
     "ENTITY_SCHEMA_ATTR",
-    "capability_handlers",
+    "query_handlers",
+    "apply_handlers",
+    "conflicting_handlers",
     "create_entity",
     "dangling_capabilities",
     "default_explain",
@@ -118,13 +122,20 @@ CAPABILITIES: tuple[str, ...] = REQUIRED_METHODS
 
 # 领域自声明能力的出口：适配器上可选的属性名，值为 {能力名: 处理器}。
 #
-# 为什么需要它：`CAPABILITIES` 里允许出现框架没预见的名字（例如领域声明的
+# 为什么需要它们：`CAPABILITIES` 里允许出现框架没预见的名字（例如领域声明的
 # `diagnose`），但出口层原先只认三张写死的推理表，声明了也无处可达——
 # "声明即承诺"于是只剩一半：既不会被拒绝，也不会真的开门。
 # 处理器表把这个缺口补成对称的两半：
-#     CAPABILITIES 说"我有什么"，CAPABILITY_HANDLERS 说"从哪进来"。
-# 处理器签名与框架内置表一致：(adapter, request) -> dict，因此可以共用同一张路由表。
-CAPABILITY_HANDLERS_ATTR = "CAPABILITY_HANDLERS"
+#     CAPABILITIES 说"我有什么"，QUERY_HANDLERS / APPLY_HANDLERS 说"从哪进来"。
+#
+# 为什么拆成两张：REST 出口按副作用物理分离（`/api/capabilities/query` 纯读、
+# `/api/capabilities/apply` 改图）。一张表会让"这个处理器会不会改图"只能靠
+# 读实现来判断；拆开后挂错表就是加载期错误，而不是运行期的副作用惊喜。
+#     QUERY_HANDLERS 只读：不改图、不落盘，可安全重试与缓存
+#     APPLY_HANDLERS 变更：改图，persist=true 时落盘，不保证幂等
+# 处理器签名与框架内置表一致：(adapter, request) -> dict。
+QUERY_HANDLERS_ATTR = "QUERY_HANDLERS"
+APPLY_HANDLERS_ATTR = "APPLY_HANDLERS"
 
 # 领域自声明实体形状的出口：适配器上可选的属性名，值为 schema 字典。
 #
@@ -133,9 +144,10 @@ CAPABILITY_HANDLERS_ATTR = "CAPABILITY_HANDLERS"
 # agent_task 一条路。schema 把形状交回领域，框架只保留"校验 + 通用写图"，
 # 第三个领域不需要框架认识它的任何字段名。
 #
-# 与 CAPABILITY_HANDLERS 的分工：
+# 与 QUERY_HANDLERS / APPLY_HANDLERS 的分工：
 #     ENTITY_SCHEMA       说什么样的 payload 合法（数据形状）
-#     CAPABILITY_HANDLERS 说从哪个操作进来（业务操作）
+#     QUERY_HANDLERS      说从哪个只读操作进来（查询）
+#     APPLY_HANDLERS      说从哪个变更操作进来（写）
 ENTITY_SCHEMA_ATTR = "ENTITY_SCHEMA"
 
 
@@ -211,8 +223,8 @@ def undeclared_missing(adapter: Any) -> list[str]:
     return [m for m in missing if m in declared]
 
 
-def capability_handlers(adapter: Any) -> dict[str, Any]:
-    """适配器注册的「能力 → 处理器」表（缺省为空表）。
+def _handlers(adapter: Any, attr: str) -> dict[str, Any]:
+    """读取一张处理器表（缺省为空表）。
 
     容忍三种现状，都不视为契约错误：
       - 没有该属性（只声明 CAPABILITIES、只走 MCP 的领域）；
@@ -221,10 +233,30 @@ def capability_handlers(adapter: Any) -> dict[str, Any]:
         `dangling_capabilities` 统一报出来，而不是在这里抛类型错误。
         加载器需要的是"哪些能力没落点"的完整清单，不是第一个出错的属性。
     """
-    table = getattr(adapter, CAPABILITY_HANDLERS_ATTR, None)
+    table = getattr(adapter, attr, None)
     if not isinstance(table, dict):
         return {}
     return {k: v for k, v in table.items() if callable(v)}
+
+
+def query_handlers(adapter: Any) -> dict[str, Any]:
+    """适配器注册的只读能力处理器（`QUERY_HANDLERS`）。"""
+    return _handlers(adapter, QUERY_HANDLERS_ATTR)
+
+
+def apply_handlers(adapter: Any) -> dict[str, Any]:
+    """适配器注册的变更能力处理器（`APPLY_HANDLERS`）。"""
+    return _handlers(adapter, APPLY_HANDLERS_ATTR)
+
+
+def conflicting_handlers(adapter: Any) -> list[str]:
+    """同时注册进读表与写表的能力名。
+
+    同一名字出现在两张表里，读写分离就失效了：它既可能从纯读端点被调用，
+    也可能带上写副作用。加载器必须拒绝，而不是挑一张表获胜——那样调用方
+    无法仅凭路径判断副作用。
+    """
+    return sorted(set(query_handlers(adapter)) & set(apply_handlers(adapter)))
 
 
 def dangling_capabilities(adapter: Any) -> list[str]:
@@ -232,7 +264,7 @@ def dangling_capabilities(adapter: Any) -> list[str]:
 
     落点有三种，命中任一即可：
       1. 契约方法（REQUIRED_METHODS 里的名字，对象上可调用）；
-      2. `CAPABILITY_HANDLERS` 里注册了处理器；
+      2. `QUERY_HANDLERS` / `APPLY_HANDLERS` 里注册了处理器；
       3. 对象上有同名可调用属性——典型是领域只经 MCP 暴露（`mcp.py` 自己
          注册工具），框架无法也不该替它判断"这算不算够用"。
 
@@ -240,7 +272,7 @@ def dangling_capabilities(adapter: Any) -> list[str]:
     静默接受：能力表里多一个谁都不认识的名字，端点既不开门也不报错。
     """
     declared = getattr(adapter, "CAPABILITIES", None) or ()
-    handlers = capability_handlers(adapter)
+    handlers = set(query_handlers(adapter)) | set(apply_handlers(adapter))
     out: list[str] = []
     for cap in declared:
         if cap in handlers:
@@ -254,9 +286,9 @@ def dangling_capabilities(adapter: Any) -> list[str]:
 def supports(adapter: Any, capability: str) -> bool:
     """端点门禁：能力可达 **且** 领域未在 CAPABILITIES 里显式排除。
 
-    可达 = 对象上有同名方法，或 `CAPABILITY_HANDLERS` 里注册了处理器。
-    后者让"领域自有能力"能进同一张推理表：处理器只存在字典里、对象上并无
-    同名方法，若只认方法，声明了 diagnose 的领域调自己的端点反而拿 400。
+    可达 = 对象上有同名方法，或 `QUERY_HANDLERS` / `APPLY_HANDLERS` 里
+    注册了处理器。处理器只存在字典里、对象上并无同名方法，若只认方法，
+    声明了 diagnose 的领域调自己的端点反而拿 400。
 
     领域包未声明 CAPABILITIES 时视为全量能力（向后兼容）。
     """
@@ -265,7 +297,7 @@ def supports(adapter: Any, capability: str) -> bool:
         return False
     if callable(getattr(adapter, capability, None)):
         return True
-    return capability in capability_handlers(adapter)
+    return capability in query_handlers(adapter) or capability in apply_handlers(adapter)
 
 
 # ------------------------------------------------------- 实体 schema 与通用创建

@@ -44,27 +44,96 @@ def test_index_page():
     )
 
 
-# ---------- 推理端点 ----------
+# ---------- 能力端点（读写分离） ----------
 
-def test_reason_capability_match():
-    r = client.post("/api/reason", json={"type": "capability_match", "task": "t_login_dev"})
+def test_query_capability_match():
+    r = client.post("/api/capabilities/query", json={"type": "capability_match", "task": "t_login_dev"})
     assert r.status_code == 200
     names = {m["agent"] for m in r.json()["matches"]}
     assert {"dev_agent", "junior_dev"} <= names
 
 
-def test_reason_orchestrate():
-    r = client.post("/api/reason", json={"type": "orchestrate", "task": "t_feature"})
+def test_query_orchestrate():
+    r = client.post("/api/capabilities/query", json={"type": "orchestrate", "task": "t_feature"})
     assert r.status_code == 200
     plan = r.json()
     assert len(plan["steps"]) == 5
     assert plan["steps"][0]["task"] == "t_req"
 
 
-def test_reason_assign_conflict():
-    r = client.post("/api/reason", json={"type": "assign", "task": "t_compliance_dev", "agent": "junior_dev"})
+def test_apply_assign_conflict():
+    r = client.post("/api/capabilities/apply",
+                    json={"type": "assign", "task": "t_compliance_dev", "agent": "junior_dev"})
     assert r.status_code == 200
     assert r.json()["conflict"] is not None
+
+
+def test_query_endpoint_never_mutates_graph():
+    """读端点的硬约束：调用前后图规模与脏计数都不变。"""
+    import api.main as M
+
+    before_len = len(M.ENGINE.g)
+    before = client.get("/api/health").json()
+    for payload in (
+        {"type": "capability_match", "task": "t_login_dev"},
+        {"type": "orchestrate", "task": "t_feature"},
+    ):
+        assert client.post("/api/capabilities/query", json=payload).status_code == 200
+
+    after = client.get("/api/health").json()
+    assert len(M.ENGINE.g) == before_len
+    assert after["dirty"] == before["dirty"]
+    assert after["pending_changes"] == before["pending_changes"]
+
+
+def test_capability_cross_endpoint_hints():
+    """走错门要指路，而不是笼统报「不支持」。"""
+    r = client.post("/api/capabilities/query",
+                    json={"type": "assign", "task": "t_compliance_dev", "agent": "junior_dev"})
+    assert r.status_code == 400
+    assert "POST /api/capabilities/apply" in r.json()["detail"]
+
+    r = client.post("/api/capabilities/apply",
+                    json={"type": "capability_match", "task": "t_login_dev"})
+    assert r.status_code == 400
+    assert "POST /api/capabilities/query" in r.json()["detail"]
+
+
+def test_apply_assign_mutates_graph_without_persist(isolated_api):
+    """persist=false：改内存图，但不落盘，变更留在 pending 里。"""
+    import api.main as M
+
+    before_len = len(M.ENGINE.g)
+    r = isolated_api.client.post("/api/capabilities/apply", json={
+        "type": "assign", "task": "t_compliance_dev", "agent": "junior_dev",
+    })
+    assert r.status_code == 200
+    assert len(M.ENGINE.g) != before_len
+    assert not list(isolated_api.extensions.glob("*.ttl"))
+    health = isolated_api.client.get("/api/health").json()
+    assert health["dirty"] is True
+    assert health["pending_changes"] > 0
+
+
+def test_apply_assign_persist_writes_extensions(isolated_api):
+    """persist=true：写 extensions/ 增量，提交后 pending 归零。
+
+    注意 `dirty` 的语义是「有未提交变更」：落盘成功即提交，所以这里
+    `dirty=false` 是正确行为，不是漏写——与 `/api/ontology/status` 同源。
+    """
+    import api.main as M
+
+    before_len = len(M.ENGINE.g)
+    r = isolated_api.client.post("/api/capabilities/apply", json={
+        "type": "assign", "task": "t_compliance_dev", "agent": "junior_dev",
+        "persist": True,
+    })
+    assert r.status_code == 200
+    assert len(M.ENGINE.g) != before_len
+    assert list(isolated_api.extensions.glob("*.ttl"))
+    health = isolated_api.client.get("/api/health").json()
+    assert health["pending_changes"] == 0
+    assert health["changelog"][-1]["op"] == "assign"
 
 
 def test_create_entity():
@@ -94,7 +163,7 @@ def test_entity_schema_endpoint():
 
 
 def test_explain():
-    client.post("/api/reason", json={"type": "capability_match", "task": "t_login_dev"})
+    client.post("/api/capabilities/query", json={"type": "capability_match", "task": "t_login_dev"})
     r = client.post("/api/explain")
     assert r.status_code == 200
     assert r.json()["query_kind"] == "capability_match"

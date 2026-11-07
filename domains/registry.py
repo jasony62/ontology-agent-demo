@@ -296,6 +296,7 @@ def load_domain(name: str, engine, config=None, *, settings: DomainConfig | None
 
 def _validate_adapter(name: str, adapter) -> None:
     from ontology_plugin_sdk import (
+        conflicting_handlers,
         dangling_capabilities,
         entity_schema,
         undeclared_missing,
@@ -324,8 +325,22 @@ def _validate_adapter(name: str, adapter) -> None:
         raise DomainContractError(
             f"领域包 {name!r} 声明了无法到达的能力：{', '.join(dangling)}。"
             f"名字必须至少落在以下之一：契约方法（ontology_plugin_sdk.REQUIRED_METHODS）、"
-            f"CAPABILITY_HANDLERS 里注册的处理器、或适配器上的同名可调用属性"
+            f"QUERY_HANDLERS（只读）或 APPLY_HANDLERS（变更）里注册的处理器、"
+            f"或适配器上的同名可调用属性"
             f"（只经 MCP 暴露的能力属于最后一种）。"
+        )
+
+    # 读表与写表互斥：同一个能力名同时挂在两处，读写分离就失效了——
+    # 它既可能从纯读端点被调用，也可能带上写副作用，调用方无法仅凭路径
+    # 判断能不能重试。这里拒绝而不是"某张表优先"，因为优先规则本身
+    # 就是调用方看不见的隐含行为。
+    conflicts = conflicting_handlers(adapter)
+    if conflicts:
+        raise DomainContractError(
+            f"领域包 {name!r} 的能力同时注册进了读表与写表：{', '.join(conflicts)}。"
+            f"QUERY_HANDLERS 只放只读处理器（不改图、不落盘），"
+            f"APPLY_HANDLERS 只放变更处理器（改图、persist 可落盘）；"
+            f"同名会让读端点执行写逻辑，读写分离失效。"
         )
 
     # 实体 schema（P4 遗留清单第 3 条）：create 的字段形状由领域声明，

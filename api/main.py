@@ -8,7 +8,8 @@
         GET  /api/health       健康检查
         GET  /api/ontology     本体结构（图谱渲染数据）
         GET  /api/ontology/graph-groups 领域声明的图谱分组（前端上色 / 图例）
-        POST /api/reason       结构化推理（框架内置三种 ∪ 领域注册的处理器）
+        POST /api/capabilities/query 领域能力查询（纯读，不改图、不落盘，可安全重试）
+        POST /api/capabilities/apply 领域能力变更（改图，persist=true 落盘，不保证幂等）
         GET  /api/entities/schema 当前领域的实体 schema（字段 / 类型 / 必填）
         POST /api/entities     按领域 schema 新建实体（校验 → 写图 → 推理）
         POST /api/explain      最近一次推理的推导链
@@ -61,17 +62,18 @@ class LazyStaticFiles(StaticFiles):
 
 from reasoner.engine import get_engine, OntologyEngine, SparqlTimeoutError
 from reasoner.protocol import (
-    capability_handlers,
+    apply_handlers,
     dangling_capabilities,
     entity_schema,
     graph_group_members,
+    query_handlers,
     supports,
     undeclared_missing,
     validate_entity_schema,
 )
 from domains import DomainManager, DomainContractError, DomainNotFoundError
 from .schemas import (
-    ReasonRequest, EntityRequest, RevokeRequest, ImportRequest,
+    ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
     SaveOntologyRequest, EditModel,
 )
@@ -132,13 +134,13 @@ def _sync_runtime(force: bool = False) -> None:
 # 分组按使用场景而非 HTTP 方法划分——调用方找的是「我要做什么」。
 OPENAPI_TAGS = [
     {"name": "系统", "description": "健康检查与运行状态。"},
-    {"name": "领域推理", "description": "当前领域包的推理与实体操作；通用模式下返回 400。"},
+    {"name": "领域推理", "description": "当前领域包的查询（capabilities/query）与变更（capabilities/apply）能力；通用模式下返回 400。"},
     {"name": "通用查询", "description": "任意 OWL 本体可用的 SPARQL、类、个体与属性查询。"},
     {"name": "本体管理", "description": "本体加载、编辑、保存、导出、重载与物化。"},
     {"name": "领域管理", "description": "已安装领域清单、L2 重载与 L3 原子切换。"},
 ]
 
-# 业务错误响应：按「会抛的端点」组合，而不是给 29 个装饰器复制粘贴
+# 业务错误响应：按「会抛的端点」组合，而不是给 30 个装饰器复制粘贴
 # 同一段字面量（复制粘贴正是文档与代码分叉的常见来源）。
 ERROR_400 = {
     400: {
@@ -419,7 +421,7 @@ def _class_count(field: str) -> int:
             "model": HealthResponse,
             "description": (
                 "服务状态、本体版本、脏标记、当前领域与契约探针"
-                "（含 contract.reason_kinds 可用推理类型）。"
+                "（含 contract.query_kinds / contract.apply_kinds 可用能力）。"
             ),
         },
     },
@@ -427,9 +429,11 @@ def _class_count(field: str) -> int:
 def health():
     """返回服务状态、本体版本、脏标记、当前领域与契约探针。
 
-    给调用方：`contract.reason_kinds` 是 `POST /api/reason` 当前可用类型的
-    权威清单；`counts` 与顶层 agents / tasks / assignments 是领域可选统计，
-    领域没有这些方法时为 0，而不是报错。
+    给调用方：`contract.query_kinds` 是 `POST /api/capabilities/query` 当前
+    可用只读能力的权威清单，`contract.apply_kinds` 对应
+    `POST /api/capabilities/apply`；两者都按领域 `CAPABILITIES` 过滤过。
+    `counts` 与顶层 agents / tasks / assignments 是领域可选统计，领域没有
+    这些方法时为 0，而不是报错。
     """
     # 顶层保留 v1.x 的 agents/tasks/assignments 字段（既有调用方兼容）；
     # 新增 REQ-03 字段：version / loaded_at / dirty / pending_changes / changelog / counts
@@ -447,9 +451,12 @@ def health():
             # 声明了却没有落点的能力（加载器本该拒绝；这里再暴露一次，
             # 便于排查运行期手动换上的适配器）
             "dangling": dangling_capabilities(ADAPTER),
-            # 实际可从 POST /api/reason 触达的类型：框架内置 ∪ 领域处理器，
-            # 再按领域声明过滤。集成方据此决定调什么，不用猜。
-            "reason_kinds": sorted(k for k in _reason_kinds(ADAPTER) if supports(ADAPTER, k)),
+            # 实际可从 POST /api/capabilities/query 触达的只读能力：
+            # 框架内置 ∪ 领域 QUERY_HANDLERS，再按领域声明过滤。
+            "query_kinds": sorted(k for k in _query_kinds(ADAPTER) if supports(ADAPTER, k)),
+            # 实际可从 POST /api/capabilities/apply 触达的变更能力：
+            # 框架内置 ∪ 领域 APPLY_HANDLERS，再按领域声明过滤。
+            "apply_kinds": sorted(k for k in _apply_kinds(ADAPTER) if supports(ADAPTER, k)),
             # 实体创建：schema 的类 + 字段名清单。完整形状看
             # GET /api/entities/schema（这里只做"有没有、有哪些字段"的快照）
             "entity_schema": _schema_summary(ADAPTER),
@@ -531,34 +538,89 @@ def ontology_graph_groups():
     return {"groups": graph_group_members(ADAPTER)}
 
 
-# 推理类型 → 领域方法调用（P2-4：能力表驱动）。
-# 此前是 if/elif 枚举：加一种推理类型要改端点、改门禁、改文档三处，
-# 且"当前领域支持哪些类型"散落在分支里无法回答。改成表之后，
-# 支持清单 = 表的键 ∩ 领域 CAPABILITIES，错误消息可以直接给出。
+# 能力表按副作用拆成两张（读写分离）。
 #
-# 这张表是**框架内置**的三个类型，它们对应 agent_task 形状的业务语义。
-# 领域自有的推理类型（如领域自己声明的 diagnose）不进这里——它们由适配器的
-# `CAPABILITY_HANDLERS` 声明，运行时并入同一张表，见 `_reason_kinds()`。
-# 保留框架表独立存在的理由：它不随领域切换而变，且"框架预见了哪些"本身
-# 是有信息量的——表里没有的名字，一定来自领域。
-REASON_KINDS = {
+# 旧版只有一张推理能力表：同一个 URL、同样的 POST，只靠请求体里的 `type`
+# 换一个值，行为就从"读图"变成"改图甚至落盘"。调用方从外面分不出两者，
+# 重试策略、缓存、权限、审计全都无从下手。拆成两张之后，"读端点永不改图"
+# 成为可验证的硬约束，而不是靠约定。
+#
+# 表仍然是**框架内置**的部分，不随领域切换而变；领域自有的能力由
+# `QUERY_HANDLERS` / `APPLY_HANDLERS` 声明，运行时分别并入对应表，
+# 见 `_query_kinds()` / `_apply_kinds()`。
+QUERY_KINDS = {
     "capability_match": lambda a, req: a.capability_match(_uri(req.task)),
     "orchestrate": lambda a, req: a.orchestrate(_uri(req.task)),
+}
+APPLY_KINDS = {
     "assign": lambda a, req: a.assign(_uri(req.task), _uri(req.agent), persist=req.persist),
 }
 
+QUERY_ENDPOINT = "POST /api/capabilities/query"
+APPLY_ENDPOINT = "POST /api/capabilities/apply"
 
-def _reason_kinds(adapter) -> dict:
-    """当前适配器可用的推理类型表：框架内置 ∪ 领域注册的处理器。
+
+def _query_kinds(adapter) -> dict:
+    """当前适配器可用的只读能力表：框架内置 ∪ 领域 `QUERY_HANDLERS`。
 
     领域处理器不能覆盖框架内置键——同名时以内置为准。理由不是"框架优先"，
     而是内置键的语义（capability_match 等）属于契约：被领域悄悄换成另一种
     行为，调用方按契约写的代码就会拿到形状不符的返回。
     """
-    table = dict(REASON_KINDS)
-    for kind, handler in capability_handlers(adapter).items():
+    table = dict(QUERY_KINDS)
+    for kind, handler in query_handlers(adapter).items():
         table.setdefault(kind, handler)
     return table
+
+
+def _apply_kinds(adapter) -> dict:
+    """当前适配器可用的变更能力表：框架内置 ∪ 领域 `APPLY_HANDLERS`。"""
+    table = dict(APPLY_KINDS)
+    for kind, handler in apply_handlers(adapter).items():
+        table.setdefault(kind, handler)
+    return table
+
+
+def _resolve_capability(kind: str, table: dict, endpoint: str,
+                        other_table: dict, other_endpoint: str,
+                        other_label: str):
+    """在本端能力表里取处理器；传到另一端的类型要明确指路。
+
+    跨端点调用只回"不支持"等于让调用方猜。`assign` 传给纯读端点时，
+    真正的问题是"副作用类型走错了门"，不是"这个名字不认识"。
+    """
+    handler = table.get(kind)
+    if handler is not None:
+        return handler
+    if kind in other_table:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{kind} 是{other_label}，请改用 {other_endpoint}",
+        )
+    declared = set(getattr(ADAPTER, "CAPABILITIES", None) or ())
+    supported = sorted(set(table) & declared)
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"不支持的能力类型: {kind}；{endpoint} 当前可用："
+            f"{supported or '（无）'}"
+        ),
+    )
+
+
+def _run_capability(req, table: dict, endpoint: str, other_table: dict,
+                    other_endpoint: str, other_label: str) -> dict:
+    """三态门禁 + 分派：未知类型 400、声明未实现 501、实现未声明 400。"""
+    handler = _resolve_capability(
+        req.type, table, endpoint, other_table, other_endpoint, other_label
+    )
+    _require_capability(req.type)
+    try:
+        return handler(ADAPTER, req)
+    except ValueError as exc:
+        # 领域处理器的参数校验失败属于**客户端**错误。不让它冒成 500：
+        # 领域包不该为了给个正确的状态码去 import FastAPI。
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _schema_summary(adapter) -> dict | None:
@@ -581,46 +643,81 @@ def _schema_summary(adapter) -> dict | None:
 
 
 @app.post(
-    "/api/reason",
+    "/api/capabilities/query",
     tags=["领域推理"],
-    summary="结构化推理",
+    summary="领域能力查询",
     responses={
         200: {
             "model": OpenEnvelope,
             "description": (
-                "推理结果；形状随 type 与当前领域处理器而变，"
-                "可用类型见 GET /api/health 的 contract.reason_kinds。"
+                "查询结果；纯读——不改图、不落盘，可安全重试与缓存。"
+                "形状随 type 与当前领域处理器而变，可用类型见 "
+                "GET /api/health 的 contract.query_kinds。"
             ),
         },
         **ERROR_400,
         **ERROR_501,
     },
 )
-def reason(req: ReasonRequest):
-    """按 `type` 分派的结构化推理，返回形状随类型与当前领域而变。
+def capabilities_query(req: CapabilityQueryRequest):
+    """领域能力查询：按 `type` 分派到只读处理器，返回形状随领域而变。
 
-    给调用方：可用类型见 `GET /api/health` 的 `contract.reason_kinds`；
-    框架内置 capability_match / orchestrate / assign，领域可注册自己的
-    处理器。类型未知或领域未声明能力返回 400，声明了却未实现返回 501。
+    副作用契约：**不改图、不落盘**。处理器来自框架内置 QUERY_KINDS ∪ 领域
+    `QUERY_HANDLERS`；本端点看不到 `APPLY_HANDLERS` 里的写逻辑，因此可以
+    安全重试、缓存、给只读权限。
+
+    给调用方：可用类型见 `GET /api/health` 的 `contract.query_kinds`。
+    类型未知或领域未声明能力返回 400，声明了却未实现返回 501；把变更能力
+    （如 assign）传到这里会得到指路 400，而不是笼统的"不支持"。
     """
     _require_default_ontology()
-    table = _reason_kinds(ADAPTER)
-    kind = table.get(req.type)
-    if kind is None:
-        declared = set(getattr(ADAPTER, "CAPABILITIES", None) or ())
-        supported = sorted(set(table) & declared)
-        raise HTTPException(
-            status_code=400,
-            detail=(f"不支持的推理类型: {req.type}；"
-                    f"当前领域「{getattr(ADAPTER, 'NAME', '?')}」支持：{supported or '（无）'}"),
-        )
-    _require_capability(req.type)
-    try:
-        return kind(ADAPTER, req)
-    except ValueError as exc:
-        # 领域处理器的参数校验失败属于**客户端**错误。不让它冒成 500：
-        # 领域包不该为了给个正确的状态码去 import FastAPI。
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _run_capability(
+        req,
+        _query_kinds(ADAPTER),
+        QUERY_ENDPOINT,
+        _apply_kinds(ADAPTER),
+        APPLY_ENDPOINT,
+        "变更能力",
+    )
+
+
+@app.post(
+    "/api/capabilities/apply",
+    tags=["领域推理"],
+    summary="领域能力变更",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "变更结果；会改图，persist=true 时写入 extensions/，不保证幂等。"
+                "形状随 type 与当前领域处理器而变，可用类型见 "
+                "GET /api/health 的 contract.apply_kinds。"
+            ),
+        },
+        **ERROR_400,
+        **ERROR_501,
+    },
+)
+def capabilities_apply(req: ApplyRequest):
+    """领域能力变更：按 `type` 分派到变更处理器，返回形状随领域而变。
+
+    副作用契约：**会改图**（可能新增/删除三元组）；`persist=true` 时把增量
+    写入 `extensions/`，重启后仍在。不保证幂等——调用方请自行防重，
+    不要按纯读端点的策略盲目重试。
+
+    给调用方：可用类型见 `GET /api/health` 的 `contract.apply_kinds`。
+    类型未知或领域未声明能力返回 400，声明了却未实现返回 501；把只读能力
+    （如 capability_match）传到这里会得到指路 400。
+    """
+    _require_default_ontology()
+    return _run_capability(
+        req,
+        _apply_kinds(ADAPTER),
+        APPLY_ENDPOINT,
+        _query_kinds(ADAPTER),
+        QUERY_ENDPOINT,
+        "查询能力",
+    )
 
 
 @app.get(
@@ -672,8 +769,8 @@ def entity_schema_endpoint():
 def create_entity_endpoint(req: EntityRequest):
     """按当前领域的 ENTITY_SCHEMA 新建实体（校验 → 写图 → 推理）。
 
-    与 `/api/reason` 一样，领域的 ValueError 一律转 400：payload 不合
-    领域声明的形状属于客户端错误。
+    与 `/api/capabilities/apply` 一样，领域的 ValueError 一律转 400：payload
+    不合领域声明的形状属于客户端错误。
     """
     _require_default_ontology()
     _require_capability("create")
@@ -686,21 +783,29 @@ def create_entity_endpoint(req: EntityRequest):
 @app.post(
     "/api/explain",
     tags=["领域推理"],
-    summary="推导链解释",
+    summary="推导链解释（模板填槽）",
     responses={
         200: {
             "model": OpenEnvelope,
-            "description": "最近一次推理的推导链（query_kind + derivation 等），形状由领域的 explain 决定。",
+            "description": (
+                "最近一次查询的推导链（query_kind + derivation 等），形状由领域的 explain 决定。"
+                "翻译自模板填槽，不是公理级反查；查询响应本身已带 derivation，可直接取用。"
+            ),
         },
         **ERROR_400,
         **ERROR_501,
     },
 )
 def explain():
-    """返回最近一次推理的中文推导链。
+    """返回最近一次查询的中文推导链。
 
-    给调用方：推导链由模板填槽生成，不是公理级反查；需要可担保的
-    形式证明请走 MCP 的 `explain_proof` 工具。
+    定性（刻意保留，不是读写分离意义上的"写"）：读能力会更新进程内的
+    `last_query_kind` / `last_derivation` 会话态缓存，本端点读它；不改图、
+    不落盘，重试只是覆盖同一个缓存。
+
+    给调用方：推导链来自**模板填槽**，非公理反查；查询响应本身已经带
+    `derivation`，可直接取用，不必再调本端点。需要可担保的形式证明请走
+    MCP 的 `explain_proof` 工具。
     """
     _require_default_ontology()
     _require_capability("explain")

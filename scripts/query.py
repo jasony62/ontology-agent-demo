@@ -58,9 +58,13 @@ def http_query(kind: str, args) -> dict:
         return _http_call("POST", "/api/consistency")
     if kind == "explain":
         return _http_call("POST", "/api/explain")
-    if kind in ("capability_match", "orchestrate", "assign"):
+    if kind in ("capability_match", "orchestrate"):
         payload = {"type": kind, "task": args.task, "agent": args.agent}
-        return _http_call("POST", "/api/reason", payload)
+        return _http_call("POST", "/api/capabilities/query", payload)
+    if kind == "assign":
+        # 写端点与读端点物理分离：assign 会改图，走 capabilities/apply。
+        payload = {"type": kind, "task": args.task, "agent": args.agent}
+        return _http_call("POST", "/api/capabilities/apply", payload)
     if kind in ("create", "classify"):
         # 通用实体创建：payload 的形状由领域 ENTITY_SCHEMA 声明，
         # CLI 这几个开关只是 agent_task 这一种领域的便利包装。

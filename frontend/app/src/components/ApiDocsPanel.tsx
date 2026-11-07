@@ -18,6 +18,7 @@ import type {
   ApiOperation,
   BodyField,
   JsonSchema,
+  OpenAPIResponse,
   OpenAPISpec,
 } from '../lib/openapi';
 
@@ -65,6 +66,159 @@ function BodyHints({ schema, title = '请求字段说明' }: { schema?: JsonSche
         ))}
       </ul>
     </details>
+  );
+}
+
+type ResponseTone = 'ok' | 'warn' | 'bad';
+
+function responseTone(code: string): ResponseTone {
+  if (code.startsWith('2')) return 'ok';
+  if (code.startsWith('4')) return 'warn';
+  return 'bad';
+}
+
+/**
+ * 响应字段用定义列表（dl/dt/dd）渲染，而不是复用请求区的行内列表：
+ * 字段名与说明各占一列，长中文说明独占一行，不再和类型徽章挤在一起。
+ */
+function ResponseFields({ schema }: { schema?: JsonSchema }) {
+  const properties = Object.entries(schema?.properties ?? {});
+  if (properties.length === 0) return null;
+  const required = new Set(schema?.required ?? []);
+  return (
+    <dl className="apidoc-response-fields">
+      {properties.map(([name, child]) => (
+        <div key={name} className="apidoc-response-field">
+          <dt>
+            <code>{name}</code>
+            <span className="apidoc-type">{typeSummary(child)}</span>
+            {required.has(name) && <span className="apidoc-required">必填</span>}
+          </dt>
+          <dd>{child.description || '—'}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * 结构指纹：`$ref` 在 `operationsFromSpec` 里已被展开，所以按序列化后的
+ * 结构判断「同一份 schema」，用于把 400 / 404 / 501 共用的错误体去重。
+ */
+function schemaKey(schema?: JsonSchema): string {
+  return schema && Object.keys(schema.properties ?? {}).length > 0 ? JSON.stringify(schema) : '';
+}
+
+function responseFieldCount(response: OpenAPIResponse): number {
+  let count = 0;
+  for (const content of Object.values(response.content ?? {})) {
+    count = Math.max(count, Object.keys(content.schema?.properties ?? {}).length);
+  }
+  return count;
+}
+
+interface SharedBody {
+  schema: JsonSchema;
+  codes: string[];
+}
+
+/**
+ * 响应区：状态码卡片按 2xx 展开、4xx/5xx 折叠；被多个状态码共用的错误体
+ * 只在顶部渲染一次，各卡片里指向它，避免同一份字段说明重复三遍。
+ */
+function ResponsesSection({ responses }: { responses: Record<string, OpenAPIResponse> }) {
+  const codes = Object.keys(responses);
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+
+  const shared = useMemo(() => {
+    const groups = new Map<string, { schema: JsonSchema; codes: Set<string> }>();
+    for (const [code, response] of Object.entries(responses)) {
+      for (const content of Object.values(response.content ?? {})) {
+        const key = schemaKey(content.schema);
+        if (!key || !content.schema) continue;
+        const group = groups.get(key) ?? { schema: content.schema, codes: new Set<string>() };
+        group.codes.add(code);
+        groups.set(key, group);
+      }
+    }
+    const out = new Map<string, SharedBody>();
+    for (const [key, group] of groups) {
+      if (group.codes.size >= 2) out.set(key, { schema: group.schema, codes: [...group.codes] });
+    }
+    return out;
+  }, [responses]);
+
+  const isOpen = (code: string) => toggled[code] ?? responseTone(code) === 'ok';
+  const allOpen = codes.length > 0 && codes.every(isOpen);
+
+  return (
+    <section className="apidoc-section apidoc-responses">
+      <div className="apidoc-section-head">
+        <h6>响应</h6>
+        <span className="apidoc-links">
+          <button type="button" onClick={() => setToggled(Object.fromEntries(codes.map((code) => [code, !allOpen])))}>
+            {allOpen ? '收起全部' : '展开全部'}
+          </button>
+        </span>
+      </div>
+
+      {[...shared.entries()].map(([key, group]) => (
+        <div key={key} className="apidoc-common-error">
+          <div className="apidoc-common-error-head">
+            <span className="apidoc-common-error-title">通用错误响应字段</span>
+            <span className="apidoc-muted">{group.codes.join(' / ')} 共用</span>
+          </div>
+          <ResponseFields schema={group.schema} />
+        </div>
+      ))}
+
+      {codes.map((code) => {
+        const response = responses[code];
+        const tone = responseTone(code);
+        const fieldCount = responseFieldCount(response);
+        return (
+          <details
+            key={code}
+            className={`apidoc-response-item ${tone}`}
+            open={isOpen(code)}
+            onToggle={(event) => {
+              const next = event.currentTarget.open;
+              setToggled((prev) => (prev[code] === next ? prev : { ...prev, [code]: next }));
+            }}
+          >
+            <summary className="apidoc-response-summary">
+              <code className={`apidoc-status-code ${tone}`}>{code}</code>
+              {response.description && (
+                <span className="apidoc-response-desc">{response.description}</span>
+              )}
+              {fieldCount > 0 && <span className="apidoc-field-count">{fieldCount} 个字段</span>}
+            </summary>
+            {Object.keys(response.content ?? {}).length > 0 && (
+              <div className="apidoc-response-content">
+                {Object.entries(response.content ?? {}).map(([contentType, content]) => {
+                  const key = schemaKey(content.schema);
+                  const common = key !== '' && shared.has(key);
+                  const properties = Object.keys(content.schema?.properties ?? {}).length;
+                  return (
+                    <div key={contentType} className="apidoc-response-media">
+                      <code>{contentType}</code>
+                      {common ? (
+                        <span className="apidoc-response-common-note">字段见上方「通用错误响应字段」</span>
+                      ) : properties > 0 ? (
+                        <>
+                          <span className="apidoc-response-fields-title">响应字段说明（{properties}）</span>
+                          <ResponseFields schema={content.schema} />
+                        </>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </details>
+        );
+      })}
+    </section>
   );
 }
 
@@ -426,23 +580,7 @@ function OperationCard({ op, onNotify }: { op: ApiOperation; onNotify: (message:
           )}
 
           {op.responses && Object.keys(op.responses).length > 0 && (
-            <section className="apidoc-section">
-              <h6>响应</h6>
-              {Object.entries(op.responses).map(([code, res]) => (
-                <div key={code} className="apidoc-response">
-                  <div className="apidoc-response-head">
-                    <code className={`apidoc-status-code${code.startsWith('2') ? ' ok' : ' bad'}`}>{code}</code>
-                    {res.description && <span className="apidoc-hint">{res.description}</span>}
-                  </div>
-                  {Object.entries(res.content ?? {}).map(([contentType, content]) => (
-                    <div key={contentType} className="apidoc-response-media">
-                      <code>{contentType}</code>
-                      <BodyHints schema={content.schema} title="响应字段说明" />
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </section>
+            <ResponsesSection responses={op.responses} />
           )}
 
           <div className="apidoc-actions">
@@ -470,7 +608,7 @@ function OperationCard({ op, onNotify }: { op: ApiOperation; onNotify: (message:
                   <a className="apidoc-download" href={result.downloadUrl} download="response.bin">下载响应</a>
                 )}
               </div>
-              <pre className="apidoc-response">{result.body || '（空响应体）'}</pre>
+              <pre className="apidoc-response-body">{result.body || '（空响应体）'}</pre>
             </section>
           )}
         </div>

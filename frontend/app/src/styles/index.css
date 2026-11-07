@@ -433,7 +433,9 @@ textarea.source-editor {
 .apidoc-meta { margin: 0; font-size: 11.5px; color: var(--muted); }
 .apidoc-meta code { color: var(--link); }
 .apidoc-section { display: flex; flex-direction: column; gap: 6px; }
-.apidoc-section h6 { font-size: 12px; color: var(--heading); font-weight: 600; }
+.apidoc-section h6 { font-size: 13px; color: var(--heading); font-weight: 600; }
+.apidoc-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.apidoc-section-head h6 { margin: 0; }
 .apidoc-section h6 code { color: var(--link); font-weight: 400; }
 .apidoc-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .apidoc-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #44566b; min-width: 0; }
@@ -465,25 +467,68 @@ textarea.source-editor {
 .apidoc-schema summary { cursor: pointer; color: var(--link); font-size: 12px; }
 .apidoc-schema ul { margin: 6px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
 .apidoc-schema li code { color: var(--link); }
-.apidoc-response {
-  display: flex; flex-direction: column; gap: 6px;
-  border: 1px solid var(--border); border-radius: 6px;
-  padding: 8px 10px; background: #fafbfc;
+/* 响应说明卡片（浅色，与「实际响应体」代码块严格分开：不要再复用类名） */
+.apidoc-responses { gap: 8px; }
+.apidoc-response-item {
+  border: 1px solid var(--border); border-left: 3px solid transparent;
+  border-radius: 6px; background: #fafbfc;
 }
-.apidoc-response-head { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.apidoc-response-item.ok { border-left-color: #1e7e34; }
+.apidoc-response-item.warn { border-left-color: #d99000; }
+.apidoc-response-item.bad { border-left-color: #c0392b; }
+.apidoc-response-summary {
+  display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; cursor: pointer; list-style: none;
+}
+.apidoc-response-summary::-webkit-details-marker { display: none; }
+.apidoc-response-summary::before {
+  content: '▸'; flex: none; color: var(--muted); font-size: 11px; line-height: 1.9;
+}
+.apidoc-response-item[open] > .apidoc-response-summary::before { content: '▾'; }
+.apidoc-response-desc { flex: 1; min-width: 0; font-size: 12.5px; color: var(--heading); line-height: 1.6; }
+.apidoc-field-count {
+  flex: none; font-size: 10.5px; color: var(--muted); background: #eef3f8;
+  border-radius: var(--radius-full); padding: 1px 7px;
+}
+.apidoc-response-content { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 10px; }
 .apidoc-status-code {
   font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; font-weight: 700;
+  padding: 2px 8px; border-radius: 4px; background: #eef3f8; color: var(--muted);
 }
-.apidoc-status-code.ok { color: #1e7e34; }
-.apidoc-status-code.bad { color: var(--danger); }
+.apidoc-status-code.ok { background: #e8f5ec; color: #1e7e34; }
+.apidoc-status-code.warn { background: #fff4e0; color: #a15c00; }
+.apidoc-status-code.bad { background: #fdecea; color: #c0392b; }
 .apidoc-response-media { display: flex; flex-direction: column; gap: 4px; }
-.apidoc-response-media > code { font-size: 11.5px; color: #5a6b7f; }
+.apidoc-response-media > code {
+  align-self: flex-start; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11px;
+  color: #5a6b7f; background: #eef3f8; border-radius: 4px; padding: 1px 6px;
+}
+.apidoc-response-fields-title { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.apidoc-response-fields { margin: 6px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.apidoc-response-field { display: grid; grid-template-columns: minmax(120px, auto) 1fr; gap: 10px; align-items: baseline; }
+.apidoc-response-field dt { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.apidoc-response-field dt code { font-size: 12px; font-weight: 600; color: var(--link); }
+.apidoc-response-field dt .apidoc-type { margin-left: 0; }
+.apidoc-response-field dd { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; white-space: pre-wrap; }
+.apidoc-response-common-note { font-size: 11.5px; color: var(--muted); }
+.apidoc-common-error {
+  border: 1px dashed var(--border-strong); border-radius: 6px;
+  background: #fbfcfe; padding: 8px 12px;
+}
+.apidoc-common-error-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.apidoc-common-error-title { font-size: 12.5px; font-weight: 600; color: var(--heading); }
+@media (max-width: 520px) {
+  .apidoc-response-field { grid-template-columns: 1fr; gap: 2px; }
+}
 .apidoc-multipart { display: flex; flex-direction: column; gap: 8px; }
 .apidoc-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .apidoc-actions button { border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
 .apidoc-send { background: var(--primary); color: #fff; }
 .apidoc-send:hover:not(:disabled) { background: var(--primary-hover); }
-.apidoc-actions button.secondary { background: #5a6b7f; color: #fff; }
+.apidoc-actions button.secondary {
+  background: #fff; color: var(--primary); border: 1px solid var(--border-strong);
+}
+.apidoc-actions button.secondary:hover:not(:disabled) { background: var(--surface-hover); }
 .apidoc-actions button:disabled { opacity: .55; cursor: not-allowed; }
 .apidoc-url {
   font-size: 11px; color: var(--muted); font-family: 'SF Mono', Menlo, Consolas, monospace;
@@ -502,7 +547,8 @@ textarea.source-editor {
 .apidoc-status.ok { background: var(--success-bg); color: var(--success); }
 .apidoc-status.bad { background: var(--danger-bg); color: var(--danger); }
 .apidoc-download { font-size: 11.5px; color: var(--link); }
-.apidoc-response {
+/* 实际响应体（深色代码块）——只属于「发送请求」后的结果，不是文档卡片 */
+.apidoc-response-body {
   margin: 0; padding: 10px; max-height: 320px; overflow: auto;
   font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11.5px;
   line-height: 1.55; background: #1e1e1e; color: #d4d4d4; white-space: pre-wrap;

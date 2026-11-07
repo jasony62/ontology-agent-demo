@@ -61,6 +61,13 @@ export type LegendFocus =
   | { kind: 'individual' }
   | { kind: 'group'; name: string };
 
+/** 两个图例聚焦目标是否相同：再次点击同一项 = 取消聚焦 */
+export function sameLegendFocus(current: LegendFocus | null, next: LegendFocus): boolean {
+  if (!current || current.kind !== next.kind) return false;
+  if (current.kind === 'group' && next.kind === 'group') return current.name === next.name;
+  return true;
+}
+
 export interface GroupView {
   /** 个体短名 → 颜色。类节点不走这张表（类统一用一种颜色） */
   colorOf: Map<string, string>;

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
 import type { Core, ElementDefinition, NodeSingular, StylesheetStyle, LayoutOptions } from 'cytoscape';
@@ -21,6 +22,8 @@ interface Props {
   focus?: LegendFocus | null;
   /** 当前选中项（节点 id 或 "edge|..."）；选中节点时高亮其直接邻域 */
   selectedId?: string | null;
+  /** 工具栏前置控件（视图模式切换等），与搜索 / 缩放同排以节省画布上方空间 */
+  toolbarLeading?: ReactNode;
   onSelect?: (id: string | null) => void;
 }
 
@@ -198,7 +201,7 @@ function elementsFromGraphData(
   return elements;
 }
 
-export default function GraphView({ viewMode, asserted, inferred, groups, focus, selectedId, onSelect }: Props) {
+export default function GraphView({ viewMode, asserted, inferred, groups, focus, selectedId, toolbarLeading, onSelect }: Props) {
   const groupView = useMemo(() => buildGroupView(groups ?? []), [groups]);
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -382,6 +385,7 @@ export default function GraphView({ viewMode, asserted, inferred, groups, focus,
   return (
     <div className="graph-shell">
       <div className="graph-toolbar">
+        {toolbarLeading}
         <input
           className="graph-search"
           placeholder="搜索节点（名称或 id）…"

@@ -174,6 +174,9 @@ body {
   font-size: 13px; cursor: pointer; color: var(--muted);
 }
 .view-toggle button.active { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+/* 图谱工具栏里的模式切换：和搜索 / 缩放同排，压缩到与其它工具按钮相当的高度 */
+.view-toggle--toolbar { padding: 2px; }
+.view-toggle--toolbar button { padding: 4px 9px; font-size: 12px; }
 
 .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0; font-size: 12px; color: #666; }
 .legend .item { display: inline-flex; align-items: center; gap: 5px; }
@@ -193,6 +196,33 @@ body {
 .legend .legend-sep { font-weight: 600; color: #44566b; margin: 0 2px 0 8px; }
 .legend .legend-sep:first-child { margin-left: 0; }
 
+/* ---- 右侧「图谱概览」：统计 + 图例，替代原来横铺在图谱上方的信息条 ---- */
+.graph-overview { display: flex; flex-direction: column; gap: 12px; }
+.graph-overview h2 { margin-bottom: 0; }
+.graph-overview h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: #44566b; }
+.overview-stats { display: flex; flex-direction: column; gap: 6px; }
+.overview-stat {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 6px 10px; background: #f7f9fc;
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.overview-stat .label { font-size: 12px; color: var(--muted); }
+.overview-stat .num { font-size: 18px; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+.overview-stat .num.inferred { color: #2f8f6b; }
+.overview-empty { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+.overview-hint {
+  font-size: 12px; line-height: 1.6; color: #7a3b12;
+  background: #fdf1e9; border: 1px solid #f0c7a8; border-radius: 8px; padding: 7px 9px;
+}
+.overview-section { border-top: 1px solid var(--border); padding-top: 10px; }
+.legend.overview-legend { display: flex; flex-direction: column; flex-wrap: nowrap; gap: 8px; margin: 0; }
+.overview-legend-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.overview-legend-title {
+  flex: 0 0 100%;
+  font-size: 11px; font-weight: 600; color: #8a94a6; letter-spacing: .04em;
+}
+.overview-footnote { margin: 0; font-size: 11.5px; line-height: 1.6; color: #8a94a6; }
+
 .graph-wrap { position: relative; width: 100%; height: 520px; background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 
 /* 图谱渲染降级面板（GraphErrorBoundary） */
@@ -209,14 +239,6 @@ body {
   background: var(--danger-bg); border-radius: 6px; padding: 6px 10px;
 }
 .graph-fallback-hint { margin: 0; max-width: 420px; font-size: 12px; color: var(--muted); line-height: 1.6; }
-
-.stats-cards { display: flex; gap: 10px; flex-wrap: wrap; }
-.stats-card {
-  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-  padding: 10px 16px; min-width: 140px;
-}
-.stats-card .num { font-size: 22px; font-weight: 700; color: var(--primary); }
-.stats-card .label { font-size: 12px; color: var(--muted); }
 
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GROUP_PALETTE, buildGroupView, groupColor } from './graphGroups';
+import { GROUP_PALETTE, buildGroupView, groupColor, sameLegendFocus } from './graphGroups';
 import type { GraphGroup } from '../api/client';
 
 function group(name: string, members: string[], label = ''): GraphGroup {
@@ -60,5 +60,21 @@ describe('buildGroupView', () => {
     const view = buildGroupView([]);
     expect(view.legend).toEqual([]);
     expect(view.colorOf.size).toBe(0);
+  });
+});
+
+describe('sameLegendFocus', () => {
+  it('相同目标视为同一项（再次点击即取消聚焦）', () => {
+    expect(sameLegendFocus({ kind: 'class' }, { kind: 'class' })).toBe(true);
+    expect(sameLegendFocus({ kind: 'individual' }, { kind: 'individual' })).toBe(true);
+    expect(sameLegendFocus({ kind: 'group', name: 'Agent' }, { kind: 'group', name: 'Agent' })).toBe(true);
+  });
+
+  it('不同目标或当前无聚焦时都算变化', () => {
+    expect(sameLegendFocus(null, { kind: 'class' })).toBe(false);
+    expect(sameLegendFocus({ kind: 'class' }, { kind: 'individual' })).toBe(false);
+    expect(sameLegendFocus({ kind: 'group', name: 'Agent' }, { kind: 'group', name: 'Task' })).toBe(false);
+    // 不同 kind 即使都带 name 也不能当成同一项
+    expect(sameLegendFocus({ kind: 'class' }, { kind: 'group', name: 'Agent' })).toBe(false);
   });
 });

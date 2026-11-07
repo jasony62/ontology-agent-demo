@@ -119,12 +119,14 @@
   flex: 1 1 auto;
   display: flex; flex-direction: column;
   min-height: 0; overflow: hidden;
+  /* 比通用面板少 4px：图谱页的每一像素都优先让给画布 */
+  padding: 10px;
 }
 .workspace-graph > * { flex: 0 0 auto; }
 .workspace-graph > .graph-row { flex: 1 1 auto; }
-.workspace-graph .graph-row { display: flex; gap: 12px; min-height: 0; }
+.workspace-graph .graph-row { display: flex; gap: 10px; min-height: 0; }
 .workspace-graph .graph-col { flex: 1 1 480px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.workspace-graph .inspector-col { flex: 0 1 300px; min-width: 240px; min-height: 0; overflow-y: auto; }
+.workspace-graph .graph-side { flex: 0 1 280px; min-width: 220px; min-height: 0; overflow-y: auto; }
 .workspace-graph .graph-shell { flex: 1 1 auto; min-height: 0; }
 .workspace-graph .graph-wrap { flex: 1 1 auto; height: auto; min-height: 0; }
 .workspace-graph .graph-fallback { height: 100%; min-height: 180px; }

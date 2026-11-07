@@ -1,8 +1,10 @@
 """OpenAPI 文档契约：/openapi.json 必须能作为「服务能力」面板的数据源。
 
-工作台不再手写端点表，而是直接渲染这份规范。这里锁住三条最容易在
-新增路由时被忘掉的约束：每个操作都有分组 tag 和中文 summary；tag
-都在 openapi_tags 里声明过；规范版本是 OpenAPI 3.x。
+工作台不再手写端点表，而是直接渲染这份规范。这里锁住最容易在新增路由
+时被忘掉的约束：每个操作都有分组 tag 和中文 summary；tag 都在
+openapi_tags 里声明过；规范版本是 OpenAPI 3.x；参数与请求体字段都有
+说明；成功响应有业务说明与非空 schema；业务错误码与两个非 JSON 端点的
+media type 与实际实现一致。
 """
 
 import os
@@ -114,6 +116,66 @@ def test_request_body_description_lists_fields():
                     if f"`{name}`" not in text:
                         missing.append(f"{method.upper()} {path} → {name}")
     assert missing == [], f"以下请求体字段没有出现在请求体说明里：{missing}"
+
+
+def test_success_responses_are_described():
+    """成功响应必须有面向调用方的中文说明，不能停在 FastAPI 默认文案。
+
+    参数侧已经有三条测试守着；返回侧此前是 29/29 的
+    `Successful Response` + 空 schema，工作台因此根本没有「响应」区可渲染。
+    """
+    spec = client.get("/openapi.json").json()
+    bad = []
+    for path, item in spec["paths"].items():
+        for method, op in item.items():
+            if method not in _HTTP_METHODS:
+                continue
+            r200 = op["responses"]["200"]
+            if r200.get("description") == "Successful Response":
+                bad.append(f"{method.upper()} {path}: 默认文案")
+            for media in r200.get("content", {}).values():
+                if not media.get("schema"):
+                    bad.append(f"{method.upper()} {path}: 空 schema")
+    assert bad == [], f"成功响应缺说明：{bad}"
+
+
+def test_business_error_codes_are_declared():
+    """业务错误码要写进规范，而不是只存在于源码的 HTTPException 里。"""
+    spec = client.get("/openapi.json").json()
+    declared = {
+        code
+        for item in spec["paths"].values()
+        for op in item.values()
+        if isinstance(op, dict)
+        for code in op.get("responses", {})
+    }
+    assert {"400", "404", "408", "501"} <= declared
+    assert "ErrorResponse" in spec["components"]["schemas"]
+
+
+def test_non_json_endpoints_declare_real_media_types():
+    """两个文件/文本端点必须声明真实 media type，不能写成 application/json。
+
+    按规范生成客户端的调用方会拿 JSON 解析器去读 Turtle / RDF/XML，
+    这比「缺说明」更严重。
+    """
+    spec = client.get("/openapi.json").json()
+    content = spec["paths"]["/api/ontology/export"]["get"]["responses"]["200"]["content"]
+    assert "text/turtle" in content and "application/json" not in content
+    dl = spec["paths"]["/api/ontology/download"]["get"]["responses"]["200"]["content"]
+    assert "application/rdf+xml" in dl and "application/json" not in dl
+
+
+def test_every_operation_has_description():
+    """端点级说明：展开任一端点都应能看到「这个接口是做什么的」。"""
+    spec = client.get("/openapi.json").json()
+    missing = [
+        f"{method.upper()} {path}"
+        for path, item in spec["paths"].items()
+        for method, op in item.items()
+        if method in _HTTP_METHODS and not op.get("description")
+    ]
+    assert missing == [], f"缺端点说明：{missing}"
 
 
 def test_docs_responses_are_not_cached():

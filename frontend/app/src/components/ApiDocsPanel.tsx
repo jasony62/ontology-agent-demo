@@ -47,13 +47,13 @@ function typeSummary(schema?: JsonSchema): string {
   return schemaTypeLabel(schema);
 }
 
-function BodyHints({ schema }: { schema?: JsonSchema }) {
+function BodyHints({ schema, title = '请求字段说明' }: { schema?: JsonSchema; title?: string }) {
   const properties = Object.entries(schema?.properties ?? {});
   if (properties.length === 0) return null;
   const required = new Set(schema?.required ?? []);
   return (
     <details className="apidoc-schema" open>
-      <summary>请求字段说明（{properties.length}）</summary>
+      <summary>{title}（{properties.length}）</summary>
       <ul>
         {properties.map(([name, child]) => (
           <li key={name}>
@@ -422,6 +422,26 @@ function OperationCard({ op, onNotify }: { op: ApiOperation; onNotify: (message:
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
               />
+            </section>
+          )}
+
+          {op.responses && Object.keys(op.responses).length > 0 && (
+            <section className="apidoc-section">
+              <h6>响应</h6>
+              {Object.entries(op.responses).map(([code, res]) => (
+                <div key={code} className="apidoc-response">
+                  <div className="apidoc-response-head">
+                    <code className={`apidoc-status-code${code.startsWith('2') ? ' ok' : ' bad'}`}>{code}</code>
+                    {res.description && <span className="apidoc-hint">{res.description}</span>}
+                  </div>
+                  {Object.entries(res.content ?? {}).map(([contentType, content]) => (
+                    <div key={contentType} className="apidoc-response-media">
+                      <code>{contentType}</code>
+                      <BodyHints schema={content.schema} title="响应字段说明" />
+                    </div>
+                  ))}
+                </div>
+              ))}
             </section>
           )}
 

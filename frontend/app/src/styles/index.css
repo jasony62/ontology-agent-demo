@@ -465,6 +465,19 @@ textarea.source-editor {
 .apidoc-schema summary { cursor: pointer; color: var(--link); font-size: 12px; }
 .apidoc-schema ul { margin: 6px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
 .apidoc-schema li code { color: var(--link); }
+.apidoc-response {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; background: #fafbfc;
+}
+.apidoc-response-head { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.apidoc-status-code {
+  font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; font-weight: 700;
+}
+.apidoc-status-code.ok { color: #1e7e34; }
+.apidoc-status-code.bad { color: var(--danger); }
+.apidoc-response-media { display: flex; flex-direction: column; gap: 4px; }
+.apidoc-response-media > code { font-size: 11.5px; color: #5a6b7f; }
 .apidoc-multipart { display: flex; flex-direction: column; gap: 8px; }
 .apidoc-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .apidoc-actions button { border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }

@@ -73,7 +73,25 @@ from domains import DomainManager, DomainContractError, DomainNotFoundError
 from .schemas import (
     ReasonRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
-    SaveOntologyRequest,
+    SaveOntologyRequest, EditModel,
+)
+from .response_schemas import (
+    ClassesResponse,
+    DomainActivateResponse,
+    DomainReloadResponse,
+    ErrorResponse,
+    GraphGroupsResponse,
+    HealthResponse,
+    IndividualsResponse,
+    OntologyLoadResponse,
+    OntologyReloadResponse,
+    OntologySaveResponse,
+    OntologySourceResponse,
+    OntologyStatusResponse,
+    OpenEnvelope,
+    PropertyValuesResponse,
+    SparqlResultsResponse,
+    TypesResponse,
 )
 
 # 领域运行态：唯一真相源（名字、引擎、适配器、加载时刻都在里面）。
@@ -119,6 +137,36 @@ OPENAPI_TAGS = [
     {"name": "本体管理", "description": "本体加载、编辑、保存、导出、重载与物化。"},
     {"name": "领域管理", "description": "已安装领域清单、L2 重载与 L3 原子切换。"},
 ]
+
+# 业务错误响应：按「会抛的端点」组合，而不是给 29 个装饰器复制粘贴
+# 同一段字面量（复制粘贴正是文档与代码分叉的常见来源）。
+ERROR_400 = {
+    400: {
+        "model": ErrorResponse,
+        "description": (
+            "请求参数不合法、当前为通用模式、领域未声明该能力，"
+            "或领域校验失败；detail 给出中文原因。"
+        ),
+    },
+}
+ERROR_404 = {
+    404: {
+        "model": ErrorResponse,
+        "description": "目标资源不存在（本体文件缺失或 data/uploads/ 下没有该文件）。",
+    },
+}
+ERROR_408 = {
+    408: {
+        "model": ErrorResponse,
+        "description": "SPARQL 查询超时；detail 为结构化对象（error / kind / limit_ms / hint）。",
+    },
+}
+ERROR_501 = {
+    501: {
+        "model": ErrorResponse,
+        "description": "领域声明了能力，但没有实现对应的契约方法；detail 列出缺失清单。",
+    },
+}
 
 app = FastAPI(
     title="本体 × 智能体协作 Demo API",
@@ -362,8 +410,27 @@ def _class_count(field: str) -> int:
         return 0
 
 
-@app.get("/api/health", tags=["系统"], summary="健康检查")
+@app.get(
+    "/api/health",
+    tags=["系统"],
+    summary="健康检查",
+    responses={
+        200: {
+            "model": HealthResponse,
+            "description": (
+                "服务状态、本体版本、脏标记、当前领域与契约探针"
+                "（含 contract.reason_kinds 可用推理类型）。"
+            ),
+        },
+    },
+)
 def health():
+    """返回服务状态、本体版本、脏标记、当前领域与契约探针。
+
+    给调用方：`contract.reason_kinds` 是 `POST /api/reason` 当前可用类型的
+    权威清单；`counts` 与顶层 agents / tasks / assignments 是领域可选统计，
+    领域没有这些方法时为 0，而不是报错。
+    """
     # 顶层保留 v1.x 的 agents/tasks/assignments 字段（既有调用方兼容）；
     # 新增 REQ-03 字段：version / loaded_at / dirty / pending_changes / changelog / counts
     return {
@@ -404,14 +471,50 @@ def health():
     }
 
 
-@app.get("/api/ontology", tags=["领域推理"], summary="领域图谱结构")
+@app.get(
+    "/api/ontology",
+    tags=["领域推理"],
+    summary="领域图谱结构",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "图谱结构（classes / individuals / edges）；分组与额外字段由"
+                "当前领域的 graph_export 决定，不在此冻结。"
+            ),
+        },
+        **ERROR_400,
+        **ERROR_501,
+    },
+)
 def ontology():
+    """当前领域的图谱结构（类 / 个体 / 边），供图谱渲染。
+
+    给调用方：`inferred` 标识该边/节点来自推理而非断言；分组与额外字段由
+    领域的 graph_export 决定。通用模式下本端点返回 400，改用
+    `GET /api/ontology/materialized`。
+    """
     _require_default_ontology()
     _require_capability("graph_export")
     return ADAPTER.graph_export()
 
 
-@app.get("/api/ontology/graph-groups", tags=["领域推理"], summary="图谱分组")
+@app.get(
+    "/api/ontology/graph-groups",
+    tags=["领域推理"],
+    summary="图谱分组",
+    responses={
+        200: {
+            "model": GraphGroupsResponse,
+            "description": (
+                "当前领域的分组 → 该组（含子类）个体短名列表；"
+                "分组由领域 graph_groups 声明，未声明时为空对象。"
+            ),
+        },
+        **ERROR_400,
+        **ERROR_501,
+    },
+)
 def ontology_graph_groups():
     """当前领域声明的图谱分组：group → 该类（含子类）的个体短名。
 
@@ -477,8 +580,29 @@ def _schema_summary(adapter) -> dict | None:
     }
 
 
-@app.post("/api/reason", tags=["领域推理"], summary="结构化推理")
+@app.post(
+    "/api/reason",
+    tags=["领域推理"],
+    summary="结构化推理",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "推理结果；形状随 type 与当前领域处理器而变，"
+                "可用类型见 GET /api/health 的 contract.reason_kinds。"
+            ),
+        },
+        **ERROR_400,
+        **ERROR_501,
+    },
+)
 def reason(req: ReasonRequest):
+    """按 `type` 分派的结构化推理，返回形状随类型与当前领域而变。
+
+    给调用方：可用类型见 `GET /api/health` 的 `contract.reason_kinds`；
+    框架内置 capability_match / orchestrate / assign，领域可注册自己的
+    处理器。类型未知或领域未声明能力返回 400，声明了却未实现返回 501。
+    """
     _require_default_ontology()
     table = _reason_kinds(ADAPTER)
     kind = table.get(req.type)
@@ -499,7 +623,22 @@ def reason(req: ReasonRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/api/entities/schema", tags=["领域推理"], summary="实体 schema")
+@app.get(
+    "/api/entities/schema",
+    tags=["领域推理"],
+    summary="实体 schema",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "当前领域的实体 schema：class 与 fields（字段名 / 类型 / 必填）；"
+                "形状由领域的 ENTITY_SCHEMA 决定。"
+            ),
+        },
+        **ERROR_400,
+        **ERROR_501,
+    },
+)
 def entity_schema_endpoint():
     """当前领域的实体 schema（字段名 / 类型 / 是否必填）。
 
@@ -514,7 +653,22 @@ def entity_schema_endpoint():
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/entities", tags=["领域推理"], summary="新建实体")
+@app.post(
+    "/api/entities",
+    tags=["领域推理"],
+    summary="新建实体",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "新建实体后的结果；形状由领域的 create 处理器决定，"
+                "通常含 individual / types / 推理分类与推导链。"
+            ),
+        },
+        **ERROR_400,
+        **ERROR_501,
+    },
+)
 def create_entity_endpoint(req: EntityRequest):
     """按当前领域的 ENTITY_SCHEMA 新建实体（校验 → 写图 → 推理）。
 
@@ -529,15 +683,49 @@ def create_entity_endpoint(req: EntityRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/api/explain", tags=["领域推理"], summary="推导链解释")
+@app.post(
+    "/api/explain",
+    tags=["领域推理"],
+    summary="推导链解释",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "最近一次推理的推导链（query_kind + derivation 等），形状由领域的 explain 决定。",
+        },
+        **ERROR_400,
+        **ERROR_501,
+    },
+)
 def explain():
+    """返回最近一次推理的中文推导链。
+
+    给调用方：推导链由模板填槽生成，不是公理级反查；需要可担保的
+    形式证明请走 MCP 的 `explain_proof` 工具。
+    """
     _require_default_ontology()
     _require_capability("explain")
     return ADAPTER.explain()
 
 
-@app.post("/api/consistency", tags=["领域推理"], summary="一致性检查")
+@app.post(
+    "/api/consistency",
+    tags=["领域推理"],
+    summary="一致性检查",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "一致性检查结果与冲突项；形状由领域的 consistency 实现决定。",
+        },
+        **ERROR_400,
+        **ERROR_501,
+    },
+)
 def consistency():
+    """全量一致性 / 合规冲突检查。
+
+    给调用方：返回是否一致、已分配数量、冲突清单与信息性提示；具体
+    冲突字段由当前领域的 consistency 实现决定。
+    """
     _require_default_ontology()
     _require_capability("consistency")
     return ADAPTER.consistency()
@@ -545,11 +733,25 @@ def consistency():
 
 # ---------------- 通用查询接口（L1：与本体定义无关） ----------------
 
-@app.post("/api/query", tags=["通用查询"], summary="SPARQL 查询")
+@app.post(
+    "/api/query",
+    tags=["通用查询"],
+    summary="SPARQL 查询",
+    responses={
+        200: {
+            "model": SparqlResultsResponse,
+            "description": "SPARQL SELECT 结果行；键为变量名，IRI 值已转成短名。",
+        },
+        **ERROR_400,
+        **ERROR_408,
+    },
+)
 def sparql_query(req: SparqlRequest):
-    """SPARQL 查询入口（支持面见 README「SPARQL 支持边界」）。两段式超时
-    （可选，环境变量 ONTOLOGY_SPARQL_FIRST_RESULT_TIMEOUT_MS /
-    ONTOLOGY_SPARQL_TOTAL_TIMEOUT_MS）：超时返回 408 与结构化详情，而非挂住。"""
+    """SPARQL 查询入口（支持面见 README「SPARQL 支持边界」）。
+
+    给调用方：两段式超时（可选，环境变量 ONTOLOGY_SPARQL_FIRST_RESULT_TIMEOUT_MS /
+    ONTOLOGY_SPARQL_TOTAL_TIMEOUT_MS）：超时返回 408 与结构化详情，而非挂住。
+    """
     try:
         return {"results": ENGINE.query_sparql(req.sparql)}
     except SparqlTimeoutError as exc:
@@ -562,35 +764,122 @@ def sparql_query(req: SparqlRequest):
         raise HTTPException(status_code=400, detail=f"SPARQL 执行失败: {exc}")
 
 
-@app.post("/api/individuals", tags=["通用查询"], summary="类个体列表")
+@app.post(
+    "/api/individuals",
+    tags=["通用查询"],
+    summary="类个体列表",
+    responses={
+        200: {
+            "model": IndividualsResponse,
+            "description": "指定类（含子类）的个体短名列表；类不存在时为空列表。",
+        },
+    },
+)
 def individuals(req: IndividualsRequest):
+    """指定类（含子类）的个体短名列表。
+
+    给调用方：`class_name` 传类短名；不存在的类返回空列表而不是 404。
+    """
     return {"class": req.class_name, "individuals": ENGINE.individuals(req.class_name)}
 
 
-@app.post("/api/classes", tags=["通用查询"], summary="类层次")
+@app.post(
+    "/api/classes",
+    tags=["通用查询"],
+    summary="类层次",
+    responses={
+        200: {
+            "model": ClassesResponse,
+            "description": "全部类的层次信息：name / label / parent（直接父类短名）。",
+        },
+    },
+)
 def classes():
+    """全部类的层次信息。
+
+    给调用方：每个类返回 name / label / parent（直接父类短名），parent
+    为 null 表示顶层类；可据此构造类树。
+    """
     return {"classes": ENGINE.classes()}
 
 
-@app.post("/api/types", tags=["通用查询"], summary="个体推理类型")
+@app.post(
+    "/api/types",
+    tags=["通用查询"],
+    summary="个体推理类型",
+    responses={
+        200: {
+            "model": TypesResponse,
+            "description": "个体推理后的全部类型短名（断言类型 ∪ 推理结论，已排序）。",
+        },
+    },
+)
 def types(req: TypesRequest):
+    """个体推理后的全部类型。
+
+    给调用方：返回断言类型与推理结论的并集（短名，已排序），不只是
+    rdf:type 显式声明的类型。
+    """
     return {"individual": req.individual, "types": ENGINE.types_of(req.individual)}
 
 
-@app.post("/api/property", tags=["通用查询"], summary="属性取值")
+@app.post(
+    "/api/property",
+    tags=["通用查询"],
+    summary="属性取值",
+    responses={
+        200: {
+            "model": PropertyValuesResponse,
+            "description": "主体-属性取值列表；对象属性值转成个体短名，属性不存在时为空列表。",
+        },
+    },
+)
 def property_values(req: PropertyRequest):
+    """主体-属性取值列表。
+
+    给调用方：属性不存在时返回空列表，不会 404；对象属性值会转成个体短名。
+    """
     return {"subject": req.subject, "property": req.property,
             "values": ENGINE.property_values(req.subject, req.property)}
 
 
-@app.post("/api/infer", tags=["通用查询"], summary="重新推理")
+@app.post(
+    "/api/infer",
+    tags=["通用查询"],
+    summary="重新推理",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "重新推理后的统计；形状由引擎决定"
+                "（triples_before / triples_after / added / classes / individuals）。"
+            ),
+        },
+    },
+)
 def infer():
+    """重新执行 OWL 2 RL 物化推理并返回统计。
+
+    给调用方：返回本次推理前后的三元组数、新增数与类/个体统计。重复
+    调用通常新增为 0；若图在两次调用之间被修改，结果不一定幂等。
+    """
     return ENGINE.infer()
 
 
 # ---------------- 本体管理（v1.3.0：加载 / 物化 / 源码 / 导出） ----------------
 
-@app.post("/api/ontology/load", tags=["本体管理"], summary="上传并加载本体")
+@app.post(
+    "/api/ontology/load",
+    tags=["本体管理"],
+    summary="上传并加载本体",
+    responses={
+        200: {
+            "model": OntologyLoadResponse,
+            "description": "上传后的加载结果：落盘路径、原始三元组数、类与个体数。",
+        },
+        **ERROR_400,
+    },
+)
 async def load_ontology(file: UploadFile = File(..., description="要加载的本体文件，仅支持 .owl / .rdf / .xml；加载后进入通用模式。")):
     """上传 .owl/.rdf 并加载到推理引擎（进入通用模式，领域推理降级）。"""
     filename = (file.filename or "").lower()
@@ -614,13 +903,37 @@ async def load_ontology(file: UploadFile = File(..., description="要加载的�
     }
 
 
-@app.get("/api/ontology/materialized", tags=["本体管理"], summary="物化 diff")
+@app.get(
+    "/api/ontology/materialized",
+    tags=["本体管理"],
+    summary="物化 diff",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "物化 diff：原始断言图、推理新增图与统计"
+                "（stats / asserted / inferred）；形状由引擎决定。"
+            ),
+        },
+    },
+)
 def materialized():
     """物化 diff：原始断言图 + 推理新增图 + 统计（通用，与领域无关）。"""
     return ENGINE.materialized()
 
 
-@app.get("/api/ontology/source", tags=["本体管理"], summary="本体源码")
+@app.get(
+    "/api/ontology/source",
+    tags=["本体管理"],
+    summary="本体源码",
+    responses={
+        200: {
+            "model": OntologySourceResponse,
+            "description": "当前本体原始 RDF/XML 文本与文件名。",
+        },
+        **ERROR_404,
+    },
+)
 def ontology_source():
     """当前本体原始 RDF/XML 文本。
 
@@ -639,7 +952,23 @@ def ontology_source():
         )
 
 
-@app.get("/api/ontology/export", tags=["本体管理"], summary="导出物化本体")
+@app.get(
+    "/api/ontology/export",
+    tags=["本体管理"],
+    summary="导出物化本体",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "物化后的完整本体文本；格式由 format 参数决定。",
+            "content": {
+                "text/turtle": {"schema": {"type": "string"}},
+                "application/rdf+xml": {"schema": {"type": "string"}},
+                "text/n3": {"schema": {"type": "string"}},
+            },
+        },
+        **ERROR_400,
+    },
+)
 def export_ontology(format: str = Query(
     "turtle",
     description="导出格式：turtle / rdfxml / n3；其它值返回 400。",
@@ -649,8 +978,10 @@ def export_ontology(format: str = Query(
         content = ENGINE.export_graph(format)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    media = "text/turtle" if format == "turtle" else "application/rdf+xml"
-    suffix = "ttl" if format == "turtle" else "rdf"
+    # media / 后缀按 format 如实映射：n3 不是 RDF/XML，之前归到 application/rdf+xml
+    # 会让按规范生成客户端的调用方拿 XML 解析器去读 N3。
+    media = {"turtle": "text/turtle", "rdfxml": "application/rdf+xml", "n3": "text/n3"}[format]
+    suffix = {"turtle": "ttl", "rdfxml": "rdf", "n3": "n3"}[format]
     return Response(
         content=content,
         media_type=media,
@@ -660,13 +991,34 @@ def export_ontology(format: str = Query(
 
 # ---------------- 在线编辑（v1.4.0：编辑模型 / 保存写回 / 下载） ----------------
 
-@app.get("/api/ontology/edit-model", tags=["本体管理"], summary="读取编辑模型")
+@app.get(
+    "/api/ontology/edit-model",
+    tags=["本体管理"],
+    summary="读取编辑模型",
+    responses={
+        200: {
+            "model": EditModel,
+            "description": "当前本体的结构化编辑模型（类 / 对象属性 / 数据属性 / 个体）。",
+        },
+    },
+)
 def edit_model():
     """当前本体 → 结构化编辑模型 JSON（任意 OWL 可提取，默认本体完整可编辑）。"""
     return ENGINE.edit_model()
 
 
-@app.post("/api/ontology/save", tags=["本体管理"], summary="保存编辑结果")
+@app.post(
+    "/api/ontology/save",
+    tags=["本体管理"],
+    summary="保存编辑结果",
+    responses={
+        200: {
+            "model": OntologySaveResponse,
+            "description": "保存结果：目标路径、模式、推理统计与物化 diff。",
+        },
+        **ERROR_400,
+    },
+)
 def save_ontology(req: SaveOntologyRequest):
     """保存编辑结果：编辑模型 → RDF/XML 写盘 → 重建引擎 + 重推理。
 
@@ -727,7 +1079,21 @@ def save_ontology(req: SaveOntologyRequest):
     }
 
 
-@app.get("/api/ontology/download", tags=["本体管理"], summary="下载本体文件")
+@app.get(
+    "/api/ontology/download",
+    tags=["本体管理"],
+    summary="下载本体文件",
+    response_class=FileResponse,
+    responses={
+        200: {
+            "description": "data/uploads/ 下保存的本体文件原内容。",
+            "content": {
+                "application/rdf+xml": {"schema": {"type": "string", "format": "binary"}},
+            },
+        },
+        **ERROR_404,
+    },
+)
 def download_ontology(name: str = Query(
     ...,
     description="data/uploads/ 下的文件名；只接受 basename，不接受路径（防路径穿越）。",
@@ -746,7 +1112,18 @@ def download_ontology(name: str = Query(
 
 # ---------------- 本体管理（002 批次：热重载 / 状态 / 一致性） ----------------
 
-@app.post("/api/ontology/reload", tags=["本体管理"], summary="热重载本体")
+@app.post(
+    "/api/ontology/reload",
+    tags=["本体管理"],
+    summary="热重载本体",
+    responses={
+        200: {
+            "model": OntologyReloadResponse,
+            "description": "重载结果：本体文件名、三元组数、个体数与耗时。",
+        },
+        **ERROR_400,
+    },
+)
 def reload_ontology():
     """热重载（REQ-01.1）：重新加载核心 + extensions/ 全部增量并推理。
 
@@ -772,13 +1149,37 @@ def reload_ontology():
 
 # ---------------- 领域管理（P2：列表 / 重载 / 切换） ----------------
 
-@app.get("/api/domains", tags=["领域管理"], summary="领域清单")
+@app.get(
+    "/api/domains",
+    tags=["领域管理"],
+    summary="领域清单",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "已安装领域清单、当前领域、运行模式与当前领域句柄信息"
+                "（current / root / installed / mode / name / capabilities / triples 等）。"
+            ),
+        },
+    },
+)
 def list_domains_endpoint():
     """已安装领域 + 当前领域（给工作台的领域下拉与运维排查用）。"""
     return DOMAINS.info()
 
 
-@app.post("/api/domains/reload", tags=["领域管理"], summary="重载领域")
+@app.post(
+    "/api/domains/reload",
+    tags=["领域管理"],
+    summary="重载领域",
+    responses={
+        200: {
+            "model": DomainReloadResponse,
+            "description": "L2 重载结果：领域名、加载时刻与三元组数。",
+        },
+        **ERROR_400,
+    },
+)
 def reload_domain():
     """L2 同包重载：重读领域代码（adapter.py / config.json）+ 重建引擎。
 
@@ -793,7 +1194,18 @@ def reload_domain():
             "triples": len(handle.engine.g)}
 
 
-@app.post("/api/domains/{name}/activate", tags=["领域管理"], summary="切换领域")
+@app.post(
+    "/api/domains/{name}/activate",
+    tags=["领域管理"],
+    summary="切换领域",
+    responses={
+        200: {
+            "model": DomainActivateResponse,
+            "description": "L3 切换结果：领域名、加载时刻、能力清单与三元组数。",
+        },
+        **ERROR_400,
+    },
+)
 def activate_domain(name: str = ApiPath(..., description="已安装领域包名；取值见 GET /api/domains 的 installed 列表。")):
     """L3 跨包切换：切到 root 下另一个已安装领域。
 
@@ -808,7 +1220,20 @@ def activate_domain(name: str = ApiPath(..., description="已安装领域包名�
             "capabilities": handle.capabilities, "triples": len(handle.engine.g)}
 
 
-@app.get("/api/ontology/status", tags=["本体管理"], summary="本体状态")
+@app.get(
+    "/api/ontology/status",
+    tags=["本体管理"],
+    summary="本体状态",
+    responses={
+        200: {
+            "model": OntologyStatusResponse,
+            "description": (
+                "本体状态与两端一致性判据：模式、扩展目录、基线哈希、"
+                "脏标记、待提交变更与最近加载时刻。"
+            ),
+        },
+    },
+)
 def ontology_status():
     """本体状态与两端一致性（REQ-02/REQ-03）。
 
@@ -832,7 +1257,21 @@ def ontology_status():
 
 # ---------------- CRUD（003 批次 REQ-09：删除 / 撤回 / 批量导入） ----------------
 
-@app.delete("/api/ontology/individual/{name}", tags=["领域推理"], summary="删除个体")
+@app.delete(
+    "/api/ontology/individual/{name}",
+    tags=["领域推理"],
+    summary="删除个体",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "删除结果：individual / deleted / removed_triples / cascade / persisted；"
+                "形状由框架 AboxStore 返回。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
 def delete_individual(
     name: str = ApiPath(..., description="要删除的个体短名（也可传完整 IRI）。"),
     persist: bool = Query(False, description="是否把删除增量写入 extensions/（-del- 文件）；默认仅改内存。"),
@@ -850,7 +1289,18 @@ def delete_individual(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@app.post("/api/ontology/revoke", tags=["领域推理"], summary="撤回分配")
+@app.post(
+    "/api/ontology/revoke",
+    tags=["领域推理"],
+    summary="撤回分配",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "撤回结果：task / agent / revoked / persisted；形状由框架 AboxStore 返回。",
+        },
+        **ERROR_400,
+    },
+)
 def revoke_assignment(req: RevokeRequest):
     """撤回分配：移除 assigned_to 图边，consistency 不再含该分配。"""
     _require_default_ontology()
@@ -860,7 +1310,18 @@ def revoke_assignment(req: RevokeRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@app.post("/api/ontology/import", tags=["领域推理"], summary="批量导入个体")
+@app.post(
+    "/api/ontology/import",
+    tags=["领域推理"],
+    summary="批量导入个体",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "批量导入结果：imported / individuals / persisted；事务失败时整体返回 400。",
+        },
+        **ERROR_400,
+    },
+)
 def import_individuals(req: ImportRequest):
     """批量导入任务个体（事务）：先全量校验（名称冲突/引用完整），
     全部通过才应用，部分失败整体回滚——不产生半套数据。

@@ -6,6 +6,7 @@
  * 路由自动同步。这里只实现面板需要的那部分规范语义：
  *   - `$ref` 解引用（components/schemas 等本地引用）
  *   - 按 tag 分组、取 summary / description
+ *   - 响应说明（status code / description / content media type）
  *   - 由 JSON Schema 生成可编辑的示例请求体
  *   - 拼 URL、生成 curl（路径参数 / 查询参数 / JSON 请求体）
  */

@@ -26,6 +26,11 @@ const EDGE_COLOR = '#9aa0a6';
 /** 容器窄于此值（折叠成 40px 图标条）时不做 resize，避免把图挤坏 */
 const MIN_RESIZE_WIDTH = 120;
 
+/** 首次布局与「重新布局」共用同一组参数，保证两次排版观感一致 */
+function fcoseOptions(): LayoutOptions {
+  return { name: 'fcose', animate: false, randomize: true, nodeSeparation: 60 } as LayoutOptions;
+}
+
 const stylesheet: StylesheetStyle[] = [
   {
     selector: 'node',
@@ -321,7 +326,7 @@ export default function GraphView({ viewMode, asserted, inferred, groups, focus,
     //    这样既不会「按一个键整图乱跳」，也不会因孤立分量被 fCoSE 打包成网格而看着像乱掉。
     if (!laidOutRef.current) {
       laidOutRef.current = true;
-      cy.layout({ name: 'fcose', animate: false, randomize: true, nodeSeparation: 60 } as LayoutOptions).run();
+      cy.layout(fcoseOptions()).run();
       cy.fit(undefined, 28);
     }
   }, [viewMode, asserted, inferred, groupView]);
@@ -376,6 +381,16 @@ export default function GraphView({ viewMode, asserted, inferred, groups, focus,
     cy.zoom({ level: cy.zoom() * factor, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
   };
 
+  // 手动重排：整图重新计算节点位置并适应画布。自动布局只在首帧跑一次（见上），
+  // 读者觉得节点挤在一起时靠这个按钮主动触发，而不是每次数据变化都乱跳。
+  const relayout = () => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    laidOutRef.current = true;
+    cy.layout(fcoseOptions()).run();
+    cy.fit(undefined, 28);
+  };
+
   return (
     <div className="graph-shell">
       <div className="graph-toolbar">
@@ -391,6 +406,7 @@ export default function GraphView({ viewMode, asserted, inferred, groups, focus,
           <button className="secondary" onClick={() => zoomBy(1.25)} title="放大">＋</button>
           <button className="secondary" onClick={() => zoomBy(0.8)} title="缩小">－</button>
           <button className="secondary" onClick={() => cyRef.current?.fit(undefined, 28)} title="适应画布">⛶</button>
+          <button className="secondary" onClick={relayout} title="重新计算节点位置并适应画布">重新布局</button>
         </span>
       </div>
       <div ref={containerRef} id="graph" className="graph-wrap" />

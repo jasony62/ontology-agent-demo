@@ -270,7 +270,6 @@ export default function App() {
         <WorkspaceSplit
           graph={(
             <div className="panel workspace-graph">
-              <h2>本体图谱 · {sourceName || '—'}</h2>
               <MaterializedPanel />
               <div className="legend">
                 <span className="legend-sep">节点</span>

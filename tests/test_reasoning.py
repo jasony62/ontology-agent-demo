@@ -2,18 +2,26 @@
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from reasoner.engine import OntologyEngine, ONTO_PATH, NS  # noqa: E402
+from reasoner.rules import apply_rules  # noqa: E402
 
 from _helpers import domain_module, make_adapter, submodule  # noqa: E402
 
 @pytest.fixture(scope="module")
 def engine():
-    return OntologyEngine(ONTO_PATH)
+    # 激活路径对齐（owlrl 物化 → rules/*.ttl）：适配器读到的图必须含规则产出，
+    # R2 已在规则层（rules/R2_complex_task_delegation.ttl），不再随适配器构造执行。
+    e = OntologyEngine(ONTO_PATH)
+    module = domain_module()
+    rules_dir = Path(module.__file__).parent / "rules"
+    apply_rules(e, sorted(rules_dir.glob("*.ttl")))
+    return e
 
 
 @pytest.fixture(scope="module")
@@ -66,11 +74,16 @@ def test_r3_depends_on_transitive_closure(engine):
 def test_r2_complex_delegation(adapter):
     # 双模块开发 = 登录开发 + 合规报表开发，二者均只需 Coding
     # dev_agent / junior_dev 具备 Coding ⇒ 应推理出可执行该复合任务
+    # （R2 由规则层 rules/R2_complex_task_delegation.ttl 推出，见 conftest 的
+    #   engine fixture：物化 → 规则 → 适配器，与激活流水线同序）
     m = adapter.capability_match(NS.t_double_dev, with_derivation=False)
     names = {x["agent"] for x in m["matches"]}
     assert "dev_agent" in names
     assert "junior_dev" in names
-    assert (NS.dev_agent, NS.t_double_dev) in adapter.r2_asserted
+    # R2 边是推理产物：不在断言图 raw 上，规则归属判为 R2
+    assert (NS.dev_agent, NS.can_execute, NS.t_double_dev) not in adapter.engine.raw
+    dev = [x for x in m["matches"] if x["agent"] == "dev_agent"][0]
+    assert dev["rule"] == "R2"
 
 
 def test_r2_feature_launch_needs_multi_agents(adapter):

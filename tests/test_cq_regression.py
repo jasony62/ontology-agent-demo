@@ -9,8 +9,10 @@
 """
 
 import json
+from pathlib import Path
 
 from reasoner.engine import OntologyEngine
+from reasoner.rules import apply_rules
 
 from _helpers import domain_module, make_adapter, submodule  # noqa: E402
 
@@ -20,10 +22,20 @@ cq_mod = submodule(mod, "cq")
 BANK = cq_reg._BANK
 
 
-def _adapter():
-    """独立 engine + adapter（反例不污染真实本体，每用例全新实例）。"""
+def _engine():
+    """独立 engine（反例不污染真实本体，每用例全新实例）。
+
+    激活路径对齐（owlrl 物化 → rules/*.ttl → 适配器）：R2 已在规则层，
+    适配器构造不再自算 R2——不跑规则，依赖 R2 委派边的 CQ 会集体失真。
+    """
     engine = OntologyEngine(mod.ONTO_FILE)
-    return make_adapter(mod, engine)
+    rules_dir = Path(mod.__file__).parent / "rules"
+    apply_rules(engine, sorted(rules_dir.glob("*.ttl")))
+    return engine
+
+
+def _adapter():
+    return make_adapter(mod, _engine())
 
 
 # ---------------- 正例 ----------------
@@ -86,7 +98,7 @@ def test_removed_inference_edge_flags_only_dependent_cq():
     说明：owlrl 物化单调，删断言后旧结论仍残留于 g（真正的断言删除需重载本体），
     故直接删物化边模拟「推理结论退化」——这正是运行期回归层要抓的退化形态。
     """
-    engine = OntologyEngine(mod.ONTO_FILE)
+    engine = _engine()
     a = make_adapter(mod, engine)
     engine.remove_triples("junior_dev", "can_execute", "t_login_dev")
     r = cq_reg.run_suite(a)

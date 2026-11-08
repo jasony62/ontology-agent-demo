@@ -43,12 +43,13 @@ def _adapter():
 def test_full_bank_passes_on_current_model():
     """正例①：预置题库全过（当前全量模型），无失败项。
 
-    题数 12 → 13：#61 修复锚点 T2-13（ComplianceTask 可推导）入册。
+    题数 12 → 20：#61/#60/#68 修复锚点 8 题入册（多能力否定 / 编排顺序 /
+    R5-R6 正反例 / 担责标注 / defined class）。
     """
     r = cq_reg.run_suite(_adapter())
     assert "error" not in r, r.get("error")
-    assert r["total"] == 13
-    assert r["passed"] == 13 and r["failed"] == 0
+    assert r["total"] == 20
+    assert r["passed"] == 20 and r["failed"] == 0
     assert r["failures"] == []
     assert r["suite"] == "agent_task_cq_regression"
     assert r["duration_ms"] >= 0
@@ -105,7 +106,7 @@ def test_removed_inference_edge_flags_only_dependent_cq():
     a = make_adapter(mod, engine)
     engine.remove_triples("junior_dev", "can_execute", "t_login_dev")
     r = cq_reg.run_suite(a)
-    assert r["passed"] == 12 and r["failed"] == 1
+    assert r["passed"] == 19 and r["failed"] == 1
     f = r["failures"][0]
     assert f["id"] == "T2-01"
     assert "junior_dev" not in f["actual"] and "dev_agent" in f["actual"]
@@ -163,7 +164,7 @@ def test_cq_field_same_shape_as_guide_tbox_input():
     with open(BANK, encoding="utf-8") as f:
         bank = json.load(f)
     cqs = [c["cq"] for c in bank["cases"]]
-    assert len(cqs) == 13
+    assert len(cqs) == 20
     r = cq_mod.guide_tbox_draft(OntologyEngine(mod.ONTO_FILE), cqs)
     assert isinstance(r, dict) and "prompt" in r          # 同型即跑通
     assert len(r.get("schema_map", {}).get("classes", [])) > 0

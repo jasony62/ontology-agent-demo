@@ -20,15 +20,16 @@ def test_health():
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
     assert r.json()["agents"] == 5
-    assert r.json()["tasks"] == 8
+    assert r.json()["tasks"] == 9  # #68 起含 t_full_stack 多能力演示锚点
 
 
 def test_ontology():
     r = client.get("/api/domains/current/ontology")
     assert r.status_code == 200
     d = r.json()
-    # 13（5 Agent + 8 Task）+ 10（#64：5 能力 + 4 工具 + 1 约束实例）= 23
-    assert len(d["individuals"]) == 23
+    # 13（5 Agent + 9 Task）+ 10（#64：5 能力 + 4 工具 + 1 约束实例）= 24
+    # （#68 起任务含 t_full_stack 多能力演示锚点）
+    assert len(d["individuals"]) == 24
     assert {e["property"] for e in d["edges"]} >= {"has_capability", "can_execute", "depends_on"}
 
 

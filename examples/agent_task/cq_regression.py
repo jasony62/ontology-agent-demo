@@ -42,6 +42,7 @@ _HINT_DEFAULT = "退化定位：对照 expect/actual 检查相关断言与公理
 # 工具分发表：与 mcp.py 注册闭包同参数语义（短名进出；与 MCP 工具输出结构一致）
 _TOOL_TABLE = {
     "capability_match": lambda a, task: a.capability_match(a.NS[task]),
+    "orchestrate": lambda a, task: a.orchestrate(a.NS[task]),
     "assign": lambda a, task, agent: a.assign(a.NS[task], a.NS[agent]),
     "individuals": lambda a, class_name: {
         "class": class_name, "individuals": a.engine.individuals(class_name)},

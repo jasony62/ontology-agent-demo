@@ -1,7 +1,7 @@
 {
   "suite": "agent_task_cq_regression",
   "version": 1,
-  "description": "agent_task 领域 CQ 回归测试集：能力问题 + 工具调用 + 期望答案（LLM-free 确定性判分）。题源：评测 Harness T2 隐含关系档 12 题平移，gold 全部由引擎/适配器确定性输出生成（无人工标注）。改本体/公理/规则后跑 cq_regression 一键回归。",
+  "description": "agent_task 领域 CQ 回归测试集：能力问题 + 工具调用 + 期望答案（LLM-free 确定性判分）。题源：评测 Harness T2 隐含关系档 12 题平移 + #61/#60/#68 修复锚点 8 题，gold 全部由引擎/适配器确定性输出生成（无人工标注）。改本体/公理/规则后跑 cq_regression 一键回归。覆盖：R1 能力匹配（含多能力 AND 否定）/ R2 委派 / R2b 担责 / R3 传递 / R4 合规 / R5-R6 正反例 / 编排顺序 / defined class。",
   "cases": [
     {
       "id": "T2-01",
@@ -111,6 +111,75 @@
       "expect": {"type": "contains", "pick": "types", "contains": ["ComplianceTask"]},
       "rule": "defined class",
       "note": "#61 修复锚点：someValuesFrom 要求约束的实例（creq_default），修复前 ComplianceTask 永远推不出"
+    },
+    {
+      "id": "T2-14",
+      "cq": "哪些智能体可以执行「全栈改造任务」（要求编码与部署双能力）？",
+      "tool": "capability_match",
+      "params": {"task": "t_full_stack"},
+      "expect": {"type": "set_exact", "pick": "matches.agent", "set": []},
+      "rule": "R1 反例·多能力",
+      "note": "#59/#68 锚点：dev_agent 缺部署、deploy_agent 缺编码——多能力必须 AND 全覆盖，只满足一项不算可执行。修复前（属性链 OR）dev/junior/deploy 三个都误判可执行"
+    },
+    {
+      "id": "T2-15",
+      "cq": "「新功能上线」的执行计划是什么顺序？",
+      "tool": "orchestrate",
+      "params": {"task": "t_feature"},
+      "expect": {"type": "exact_struct", "keys": {
+        "steps.task": ["t_req", "t_login_dev", "t_login_review", "t_login_test", "t_deploy"],
+        "steps.executor": ["req_agent", "dev_agent", "dev_agent", "test_agent", "deploy_agent"]
+      }},
+      "rule": "编排顺序",
+      "note": "#68 锚点：编排顺序必须精确匹配（depends_on 拓扑序），而非仅「非空」；执行者按可担责优先"
+    },
+    {
+      "id": "T2-16",
+      "cq": "「新功能上线」需要人工介入吗？",
+      "tool": "property_values",
+      "params": {"subject": "t_feature", "property_name": "needs_manual_review"},
+      "expect": {"type": "set_exact", "pick": "values", "set": ["true"]},
+      "rule": "R5 正例",
+      "note": "#68 锚点：五步无人能一人包揽（can_own 为空）且风险 4 → needs_manual_review"
+    },
+    {
+      "id": "T2-17",
+      "cq": "「双模块开发」需要人工介入吗？",
+      "tool": "property_values",
+      "params": {"subject": "t_double_dev", "property_name": "needs_manual_review"},
+      "expect": {"type": "set_exact", "pick": "values", "set": []},
+      "rule": "R5 反例",
+      "note": "#68 锚点：dev_agent 能担责（can_own）→ 不提示人工介入。R5 改判 can_own 后，有人「能做」但没人「能担」才会触发"
+    },
+    {
+      "id": "T2-18",
+      "cq": "「敏感数据报表开发」需要双人复核吗？",
+      "tool": "property_values",
+      "params": {"subject": "t_compliance_dev", "property_name": "needs_second_review"},
+      "expect": {"type": "set_exact", "pick": "values", "set": ["true"]},
+      "rule": "R6 正例",
+      "note": "#68 锚点：SimpleTask 且风险 5 → 强制双人复核"
+    },
+    {
+      "id": "T2-19",
+      "cq": "「登录模块开发」需要双人复核吗？",
+      "tool": "property_values",
+      "params": {"subject": "t_login_dev", "property_name": "needs_second_review"},
+      "expect": {"type": "set_exact", "pick": "values", "set": []},
+      "rule": "R6 反例",
+      "note": "#68 锚点：风险 2，低于阈值，不应产出复核标记（AND 语义零误报）"
+    },
+    {
+      "id": "T2-20",
+      "cq": "「敏感数据报表开发」的候选智能体里，谁能担责？",
+      "tool": "capability_match",
+      "params": {"task": "t_compliance_dev"},
+      "expect": {"type": "exact_struct", "keys": {
+        "matches.agent": ["dev_agent", "junior_dev"],
+        "matches.can_own": [true, false]
+      }},
+      "rule": "R2b 担责",
+      "note": "#60 锚点：候选仍按 can_execute 返回（junior 能力够），「能否接」以 can_own 标注；排序可担责优先"
     }
   ]
 }

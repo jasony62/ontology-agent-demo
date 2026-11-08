@@ -67,8 +67,9 @@ def test_graph_export_depends_edges_are_asserted_only():
 
 
 def test_r5_hit_set_independent_of_call_order():
-    """验收③：同一本体、R2→R5 同一份规则目录，先 load_domain 与直接
-    apply_rules 的 R5 命中集合相同（均为 {t_feature}，无 t_double_dev 误报）。"""
+    """验收③：同一本体、同一份规则目录，先 load_domain 与直接
+    apply_rules 的 R5 命中集合相同（均为 {t_feature, t_full_stack}，
+    无 t_double_dev 误报）。"""
     from domains import load_domain
 
     targets = ("t_feature", "t_double_dev", "t_deploy")
@@ -80,9 +81,9 @@ def test_r5_hit_set_independent_of_call_order():
         rep = apply_rules(e, _rules_paths(), dry_run=True)
         r5_file = next(f for f in rep["files"] if f["file"].startswith("R5"))
         hit_sets.append({t["s"] for t in r5_file["derived_triples"]})
-    assert hit_sets[0] == hit_sets[1] == {"t_feature"}
+    assert hit_sets[0] == hit_sets[1] == {"t_feature", "t_full_stack"}
     assert all(s not in targets for s in
-               hit_sets[0] - {"t_feature"})  # 无其它意外命中
+               hit_sets[0] - {"t_feature", "t_full_stack"})  # 无其它意外命中
 
 
 def test_r2_naming_independent_three_layer():

@@ -84,13 +84,15 @@ def test_owl_declares_r5_r6_derived_predicates(engine):
 def test_r5_hits_exactly_unowned_high_risk(engine):
     """正例①·验收①：三条件全满足 → 精确产出（risk≥4 且无人可整体执行的任务）。
 
-    预跑 R1+R2 后，t_double_dev 的子任务被 dev_agent/junior_dev 全覆盖
-    （R2 委派产出 can_execute），只有 t_feature 五个子任务无人能一人包揽。
+    预跑全流水线后，t_double_dev 的子任务被 dev_agent/junior_dev 全覆盖
+    （R2 委派产出 can_execute），高风险链上无人可担责的只有两处：
+    t_feature（五个子任务无人能一人包揽）与 t_full_stack（编码+部署双能力
+    无人同时具备，#68 演示锚点）。
     """
     rep = rules_mod.apply_rules(engine, [R5])
     assert rep["ok"] is True
-    assert rep["total_derived"] == 1
-    assert _derived_subjects(rep) == {"t_feature"}
+    assert rep["total_derived"] == 2
+    assert _derived_subjects(rep) == {"t_feature", "t_full_stack"}
     assert all(t["p"] == "needs_manual_review" for t in rep["files"][0]["derived_triples"])
     assert rep["files"][0]["stable"] is True
 
@@ -98,7 +100,7 @@ def test_r5_hits_exactly_unowned_high_risk(engine):
 def test_r6_hits_exactly_high_risk_simple(engine):
     """正例②：R6 命中高风险单片任务（SimpleTask ∧ risk≥4）。"""
     rep = rules_mod.apply_rules(engine, [R6])
-    assert _derived_subjects(rep) == {"t_deploy", "t_compliance_dev"}
+    assert _derived_subjects(rep) == {"t_deploy", "t_compliance_dev", "t_full_stack"}
     assert all(t["p"] == "needs_second_review" for t in rep["files"][0]["derived_triples"])
 
 
@@ -169,9 +171,9 @@ def test_owned_high_risk_not_flagged(engine):
     """反例①·验收②：t_deploy/t_compliance_dev 风险≥4 但有执行人 → 不标 manual_review。"""
     rep = rules_mod.apply_rules(engine, [R5])
     hits = _derived_subjects(rep)
-    assert "t_deploy" not in hits          # deploy_agent 可整体执行
-    assert "t_compliance_dev" not in hits  # dev_agent/junior_dev 能力全覆盖（R1）
-    assert "t_double_dev" not in hits      # 子任务全覆盖（R2 委派）
+    assert "t_deploy" not in hits          # deploy_agent 可担责（can_own）
+    assert "t_compliance_dev" not in hits  # dev_agent 能力全覆盖且持有效认证
+    assert "t_double_dev" not in hits      # 子任务担责合成（R2b）
 
 
 def test_low_risk_not_flagged_by_either_rule(engine):
@@ -186,7 +188,7 @@ def test_dry_run_leaves_graph_untouched(engine):
     before = set(engine.g)
     rep = rules_mod.apply_rules(engine, [R5, R6], dry_run=True)
     assert rep["dry_run"] is True
-    assert rep["total_derived"] == 3       # 预览可见全部产出（R5: t_feature；R6: t_deploy/t_compliance_dev）
+    assert rep["total_derived"] == 5       # 预览可见全部产出（R5: t_feature/t_full_stack；R6: t_deploy/t_compliance_dev/t_full_stack）
     assert set(engine.g) == before         # 原图不动
 
 
@@ -194,7 +196,7 @@ def test_dry_run_does_not_persist_then_real_run_derives(engine):
     """反例④：dry_run 后再真跑 → 仍能全部产出（预览没有副作用）。"""
     rules_mod.apply_rules(engine, [R5], dry_run=True)
     rep = rules_mod.apply_rules(engine, [R5])
-    assert rep["total_derived"] == 1
+    assert rep["total_derived"] == 2
 
 
 def test_r5_flags_low_risk_parent_via_risky_descendant(engine):
@@ -234,8 +236,8 @@ def test_low_risk_parent_scenario_system_outputs_stable(engine):
     rep = rules_mod.apply_rules(e, [R5, R6])
     r5_subjects = _derived_subjects(rep, index=0)
     r6_subjects = _derived_subjects(rep, index=1)
-    assert r5_subjects == {"t_feature"}
-    assert r6_subjects == {"t_deploy", "t_compliance_dev"}
+    assert r5_subjects == {"t_feature", "t_full_stack"}
+    assert r6_subjects == {"t_deploy", "t_compliance_dev", "t_full_stack"}
 
 
 def test_no_inconsistency_from_descendant_check(engine):
@@ -308,11 +310,12 @@ def test_r5_uses_can_own_not_can_execute(engine):
     """#60 验收：R5「无人可接手」以 can_own 为准。
 
     can_execute 虚高会让 R5 漏报（高风险任务明明只有未认证 Agent「能做」，
-    系统却认为有人接得住）。当前数据两组判据产出一致（{t_feature}）——
-    差异场景见 test_r5_flags_unqualified_only_coverage。
+    系统却认为有人接得住）。当前数据两组判据产出一致
+    （{t_feature, t_full_stack}）——差异场景见
+    test_r5_flags_unqualified_only_coverage。
     """
     rep = rules_mod.apply_rules(engine, [R5])
-    assert _derived_subjects(rep) == {"t_feature"}
+    assert _derived_subjects(rep) == {"t_feature", "t_full_stack"}
 
 
 def test_r5_flags_unqualified_only_coverage(engine):
@@ -407,8 +410,8 @@ def test_bad_file_fails_fast_others_continue(tmp_path, engine):
     assert f_bad["error"] is not None
     assert f_bad["derived_new"] == 0
     assert f_good["file"] == "R5_high_risk_manual.ttl"
-    assert f_good["derived_new"] == 1          # 好文件照常执行
-    assert rep["total_derived"] == 1
+    assert f_good["derived_new"] == 2          # 好文件照常执行
+    assert rep["total_derived"] == 2
     assert "bad.ttl" in rep["note"]
 
 
@@ -514,7 +517,7 @@ def test_mcp_run_rules_and_list_rules_registered(engine):
     assert "list_rules" in server.tools
 
     rep = server.tools["run_rules"](rules=[str(R5), str(R6)], dry_run=True)
-    assert rep["ok"] is True and rep["total_derived"] == 3  # R5: t_feature；R6: t_deploy/t_compliance_dev
+    assert rep["ok"] is True and rep["total_derived"] == 5  # R5: t_feature/t_full_stack；R6: t_deploy/t_compliance_dev/t_full_stack
 
     cat = server.tools["list_rules"](rules=[str(R5), str(R6)])
     assert cat["count"] == 2

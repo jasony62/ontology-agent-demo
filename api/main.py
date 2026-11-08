@@ -62,6 +62,7 @@ class LazyStaticFiles(StaticFiles):
         pass
 
 from reasoner.engine import get_engine, OntologyEngine, SparqlTimeoutError
+from reasoner.proof import build_proof
 from reasoner.protocol import (
     apply_handlers,
     dangling_capabilities,
@@ -1157,6 +1158,37 @@ async def load_ontology(file: UploadFile = File(..., description="要加载的�
 def materialized():
     """物化 diff：原始断言图 + 推理新增图 + 统计（通用，与领域无关）。"""
     return ENGINE.materialized()
+
+
+@app.get(
+    "/api/ontology/proof",
+    tags=["本体管理"],
+    summary="单条三元组的推导依据",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "结构化证明：mode（asserted / derived / unproven）、rule、"
+                "axioms、premises、conclusion；形状见 reasoner/proof.py。"
+            ),
+        },
+    },
+)
+def ontology_proof(
+    s: str = Query("", description="结论三元组的主体短名或 IRI；空值返回 400。"),
+    p: str = Query("", description="结论三元组的谓词短名或 IRI（如 required_by / can_execute）；空值返回 400。"),
+    o: str = Query("", description="结论三元组的客体短名或 IRI；空值返回 400。"),
+):
+    """给定结论三元组短名，返回推导依据（通用，与领域无关）。
+
+    与 materialized 一样不加领域守卫：generic 模式下推理照常可用，
+    导入自定义本体的用户同样需要查依据。不存在的三元组由 build_proof
+    返回 mode=unproven（不抛异常）；短名为空走 _uri 的 400。
+    """
+    _uri(s)
+    _uri(p)
+    _uri(o)
+    return build_proof(ENGINE, s, p, o)
 
 
 @app.get(

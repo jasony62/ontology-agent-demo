@@ -9,6 +9,7 @@ import GraphView from './components/GraphView';
 import GraphErrorBoundary from './components/GraphErrorBoundary';
 import GraphSidePanel from './components/GraphSidePanel';
 import ViewModeToggle from './components/ViewModeToggle';
+import InferenceNotice, { NoticeRestoreButton } from './components/InferenceNotice';
 import SourceView from './components/SourceView';
 import ImportModal from './components/ImportModal';
 import ExportDialog from './components/ExportDialog';
@@ -258,6 +259,8 @@ export default function App() {
             当前为非默认本体（通用模式）：领域推理（能力匹配 / 任务编排 / 合规冲突检测）不可用；图谱 / 物化 / SPARQL 不受影响。重启服务可恢复默认本体。
           </div>
         )}
+        {/* #55：推理提示横幅——Inspector 能给出依据后，才敢说「点任意虚线看依据」 */}
+        <InferenceNotice />
 
         <WorkspaceSplit
           graph={(
@@ -272,7 +275,13 @@ export default function App() {
                       groups={graphGroups}
                       focus={focus}
                       selectedId={selectedId}
-                      toolbarLeading={<ViewModeToggle />}
+                      toolbarLeading={
+                        <>
+                          <ViewModeToggle />
+                          {/* 恢复按钮与切换器并列但在组外：三格是互斥视图，不能混进第四个按钮 */}
+                          <NoticeRestoreButton />
+                        </>
+                      }
                       onSelect={(id) => setSelectedId(id)}
                     />
                   </GraphErrorBoundary>

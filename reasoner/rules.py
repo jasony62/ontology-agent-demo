@@ -15,10 +15,13 @@
   - 按文件归因：每个规则文件独立执行、执行前后做图差集，派生三元组可归因到
     文件。文件按文件名顺序执行，前序文件的产出会进入后续规则的前提——这与
     SPARQL 在「当前图」上求值的语义一致，此处如实文档化而非隐藏。
-  - 迭代上限：pyshacl 内置 100 轮上限是 shape 级硬编码，既不可配置、超限又
-    抛异常，满足不了「到上限明确报告」的要求，故本层自带轮次循环——每轮单遍
-    执行（iterate_rules=False）+ 差集判断稳定性，达自设上限仍有新增即
-    ``exceeded_iterations=true``（停止并说明，不静默截断）。
+  - 迭代上限（B 档绕路，非设计选择）：SHACL 规则的**规范语义**是「迭代到
+    不动点 + 实现定义上限」；pyshacl 的实现把上限硬编码为模块常量
+    RULES_ITERATE_LIMIT=100（shape 级），超限直接抛异常、不可按调用配置——
+    这就是实现缺陷。本模块因此自带轮次循环绕开它：每轮单遍执行
+    （iterate_rules=False，与 pyshacl 单遍语义一致）+ 差集判断稳定性，
+    达自设上限仍有新增即 ``exceeded_iterations=true``（停止并说明，
+    不静默截断）。
   - 空安全：规则无匹配零产出不误报；规则文件坏（Turtle 解析失败 / 非法规则）
     → 该文件报 error 快速失败（指明文件），其余文件照常执行。
   - dry_run：在引擎图副本上执行，原引擎图分毫不动（预览产出与归因）。
@@ -151,9 +154,12 @@ def _parse_rule_catalog(path: Path) -> dict:
 def _run_rules_file(work: Graph, path: Path, max_iterations: int) -> dict:
     """单文件执行：自实现迭代轮循环（每轮单遍 + 差集），返回按文件归因的产出。
 
-    为什么不用 pyshacl 的 iterate_rules=True：其 100 轮上限硬编码且超限抛异常，
-    无法配置、无法按要求做「到上限停止并说明」。这里每轮单遍执行（单遍语义
-    与 pyshacl 一致），稳定性由差集判定，上限由本层控制。
+    B 档绕路，注释口径如下——
+    标准语义：SHACL 规则迭代执行到不动点，上限由实现定义。
+    实现缺陷：pyshacl 的上限是模块级常量 RULES_ITERATE_LIMIT=100（shape 级
+    硬编码），不可配置、超限直接抛异常，满足不了「到上限停止并说明」。
+    因此这里是 workaround：每轮单遍执行（单遍语义与 pyshacl 一致），
+    稳定性由差集判定，上限由本层控制且触顶如实报告（见下方 note 文案）。
     """
     catalog = _parse_rule_catalog(path)
     entry = {

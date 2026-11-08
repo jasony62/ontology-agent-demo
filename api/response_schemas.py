@@ -150,6 +150,14 @@ class HealthResponse(BaseModel):
     tasks: int = Field(0, description="任务个体数（领域可选统计）。")
     assignments: int = Field(0, description="分配缓存中的任务数（领域可选统计）。")
     counts: HealthCounts = Field(..., description="按语义配置汇总的统计。领域可在此追加字段。")
+    rules: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "激活时规则层（rules/*.ttl）的执行报告：哪个文件、什么错、是否触顶、"
+            "物化/规则耗时与产出条数。领域无规则文件时为 null。"
+            "规则失败不阻断激活——这里带诊断地降级，供 /api/health 直接暴露。"
+        ),
+    )
 
 
 class OntologyStatusResponse(BaseModel):

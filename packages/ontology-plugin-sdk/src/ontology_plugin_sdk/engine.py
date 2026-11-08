@@ -1,15 +1,20 @@
 """引擎契约与纯函数：领域包与宿主引擎之间的最小约定。
 
-这里只放两样东西：
+这里放三样东西：
 
   1. `EngineProtocol` —— 领域包"能用引擎做什么"的显式声明。宿主传进来的
      引擎只要满足这个协议就能跑，不必是 `reasoner.engine.OntologyEngine`。
      这条约束的实际价值：领域包可以在**没有主框架**的环境里用 `FakeEngine`
      单测（见 `fakes.py`），也允许将来换实现（换存储、换推理器）而不动领域。
 
-  2. `local` / `resolve_ns` —— 两个不碰任何状态、不依赖宿主模块的函数。
+  2. `local` / `resolve_ns` —— 不碰任何状态、不依赖宿主模块的函数。
      它们原本住在 `reasoner/engine.py`，但 `AboxStore` 与 `PluginContext`
      都要用，搬出来才能让 SDK 不反向依赖宿主。
+
+  3. `chain_properties` / `find_chain_path` —— 属性链路径判定（纯图函数，
+     不依赖宿主）。宿主的 `reasoner/proof.py`（结构化证明）与需要区分
+     "R1 属性链 vs 规则层推导"的领域包共用同一套判据：规则归属与证明
+     解释各写一份迟早漂移。
 
 刻意**不**进协议的东西：`infer` / `materialized` / `edit_model` / `export_graph`
 这些是宿主自己的能力（对外 API、运维界面），领域包不该也不需要碰。协议一旦
@@ -21,9 +26,15 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from rdflib import Literal, URIRef
+from rdflib import Literal, RDF, URIRef
 
-__all__ = ["EngineProtocol", "local", "resolve_ns"]
+__all__ = [
+    "EngineProtocol",
+    "local",
+    "resolve_ns",
+    "chain_properties",
+    "find_chain_path",
+]
 
 
 def local(iri: Any) -> str:
@@ -116,6 +127,35 @@ def resolve_ns(
 
     # 3) 兜底
     return default_ns
+
+
+def chain_properties(g, node) -> list:
+    """沿 rdf:first / rdf:rest 展开 owl:propertyChainAxiom 的属性序列（纯函数）。"""
+    props: list = []
+    cur = node
+    while cur is not None and cur != RDF.nil:
+        f = g.value(cur, RDF.first)
+        if f is None:
+            break
+        props.append(f)
+        cur = g.value(cur, RDF.rest)
+    return props
+
+
+def find_chain_path(g, start, goal, chain) -> list | None:
+    """DFS 找 start → goal 沿属性序列 chain 的中间节点路径 [start, X1, ..., goal]（纯函数）。"""
+
+    def dfs(idx: int, cur, path):
+        if idx == len(chain):
+            return path if cur == goal else None
+        nxts = g.objects(cur, chain[idx])
+        for n in nxts:
+            res = dfs(idx + 1, n, path + [n])
+            if res is not None:
+                return res
+        return None
+
+    return dfs(0, start, [start])
 
 
 @runtime_checkable

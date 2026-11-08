@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +83,10 @@ class DomainHandle:
     engine: Any
     adapter: Any
     onto_path: str
+    # 激活时规则层（rules/*.ttl）的执行报告（「规则层契约」的落点之一）；
+    # 无规则文件的领域为 None。规则失败不阻断激活（带诊断地降级），
+    # 哪个文件、什么错、是否触顶都从这里对外（/api/health、领域 info）暴露。
+    rules_report: dict | None = None
     loaded_at: str = field(default_factory=_now)
 
     @property
@@ -95,7 +100,7 @@ class DomainHandle:
 
     def info(self) -> dict:
         """可序列化的领域描述（端点返回用，不含模块/引擎对象）。"""
-        return {
+        out = {
             "name": self.name,
             "description": self.description,
             "onto_path": self.onto_path,
@@ -103,6 +108,14 @@ class DomainHandle:
             "capabilities": self.capabilities,
             "triples": len(self.engine.g),
         }
+        if self.rules_report is not None:
+            out["rules"] = {
+                "ok": self.rules_report.get("ok"),
+                "total_derived": self.rules_report.get("total_derived"),
+                "exceeded_iterations": self.rules_report.get("exceeded_iterations"),
+                "elapsed_ms": self.rules_report.get("elapsed_ms"),
+            }
+        return out
 
 
 class DomainManager:
@@ -234,6 +247,7 @@ class DomainManager:
         cur = self.current()
         from reasoner.engine import OntologyEngine   # 延迟导入：见文件头说明
 
+        started = time.perf_counter()
         try:
             new_engine = OntologyEngine(
                 onto_path=cur.onto_path,
@@ -241,17 +255,29 @@ class DomainManager:
             )
         except Exception as exc:
             raise DomainContractError(f"重载失败（旧状态保持可用）：{exc}") from exc
-        return self.rebind(new_engine)
+        # 物化耗时（owlrl 展开占大头）由这里测：report 的 materialize_ms
+        # 反映的是"本次引擎重建"的成本，而不是 0。
+        return self.rebind(
+            new_engine,
+            materialize_ms=(time.perf_counter() - started) * 1000.0,
+        )
 
-    def rebind(self, engine) -> DomainHandle:
-        """外部已建好引擎（本体被覆盖重写 / 编辑保存）→ 重新绑定同一领域的适配器。"""
+    def rebind(self, engine, *, materialize_ms: float = 0.0) -> DomainHandle:
+        """外部已建好引擎（本体被覆盖重写 / 编辑保存）→ 重新绑定同一领域的适配器。
+
+        规则步骤与 _build 一致：换的引擎刚做完 owlrl 物化，规则产出也要
+        跟着重建——否则 L1 重载后 can_execute 等规则派生边会整个消失，
+        行为对比之前"适配器自己补规则"反而开倒车。
+        """
         cur = self.current()
+        rules_report = self._run_domain_rules(cur.name, engine, materialize_ms)
         handle = DomainHandle(
             name=cur.name,
             module=cur.module,
             engine=engine,
             adapter=load_domain(cur.name, engine, settings=self.settings),
             onto_path=engine.onto_path,
+            rules_report=rules_report,
         )
         self._commit(handle, purge_old=False)
         return handle
@@ -268,8 +294,59 @@ class DomainManager:
 
     # ------------------------------------------------------------ 内部
 
+    def _run_domain_rules(self, name: str, engine, materialize_ms: float) -> dict | None:
+        """执行当前领域 rules/*.ttl（显式路径，不走默认发现），返回执行报告。
+
+        为什么必须显式传路径（不能 apply_rules(engine) 让它自己 discover）：
+        discover_rules() 解析的是**运行态配置的默认领域**；而 activate(name)
+        在 _commit 之前默认领域还是旧的那个——自动发现会读到上一个领域的
+        规则文件。这里按本领域包目录显式定位，路径永远正确。
+
+        执行时机（「规则层契约」）：激活路径现在是
+            owlrl 物化（OntologyEngine 构造）→ rules/*.ttl（文件名顺序，
+            前序产出进后续规则的前提）→ 适配器构造。
+        顺序不可颠倒：适配器的 direct_* 快照与 capability_match 直接读图，
+        规则必须先跑完；规则的 NOT EXISTS 前件又依赖物化后的类型，
+        所以必须在引擎构造之后。
+
+        失败语义（带诊断地降级）：单文件解析/执行错误在 apply_rules 内已
+        按文件隔离（error 落在该文件的报告里，其余照跑）；即便整体执行
+        异常，也只把事实记进报告，不让一条坏规则把整个领域拦在门外——
+        激活可用性的优先级高于"规则全对才开机"，但静默忽略不可接受，
+        所以是"报告照挂、领域照起"。
+        """
+        rules_dir = _package_dir(name, self.settings, self._root) / "rules"
+        paths = sorted(rules_dir.glob("*.ttl"))
+        if not paths:
+            return None
+        from reasoner.rules import apply_rules   # 延迟导入：见文件头说明
+
+        started = time.perf_counter()
+        try:
+            report = apply_rules(engine, paths)
+        except Exception as exc:  # noqa: BLE001 —— 规则整体异常也不阻断激活
+            report = {
+                "ok": False,
+                "dry_run": False,
+                "total_derived": 0,
+                "exceeded_iterations": False,
+                "files": [{"file": "rules/*.ttl", "error": f"{type(exc).__name__}: {exc}"}],
+                "note": "规则执行整体异常（见 files[].error），领域仍正常激活",
+            }
+        report = dict(report)
+        started_ms = (time.perf_counter() - started) * 1000.0
+        # 冷启动成本如实记录：物化耗时 / 规则耗时 / 规则产出条数三项都可从
+        # 报告读出，规模上去后激活延迟不会被误判成"引擎变慢"。
+        report["elapsed_ms"] = round(started_ms, 1)
+        report["materialize_ms"] = round(materialize_ms, 1)
+        report["rules_dir"] = str(rules_dir)
+        return report
+
     def _build(self, name: str, *, reload: bool = False) -> DomainHandle:
         """构造一个完整领域运行态；不触碰 `self._current`。
+
+        步骤：建引擎（含 owlrl 物化）→ 执行领域规则 rules/*.ttl → 建适配器；
+        规则夹在中间，适配器读到的图才包含规则产出（见 _run_domain_rules）。
 
         这一步抛任何异常，调用方的旧领域都毫发无损——原子性的全部保障
         就在于"构造与提交分离"。
@@ -288,7 +365,11 @@ class DomainManager:
             )
         from reasoner.engine import OntologyEngine   # 延迟导入：见文件头说明
 
+        started = time.perf_counter()
         engine = OntologyEngine(onto_path=onto_path, extensions_dir=None)
+        materialize_ms = (time.perf_counter() - started) * 1000.0
+
+        rules_report = self._run_domain_rules(name, engine, materialize_ms)
         try:
             adapter = load_domain(name, engine, settings=self.settings)
         except Exception:
@@ -298,6 +379,7 @@ class DomainManager:
         return DomainHandle(
             name=name, module=module, engine=engine,
             adapter=adapter, onto_path=onto_path,
+            rules_report=rules_report,
         )
 
     def _commit(self, handle: DomainHandle, *, purge_old: bool = True) -> None:

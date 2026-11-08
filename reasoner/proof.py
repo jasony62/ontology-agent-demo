@@ -28,6 +28,11 @@ from collections import deque
 
 from rdflib import BNode, Graph, OWL, RDF, RDFS, URIRef
 
+# 属性链路径判定与 proof 共用同一套判据（单一来源在 SDK）：宿主的证明解释与
+# 领域的规则归属（R1/R2）各写一份迟早漂移，这里直接复用 SDK 的纯图函数。
+from ontology_plugin_sdk import chain_properties as _chain_properties
+from ontology_plugin_sdk import find_chain_path as _find_chain_path
+
 __all__ = ["build_proof", "diff_materialized"]
 
 
@@ -74,35 +79,6 @@ def _uri(engine, name):
 def _premise_src(engine, s, p, o) -> str:
     """前提边来源：在断言图中则 asserted，否则 derived。"""
     return "asserted" if (s, p, o) in engine.raw else "derived"
-
-
-def _chain_properties(g: Graph, node) -> list:
-    """沿 rdf:first / rdf:rest 展开 propertyChainAxiom 的属性序列。"""
-    props: list = []
-    cur = node
-    while cur is not None and cur != RDF.nil:
-        f = g.value(cur, RDF.first)
-        if f is None:
-            break
-        props.append(f)
-        cur = g.value(cur, RDF.rest)
-    return props
-
-
-def _find_chain_path(g: Graph, start, goal, chain) -> list | None:
-    """DFS 找 start → goal 沿属性序列 chain 的中间节点路径 [start, X1, ..., goal]。"""
-
-    def dfs(idx: int, cur, path):
-        if idx == len(chain):
-            return path if cur == goal else None
-        nxts = g.objects(cur, chain[idx])
-        for n in nxts:
-            res = dfs(idx + 1, n, path + [n])
-            if res is not None:
-                return res
-        return None
-
-    return dfs(0, start, [start])
 
 
 def _find_transitive_path(g: Graph, start, goal, pred) -> list | None:

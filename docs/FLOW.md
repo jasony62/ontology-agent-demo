@@ -27,10 +27,10 @@
    │  REST 通道为程序直连（无智能体，跳过 ①-②，直接到 ③）
    ▼
 ④ 领域适配器（domains/agent_task/adapter.py）
-   │  用引擎原语取数 → 业务规则判定（R2/R4）→ 打包结果 → 展开推导链
+   │  用引擎原语取数 → 合规校验（R4）→ 打包结果 → 展开推导链
    ▼
 ⑤ 通用引擎（reasoner/engine.py）
-   │  加载 .owl → OWL 2 RL 推理（R1 属性链 / R3 传递闭包）→ 通用查询原语
+   │  加载 .owl → OWL 2 RL 推理（R1 属性链 / R3 传递闭包）→ 规则执行（rules/*.ttl，R2）→ 通用查询原语
    ▼
 ⑥ 推导链生成（derivation.json + reasoner/derivation.py）
    │  查询结果 → 声明式规则 → 中文可解释步骤
@@ -45,7 +45,7 @@
 |---|---|---|
 | 智能体（外部 AI） | **①接入能力面（选领域）** → 理解自然语言、选工具、识别实体、填参、组织回答 | **不做推理**（不猜测谁能做什么） |
 | 本体 + 推理引擎 | 确定性推理：谁可执行、依赖顺序、是否冲突 | 不理解自然语言（只认短名/URIRef） |
-| 领域适配器 | 业务规则（R2/R4）、查询语义、推导链叙事、**MCP 工具注册** | 不含推理器、不含 LLM |
+| 领域适配器 | 规则文件（R2，`rules/*.ttl`）、合规校验（R4）、查询语义、推导链叙事、**MCP 工具注册** | 不含推理器、不含 LLM |
 
 ---
 
@@ -234,16 +234,25 @@ for agent in self.agents():                                  # 引擎原语：�
 
 ```python
 def _rule_for(self, agent, task) -> str:
-    if (agent, task) in self.r2_asserted:   # R2 代码断言的 can_execute
-        return "R2"
-    if self.is_complex_task(task):
-        return "R2"
-    return "R1"                             # owlrl 属性链推出的
+    if (agent, can_execute_pred, task) in self.engine.raw:
+        return "R1"                        # 断言边，R1 无贡献
+    for pc in g.objects(can_execute_pred, OWL.propertyChainAxiom):
+        if find_chain_path(g, agent, task, chain_properties(g, pc)):
+            return "R1"                    # owlrl 属性链推出的
+    return "R2"                            # rules/*.ttl 规则层推出的
 ```
 
 - **R1**（能力匹配）：owlrl 属性链 `has_capability ◦ required_by ⊑ can_execute` 推理产出；
-- **R2**（复合任务委派）：`_apply_r2()` 在适配器构造时遍历复合任务，若 Agent 可执行
-  其全部子任务则断言 `can_execute(agent, 复合任务)`，并记入 `r2_asserted`。
+  `_rule_for` 与结构化证明（`reasoner.proof`）共用 SDK 里的同一套链路径判据，
+  不各写一份；
+- **R2**（复合任务委派）：SHACL 规则 `rules/R2_complex_task_delegation.ttl`，
+  **在加载流水线里执行**（owlrl 物化 → 规则 → 适配器构造），不是适配器代码。
+  它"全称量词 + 跨层递归"的语义超出 OWL 2 RL，但落在规则层就自带不动点
+  循环，派生结果与任务命名顺序无关。
+
+规则执行顺序 = 规则文件名排序（`R2_…` → `R5_…` → `R6_…`），前序文件的
+产出进入后续规则的前提。这个顺序是显式、可审查的——不再取决于"适配器
+构造了没有"。
 
 ### 5.3 排序与打包
 
@@ -273,7 +282,7 @@ self.last_derivation = expand(
 |---|---|
 | `orchestrate` | 复合任务拆直接子任务 → `depends_on` 拓扑排序（边取反使"无依赖者"最前）→ 每环节调 `capability_match` 取最优执行者 → 拼成有序计划 |
 | `assign` | 写运行时状态 `self.assignments[task]=agent` → R4 合规冲突检测（任务要求 `ComplianceRequirement` 且 Agent 未认证 ⇒ 冲突报告） |
-| `classify` | `add_type`/`add_triple`/`add_literal` 写图 → `reparse()` 重推理 → R2 重算 → 分类规则（含合规约束 ⇒ ComplianceTask；risk≥5 ⇒ HighRiskTask）→ 能力匹配 |
+| `classify` | `add_type`/`add_triple`/`add_literal` 写图 → `reparse()` 重推理 → 分类规则（含合规约束 ⇒ ComplianceTask；risk≥5 ⇒ HighRiskTask）→ 能力匹配 |
 | `consistency` | 遍历 `assignments` 逐条跑 R4 → 附加"高风险无人可执行"信息提示 |
 
 ---
@@ -299,6 +308,14 @@ def __init__(self, onto_path, ns=None):
 - 子类 / 等价类推理：个体被归类到其所有父类。
 
 推理发生在**查询之前**（引擎构造时一次）；`classify` 写图后调用 `reparse()` 再推一次。
+
+完整激活顺序是**物化 → 规则 → 适配器构造**：`DomainManager._build()` 在
+`OntologyEngine(...)`（内含上面的 owlrl 物化）之后、`load_domain(...)` 之前执行
+本领域 `rules/*.ttl`（文件名排序）。规则的 `NOT EXISTS` 前件依赖物化后的类型，
+所以不能在引擎构造前跑；适配器的 `direct_*` 快照与能力匹配都直接读图，所以
+规则必须先于适配器。规则失败不阻断激活（带诊断地降级，报告挂到领域快照，
+`GET /api/health` 的 `rules` 字段直接暴露：哪个文件、什么错、是否触顶、
+物化/规则耗时与产出条数）。
 
 ### 6.2 适配器消费的通用原语
 

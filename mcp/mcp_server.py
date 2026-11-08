@@ -406,6 +406,26 @@ def main() -> int:
 
     def _load(onto_path, extensions_dir=None) -> tuple:
         engine = OntologyEngine(onto_path=onto_path, extensions_dir=extensions_dir)
+        # 规则层在加载路径上（与 API 的激活流水线同序）：owlrl 物化 → rules/*.ttl
+        # （文件名顺序，前序产出进后续规则的前提）→ 适配器构造。少这一步，
+        # 适配器的 capability_match 读不到 R2 委派边——之前靠适配器构造时
+        # 自算 R2 补齐，现在 R2 归位规则层，这步就不能少。
+        # 显式传本领域包的规则目录（不走默认发现）：与 domains/manager 同因——
+        # 自动发现解析的是配置默认领域，领域以热重载切换时可能读到别的包。
+        rules_dir = os.path.join(os.path.dirname(domain_mod.__file__), "rules")
+        rule_paths = []
+        if os.path.isdir(rules_dir):
+            rule_paths = sorted(
+                os.path.join(rules_dir, f) for f in os.listdir(rules_dir)
+                if f.endswith(".ttl")
+            )
+        if rule_paths:
+            report = rules_mod.apply_rules(engine, rule_paths)
+            if not report.get("ok"):
+                # 带诊断地降级：坏文件不影响领域起服务，但错误必须可见
+                bad = ", ".join(f["file"] for f in report.get("files", []) if f.get("error"))
+                print(f"[mcp] 规则文件执行有错误（{bad}），详见 run_rules 报告；领域照常加载",
+                      file=sys.stderr, flush=True)
         return engine, load_domain(domain_name, engine, settings=settings)
 
     def get_engine() -> OntologyEngine:

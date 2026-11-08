@@ -163,7 +163,7 @@
 | 知识结构 + 推理公理 + 中文名 | `.owl` | 形式化知识（TBox/ABox + rdfs:label） | 引擎无法加载 / 推理 |
 | 语义角色映射 + 展示结构 | `config.json` | **查询入口约定**（语义名 → 本体名） | 适配器不知查哪个类/属性，装配失败 |
 | 文案 + 展开规则 | `derivation.json` | **解释叙事**（结论如何讲成人话） | 查询无推导链，无法回答"为什么" |
-| 业务规则 + 查询算法 | `adapter.py` | **逻辑**（遍历 / 判断，OWL 表达不了） | R2 委派、R4 冲突等聚合规则缺失 |
+| 业务规则 + 查询算法 | `rules/*.ttl` + `adapter.py` | **逻辑**（推导规则 / 遍历 / 判断，OWL 表达不了） | R2 委派等推导规则缺失；R4 冲突等校验失效 |
 
 ### 4.4 为什么不把这些塞进 owl
 
@@ -173,7 +173,8 @@
 2. **叙事与展示是外层关注点**：文案、图谱分层属于人机交互层；
    塞入 owl 会把"解释给人听"的易变内容固化进知识模型。
 3. **逻辑没有 OWL 对应物**：遍历全部子任务判定 R2、冲突检测 R4 这类聚合/状态判断
-   无法用 OWL 公理表达，只能由代码实现。
+   无法用 OWL 公理表达。能推导出新事实的（R2）落在规则层 `rules/*.ttl`（SHACL），
+   只做运行时校验的（R4）留在适配器代码；两者都不塞进本体。
 4. 技术上可用 annotation 标注角色（如 `demo:semanticRole="agent_class"`），
    但需新建约定、改引擎读取，且混淆"查询视角"与"本体知识"——收益低于成本。
 
@@ -311,7 +312,7 @@ def register_tools(server: MCPServer, adapter) -> None:
 | 规则 | 内容 | 实现层 |
 |---|---|---|
 | R1 能力匹配 | `has_capability ◦ required_by ⊑ can_execute`（属性链） | 本体 .owl → owlrl（OWL 2 RL） |
-| R2 复合任务委派 | Agent 可执行复合任务的全部子任务 ⇒ 可执行复合任务 | 适配器代码 `_apply_r2()` |
+| R2 复合任务委派 | Agent 可执行复合任务的全部子任务 ⇒ 可执行复合任务 | 规则层 `rules/R2_complex_task_delegation.ttl`（SHACL，加载流水线执行） |
 | R3 依赖传递 | `depends_on` 传递闭包 | 本体 .owl → owlrl（TransitiveProperty） |
 | R4 合规冲突 | 任务要求合规认证、Agent 未认证 ⇒ 冲突报告 | 适配器代码 `_compliance_conflict()` |
 

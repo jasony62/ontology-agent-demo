@@ -15,7 +15,7 @@
     derivation.py 推导链规则解释器（纯函数）
     abox.py       ABox 事务仓库（事务与落盘由它管，业务谓词由领域给）
     context.py    PluginContext（门面）+ ToolRegistrar（MCP 最小面）
-    engine.py     EngineProtocol + local / resolve_ns
+    engine.py     EngineProtocol + local / resolve_ns / 属性链路径判定
     fakes.py      FakeEngine（脱离宿主单测用，刻意不推理）
     cq/           CQ 工位：出题、质检、TBox 草稿引导与 L1-L5 校验
 
@@ -34,7 +34,7 @@ from __future__ import annotations
 from .abox import AboxStore
 from .context import PluginContext, ToolRegistrar
 from .derivation import expand, render_step, resolve
-from .engine import EngineProtocol, local, resolve_ns
+from .engine import EngineProtocol, chain_properties, find_chain_path, local, resolve_ns
 from .fakes import FakeEngine
 from .protocol import (
     BUSINESS_METHODS,
@@ -113,6 +113,8 @@ __all__ = [
     "FakeEngine",
     "local",
     "resolve_ns",
+    "chain_properties",
+    "find_chain_path",
     # 配置与推导链
     "SemanticConfig",
     "DomainConfig",

@@ -25,13 +25,13 @@
         │
         ├── 通道 A：owlrl（OWL 2 RL）→ 物化出隐含三元组（can_execute / 传递依赖 / 父类归类）
         │
-        └── 通道 B：适配器业务规则（R2 / R4 / 分类）→ 断言进图或检测约束违反
+        └── 通道 B：业务规则（SHACL 规则文件 R2 / 适配器校验 R4 / 分类）→ 断言进图或检测约束违反
 ```
 
 | 通道 | 实现位置 | 处理的规则 |
 |---|---|---|
 | A 本体推理 | `reasoner/engine.py` + owlrl | R1 属性链、R3 传递闭包、子类/等价类归类 |
-| B 业务规则 | `domains/agent_task/adapter.py` | R2 复合任务委派、R4 合规冲突、classify 分类 |
+| B 业务规则 | `rules/*.ttl`（pyshacl）+ `adapter.py` | R2 复合任务委派（规则层）、R4 合规冲突与 classify 分类（校验代码） |
 
 ### 1.1 在 owl 定义中如何区分 ABox 与 TBox
 
@@ -253,34 +253,58 @@ t_a depends_on t_b，t_b depends_on t_c  ⇒  t_a depends_on t_c   （传递闭�
 
 ---
 
-## 3. 通道 B：业务规则推理（适配器代码）
+## 3. 通道 B：业务规则推理（规则层 + 校验代码）
 
-OWL 表达不了或不适合表达的逻辑，由 `domains/agent_task/adapter.py` 实现。
+OWL 表达不了或不适合表达的逻辑，分两种归属：
+
+- **推导出新事实的规则** → 规则层 `rules/*.ttl`（SHACL SPARQLRule，pyshacl 执行），
+  与 OWL 公理一样是"知识"，只是语言从 OWL 换成了 SHACL 规则（R2、R5、R6）。
+  它们随领域包分发、由加载流水线统一执行，不写在适配器代码里。
+- **校验 / 分类提示**（不产出新事实）→ 适配器代码（R4 合规冲突、classify 的
+  分类规则）。断言"禁止什么"是运行时检查，不是推理推导，留在代码里是正确分层。
+
 这些逻辑在 owl 文件中**没有对应公理**——这正是"为什么只有 owl 不够"的例证之一。
 
 ### 3.1 R2 复合任务委派（聚合判断，无法用属性链表达）
 
 **规则**：`Agent 可执行复合任务的全部直接子任务 ⇒ 可执行该复合任务`。
 
-**为什么不能进 owl**：属性链只能表达单路径 `x P z ∧ y Q z ⇒ x R y`，
-无法表达"遍历子任务集合、全部满足"的**聚合**逻辑。
+**为什么不能进 owl 公理**：属性链只能表达单路径 `x P z ∧ y Q z ⇒ x R y`，
+无法表达"遍历子任务集合、全部满足"的**聚合**逻辑（全称量词 + 跨层递归），
+超出了 OWL 2 RL 的表达边界。
 
-**代码实现**（adapter.py，构造时执行；classify 后重跑）：
+**为什么也不该退回适配器代码**（此前的实现）：
+- 代码版只有**一遍**遍历（`tasks() × agents()`），没有不动点。父任务若按个体
+  字典序排在子任务之前被处理，看不到子任务刚推出的 `can_execute`，就漏推——
+  这是确定性的错，不是偶发抖动（实测只把父任务改名 `t_a_parent`，三层嵌套
+  数据就从 8 条掉到 6 条）。
+- 求值器会分裂：R1 在 owlrl、R2 在 Python、R5/R6 在 pyshacl。R5 的前件依赖
+  `can_execute`，于是它的答案取决于"R2 跑没跑过"——同一份数据、同一条规则，
+  两种调用序给出不同命中集（其中一条是误报）。
 
-```python
-def _apply_r2(self) -> None:
-    g = self.engine.g
-    for task in self.tasks():
-        if not self.is_complex_task(task):
-            continue
-        subs = self.sub_tasks(task)                    # 直接子任务（composed_of）
-        if not subs:
-            continue
-        for agent in self.agents():
-            if all((agent, self._p("can_execute"), s) in g for s in subs):
-                g.add((agent, self._p("can_execute"), task))   # 断言进图
-                self.r2_asserted.add((agent, task))
+**落点**：`rules/R2_complex_task_delegation.ttl`（SHACL SPARQLRule）。规则的
+递归由 `reasoner/rules.py` 的不动点循环免费提供（每轮单遍 + 差集判增），
+求值器统一到 pyshacl，R2 → R5 的顺序由文件名排序显式决定。
+
+```turtle
+demo:R2_complex_task_delegation a sh:SPARQLRule ;
+  sh:construct """
+    PREFIX demo: <http://ontology.localhost/agent-task#>
+    CONSTRUCT { ?agent demo:can_execute ?this }
+    WHERE {
+      ?this  demo:composed_of ?sub .
+      ?agent demo:can_execute ?sub .
+      FILTER NOT EXISTS {
+        ?this demo:composed_of ?missing .
+        FILTER NOT EXISTS { ?agent demo:can_execute ?missing }
+      }
+    }
+  """ .
 ```
+
+适配器只读规则产出；图谱/能力匹配里 R1 与 R2 的归属由同一套判据给出
+（先查 `engine.raw` 断言边，再沿 `owl:propertyChainAxiom` 找 R1 路径，其余归 R2），
+这套判据与结构化证明 `reasoner/proof.py` **共用 SDK 的纯图函数**，不各写一份。
 
 ### 3.2 R4 合规冲突（禁止性规则，不产生新事实）
 
@@ -325,10 +349,37 @@ if risk_level >= 5:
 | 时机 | 动作 |
 |---|---|
 | 引擎构造（服务启动） | `parse(.owl)` → **owlrl expand 一次**（物化全部隐含事实） |
+| 领域激活（`DomainManager._build`） | 引擎构造后、适配器构造前：**执行 `rules/*.ttl`**（按文件名排序） |
 | `classify` 写图后 | `reparse()` 再次 expand（新个体触发 R1 / 分类） |
 | 所有查询 | **只读图**，不再推理 |
 
-R2 在适配器构造时执行一次；`classify` 后重跑（新个体可能解锁复合任务）。
+### 4.1 规则层契约：规则何时跑、按什么顺序跑
+
+激活路径固定为三步，顺序不可颠倒：
+
+```
+owlrl 物化（OntologyEngine 构造）
+  → rules/*.ttl（reasoner.rules.apply_rules，文件名排序，逐文件不动点）
+  → 适配器构造（快照 direct_*、capability_match 直接读图）
+```
+
+- 规则必须在物化**之后**：R2 的 `NOT EXISTS` 前件依赖物化后的 `ComplexTask` /
+  `Agent` 类型。
+- 规则必须在适配器构造**之前**：适配器的快照与能力匹配直接读图，规则产出
+  （`can_execute` 委派边、`needs_manual_review` 等）必须先在图里。
+- 顺序显式、可审查：前序文件的产出进入后续规则的前提，所以 `R2_…` 排在
+  `R5_…` 之前——R5 的"无人可执行"判断依赖 R2 铺好的委派事实。此前这个顺序
+  藏在调用栈里（适配器构造时自算 R2），同一条 R5 会因"谁先跑"给出不同答案。
+- **`rules/*.ttl` 属于领域运行态**：它随领域包分发（`examples/<name>/rules/`
+  是源，安装后落在运行态 root 的 `<name>/rules/`），由领域作者维护；框架只
+  负责"什么时候执行"，不解释规则内容。改了 `examples/` 下的规则必须重装
+  领域包（`ontologyctl domain install --from … --force`），否则运行态还是旧
+  规则——流水线读的是运行态副本，不是源。
+- **失败带诊断地降级**：单文件解析/执行错误只记在该文件的报告里，其余规则
+  照常执行；规则整体失败也不阻断领域激活。执行报告挂在领域快照上，
+  `GET /api/health` 的 `rules` 字段暴露哪些文件、什么错、是否触顶，以及
+  物化耗时 / 规则耗时 / 规则产出条数（规模上去后激活延迟不会被误判成
+  "引擎变慢"）。
 
 ---
 
@@ -357,7 +408,7 @@ R2 在适配器构造时执行一次；`classify` 后重跑（新个体可能解
 |---|---|
 | owlrl 而非 HermiT | HermiT 需 Java；RL profile 已覆盖本项目所需（属性链/传递/子类），纯 Python 零依赖随处可跑 |
 | 物化而非查询时推理 | 推理一次、查询多次；图可见（图谱直接画推理边）；代价是图膨胀（小规模无碍） |
-| 双通道 | OWL 表达不了的逻辑（聚合/禁止/分类）走代码，不强行塞进本体 |
+| 双通道 | OWL 表达不了的逻辑走规则层（R2，SHACL）或校验代码（R4/分类），不强行塞进本体，也不把它写成一次性 Python 遍历 |
 | 已知局限 | owlrl 不做 existential 等价类个体分类 → ComplianceTask 由 classify 模式匹配兜底 |
 
 ---

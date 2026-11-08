@@ -469,6 +469,9 @@ def health():
     """
     # 顶层保留 v1.x 的 agents/tasks/assignments 字段（既有调用方兼容）；
     # 新增 REQ-03 字段：version / loaded_at / dirty / pending_changes / changelog / counts
+    # rules：激活时规则层（rules/*.ttl）的执行报告（领域处理快照的 rules_report）。
+    # 领域无规则文件时为 None。哪个文件坏、什么错、是否触顶都从这里能看到。
+    rules = getattr(DOMAINS.current(), "rules_report", None)
     return {
         "status": "ok",
         "ontology": os.path.basename(ENGINE.onto_path),
@@ -507,6 +510,7 @@ def health():
             "assignments": len(getattr(ADAPTER, "assignments", None) or {}),
             "inferred_triples": len(ENGINE.g) - len(ENGINE.raw),
         },
+        "rules": rules,
     }
 
 

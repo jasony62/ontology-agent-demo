@@ -12,7 +12,7 @@ description: 领域包开发：从模板新建、安装、热切换到脱离宿�
 ## 2. 前置自检
 
 - 服务能跑（quickstart 断言链全绿）；确认当前领域：`curl -s http://127.0.0.1:8000/api/domains`；
-- 读两套模板找参照：`examples/agent_task/`（完整业务：R2/R4 + ABox + 9 个 MCP 工具）、`examples/_minimal/`（零复制验收物：1 类 3 个体、无业务方法）；
+- 读两套模板找参照：`examples/agent_task/`（完整业务：规则文件 R2 + 校验 R4 + ABox + 9 个 MCP 工具）、`examples/_minimal/`（零复制验收物：1 类 3 个体、无业务方法）；
 - 记住铁律：`examples/` 是源，`domains/` 是运行态安装副本（gitignored）——**改了 examples 必须重装，否则跑的还是旧副本**。
 
 ## 3. 标准作业流
@@ -46,7 +46,7 @@ def create_adapter_ctx(ctx):
     ...                           # 返回适配器；ctx 带包目录/配置/引擎
 ```
 
-可选文件（按需省略）：`adapter.py`（业务规则）、`config.json`（类角色映射/图谱分组 graph_groups/属性名覆盖）、`derivation.json`（推导链文案模板）、`shapes/*.ttl`（SHACL 形状，G4 闸门用）、`mcp.py`（领域 MCP 工具注册）、`rules/*.ttl`（SHACL 业务规则）。
+可选文件（按需省略）：`adapter.py`（查询服务 / 校验规则）、`config.json`（类角色映射/图谱分组 graph_groups/属性名覆盖）、`derivation.json`（推导链文案模板）、`shapes/*.ttl`（SHACL 形状，G4 闸门用）、`mcp.py`（领域 MCP 工具注册）、`rules/*.ttl`（SHACL 业务规则，加载流水线自动执行）。
 
 两条硬约束：**中文名标签只写在 .owl 的 `rdfs:label`**（唯一事实源，不进 config.json）；**`CAPABILITIES` 声明的每个能力必须有落点**（契约方法 / `QUERY_HANDLERS`（只读）或 `APPLY_HANDLERS`（变更）条目 / 适配器同名方法），悬空能力加载即拒，同一能力名同时进两张表也加载即拒。
 

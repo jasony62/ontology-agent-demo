@@ -3,7 +3,9 @@
 本模块是唯一绑定「智能体-任务-能力」领域知识的地方：
   - 领域数据：config.json（类角色映射/文案模板/推导链展开规则，可编辑）；
     中文名标签统一来自本体 rdfs:label（引擎 label()），不在配置中重复维护
-  - R2 复合任务委派、R4 合规冲突：代码规则（见 AgentTaskAdapter）
+  - R2 复合任务委派：SHACL 规则（rules/R2_complex_task_delegation.ttl，
+    随领域包分发，由加载流水线统一执行——不在这里写代码规则）
+  - R4 合规冲突：校验而非推导，留在代码里（见 AgentTaskAdapter）
   - capability_match / orchestrate / assign / classify / consistency / graph_export
 
 适配器把通用引擎（reasoner.engine.OntologyEngine）当作「通用图 + 推理服务」使用，
@@ -17,13 +19,15 @@
 
 import os
 
-from rdflib import URIRef, RDF, RDFS
+from rdflib import URIRef, RDF, RDFS, OWL
 
 # 只从领域插件 SDK 导入（P4）：SDK 之外的宿主模块（引擎实现、API、MCP）
 # 一律不许出现在领域包里——这是"领域可独立开发/发布"的实际判据。
 from ontology_plugin_sdk import (
     PluginContext,
     SemanticConfig,
+    chain_properties,
+    find_chain_path,
     graph_group_members,
     load_derivation_config,
     load_domain_config,
@@ -88,7 +92,8 @@ class AgentTaskAdapter:
     组织：
       - 语义配置访问  _cls / _p
       - 领域基础查询  agents / tasks / is_complex_task / risk / is_certified / capabilities_of ...
-      - 业务规则      _apply_r2（R2 复合任务委派）、_compliance_conflict（R4 合规冲突）
+      - 业务规则      _compliance_conflict（R4 合规冲突；R2 已迁到 rules/*.ttl，
+                      由加载流水线统一执行，本适配器只读规则产出）
       - 查询服务      capability_match / orchestrate / assign / consistency / classify / explain
       - 图谱导出      graph_export（供前端渲染）
     """
@@ -103,13 +108,12 @@ class AgentTaskAdapter:
         self.ENTITY_SCHEMA = ENTITY_SCHEMA     # 实体形状（框架按它校验 /api/domains/current/entities）
         # /api/health 的推理器描述：R2/R4 是本领域的规则编号，框架不知道，
         # 由领域自己声明（异构领域没有这两条规则，不该被框架统一贴上）
-        self.REASONER_SUMMARY = "OWL 2 RL (owlrl) + 业务规则 R2/R4"
+        self.REASONER_SUMMARY = "OWL 2 RL (owlrl) + SHACL 业务规则（rules/*.ttl）+ 合规校验 R4"
         self.NS = engine.NS                     # 供 explain / 外部构造 URIRef
         self.label = engine.label               # 供 explain / 外部取中文名（owl rdfs:label）
         self.templates = dict(TEMPLATES)        # 推导链文案模板
         self.derivations = dict(DERIVATIONS)    # 推导链展开规则（reasoner.derivation 解释）
         self.assignments = {}                   # task 短名 -> agent 短名（兼容缓存；权威源为图断言）
-        self.r2_asserted = set()                # {(agent_iri, task_iri)} R2 产生的 can_execute
         self.last_derivation = []               # 最近一次查询的推导链
         self.last_query_kind = None
 
@@ -123,14 +127,18 @@ class AgentTaskAdapter:
             assignment_predicate="assigned_to",
         )
 
-        g, cfg = engine.g, config
-        # 快照断言（直接）边，用于图谱展示与编排（排除推理闭包，避免图过密）
-        self.direct_depends = sorted((s, o) for s, o in g.subject_objects(self._p("depends_on")))
-        self.direct_composed = sorted((s, o) for s, o in g.subject_objects(self._p("composed_of")))
-        self.direct_has_cap = sorted((s, o) for s, o in g.subject_objects(self._p("has_capability")))
-        self.direct_req_cap = sorted((s, o) for s, o in g.subject_objects(self._p("requires_capability")))
-
-        self._apply_r2()
+        # 快照断言（直接）边，用于图谱展示与编排。
+        # 断言边来自 engine.raw（原始断言图），推理闭包在 engine.g（owlrl 物化
+        # 后的图）——两者不可混用：g 里已含传递闭包等推理产物，从 g 取"直接边"
+        # 会把推出来的边误标成断言（曾因此 graph_export 的 depends_on 全部
+        # inferred=false，图上看不出哪条依赖是本体算出来的）。
+        # 编排（topological_sort）读的是"约束"，断言边就是全部约束，冗余闭包
+        # 边只会加同义约束，不需要闭包。
+        raw = engine.raw
+        self.direct_depends = sorted((s, o) for s, o in raw.subject_objects(self._p("depends_on")))
+        self.direct_composed = sorted((s, o) for s, o in raw.subject_objects(self._p("composed_of")))
+        self.direct_has_cap = sorted((s, o) for s, o in raw.subject_objects(self._p("has_capability")))
+        self.direct_req_cap = sorted((s, o) for s, o in raw.subject_objects(self._p("requires_capability")))
 
     # ---------------- 语义配置访问 ----------------
 
@@ -185,22 +193,13 @@ class AgentTaskAdapter:
     def agents_for_task(self, task) -> list:
         return [a for a, t in self.can_execute_pairs() if t == local(task)]
 
-    # ---------------- 业务规则（R2 / R4） ----------------
+    # ---------------- 业务规则（R4） ----------------
 
-    def _apply_r2(self) -> None:
-        """R2 复合任务委派：Agent 可执行复合任务的全部直接子任务 ⇒ 可执行复合任务。"""
-        g = self.engine.g
-        for task in self.tasks():
-            if not self.is_complex_task(task):
-                continue
-            subs = self.sub_tasks(task)
-            if not subs:
-                continue
-            for agent in self.agents():
-                if all((agent, self._p("can_execute"), s) in g for s in subs):
-                    if (agent, self._p("can_execute"), task) not in g:
-                        g.add((agent, self._p("can_execute"), task))
-                    self.r2_asserted.add((agent, task))
+    # R2 复合任务委派不在这里：它是真正的"推导出新事实"的规则，落点在
+    # rules/R2_complex_task_delegation.ttl（SHACL SPARQLRule），由加载流水线
+    # 统一执行（owlrl 物化 → 规则 → 适配器构造）。代码里只留下 R4——
+    # 它不产出新事实，只是 assign 时的校验（禁止性规则），留在代码里是
+    # 正确分层，不随 R2 一起搬。
 
     def _compliance_conflict(self, task, agent) -> dict | None:
         """R4：任务要求合规认证、Agent 未认证 ⇒ 冲突。"""
@@ -243,11 +242,26 @@ class AgentTaskAdapter:
         return sorted(acaps & tcaps, key=str)
 
     def _rule_for(self, agent, task) -> str:
-        if (agent, task) in self.r2_asserted:
-            return "R2"
-        if self.is_complex_task(task):
-            return "R2"
-        return "R1"
+        """can_execute 边的规则归属：先查 R1 证据（属性链），再落到 R2。
+
+        R2 已迁到规则层（rules/R2_complex_task_delegation.ttl），图里不再有
+        "R2 断言集合"可查；归属判据与结构化证明（reasoner.proof）共用同一套：
+        断言边 → R1（R1 无贡献，边本来就在）；沿 can_execute 的
+        propertyChainAxiom（R1 属性链）找得到路径 → R1；否则是规则层推出的
+        → R2。不要简化成"是复合任务就算 R2"——复合任务的 can_execute 也
+        可能来自 R1 属性链。
+        """
+        pred = self._p("can_execute")
+        if (agent, pred, task) in self.engine.raw:
+            return "R1"          # 断言边，R1 无贡献
+        for pc in self.engine.g.objects(pred, OWL.propertyChainAxiom):
+            chain = find_chain_path(
+                self.engine.g, agent, task,
+                chain_properties(self.engine.g, pc),
+            )
+            if chain is not None:
+                return "R1"
+        return "R2"
 
     def capability_match(self, task_iri, with_derivation: bool = True) -> dict:
         """R1/R2 能力匹配：返回可执行该任务的全部 Agent，附推导链。"""
@@ -445,9 +459,8 @@ class AgentTaskAdapter:
         for c in constraints:
             engine.add_triple(local(iri), self.c.resolve("requires_constraint"), c)
 
-        # 重新推理（新增个体可能触发 R1 / 分类）
+        # 重新推理（新增个体可能触发 R1 属性链 / 分类）
         engine.reparse()
-        self._apply_r2()
 
         persisted = None
         if persist:
@@ -503,22 +516,19 @@ class AgentTaskAdapter:
     def delete_individual(self, name: str, persist: bool = False, cascade: bool = False) -> dict:
         """删除个体：引用保护 + 连带清理 + 重推理 + 可选落盘（框架 AboxStore 执行）。
 
-        领域只提供两件事：哪些谓词算"引用"（构造时声明）、删完要重放什么规则
-        （R2）。其余（快照、内存/raw 同步、推理边清理、-del- 增量）都是框架职责。
+        领域只提供两件事：哪些谓词算"引用"（构造时声明）。其余（快照、
+        内存/raw 同步、推理边清理、-del- 增量）都是框架职责。
         """
         return self.abox.delete(
             name,
             persist=persist,
             cascade=cascade,
             on_deleted=self._forget_individual,
-            after_reparse=self._apply_r2,
         )
 
     def _forget_individual(self, name: str) -> None:
-        """删除后清理领域自身缓存（分配缓存 / R2 断言集合）。"""
-        iri = self.NS[name]
+        """删除后清理领域自身缓存（分配缓存）。"""
         self.assignments.pop(name, None)
-        self.r2_asserted = {(a, t) for (a, t) in self.r2_asserted if a != iri and t != iri}
 
     def revoke(self, task: str, agent: str, persist: bool = False) -> dict:
         """撤回分配：移除 assigned_to 图边（权威源为图断言）并更新兼容缓存。"""
@@ -537,7 +547,6 @@ class AgentTaskAdapter:
             individuals,
             planner=self._plan_import,
             persist=persist,
-            after_reparse=self._apply_r2,
         )
 
     def _plan_import(self, individuals: list[dict]) -> tuple[list[tuple], list[str]]:
@@ -594,7 +603,7 @@ class AgentTaskAdapter:
         个体在导出里会被静默丢掉，而前端图例与节点配色读的是配置——两边慢慢
         就漂了。现在分组集合只有一个来源，字段丰富度仍由领域按组登记。
         """
-        g, cfg = self.engine.g, self.c
+        g, cfg, raw = self.engine.g, self.c, self.engine.raw
         classes = []
         for tc in cfg.top_classes:
             cls = self.NS[tc]
@@ -624,10 +633,11 @@ class AgentTaskAdapter:
         for s, o in self.direct_composed:
             edges.append({"source": local(s), "target": local(o), "property": self.c.resolve("composed_of"), "inferred": False})
         ind_names = {i["name"] for i in individuals}
+        can_execute_pred = self._p("can_execute")
         for s, o in self.can_execute_pairs():
             if s in ind_names and o in ind_names:
                 edges.append({"source": s, "target": o, "property": self.c.resolve("can_execute"),
-                              "inferred": (self.NS[s], self.NS[o]) in self.r2_asserted or self.is_complex_task(self.NS[o]),
+                              "inferred": (self.NS[s], can_execute_pred, self.NS[o]) not in raw,
                               "rule": self._rule_for(self.NS[s], self.NS[o])})
         for t, a in self.engine.subject_objects(self.c.resolve("assigned_to")):
             edges.append({"source": t, "target": a, "property": self.c.resolve("assigned_to"), "inferred": False})

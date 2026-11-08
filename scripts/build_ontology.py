@@ -197,12 +197,36 @@ def build() -> Ontology:
         ComplianceRequirement.label = ["合规认证要求"]
         SecurityRequirement.label = ["安全要求"]
 
+        # ================= 个体：能力 / 工具 / 约束（#64） =================
+        # 任务/Agent 引用这些**实例**而非类本身：类无法承载认证等级、有效期等
+        # 属性，也是 ComplianceTask someValuesFrom 推不出的根因。
+        cap_requirement_analysis = RequirementAnalysis("cap_requirement_analysis")
+        cap_requirement_analysis.label = ["需求分析能力"]
+        cap_coding = Coding("cap_coding")
+        cap_coding.label = ["编码实现能力"]
+        cap_code_review = CodeReview("cap_code_review")
+        cap_code_review.label = ["代码审查能力"]
+        cap_testing = Testing("cap_testing")
+        cap_testing.label = ["测试执行能力"]
+        cap_deployment = Deployment("cap_deployment")
+        cap_deployment.label = ["部署发布能力"]
+        tool_ide = IDE("tool_ide")
+        tool_ide.label = ["IDE 工具"]
+        tool_git_repo = GitRepo("tool_git_repo")
+        tool_git_repo.label = ["Git 仓库工具"]
+        tool_cicd = CICD("tool_cicd")
+        tool_cicd.label = ["CI/CD 流水线工具"]
+        tool_knowledge_base = KnowledgeBase("tool_knowledge_base")
+        tool_knowledge_base.label = ["知识库工具"]
+        creq_default = ComplianceRequirement("creq_default")
+        creq_default.label = ["默认合规认证要求"]
+
         # ================= 个体：智能体 =================
         req_agent = RequirementAgent(
             "req_agent",
             has_description="负责需求分析、用户故事与验收标准编写",
-            has_capability=[RequirementAnalysis],
-            uses_tool=[KnowledgeBase],
+            has_capability=[cap_requirement_analysis],
+            uses_tool=[tool_knowledge_base],
             has_certified=True,
         )
         req_agent.label = ["需求分析Agent"]
@@ -210,8 +234,8 @@ def build() -> Ontology:
         dev_agent = DevAgent(
             "dev_agent",
             has_description="负责编码实现与代码审查，已通过合规认证",
-            has_capability=[Coding, CodeReview],
-            uses_tool=[IDE, GitRepo],
+            has_capability=[cap_coding, cap_code_review],
+            uses_tool=[tool_ide, tool_git_repo],
             has_certified=True,
         )
         dev_agent.label = ["研发Agent"]
@@ -219,8 +243,8 @@ def build() -> Ontology:
         junior_dev = JuniorDevAgent(
             "junior_dev",
             has_description="仅具备编码能力，尚未通过合规认证",
-            has_capability=[Coding],
-            uses_tool=[IDE],
+            has_capability=[cap_coding],
+            uses_tool=[tool_ide],
             has_certified=False,
         )
         junior_dev.label = ["初级研发Agent"]
@@ -228,8 +252,8 @@ def build() -> Ontology:
         test_agent = TestAgent(
             "test_agent",
             has_description="负责测试执行与质量门禁",
-            has_capability=[Testing],
-            uses_tool=[CICD],
+            has_capability=[cap_testing],
+            uses_tool=[tool_cicd],
             has_certified=True,
         )
         test_agent.label = ["测试Agent"]
@@ -237,8 +261,8 @@ def build() -> Ontology:
         deploy_agent = DeployAgent(
             "deploy_agent",
             has_description="负责生产部署与发布",
-            has_capability=[Deployment],
-            uses_tool=[CICD, GitRepo],
+            has_capability=[cap_deployment],
+            uses_tool=[tool_cicd, tool_git_repo],
             has_certified=True,
         )
         deploy_agent.label = ["部署Agent"]
@@ -247,7 +271,7 @@ def build() -> Ontology:
         t_req = SimpleTask(
             "t_req",
             has_description="需求分析：新功能用户故事与验收标准",
-            requires_capability=[RequirementAnalysis],
+            requires_capability=[cap_requirement_analysis],
             has_risk_level=1,
         )
         t_req.label = ["需求分析任务"]
@@ -255,7 +279,7 @@ def build() -> Ontology:
         t_login_dev = SimpleTask(
             "t_login_dev",
             has_description="登录模块开发",
-            requires_capability=[Coding],
+            requires_capability=[cap_coding],
             has_risk_level=2,
         )
         t_login_dev.label = ["登录模块开发"]
@@ -263,7 +287,7 @@ def build() -> Ontology:
         t_login_review = SimpleTask(
             "t_login_review",
             has_description="登录模块代码审查",
-            requires_capability=[CodeReview],
+            requires_capability=[cap_code_review],
             has_risk_level=2,
         )
         t_login_review.label = ["登录模块代码审查"]
@@ -271,7 +295,7 @@ def build() -> Ontology:
         t_login_test = SimpleTask(
             "t_login_test",
             has_description="登录模块测试执行",
-            requires_capability=[Testing],
+            requires_capability=[cap_testing],
             has_risk_level=3,
         )
         t_login_test.label = ["登录模块测试执行"]
@@ -279,7 +303,7 @@ def build() -> Ontology:
         t_deploy = SimpleTask(
             "t_deploy",
             has_description="生产环境部署发布",
-            requires_capability=[Deployment],
+            requires_capability=[cap_deployment],
             has_risk_level=4,
         )
         t_deploy.label = ["生产部署发布"]
@@ -287,8 +311,8 @@ def build() -> Ontology:
         t_compliance_dev = SimpleTask(
             "t_compliance_dev",
             has_description="涉及敏感数据的报表开发（需合规认证）",
-            requires_capability=[Coding],
-            requires_constraint=[ComplianceRequirement],
+            requires_capability=[cap_coding],
+            requires_constraint=[creq_default],
             has_risk_level=5,
         )
         t_compliance_dev.label = ["敏感数据报表开发"]
@@ -438,9 +462,15 @@ def _extra_checks(g: rdflib.Graph, ns: str) -> tuple[bool, list[str]]:
     cap_classes = _subclasses_of("Capability")
     ref_ok = True
     for s, o in g.subject_objects(q("requires_capability")):
-        if o not in cap_classes:
+        # #64 起 targets 是能力实例（类型沿 subClassOf 可达 Capability）；
+        # 类当值引用（如 t → #Coding）在此会被拦下——这是实例化改造要防的回退
+        if o not in cap_classes and not _inst_of(q("Capability"), o):
             ref_ok = False
-            reports.append(f"[FAIL] requires_capability 悬空引用: {local(s)} → {local(o)}（非能力类）")
+            reports.append(f"[FAIL] requires_capability 悬空引用: {local(s)} → {local(o)}（既非能力类也非能力实例）")
+    for s, o in g.subject_objects(q("requires_constraint")):
+        if not _inst_of(q("Constraint"), o):
+            ref_ok = False
+            reports.append(f"[FAIL] requires_constraint 悬空引用: {local(s)} → {local(o)}（非约束个体）")
     for s, o in g.subject_objects(q("assigned_to")):
         if not _inst_of(q("Agent"), o):
             ref_ok = False

@@ -58,7 +58,9 @@ def test_r1_match_has_rule_and_shared_caps(adapter):
     m = adapter.capability_match(NS.t_login_dev, with_derivation=False)
     dev = [x for x in m["matches"] if x["agent"] == "dev_agent"][0]
     assert dev["rule"] == "R1"
-    assert "Coding" in dev["shared_capabilities"]
+    # #64 起能力以实例引用（cap_coding）；中文能力名在 shared_capability_labels
+    assert "cap_coding" in dev["shared_capabilities"]
+    assert "编码实现能力" in dev["shared_capability_labels"]
 
 
 # ---------- R3 依赖传递闭包 ----------
@@ -199,11 +201,14 @@ def test_types_of_generic(engine):
     # ComplianceTask 由 classify() 的模式匹配规则给出，不属于 owlrl 推理产物）
     types_t = engine.types_of("t_compliance_dev")
     assert {"SimpleTask", "Task"} <= set(types_t)
+    # #64：能力以实例存在——个体挂类型 Coding，经子类链可达 Capability
+    assert {"Coding", "Capability"} <= set(engine.types_of("cap_coding"))
 
 
 def test_property_values_generic(engine):
     caps = engine.property_values("dev_agent", "has_capability")
-    assert set(caps) == {"Coding", "CodeReview"}
+    # #64 起能力以实例引用（cap_coding / cap_code_review）
+    assert set(caps) == {"cap_coding", "cap_code_review"}
     cert = engine.property_values("junior_dev", "has_certified")
     assert cert == ["false"]
 

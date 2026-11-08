@@ -27,7 +27,8 @@ def test_ontology():
     r = client.get("/api/domains/current/ontology")
     assert r.status_code == 200
     d = r.json()
-    assert len(d["individuals"]) == 13
+    # 13（5 Agent + 8 Task）+ 10（#64：5 能力 + 4 工具 + 1 约束实例）= 23
+    assert len(d["individuals"]) == 23
     assert {e["property"] for e in d["edges"]} >= {"has_capability", "can_execute", "depends_on"}
 
 
@@ -207,13 +208,18 @@ def test_graph_groups_endpoint():
     r = client.get("/api/domains/current/ontology/graph-groups")
     assert r.status_code == 200
     groups = r.json()["groups"]
-    assert [g["name"] for g in groups] == ["Agent", "Task"]
+    # #64 起能力/工具/约束以个体存在并被任务/Agent 引用，声明了各自分组
+    assert [g["name"] for g in groups] == ["Agent", "Task", "Capability", "Tool", "Constraint"]
     by = {g["name"]: g for g in groups}
     # 不断言成员总数：别的用例会往同一个引擎里建个体（如 t_api_classify），
     # 精确计数会让这条用例依赖执行顺序。断言"这一组里有谁"才是它的职责。
     assert by["Agent"]["members"] == [
         "deploy_agent", "dev_agent", "junior_dev", "req_agent", "test_agent"]
     assert "t_feature" in by["Task"]["members"]
+    assert set(by["Capability"]["members"]) == {
+        "cap_requirement_analysis", "cap_coding", "cap_code_review", "cap_testing", "cap_deployment"}
+    assert set(by["Tool"]["members"]) == {"tool_ide", "tool_git_repo", "tool_cicd", "tool_knowledge_base"}
+    assert by["Constraint"]["members"] == ["creq_default"]
     # label 取自本体 rdfs:label（图例要给人看），不是组名本身
     assert by["Agent"]["label"] == "智能体"
 

@@ -82,7 +82,7 @@ def test_dispatch_mirrors_mcp_tool_outputs():
     assert set(r2["individuals"]) == {"dev_agent", "req_agent", "test_agent", "deploy_agent"}
     r3 = cq_reg._TOOL_TABLE["property_values"](a, subject="t_compliance_dev",
                                                property_name="requires_constraint")
-    assert r3["values"] == ["ComplianceRequirement"]
+    assert r3["values"] == ["creq_default"]  # #64 起约束以实例引用
     NS = "http://ontology.localhost/agent-task#"
     r4 = cq_reg._TOOL_TABLE["query_sparql"](a, sparql=(
         f"SELECT ?dep WHERE {{ <{NS}t_login_test> <{NS}depends_on>+ ?dep }}"))

@@ -128,8 +128,11 @@ def test_negative_unproven_is_empty_safe():
 
 
 def test_asserted_conclusion_has_no_fabricated_axioms():
-    """反例②：本体直接断言的三元组 → mode=asserted，无公理/前提，不伪造证明。"""
-    p = build_proof(_engine(), "dev_agent", "has_capability", "Coding")
+    """反例②：本体直接断言的三元组 → mode=asserted，无公理/前提，不伪造证明。
+
+    （#64 起能力以实例引用：dev_agent 的能力边指向 cap_coding。）
+    """
+    p = build_proof(_engine(), "dev_agent", "has_capability", "cap_coding")
     assert p["mode"] == "asserted"
     assert p["premises"] == []
     assert p["axioms"] == []

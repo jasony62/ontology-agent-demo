@@ -143,7 +143,7 @@ def test_inverse_of_axiom_without_fact_degrades_honestly(tmp_path):
 def test_proof_endpoint_returns_inverse_of_for_required_by():
     """正常返回：默认核心本体上 required_by 边给出 inverse_of 依据。"""
     r = client.get("/api/ontology/proof", params={
-        "s": "Deployment", "p": "required_by", "o": "t_deploy",
+        "s": "cap_deployment", "p": "required_by", "o": "t_deploy",
     })
     assert r.status_code == 200
     d = r.json()
@@ -152,7 +152,7 @@ def test_proof_endpoint_returns_inverse_of_for_required_by():
     assert d["premises"][0]["predicate"] == "requires_capability"
     assert d["premises"][0]["source"] == "asserted"
     assert d["conclusion"] == {
-        "subject": "Deployment", "predicate": "required_by", "object": "t_deploy",
+        "subject": "cap_deployment", "predicate": "required_by", "object": "t_deploy",
     }
 
 

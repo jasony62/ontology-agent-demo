@@ -21,7 +21,10 @@
     ],
     "graph_groups": {
       "Agent": "agent_class",
-      "Task": "task_class"
+      "Task": "task_class",
+      "Capability": "capability_class",
+      "Tool": "tool_class",
+      "Constraint": "constraint_class"
     }
   }
 }

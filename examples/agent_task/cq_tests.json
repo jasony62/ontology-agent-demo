@@ -57,8 +57,9 @@
       "cq": "「敏感数据报表开发」有什么约束？",
       "tool": "property_values",
       "params": {"subject": "t_compliance_dev", "property_name": "requires_constraint"},
-      "expect": {"type": "set_exact", "pick": "values", "set": ["ComplianceRequirement"]},
-      "rule": "R4"
+      "expect": {"type": "set_exact", "pick": "values", "set": ["creq_default"]},
+      "rule": "R4",
+      "note": "#64 起约束以实例引用（creq_default a ComplianceRequirement）"
     },
     {
       "id": "T2-08",

@@ -509,5 +509,18 @@
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">双模块开发（复合任务）</rdfs:label>
 </owl:NamedIndividual>
 
+<!-- #68：多能力任务演示锚点——此前 8 个任务每个只挂 1 条 requires_capability，
+     can_execute 的 AND 覆盖语义（#59）在数据上不可见。本任务要求「编码 + 部署」
+     双能力：dev_agent 缺部署、deploy_agent 缺编码，无人可执行（R1 全覆盖判定），
+     也没有人能担责（R2b）——风险 4 时 R5 如实提示人工介入。 -->
+<owl:NamedIndividual rdf:about="#t_full_stack">
+  <rdf:type rdf:resource="#SimpleTask"/>
+  <requires_capability rdf:resource="#cap_coding"/>
+  <requires_capability rdf:resource="#cap_deployment"/>
+  <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">全栈改造：编码实现 + 生产部署（要求双能力全覆盖）</has_description>
+  <has_risk_level rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">4</has_risk_level>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">全栈改造任务</rdfs:label>
+</owl:NamedIndividual>
+
 
 </rdf:RDF>

@@ -101,9 +101,9 @@ docker compose up -d mcp
 | `validate_cqs_declared(cqs)` | **CQ 自动出题-质检（focus 模式）**：接受 `guide_cq_generation(focus=...)` 产出的 `{cq, expected_type, anchor_terms}` 数组，采信题内声明锚点（题干匹配 / 元词黑名单 / 领域停用词表 / 本卷词表 6–8 四重约束）；不传声明时按普通质检处理 |
 | `cq_regression()` | **CQ 回归**：按 cq_tests.json 复放能力点断言（CQ）验证集，检查质检是否回归 |
 
-**受控语义接口（v1.3.0）**：配置领域包 `access_policy.json` 语义白名单后，MCP 只暴露允许的类/谓词（含子类继承），白名单外查询被拒并返回诚实提示；策略激活时 `query_sparql` 禁用。
+**受控语义接口**：配置领域包 `access_policy.json` 语义白名单后，MCP 只暴露允许的类/谓词（含子类继承），白名单外查询被拒并返回诚实提示；策略激活时 `query_sparql` 禁用。
 
-**Agent 调用护栏（tool_guard，Unreleased）**：为通用工具注册管道统一加装四道防线（默认关闭，`guard_config.json` 置 `enabled: true` 启用）：
+**Agent 调用护栏（tool_guard）**：为通用工具注册管道统一加装四道防线（默认关闭，`guard_config.json` 置 `enabled: true` 启用）：
 
 | 防线 | 行为 |
 |---|---|
@@ -112,6 +112,4 @@ docker compose up -d mcp
 | 缓存复用 | 同参数 TTL-Call 内直接返回（`_guard.cached=true`），时敏查询可关 cache |
 | 审计留痕 | 环形缓冲保留最近 `audit_tail` 条，`guard_status` 在线可查——"每次调用有账可查" |
 
-**管线质量门禁（pipeline_gate，Unreleased）**：把建模草稿（Turtle）按四道闸门 fail-fast 过闸——**G1 DL 格式**（防 OWL-Full/数据属性主键陷阱）→ **G2 一致性**（owlrl 物化+矛盾检查，HermiT 可选增强）→ **G3 物化冒烟**（领域 `gates_smoke.json` 断言集）→ **G4 SHACL**（`包内 shapes/<domain>.ttl`）。遇 fail 即停（后续闸门标 `not_run`），`failed_at` 定位卡闸位置，每闸输出 `{status, evidence, remediation}`；`gates` 参数支持单闸调试。实测默认本体：四闸全过（`overall=pass, next=S4`）；加违规个体 `demo:t_bad_task a demo:SimpleTask` 后 G4 fail（violations 定位 `t_bad_task`、`path=requires_capability`）。
-
-> AI生成
+**管线质量门禁（pipeline_gate）**：把建模草稿（Turtle）按四道闸门 fail-fast 过闸——**G1 DL 格式**（防 OWL-Full/数据属性主键陷阱）→ **G2 一致性**（owlrl 物化+矛盾检查，HermiT 可选增强）→ **G3 物化冒烟**（领域 `gates_smoke.json` 断言集）→ **G4 SHACL**（`包内 shapes/<domain>.ttl`）。遇 fail 即停（后续闸门标 `not_run`），`failed_at` 定位卡闸位置，每闸输出 `{status, evidence, remediation}`；`gates` 参数支持单闸调试。实测默认本体：四闸全过（`overall=pass, next=S4`）；加违规个体 `demo:t_bad_task a demo:SimpleTask` 后 G4 fail（violations 定位 `t_bad_task`、`path=requires_capability`）。

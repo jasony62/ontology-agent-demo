@@ -425,7 +425,9 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
 URL 填 `http://127.0.0.1:9000/mcp` → 保存后即可在对话中直接调用（如"登录模块开发谁能做？"）。
 
 > 技术要点：MCP SDK 2.x，入口为 `from mcp.server.mcpserver import MCPServer`；
-> 默认端口 8000 与 API 冲突，故用 9000。
+> 默认端口 8000 与 API 冲突，故用 9000。仓库的 `mcp/` 目录与 pip 的 `mcp` SDK 包同名
+> （目录遮蔽 SDK 包），`mcp/` 内的兄弟模块（`policy.py` / `tool_guard.py`）因此按文件路径
+> importlib 加载，不能写 `from mcp import policy`。
 
 ---
 
@@ -489,23 +491,7 @@ python scripts/query.py capability_match --task t_login_dev --local  # 内嵌引
 
 ---
 
-## 12. 关键技术决策与踩坑记录
-
-| 决策 / 坑 | 说明 |
-|---|---|
-| 推理器选型 | HermiT 需 Java → 改用纯 Python `owlrl`（OWL 2 RL）；本体仍标准 OWL 2，Protege + HermiT 可校验 |
-| 属性链建模 | owlready2 需显式逆属性 + PropertyChain；owlrl 推理后 `can_execute` 从 0 → 8 条 |
-| 语义配置参数化 | 类角色映射外置 JSON；属性名"语义名即短名"（`resolve()` 兜底），恒等条目零配置 |
-| 中文名唯一事实源 | 全部放 owl `rdfs:label`，`label()` 支持 URIRef 与短名（objects_of 返回短名） |
-| 推导链声明式化 | step/loop/if + `$path` 引用，`explain.py` 死代码删除，规则进 `derivation.json` |
-| 拓扑排序 | 编排边取反（o→s），使"无依赖者"排最前 |
-| MCP 撞名 | `mcp` 是三方包名，验证时 `sys.path.insert(0,'mcp'); import mcp_server` |
-| 领域包数据缺失 | config.json / derivation.json 缺失即抛错（坏包快速失败，不静默兜底） |
-| classify 副作用 | 修改单例图，测试断言用 `>=` 防污染 |
-
----
-
-## 13. 扩展指南
+## 12. 扩展指南
 
 ### 13.1 换一个本体（同构：类/属性名不同）
 
@@ -545,7 +531,7 @@ adapter = create_adapter_ctx(ctx)   # 领域包唯一工厂：create_adapter_ctx
 
 ---
 
-## 14. 目录结构总览
+## 13. 目录结构总览
 
 ```
 <项目根目录>/
@@ -580,5 +566,3 @@ adapter = create_adapter_ctx(ctx)   # 领域包唯一工厂：create_adapter_ctx
 ---
 
 *本文档与代码同步维护；行为基线以 `tests/` 与 `README.md` 为准。*
-
-> AI生成

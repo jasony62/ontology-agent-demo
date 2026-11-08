@@ -32,7 +32,7 @@ Ontop 双设计（语义白名单 + 预定义查询端点）在 MCP 出口层的
 
 ## 三、SHACL 数据体检（validate_shapes，PR #13）
 
-**填坑型选题法**：`docs/MODELING_PIPELINE.md` §5.4 G4 已完整设计但未实现——「文档已约定未实现」的 roadmap 缺口是最强立项理由，实现路径/命名对齐文档约定。
+**填坑型选题法**：G4（SHACL 数据体检）曾是「规格已约定、仓库未实现」的 roadmap 缺口，PR #13 顺手补齐——「已约定未实现」的缺口是最强立项理由，实现路径/命名对齐规格约定。
 
 - pyshacl 安装：`pip install pyshacl`（镜像缺失时走官方源，0.40.1 实测可用）；
 - **形状设计守则：不让现有数据红**——写形状前先 dump 实际 ABox 逐个体核对（minCount 1 只对确有数据全量的属性敢写）；
@@ -67,7 +67,7 @@ Agentic RAG 防失控共识「四道工事」中除白名单（#12 已落地）�
 
 ## 七、管线质量门禁 pipeline_gate（PR #18）
 
-`MODELING_PIPELINE.md` 四道闸门（G1 DL 格式 → G2 一致性 → G3 物化冒烟 → G4 SHACL）的在线执行器（与 #13 同一填坑模式：#13 补 G4 shapes，本层补全部四闸编排）。
+`docs/MODELING_GATES.md` 四道闸门（G1 DL 格式 → G2 一致性 → G3 物化冒烟 → G4 SHACL）的在线执行器（与 #13 同一填坑模式：#13 补 G4 shapes，本层补全部四闸编排）。
 
 - **fail-fast 过闸**：依次执行、遇 fail 即停，后续闸门标 `not_run`；每闸输出 `{status, evidence, remediation}`，remediation 对齐上游文档打回口径；
 - **复用映射（编排不重造）**：G1 owlready2 `is_owl_full()`（**实测存在才启用**增强路径，缺依赖降级结构断言版）；G2 owlrl 物化 + 矛盾检查（HermiT 未启用时 `mode=degraded` **显式标注**，不冒充完整 DL 闸）；G3 领域 `gates_smoke.json` 断言集（随领域包走）；G4 pyshacl + shapes violations 短名化透传；

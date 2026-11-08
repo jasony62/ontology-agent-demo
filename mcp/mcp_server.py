@@ -277,8 +277,8 @@ def _register_generic_tools(server: MCPServer, get_engine, policy=None, guard=No
         return guard.status()
 
     @server.tool(description=(
-        "管线质量门禁（通用）：输入建模草稿 Turtle（+可选 ABox），按上游 MODELING_PIPELINE.md "
-        "§5 四道闸门 fail-fast 过闸——G1 DL 格式（防 OWL-Full/主键陷阱，owlready2+结构断言）→ "
+        "管线质量门禁（通用）：输入建模草稿 Turtle（+可选 ABox），按 docs/MODELING_GATES.md "
+        "四道闸门 fail-fast 过闸——G1 DL 格式（防 OWL-Full/主键陷阱，owlready2+结构断言）→ "
         "G2 一致性（owlrl 物化+矛盾检查，HermiT 为可选增强）→ G3 物化冒烟（领域 gates_smoke.json "
         "断言集）→ G4 SHACL 形状校验（pipeline/shapes）。返回逐闸 {status, evidence, remediation}"
         "与整体结论 {overall, failed_at, next}；failed_at 一眼定位卡闸位置，未执行闸门标 not_run。"

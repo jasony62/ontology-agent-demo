@@ -102,6 +102,15 @@
       "expect": {"type": "contains", "pick": "types", "contains": ["JuniorDevAgent", "DevAgent", "Agent"]},
       "rule": "子类链",
       "note": "contains 判分：业务类别必须齐；推理机内建类型（Thing/NamedIndividual）随实现浮动，不作硬断言"
+    },
+    {
+      "id": "T2-13",
+      "cq": "「敏感数据报表开发」会被归类为合规任务吗？",
+      "tool": "types_of",
+      "params": {"individual": "t_compliance_dev"},
+      "expect": {"type": "contains", "pick": "types", "contains": ["ComplianceTask"]},
+      "rule": "defined class",
+      "note": "#61 修复锚点：someValuesFrom 要求约束的实例（creq_default），修复前 ComplianceTask 永远推不出"
     }
   ]
 }

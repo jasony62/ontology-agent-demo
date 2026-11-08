@@ -35,6 +35,8 @@
 
 ### Fixed
 
+- **`ComplianceTask` 可推导（#61）**：defined class `ComplianceTask ≡ Task ⊓ ∃requires_constraint.ComplianceRequirement` 用 `someValuesFrom`，要求存在「属于该类的个体」，而 `ComplianceRequirement` 此前在整个图里没有任何实例（`t_compliance_dev` 指向的是类本身）——`types_of('t_compliance_dev')` 只有 `SimpleTask/Task`，等价类永远是死分支。#64 实例化约束后（`creq_default a ComplianceRequirement`，任务指向它），owlrl 按等价类规则正常推出 `ComplianceTask`，与同一文件里靠 `hasValue` 存活的 `CertifiedAgent` 对称。未采用放宽 `someValuesFrom #ComplianceRequirement` 为 `#Constraint` 的替代方案（那会把「合规任务」退化成「任何带约束的任务」，是改弱断言迁就数据）。CQ 题库补 T2-13 锚定该结论（修复前必红，12 → 13 题）；`test_reasoning` 的旧口径注释（「owlrl 不做 existential 等价类分类」）一并修正。
+
 - **复合任务风险判定改看「自身或任一子孙」，高风险链不再因父任务漏填而静默消失（#63）**：R5/R6 都以 `risk_level ≥ 4` 为触发条件，而复合任务的风险语义上就是「子任务的最大值」——靠人工把父任务填对是迟早出事的约定，父任务填成 3（或漏填），整条高风险链静默消失且无任何提示。采用方案 B（改判定口径、不写图）：R5 的风险判定改为「自身 ∨ `composed_of+` 子孙 ≥ 4」，方案 A（合成规则写 `has_risk_level`）因该属性是 FunctionalProperty 会推出不一致而否决；判定口径分工不变——R5 管复合链（含风险来自子任务的父任务）无人能整体接，R6 管单片自身风险，同一任务不会两头都抓。顺带在 R5 的 WHERE 里显式声明 `?this rdf:type demo:Task`，不再依赖 `sh:targetClass` 兜底（规则文件被复制走也不会误伤）。现有数据产出集合不变，12 道 CQ 全过。
 
 - **业务类之间补 `owl:disjointWith`，G2 一致性闸对本包真正有东西可拦（#66）**：断言图里 `owl:disjointWith` 此前为 0 条（物化图里的 3 条全是 owlrl 给 XSD 内建类型补的，与业务无关），把智能体误标成任务、让 SimpleTask 与 ComplexTask 同时成立，G2 一句不报。现补 5 对互斥：`Task ⊥ Agent`、`Task ⊥ Capability`、`Agent ⊥ Capability`、`SimpleTask ⊥ ComplexTask`、`DevAgent ⊥ TestAgent`；现有数据零冲突，好数据照常过闸。配套增强 `pipeline_gate` G2：OWL 2 RL 规则集没有个体级 disjoint 推理（owlrl 不会为此推出 `rdf:type owl:Nothing`），只查类级的话 ABox 互斥冲突永远全绿——新增结构直查「同一主体同时落在互斥对两边」（类型经物化含子类展开），违规个体在错误信息中被点名；`docs/MODELING_GATES.md` 同步规格。

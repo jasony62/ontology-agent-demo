@@ -602,10 +602,10 @@ def _apply_kinds(adapter) -> dict:
 def _resolve_capability(kind: str, table: dict, endpoint: str,
                         other_table: dict, other_endpoint: str,
                         other_label: str):
-    """在本端能力表里取处理器；传到另一端的类型要明确指路。
+    """在本端能力表里取处理器；传到另一端的能力名要明确指路。
 
     跨端点调用只回"不支持"等于让调用方猜。`assign` 传给纯读端点时，
-    真正的问题是"副作用类型走错了门"，不是"这个名字不认识"。
+    真正的问题是"写能力走错了门"，不是"这个名字不认识"。
     """
     handler = table.get(kind)
     if handler is not None:
@@ -620,7 +620,7 @@ def _resolve_capability(kind: str, table: dict, endpoint: str,
     raise HTTPException(
         status_code=400,
         detail=(
-            f"不支持的能力类型: {kind}；{endpoint} 当前可用："
+            f"不支持的能力名: {kind}；{endpoint} 当前可用："
             f"{supported or '（无）'}"
         ),
     )
@@ -628,11 +628,11 @@ def _resolve_capability(kind: str, table: dict, endpoint: str,
 
 def _run_capability(req, table: dict, endpoint: str, other_table: dict,
                     other_endpoint: str, other_label: str) -> dict:
-    """三态门禁 + 分派：未知类型 400、声明未实现 501、实现未声明 400。"""
+    """三态门禁 + 分派：未知能力名 400、声明未实现 501、实现未声明 400。"""
     handler = _resolve_capability(
-        req.type, table, endpoint, other_table, other_endpoint, other_label
+        req.kind, table, endpoint, other_table, other_endpoint, other_label
     )
-    _require_capability(req.type)
+    _require_capability(req.kind)
     try:
         return handler(ADAPTER, req)
     except ValueError as exc:
@@ -669,7 +669,7 @@ def _schema_summary(adapter) -> dict | None:
             "model": OpenEnvelope,
             "description": (
                 "查询结果；纯读——不改图、不落盘，可安全重试与缓存。"
-                "形状随 type 与当前领域处理器而变，可用类型见 "
+                "形状随 kind 与当前领域处理器而变，可用能力名见 "
                 "GET /api/health 的 contract.query_kinds。"
             ),
         },
@@ -678,14 +678,14 @@ def _schema_summary(adapter) -> dict | None:
     },
 )
 def capabilities_query(req: CapabilityQueryRequest):
-    """领域能力查询：按 `type` 分派到只读处理器，返回形状随领域而变。
+    """领域能力查询：按 `kind` 分派到只读处理器，返回形状随领域而变。
 
     副作用契约：**不改图、不落盘**。处理器来自框架内置 QUERY_KINDS ∪ 领域
     `QUERY_HANDLERS`；本端点看不到 `APPLY_HANDLERS` 里的写逻辑，因此可以
     安全重试、缓存、给只读权限。
 
-    给调用方：可用类型见 `GET /api/health` 的 `contract.query_kinds`。
-    类型未知或领域未声明能力返回 400，声明了却未实现返回 501；把变更能力
+    给调用方：可用能力名见 `GET /api/health` 的 `contract.query_kinds`。
+    能力名未知或领域未声明能力返回 400，声明了却未实现返回 501；把变更能力
     （如 assign）传到这里会得到指路 400，而不是笼统的"不支持"。
     """
     _require_default_ontology()
@@ -708,7 +708,7 @@ def capabilities_query(req: CapabilityQueryRequest):
             "model": OpenEnvelope,
             "description": (
                 "变更结果；会改图，persist=true 时写入 extensions/，不保证幂等。"
-                "形状随 type 与当前领域处理器而变，可用类型见 "
+                "形状随 kind 与当前领域处理器而变，可用能力名见 "
                 "GET /api/health 的 contract.apply_kinds。"
             ),
         },
@@ -717,14 +717,14 @@ def capabilities_query(req: CapabilityQueryRequest):
     },
 )
 def capabilities_apply(req: ApplyRequest):
-    """领域能力变更：按 `type` 分派到变更处理器，返回形状随领域而变。
+    """领域能力变更：按 `kind` 分派到变更处理器，返回形状随领域而变。
 
     副作用契约：**会改图**（可能新增/删除三元组）；`persist=true` 时把增量
     写入 `extensions/`，重启后仍在。不保证幂等——调用方请自行防重，
     不要按纯读端点的策略盲目重试。
 
-    给调用方：可用类型见 `GET /api/health` 的 `contract.apply_kinds`。
-    类型未知或领域未声明能力返回 400，声明了却未实现返回 501；把只读能力
+    给调用方：可用能力名见 `GET /api/health` 的 `contract.apply_kinds`。
+    能力名未知或领域未声明能力返回 400，声明了却未实现返回 501；把只读能力
     （如 capability_match）传到这里会得到指路 400。
     """
     _require_default_ontology()

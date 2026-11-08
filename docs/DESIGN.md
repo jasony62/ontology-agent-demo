@@ -382,7 +382,7 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 ```bash
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
   -H "Content-Type: application/json" \
-  -d '{"type":"capability_match","task":"t_login_dev"}'
+  -d '{"kind":"capability_match","task":"t_login_dev"}'
 
 curl -s -X POST http://127.0.0.1:8000/api/individuals \
   -H "Content-Type: application/json" \
@@ -454,7 +454,7 @@ python3 -m venv .venv
 ```bash
 curl -s http://127.0.0.1:8000/api/health                      # 健康检查
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
-  -H "Content-Type: application/json" -d '{"type":"capability_match","task":"t_login_dev"}'
+  -H "Content-Type: application/json" -d '{"kind":"capability_match","task":"t_login_dev"}'
 .venv/bin/python -m pytest tests/ -q                          # 自动化测试套件全绿（约 430 项，以 pytest 实测为准）
 ```
 

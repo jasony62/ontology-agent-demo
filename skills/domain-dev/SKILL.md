@@ -62,7 +62,7 @@ def create_adapter_ctx(ctx):
 curl -s -X POST http://127.0.0.1:8000/api/domains/<你的领域名>/activate
 # 验证3：切过去后能查询（只读能力走 capabilities/query；变更能力走 capabilities/apply）
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query -H "Content-Type: application/json" \
-  -d '{"type":"<你的能力名>","params":{...}}'
+  -d '{"kind":"<你的能力名>","params":{...}}'
 # 验证4：能切回
 curl -s -X POST http://127.0.0.1:8000/api/domains/agent_task/activate
 ```

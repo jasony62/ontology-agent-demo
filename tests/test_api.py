@@ -47,14 +47,14 @@ def test_index_page():
 # ---------- 能力端点（读写分离） ----------
 
 def test_query_capability_match():
-    r = client.post("/api/domains/current/capabilities/query", json={"type": "capability_match", "task": "t_login_dev"})
+    r = client.post("/api/domains/current/capabilities/query", json={"kind": "capability_match", "task": "t_login_dev"})
     assert r.status_code == 200
     names = {m["agent"] for m in r.json()["matches"]}
     assert {"dev_agent", "junior_dev"} <= names
 
 
 def test_query_orchestrate():
-    r = client.post("/api/domains/current/capabilities/query", json={"type": "orchestrate", "task": "t_feature"})
+    r = client.post("/api/domains/current/capabilities/query", json={"kind": "orchestrate", "task": "t_feature"})
     assert r.status_code == 200
     plan = r.json()
     assert len(plan["steps"]) == 5
@@ -63,7 +63,7 @@ def test_query_orchestrate():
 
 def test_apply_assign_conflict():
     r = client.post("/api/domains/current/capabilities/apply",
-                    json={"type": "assign", "task": "t_compliance_dev", "agent": "junior_dev"})
+                    json={"kind": "assign", "task": "t_compliance_dev", "agent": "junior_dev"})
     assert r.status_code == 200
     assert r.json()["conflict"] is not None
 
@@ -75,8 +75,8 @@ def test_query_endpoint_never_mutates_graph():
     before_len = len(M.ENGINE.g)
     before = client.get("/api/health").json()
     for payload in (
-        {"type": "capability_match", "task": "t_login_dev"},
-        {"type": "orchestrate", "task": "t_feature"},
+        {"kind": "capability_match", "task": "t_login_dev"},
+        {"kind": "orchestrate", "task": "t_feature"},
     ):
         assert client.post("/api/domains/current/capabilities/query", json=payload).status_code == 200
 
@@ -89,14 +89,33 @@ def test_query_endpoint_never_mutates_graph():
 def test_capability_cross_endpoint_hints():
     """走错门要指路，而不是笼统报「不支持」。"""
     r = client.post("/api/domains/current/capabilities/query",
-                    json={"type": "assign", "task": "t_compliance_dev", "agent": "junior_dev"})
+                    json={"kind": "assign", "task": "t_compliance_dev", "agent": "junior_dev"})
     assert r.status_code == 400
     assert "POST /api/domains/current/capabilities/apply" in r.json()["detail"]
 
     r = client.post("/api/domains/current/capabilities/apply",
-                    json={"type": "capability_match", "task": "t_login_dev"})
+                    json={"kind": "capability_match", "task": "t_login_dev"})
     assert r.status_code == 400
     assert "POST /api/domains/current/capabilities/query" in r.json()["detail"]
+
+
+def test_capability_legacy_type_field_rejected():
+    """旧字段 `type` 必须明确失败（422），不留别名、不静默忽略。
+
+    `extra="forbid"` 是刻意的破坏性收紧：若沿用 Pydantic 默认的忽略行为，
+    旧客户端会拿到空能力名的 400，比显式 422 难排查得多。
+
+    用赋值而非 dict 键字面量构造旧请求体（`payload["type"] = …` 不含
+    `"type":` 这种键-冒号写法），让 §1.3 的机械 grep（改后 V2 须为 0）仍能
+    区分「要淘汰的请求示例」与「守护旧字段被拒的测试」。
+    """
+    for endpoint in (
+        "/api/domains/current/capabilities/query",
+        "/api/domains/current/capabilities/apply",
+    ):
+        payload = {"task": "t_login_dev", "agent": "junior_dev"}
+        payload["type"] = "capability_match"
+        assert client.post(endpoint, json=payload).status_code == 422
 
 
 def test_apply_assign_mutates_graph_without_persist(isolated_api):
@@ -105,7 +124,7 @@ def test_apply_assign_mutates_graph_without_persist(isolated_api):
 
     before_len = len(M.ENGINE.g)
     r = isolated_api.client.post("/api/domains/current/capabilities/apply", json={
-        "type": "assign", "task": "t_compliance_dev", "agent": "junior_dev",
+        "kind": "assign", "task": "t_compliance_dev", "agent": "junior_dev",
     })
     assert r.status_code == 200
     assert len(M.ENGINE.g) != before_len
@@ -125,7 +144,7 @@ def test_apply_assign_persist_writes_extensions(isolated_api):
 
     before_len = len(M.ENGINE.g)
     r = isolated_api.client.post("/api/domains/current/capabilities/apply", json={
-        "type": "assign", "task": "t_compliance_dev", "agent": "junior_dev",
+        "kind": "assign", "task": "t_compliance_dev", "agent": "junior_dev",
         "persist": True,
     })
     assert r.status_code == 200
@@ -163,7 +182,7 @@ def test_entity_schema_endpoint():
 
 
 def test_explain():
-    client.post("/api/domains/current/capabilities/query", json={"type": "capability_match", "task": "t_login_dev"})
+    client.post("/api/domains/current/capabilities/query", json={"kind": "capability_match", "task": "t_login_dev"})
     r = client.post("/api/domains/current/explain")
     assert r.status_code == 200
     assert r.json()["query_kind"] == "capability_match"

@@ -7,7 +7,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CapabilityQueryRequest(BaseModel):
@@ -16,15 +16,18 @@ class CapabilityQueryRequest(BaseModel):
     语义硬约束：本端点的处理器**不改图、不落盘**，因此可安全重试与缓存。
     处理器由 `QUERY_HANDLERS` 注册，读端点不会看到 `APPLY_HANDLERS` 里的写逻辑。
 
-    `type` 刻意不用 Literal 枚举：能力类型由「框架内置 ∪ 领域处理器」共同
-    决定，而领域是运行时可换的，枚举会在进程启动那一刻就把类型列表冻结成
+    `kind` 刻意不用 Literal 枚举：能力名由「框架内置 ∪ 领域处理器」共同
+    决定，而领域是运行时可换的，枚举会在进程启动那一刻就把能力名清单冻结成
     某个领域的形状。代价是 OpenAPI 文档里少一个下拉列表，用 description 补偿。
     """
 
-    type: str = Field(
+    # 未知字段直接 422：旧字段 `type` 曾被静默忽略而得到空能力名的 400，难排查。
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(
         "",
         description=(
-            "能力类型：框架内置 capability_match / orchestrate，"
+            "能力名：框架内置 capability_match / orchestrate，"
             "或当前领域通过 QUERY_HANDLERS 注册的只读能力。"
             "当前可用值见 GET /api/health 的 contract.query_kinds。"
         ),
@@ -37,12 +40,12 @@ class CapabilityQueryRequest(BaseModel):
         "",
         description="智能体个体短名（也可传完整 IRI）；查询类能力通常可留空。",
     )
-    # 领域自定义参数：内置类型用不到，领域处理器从 req.params 取。
+    # 领域自定义参数：内置能力用不到，领域处理器从 req.params 取。
     # 用自由字典而不是继续往这里加字段——每加一个字段都是把某个领域的
     # 形状钉进框架（classify 的 capabilities/constraints 就是前车之鉴）。
     params: dict[str, Any] = Field(
         default_factory=dict,
-        description="领域自定义参数；仅领域注册的查询能力使用，内置类型不需要。",
+        description="领域自定义参数；仅领域注册的查询能力使用，内置能力不需要。",
     )
 
 
@@ -54,10 +57,13 @@ class ApplyRequest(BaseModel):
     处理器由 `APPLY_HANDLERS` 注册。
     """
 
-    type: str = Field(
+    # 未知字段直接 422：旧字段 `type` 曾被静默忽略而得到空能力名的 400，难排查。
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str = Field(
         "",
         description=(
-            "能力类型：框架内置 assign，或当前领域通过 APPLY_HANDLERS 注册的变更能力。"
+            "能力名：框架内置 assign，或当前领域通过 APPLY_HANDLERS 注册的变更能力。"
             "当前可用值见 GET /api/health 的 contract.apply_kinds。"
         ),
     )

@@ -22,15 +22,15 @@ description: 领域能力查询与调用：能力匹配、任务编排、一致�
 ```bash
 # 能力匹配（R1/R2，纯读）：谁能做 t_login_dev？
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query -H "Content-Type: application/json" \
-  -d '{"type":"capability_match","task":"t_login_dev"}'
+  -d '{"kind":"capability_match","task":"t_login_dev"}'
 
 # 任务编排（R3 依赖传递 + 逐环节匹配，纯读）
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query -H "Content-Type: application/json" \
-  -d '{"type":"orchestrate","task":"t_feature"}'
+  -d '{"kind":"orchestrate","task":"t_feature"}'
 
 # 分配（R4 合规冲突检测；写操作，改图）
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/apply -H "Content-Type: application/json" \
-  -d '{"type":"assign","task":"t_compliance_dev","agent":"junior_dev"}'
+  -d '{"kind":"assign","task":"t_compliance_dev","agent":"junior_dev"}'
 
 # 一致性 / 合规冲突检查
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/consistency -H "Content-Type: application/json" -d '{}'

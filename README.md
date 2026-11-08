@@ -255,7 +255,7 @@ npm run build               # 产物 frontend/app/dist
 ```
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
   -H "Content-Type: application/json" \
-  -d '{"type":"capability_match","task":"t_login_dev"}'
+  -d '{"kind":"capability_match","task":"t_login_dev"}'
 
 curl -s -X POST http://127.0.0.1:8000/api/query \
   -H "Content-Type: application/json" \

@@ -66,7 +66,7 @@ curl -s http://127.0.0.1:8000/api/health     # 断言1：HTTP 200，JSON 含 "st
 curl -s http://127.0.0.1:8000/api/domains    # 断言2：返回体能找到已安装的 agent_task 与当前领域标识
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
   -H "Content-Type: application/json" \
-  -d '{"type":"capability_match","task":"t_login_dev"}'
+  -d '{"kind":"capability_match","task":"t_login_dev"}'
 # 断言3：返回 JSON 含匹配 Agent 条目（agent 短名 + shared_capabilities + rule=R1/R2）
 ```
 

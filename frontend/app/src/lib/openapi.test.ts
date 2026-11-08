@@ -80,18 +80,18 @@ const spec: OpenAPISpec = {
     schemas: {
       CapabilityQueryRequest: {
         type: 'object',
-        required: ['type'],
+        required: ['kind'],
         properties: {
-          type: { type: 'string', example: 'capability_match' },
+          kind: { type: 'string', example: 'capability_match' },
           task: { type: 'string' },
           params: { type: 'object' },
         },
       },
       ApplyRequest: {
         type: 'object',
-        required: ['type'],
+        required: ['kind'],
         properties: {
-          type: { type: 'string', example: 'assign' },
+          kind: { type: 'string', example: 'assign' },
           task: { type: 'string' },
           agent: { type: 'string' },
           persist: { type: 'boolean', default: false },
@@ -132,7 +132,7 @@ describe('operationsFromSpec', () => {
     const query = ops.find((op) => op.path === '/api/domains/current/capabilities/query');
     const schema = query?.requestBody?.content?.['application/json']?.schema;
     expect(schema?.type).toBe('object');
-    expect(Object.keys(schema?.properties ?? {})).toEqual(['type', 'task', 'params']);
+    expect(Object.keys(schema?.properties ?? {})).toEqual(['kind', 'task', 'params']);
   });
 
   it('groupOperations 按规范声明顺序排列，未知分组追加在后', () => {
@@ -225,11 +225,11 @@ describe('请求初值 / curl', () => {
     const query = operationsFromSpec(spec).find((op) => op.path === '/api/domains/current/capabilities/query');
     expect(query).toBeDefined();
     const body = JSON.parse(initialBodyText(query!));
-    expect(body).toEqual({ type: 'capability_match', task: '', params: {} });
+    expect(body).toEqual({ kind: 'capability_match', task: '', params: {} });
 
     const apply = operationsFromSpec(spec).find((op) => op.path === '/api/domains/current/capabilities/apply');
     expect(JSON.parse(initialBodyText(apply!))).toEqual({
-      type: 'assign', task: '', agent: '', persist: false,
+      kind: 'assign', task: '', agent: '', persist: false,
     });
   });
 

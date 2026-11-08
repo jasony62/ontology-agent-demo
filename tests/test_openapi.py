@@ -124,13 +124,13 @@ def test_request_body_description_lists_fields():
 
     body = spec["paths"]["/api/domains/current/capabilities/query"]["post"]["requestBody"]
     desc = body.get("description", "")
-    for field in ("type", "task", "agent", "params"):
+    for field in ("kind", "task", "agent", "params"):
         assert f"`{field}`" in desc, f"请求体说明缺少字段 {field}"
     assert "查询" in desc
 
     apply_body = spec["paths"]["/api/domains/current/capabilities/apply"]["post"]["requestBody"]
     apply_desc = apply_body.get("description", "")
-    for field in ("type", "task", "agent", "persist", "params"):
+    for field in ("kind", "task", "agent", "persist", "params"):
         assert f"`{field}`" in apply_desc, f"请求体说明缺少字段 {field}"
     assert "persist" in apply_desc
 

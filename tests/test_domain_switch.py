@@ -294,7 +294,7 @@ def test_api_undeclared_capability_returns_400(switched_api):
     client = TestClient(M.app)
     client.post("/api/domains/minimal/activate")
 
-    r = client.post("/api/domains/current/capabilities/query", json={"type": "capability_match", "task": "x"})
+    r = client.post("/api/domains/current/capabilities/query", json={"kind": "capability_match", "task": "x"})
     assert r.status_code == 400
     assert "capability_match" in r.json()["detail"]
 

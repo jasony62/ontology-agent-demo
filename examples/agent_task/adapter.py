@@ -249,7 +249,8 @@ class AgentTaskAdapter:
         断言边 → R1（R1 无贡献，边本来就在）；沿 can_execute 的
         propertyChainAxiom（R1 属性链）找得到路径 → R1；否则是规则层推出的
         → R2。不要简化成"是复合任务就算 R2"——复合任务的 can_execute 也
-        可能来自 R1 属性链。
+        可能来自 R1 属性链。判据里的 `engine.raw` 是**断言图**（不含推理闭包），
+        与 `validate_shapes` 的校验对象同一口径。
         """
         pred = self._p("can_execute")
         if (agent, pred, task) in self.engine.raw:
@@ -602,6 +603,11 @@ class AgentTaskAdapter:
         （`self.agents()` 拼 "Agent"、`self.tasks()` 拼 "Task"），配置里加一组
         个体在导出里会被静默丢掉，而前端图例与节点配色读的是配置——两边慢慢
         就漂了。现在分组集合只有一个来源，字段丰富度仍由领域按组登记。
+
+        `inferred` 的判据是**断言图 `engine.raw`**（不含推理闭包）：不在断言图上
+        的 `can_execute` 边（属性链 R1 与规则层 R2 的产物）标 `true`。口径与
+        `validate_shapes` 一致——两者都以 raw 为"断言事实"的边界，`engine.g`
+        才是含推理产物的图，不可混用。
         """
         g, cfg, raw = self.engine.g, self.c, self.engine.raw
         classes = []

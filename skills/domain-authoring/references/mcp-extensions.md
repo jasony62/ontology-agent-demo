@@ -36,7 +36,7 @@ Ontop 双设计（语义白名单 + 预定义查询端点）在 MCP 出口层的
 
 - pyshacl 安装：`pip install pyshacl`（镜像缺失时走官方源，0.40.1 实测可用）；
 - **形状设计守则：不让现有数据红**——写形状前先 dump 实际 ABox 逐个体核对（minCount 1 只对确有数据全量的属性敢写）；
-- pyshacl API：`conforms, results_graph, _text = pyshacl.validate(data_graph, shacl_graph=shapes, abort_on_first=False)`；校验对象用 `engine.raw`（断言图）——体检「入库数据」而非推理产物；
+- pyshacl API：`conforms, results_graph, _text = pyshacl.validate(data_graph, shacl_graph=shapes, abort_on_first=False)`；校验对象用 `engine.raw`（断言图）——体检「入库数据」而非推理产物。**注意口径**：对派生谓词（如 `can_execute`）写形状时，断言图里没有这些三元组，报告永远全绿；要审推理产物必须显式换 `engine.g`（物化图），结果会不同——工具描述已写明这一点；
 - 违规提取：results_graph 中 `sh:ValidationResult` 主体再取 `sh:focusNode / sh:resultPath / sh:sourceConstraintComponent / sh:resultMessage / sh:value`；SH 命名空间自建 `Namespace("http://www.w3.org/ns/shacl#")`；
 - 结构化报告不抛异常：`{conforms, summary, violations}`；pyshacl 缺失或形状文件损坏 → `configured: False` + 明确错误（诚实降级，不崩 server）。
 

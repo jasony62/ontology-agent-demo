@@ -286,8 +286,22 @@ async def _no_cache_docs_middleware(request, call_next):
 
 def _uri(name: str):
     if not name:
-        raise HTTPException(status_code=400, detail="缺少参数：task / agent 不能为空")
+        raise HTTPException(status_code=400, detail="个体短名不能为空")
     return ENGINE.NS[name]
+
+
+def _param(req, name: str) -> str:
+    """从能力的 `params` 里取必填参数；缺失时报具体键名，统一转 400。
+
+    `params` 是自由字典，Pydantic 不会替内置能力校验键是否齐全——没有
+    这一步，缺参数会退化成 `_uri("")` 的笼统 400。文案里带能力名与
+    `params.<键名>`，调用方一眼可见填哪里；`ValueError` 由
+    `_run_capability()` 统一转成 400。
+    """
+    value = req.params.get(name, "")
+    if not value:
+        raise ValueError(f"能力 {req.kind} 缺少必填参数：params.{name}")
+    return value
 
 
 def _require_default_ontology():
@@ -567,11 +581,13 @@ def ontology_graph_groups():
 # `QUERY_HANDLERS` / `APPLY_HANDLERS` 声明，运行时分别并入对应表，
 # 见 `_query_kinds()` / `_apply_kinds()`。
 QUERY_KINDS = {
-    "capability_match": lambda a, req: a.capability_match(_uri(req.task)),
-    "orchestrate": lambda a, req: a.orchestrate(_uri(req.task)),
+    "capability_match": lambda a, req: a.capability_match(_uri(_param(req, "task"))),
+    "orchestrate": lambda a, req: a.orchestrate(_uri(_param(req, "task"))),
 }
 APPLY_KINDS = {
-    "assign": lambda a, req: a.assign(_uri(req.task), _uri(req.agent), persist=req.persist),
+    "assign": lambda a, req: a.assign(
+        _uri(_param(req, "task")), _uri(_param(req, "agent")), persist=req.persist
+    ),
 }
 
 QUERY_ENDPOINT = "POST /api/domains/current/capabilities/query"
@@ -670,7 +686,10 @@ def _schema_summary(adapter) -> dict | None:
             "description": (
                 "查询结果；纯读——不改图、不落盘，可安全重试与缓存。"
                 "形状随 kind 与当前领域处理器而变，可用能力名见 "
-                "GET /api/health 的 contract.query_kinds。"
+                "GET /api/health 的 contract.query_kinds。内置能力参数在 params 里："
+                "capability_match / orchestrate 必填 params.task"
+                "（图里的任务个体短名，取值见 GET /api/domains/current/ontology 的 individuals），"
+                "领域自有能力的键名见该领域包文档。"
             ),
         },
         **ERROR_400,
@@ -684,8 +703,11 @@ def capabilities_query(req: CapabilityQueryRequest):
     `QUERY_HANDLERS`；本端点看不到 `APPLY_HANDLERS` 里的写逻辑，因此可以
     安全重试、缓存、给只读权限。
 
-    给调用方：可用能力名见 `GET /api/health` 的 `contract.query_kinds`。
-    能力名未知或领域未声明能力返回 400，声明了却未实现返回 501；把变更能力
+    给调用方：可用能力名见 `GET /api/health` 的 `contract.query_kinds`；
+    内置能力参数一律在 `params` 里——`capability_match` / `orchestrate`
+    必填 `params.task`（任务个体短名，取值见 `GET /api/domains/current/ontology`
+    的 individuals），领域自有能力的键名看该领域包文档。能力名未知或领域
+    未声明能力返回 400，声明了却未实现返回 501；把变更能力
     （如 assign）传到这里会得到指路 400，而不是笼统的"不支持"。
     """
     _require_default_ontology()
@@ -709,7 +731,10 @@ def capabilities_query(req: CapabilityQueryRequest):
             "description": (
                 "变更结果；会改图，persist=true 时写入 extensions/，不保证幂等。"
                 "形状随 kind 与当前领域处理器而变，可用能力名见 "
-                "GET /api/health 的 contract.apply_kinds。"
+                "GET /api/health 的 contract.apply_kinds。内置能力参数在 params 里："
+                "assign 必填 params.task 与 params.agent"
+                "（图里的任务 / 智能体个体短名，取值见 GET /api/domains/current/ontology 的 individuals），"
+                "领域自有能力的键名见该领域包文档。"
             ),
         },
         **ERROR_400,
@@ -723,8 +748,11 @@ def capabilities_apply(req: ApplyRequest):
     写入 `extensions/`，重启后仍在。不保证幂等——调用方请自行防重，
     不要按纯读端点的策略盲目重试。
 
-    给调用方：可用能力名见 `GET /api/health` 的 `contract.apply_kinds`。
-    能力名未知或领域未声明能力返回 400，声明了却未实现返回 501；把只读能力
+    给调用方：可用能力名见 `GET /api/health` 的 `contract.apply_kinds`；
+    内置能力参数一律在 `params` 里——`assign` 必填 `params.task` 与
+    `params.agent`（任务 / 智能体个体短名，取值见 `GET /api/domains/current/ontology`
+    的 individuals），领域自有能力的键名看该领域包文档。能力名未知或领域
+    未声明能力返回 400，声明了却未实现返回 501；把只读能力
     （如 capability_match）传到这里会得到指路 400。
     """
     _require_default_ontology()

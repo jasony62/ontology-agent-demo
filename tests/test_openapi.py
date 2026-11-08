@@ -124,13 +124,13 @@ def test_request_body_description_lists_fields():
 
     body = spec["paths"]["/api/domains/current/capabilities/query"]["post"]["requestBody"]
     desc = body.get("description", "")
-    for field in ("kind", "task", "agent", "params"):
+    for field in ("kind", "params"):
         assert f"`{field}`" in desc, f"请求体说明缺少字段 {field}"
-    assert "查询" in desc
+    assert "query_kinds" in desc
 
     apply_body = spec["paths"]["/api/domains/current/capabilities/apply"]["post"]["requestBody"]
     apply_desc = apply_body.get("description", "")
-    for field in ("kind", "task", "agent", "persist", "params"):
+    for field in ("kind", "persist", "params"):
         assert f"`{field}`" in apply_desc, f"请求体说明缺少字段 {field}"
     assert "persist" in apply_desc
 
@@ -277,3 +277,31 @@ def test_api_docs_page_is_standalone():
     assert r.status_code == 200
     home = client.get("/")
     assert r.headers.get("content-type") == home.headers.get("content-type")
+
+
+def test_capability_request_models_ow_nothing_to_domains():
+    """框架请求模型的字段集合：只认 kind / params / persist。
+
+    `task` / `agent` 是 agent_task 本体的形状，历史上曾被钉进统一请求模型，
+    换到 onto_playground 后 `/api-docs` 还在宣讲「智能体个体短名（assign
+    必填）」。这里守住集合不回涨：以后要往框架模型加字段，先说服自己它
+    对任意异构领域都成立。
+    """
+    spec = client.get("/openapi.json").json()
+    schemas = spec["components"]["schemas"]
+    assert set(schemas["CapabilityQueryRequest"]["properties"]) == {"kind", "params"}
+    assert set(schemas["ApplyRequest"]["properties"]) == {"kind", "persist", "params"}
+
+
+def test_capability_legacy_top_level_fields_rejected():
+    """旧形状（顶层 task / agent）明确失败：422 extra_forbidden，不静默兼容。
+
+    `extra="forbid"` 让旧调用拿到可诊断的 422（而不是静默忽略后的空能力名
+    400），正面验收「不做兼容」。用赋值构造旧请求体（不含 `"task":` 键冒
+    号字面量），让机械判据仍能区分「要淘汰的请求示例」与守护测试本身。
+    """
+    payload = {"kind": "capability_match"}
+    payload["task"] = "t_login_dev"
+    r = client.post("/api/domains/current/capabilities/query", json=payload)
+    assert r.status_code == 422
+    assert any(err["type"] == "extra_forbidden" for err in r.json()["detail"])

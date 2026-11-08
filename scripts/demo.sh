@@ -12,7 +12,7 @@ echo
 echo "== 2. 能力匹配：「登录模块开发谁能做？」 =="
 curl -s -X POST "$BASE/api/domains/current/capabilities/query" \
   -H "Content-Type: application/json" \
-  -d '{"kind":"capability_match","task":"t_login_dev"}' | python3 -m json.tool
+  -d '{"kind":"capability_match","params":{"task":"t_login_dev"}}' | python3 -m json.tool
 
 echo
 echo "== 3. 推导链（上一步为什么这么答） =="

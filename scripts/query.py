@@ -59,11 +59,12 @@ def http_query(kind: str, args) -> dict:
     if kind == "explain":
         return _http_call("POST", "/api/domains/current/explain")
     if kind in ("capability_match", "orchestrate"):
-        payload = {"kind": kind, "task": args.task, "agent": args.agent}
+        # 只读能力只需 task；顶层不再有 task / agent，能力参数一律进 params。
+        payload = {"kind": kind, "params": {"task": args.task}}
         return _http_call("POST", "/api/domains/current/capabilities/query", payload)
     if kind == "assign":
         # 写端点与读端点物理分离：assign 会改图，走 capabilities/apply。
-        payload = {"kind": kind, "task": args.task, "agent": args.agent}
+        payload = {"kind": kind, "params": {"task": args.task, "agent": args.agent}}
         return _http_call("POST", "/api/domains/current/capabilities/apply", payload)
     if kind in ("create", "classify"):
         # 通用实体创建：payload 的形状由领域 ENTITY_SCHEMA 声明，

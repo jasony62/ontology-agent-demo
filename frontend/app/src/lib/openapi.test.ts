@@ -83,7 +83,6 @@ const spec: OpenAPISpec = {
         required: ['kind'],
         properties: {
           kind: { type: 'string', example: 'capability_match' },
-          task: { type: 'string' },
           params: { type: 'object' },
         },
       },
@@ -92,9 +91,8 @@ const spec: OpenAPISpec = {
         required: ['kind'],
         properties: {
           kind: { type: 'string', example: 'assign' },
-          task: { type: 'string' },
-          agent: { type: 'string' },
           persist: { type: 'boolean', default: false },
+          params: { type: 'object' },
         },
       },
       SparqlRequest: {
@@ -132,7 +130,7 @@ describe('operationsFromSpec', () => {
     const query = ops.find((op) => op.path === '/api/domains/current/capabilities/query');
     const schema = query?.requestBody?.content?.['application/json']?.schema;
     expect(schema?.type).toBe('object');
-    expect(Object.keys(schema?.properties ?? {})).toEqual(['kind', 'task', 'params']);
+    expect(Object.keys(schema?.properties ?? {})).toEqual(['kind', 'params']);
   });
 
   it('groupOperations 按规范声明顺序排列，未知分组追加在后', () => {
@@ -225,11 +223,11 @@ describe('请求初值 / curl', () => {
     const query = operationsFromSpec(spec).find((op) => op.path === '/api/domains/current/capabilities/query');
     expect(query).toBeDefined();
     const body = JSON.parse(initialBodyText(query!));
-    expect(body).toEqual({ kind: 'capability_match', task: '', params: {} });
+    expect(body).toEqual({ kind: 'capability_match', params: {} });
 
     const apply = operationsFromSpec(spec).find((op) => op.path === '/api/domains/current/capabilities/apply');
     expect(JSON.parse(initialBodyText(apply!))).toEqual({
-      kind: 'assign', task: '', agent: '', persist: false,
+      kind: 'assign', persist: false, params: {},
     });
   });
 

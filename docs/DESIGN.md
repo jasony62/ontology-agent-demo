@@ -359,12 +359,14 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 |---|---|---|---|
 | GET | `/api/domains/current/ontology` | — | 图谱数据（类/个体/边） |
 | GET | `/api/domains/current/ontology/graph-groups` | — | 领域声明的图谱分组（`name` / `class` / `label` / `members`），前端据此上色与出图例 |
-| POST | `/api/domains/current/capabilities/query` | `{type: capability_match\|orchestrate, task, agent?, params?}` | 领域查询（纯读，不改图） |
-| POST | `/api/domains/current/capabilities/apply` | `{type: assign, task, agent?, persist?, params?}` | 领域变更（改图，`persist` 落盘） |
+| POST | `/api/domains/current/capabilities/query` | `{kind: capability_match\|orchestrate, params: {task}}` | 领域查询（纯读，不改图） |
+| POST | `/api/domains/current/capabilities/apply` | `{kind: assign, params: {task, agent}, persist?}` | 领域变更（改图，`persist` 落盘） |
 | POST | `/api/domains/current/entities` | `{payload, persist?}` | 按领域 `ENTITY_SCHEMA` 新建实体 |
 | GET | `/api/domains/current/entities/schema` | — | 当前领域的实体字段声明 |
 | POST | `/api/domains/current/explain` | — | 最近一次推导链 |
 | POST | `/api/domains/current/consistency` | — | 一致性 / 合规冲突 |
+
+> 能力端点的请求模型顶层只认 `kind` / `params` / `persist`：`task` / `agent` 属于 agent_task 示例本体的形状，已收进 `params`（内置能力同样如此：`capability_match` / `orchestrate` 填 `params.task`，`assign` 填 `params.task` + `params.agent`）。新增能力参数一律进 `params`，不再往框架请求模型加字段。
 
 ### 8.2 通用端点（走引擎，与本体无关，任意 .owl 可用）
 
@@ -382,7 +384,7 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 ```bash
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
   -H "Content-Type: application/json" \
-  -d '{"kind":"capability_match","task":"t_login_dev"}'
+  -d '{"kind":"capability_match","params":{"task":"t_login_dev"}}'
 
 curl -s -X POST http://127.0.0.1:8000/api/individuals \
   -H "Content-Type: application/json" \
@@ -454,7 +456,7 @@ python3 -m venv .venv
 ```bash
 curl -s http://127.0.0.1:8000/api/health                      # 健康检查
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
-  -H "Content-Type: application/json" -d '{"kind":"capability_match","task":"t_login_dev"}'
+  -H "Content-Type: application/json" -d '{"kind":"capability_match","params":{"task":"t_login_dev"}}'
 .venv/bin/python -m pytest tests/ -q                          # 自动化测试套件全绿（约 430 项，以 pytest 实测为准）
 ```
 

@@ -1,0 +1,15 @@
+# G3 坏 fixture（#69）：关键推理不再如期触发——依赖闭包退化为 1 条
+#
+# 领域冒烟断言集（gates_smoke.json）要求：required_by（逆属性物化）≥ 1、
+# depends_on（传递闭包物化）≥ 2。本图只有 1 条 depends_on 直接边
+# （传递闭包无新增），required_by 前提也缺失——两项冒烟都不达标。
+#
+# 预期：run_gates(...) → overall=fail, failed_at=G3_materialize_smoke，
+#       unmet 含谓词短名 required_by 与 depends_on（关键词可辨认是谁在报错）。
+
+@prefix demo: <http://ontology.localhost/agent-task#> .
+
+demo:t_a a demo:Task .
+demo:t_b a demo:Task .
+
+demo:t_a demo:depends_on demo:t_b .

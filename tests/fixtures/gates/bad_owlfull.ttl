@@ -1,0 +1,13 @@
+# G1 坏 fixture（#69）：主键陷阱——数据属性被声明为 owl:InverseFunctionalProperty
+#
+# OWL 2 DL 不允许数据属性挂 InverseFunctional（会将本体拖入 OWL-Full，
+# 推理机拒收）；主键唯一性应改用 SHACL 表达。G1 的结构断言与
+# owlready2 的 is_owl_full() 都会拦下它。
+#
+# 预期：run_gates(...) → overall=fail, failed_at=G1_dl_format，
+#       violations 含关键词「主键陷阱」/「InverseFunctional」/「OWL-Full」。
+
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
+
+demo:task_id a owl:DatatypeProperty, owl:InverseFunctionalProperty .

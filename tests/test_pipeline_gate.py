@@ -109,6 +109,87 @@ def test_g2_catches_individual_in_disjoint_classes():
                for c in g2["evidence"]["conflicts"])
 
 
+# ---------------- 坏 fixture（#69）：每个闸门都证明过自己会失败 ----------------
+
+def _fixture(name: str) -> str:
+    """读取 tests/fixtures/gates/ 下的坏 fixture（Turtle）。"""
+    from pathlib import Path
+
+    return (Path(__file__).parent / "fixtures" / "gates" / name).read_text(encoding="utf-8")
+
+
+def _gate_trace(r, gate: str):
+    return next(t for t in r["gate_trace"] if t["gate"] == gate)
+
+
+def test_bad_fixture_g1_owlfull_reports_keyword():
+    """G1 坏 fixture：主键陷阱（数据属性挂 InverseFunctional）→ G1 fail。
+
+    错误信息含可辨认关键词（主键陷阱 / InverseFunctional / OWL-Full）——
+    四闸都红时必须能判断是谁在报错，fixture 与关键词一一对应。
+    """
+    r = pipeline_gate.run_gates(_fixture("bad_owlfull.ttl"), gates=["G1"])
+    assert r["failed_at"] == "G1_dl_format"
+    g1 = _gate_trace(r, "G1_dl_format")
+    assert g1["status"] == "fail"
+    text = " ".join(g1["evidence"]["violations"])
+    assert "主键陷阱" in text and "InverseFunctional" in text and "OWL-Full" in text
+
+
+def test_bad_fixture_g2_inconsistent_reports_keyword():
+    """G2 坏 fixture：个体同时属于互斥类 → G2 fail，违规个体被点名。"""
+    r = pipeline_gate.run_gates(_fixture("bad_inconsistent.ttl"), gates=["G2"])
+    assert r["failed_at"] == "G2_consistency"
+    g2 = _gate_trace(r, "G2_consistency")
+    assert g2["status"] == "fail"
+    assert any("disjointWith" in c and "t_bad_split" in c
+               for c in g2["evidence"]["conflicts"])
+
+
+def test_bad_fixture_g3_smoke_reports_keyword():
+    """G3 坏 fixture：闭包退化为 1 条依赖 → G3 fail，unmet 点名谓词与期望。"""
+    r = pipeline_gate.run_gates(_fixture("bad_smoke.ttl"), gates=["G3"])
+    assert r["failed_at"] == "G3_materialize_smoke"
+    g3 = _gate_trace(r, "G3_materialize_smoke")
+    assert g3["status"] == "fail"
+    unmet = " ".join(g3["evidence"]["unmet"])
+    assert "required_by" in unmet and "depends_on" in unmet
+
+
+def test_bad_fixture_g4_shacl_reports_keyword():
+    """G4 坏 fixture：Agent 无能力 + 风险 99 → G4 fail，违规逐条点名。
+
+    fixture 内自带 G3 冒烟的最小饱料（required_by ≥ 1、depends_on ≥ 2），
+    fail-fast 才能走到 G4，违规精确归因到本闸。
+    """
+    r = pipeline_gate.run_gates(_fixture("bad_shacl.ttl"))
+    assert r["failed_at"] == "G4_shacl_tests"
+    g4 = _gate_trace(r, "G4_shacl_tests")
+    assert g4["status"] == "fail"
+    by = {(v["focus_node"], v["path"]): v["constraint"].lower()
+          for v in g4["evidence"]["violations"]}
+    assert ("bad_agent", "has_capability") in by
+    assert "mincount" in by[("bad_agent", "has_capability")]
+    assert ("t_bad_risk", "has_risk_level") in by
+    assert "maxinclusive" in by[("t_bad_risk", "has_risk_level")]
+
+
+def test_fixtures_stop_firing_when_gate_disabled(monkeypatch):
+    """验收③·测试本身有效性的反向验证：把 G2 改坏（恒 pass）→
+    bad_inconsistent 不再被拦、overall=pass。
+
+    fixture 的红依赖闸门健在：若有人注释掉 G2 的检查，上面的
+    test_bad_fixture_g2_* 必然转红——测试与闸门互相咬合，不是摆设。
+    """
+    monkeypatch.setitem(
+        pipeline_gate._CHECKERS, "G2",
+        lambda g, domain, degraded: {"gate": "G2_consistency", "status": "pass",
+                                     "evidence": {"conflicts": []}},
+    )
+    r = pipeline_gate.run_gates(_fixture("bad_inconsistent.ttl"), gates=["G2"])
+    assert r["overall"] == "pass", "闸门被改坏后坏数据仍被拦，说明反向验证失效"
+
+
 def test_raw_declares_business_disjoint_with():
     """现行本体（#66）：raw 断言图声明业务类互斥 ≥ 4 对，G2 才有东西可拦。
 

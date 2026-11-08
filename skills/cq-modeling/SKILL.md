@@ -75,7 +75,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 
 ### 3.6 配套质量闸门（按需）
 
-- 数据体检：`validate_shapes`（SHACL，形状文件随领域包 `shapes/*.ttl`）——管「数据合不合格」；
+- 数据体检：`validate_shapes`（SHACL，形状文件随领域包 `shapes/*.ttl`）——管「数据合不合格」；**只校验断言图，不含推理闭包**（给派生谓词写形状需显式对物化图执行，结果会不同）；
 - 业务规则：`run_rules` / `list_rules`（SHACL 规则，`rules/*.ttl` 随领域包）——管「推出新结论」，与校验同语言；
 - 建模管线四闸门：`pipeline_gate`（G1–G4，规格见 `docs/MODELING_PIPELINE.md`）。
 

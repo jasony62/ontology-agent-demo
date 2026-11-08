@@ -77,7 +77,12 @@ def _uri(engine, name):
 
 
 def _premise_src(engine, s, p, o) -> str:
-    """前提边来源：在断言图中则 asserted，否则 derived。"""
+    """前提边来源：断言图（engine.raw，不含推理闭包）上有则 asserted，否则 derived。
+
+    口径说明：derived 涵盖一切非断言产物（owlrl 物化 + 规则层 CONSTRUCT），
+    与 `validate_shapes` 只校验 raw 的边界一致——判断"这条前提是不是人写进去的"，
+    唯一可靠的对象是 raw，不是 g。
+    """
     return "asserted" if (s, p, o) in engine.raw else "derived"
 
 

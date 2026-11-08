@@ -111,7 +111,14 @@ def _shacl_violations(results_graph, engine) -> list:
 
 
 def run_shacl_validation(engine) -> dict:
-    """按领域包内 shapes/agent_task.ttl 对引擎 ABox 做 SHACL 校验（结构化报告，不抛异常）。"""
+    """按领域包内 shapes/agent_task.ttl 对引擎 ABox 做 SHACL 校验（结构化报告，不抛异常）。
+
+    校验口径：**只审断言图 `engine.raw`，不含推理闭包**（属性链 R1、规则层 R2/R5/R6
+    等产物都在 `engine.g` 上）。这是 AI 数据治理的正确口径——审的是 LLM 抽取/写入的
+    数据，隐含事实不该被业务形状卡；若形状的目标是派生谓词（如 `can_execute`），对
+    断言图校验永远全绿，必须显式改校验物化图，结果会不同（实测同一份形状：raw 0 违规
+    / g 6 违规）。
+    """
     if pyshacl is None:
         return {"conforms": None, "configured": False,
                 "error": "缺少依赖 pyshacl，请先 pip install pyshacl（见 requirements.txt）"}
@@ -227,6 +234,9 @@ def register_tools(server: MCPServer, get_adapter) -> None:
         "数据体检（SHACL，领域）：按领域包内 shapes/agent_task.ttl 对当前 ABox 实例数据做"
         "SHACL 形状校验，返回结构化报告 {conforms, summary, violations}——violations 逐条给出"
         "焦点个体短名、属性路径、违反的约束与中文说明；不合格的列出来而非抛异常。"
+        "**仅校验断言事实（断言图），不含推理闭包**——属性链 / 规则层推导出的三元组"
+        "（如 can_execute、needs_manual_review）不参与；对推理产物做形状校验属建模口径，"
+        "需对物化图执行，结果会不同。"
         "用于「LLM 抽取/生成 → SHACL 体检 → 合格才入库」的 AI 数据治理闭环。"))
     def validate_shapes() -> dict:
         return run_shacl_validation(get_adapter().engine)

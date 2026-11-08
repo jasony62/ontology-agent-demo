@@ -33,6 +33,7 @@
 
 ### Fixed
 
+- **`classes()` 不再把 OWL 内建类混进业务类树（#71）**：owlrl 物化会推出「owl:Nothing ⊑ 每个类」（空集语义成立）与「owl:Thing ⊑ owl:Thing」（自指），`classes()` 取「第一个具名父类」时前者让 `Nothing.parent` 变成图里碰巧第一个被迭代到的类——rdflib 内存图迭代顺序受进程哈希种子影响，同一文件连跑三次 parent 各不相同（DevAgent / CICD / DeployAgent），后者让 Thing 自指、自环过滤后从树里消失。现在 `Nothing` 整体排除，`Thing` 保留为类树根节点且 `parent=None`（Agent/Task 等的 asserted 父类都是它，前端树根照常成立）；`/api/classes` 返回 27 → 26（25 业务类 + Thing）。新增跨 10 个 PYTHONHASHSEED 子进程的一致性断言（此类漂移同进程内复现不了，必须换哈希种子才抓得住）。
 - **`direct_*` 快照改读断言图，图谱不再把推理闭包标成断言边**：`examples/agent_task/adapter.py` 的 `direct_depends` / `direct_composed` / `direct_has_cap` / `direct_req_cap` 此前读 `engine.g`（owlrl 物化后已含传递闭包，"排除推理闭包"从未发生），于是 `graph_export` 把 10 条 `depends_on` 全部标成 `inferred: false`（其中 6 条是推出来的）。现统一改读 `engine.raw`：`depends_on` 恰 4 条断言边且全部 `inferred: false`；`can_execute` 的 `inferred` 改为 `(s, p, o) not in raw`（不再依赖已删除的 `r2_asserted`）。
 - **发布包补齐示例的 `.owl` 与 SHACL 形状**：`pyproject.toml` 的 `[tool.setuptools.package-data]` 此前只为 `examples` 登记了 `*.json` / `*.md`，构建出的 wheel / sdist 里没有 `*.owl`、`shapes/*.ttl`、`rules/*.ttl`——照 README 装出来的示例领域会缺本体。现补 `*/*.owl` 与 `*/*/*.ttl`，新增的 `examples/onto_playground/` 也能随版本完整发布。
 - **`/api/ontology/export?format=n3` 返回 `text/n3`**：此前 N3 被归到 `application/rdf+xml`，文件后缀也写成 `.rdf`，按规范生成客户端的调用方会拿 XML 解析器去读 N3。现按格式如实映射 media type 与文件后缀（turtle → `.ttl` / rdfxml → `.rdf` / n3 → `.n3`），响应正文不变；OpenAPI 同步声明三种 media type。

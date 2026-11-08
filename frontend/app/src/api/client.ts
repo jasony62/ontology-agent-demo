@@ -50,6 +50,17 @@ export interface MaterializedResponse {
   inferred: GraphData;
 }
 
+/** 单条三元组的结构化证明（GET /api/ontology/proof，形状见 reasoner/proof.py） */
+export interface ProofResponse {
+  mode: 'asserted' | 'derived' | 'unproven';
+  rule: string | null;
+  axioms: { iri: string; type: string; [k: string]: unknown }[];
+  premises: {
+    subject: string; predicate: string; object: string; source: string;
+  }[];
+  conclusion: { subject: string; predicate: string; object: string };
+}
+
 export interface InferStats {
   triples_before: number;
   triples_after: number;
@@ -130,6 +141,12 @@ export const api = {
 
   /** 物化 diff：原始断言 / 推理新增 */
   materialized: () => request<MaterializedResponse>('/api/ontology/materialized'),
+
+  /** 单条三元组的结构化证明（GET /api/ontology/proof，#55） */
+  proof: (s: string, p: string, o: string) =>
+    request<ProofResponse>(
+      `/api/ontology/proof?${new URLSearchParams({ s, p, o })}`,
+    ),
 
   /** 当前本体原始 RDF/XML 文本 */
   source: () => request<{ filename: string; content: string }>('/api/ontology/source'),

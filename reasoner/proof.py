@@ -8,6 +8,7 @@
   - property_chain   (R1)：owl:propertyChainAxiom（如 has_capability ◦ required_by ⊑ can_execute）
   - transitive       (R3)：owl:TransitiveProperty（如 depends_on 传递闭包）
   - class_membership (R4)：rdfs:subClassOf 类型判定（如 DevAgent ⊑ Agent ⇒ dev_agent 为 Agent）
+  - inverse_of       (prp-inv)：owl:inverseOf 逆属性（如 required_by ⇄ requires_capability）
 
 mode 语义（诚实降级，绝不伪造证明）：
   - asserted：结论在本体直接断言图中（原始公理/事实），无前提
@@ -199,7 +200,30 @@ def build_proof(engine, subject, predicate, obj) -> dict:
                         "axioms": [{"iri": str(o), "type": "rdfs:subClassOf"}],
                         "premises": premises, "conclusion": conclusion}
 
-        # 2d) 推理产生但规则未识别：诚实降级，不给部分证明当完整
+        # 2d) prp-inv：p 的逆属性
+        # OWL 允许只声明单向（如 requires_capability owl:inverseOf required_by），
+        # 因此两个方向都要查：objects() 查「p 声明了谁的逆」，subjects() 查「谁声明了是 p 的逆」。
+        # 只查 objects() 在双向声明的本体上恰好能跑通，换单向声明的本体就静默失效
+        # （表现为某些边点开没有依据，且无任何报错）。
+        inverses = set(engine.g.objects(p, OWL.inverseOf)) | set(
+            engine.g.subjects(OWL.inverseOf, p)
+        )
+        for inv in inverses:
+            # 前提判定用 raw（原始断言图）而非 g：保证「前提是断言」，避免拿推理
+            # 结果去证明推理结果。取舍：若逆属性前提本身是推出来的，这里查不到
+            # （当前数据无此情形），该边会落到 2e 的诚实降级分支。
+            if (o, inv, s) in engine.raw:
+                return {
+                    "mode": "derived",
+                    "rule": "inverse_of",
+                    "axioms": [{"iri": str(p), "type": "owl:inverseOf",
+                                "inverse": local(inv)}],
+                    "premises": [{"subject": local(o), "predicate": local(inv),
+                                  "object": local(s), "source": "asserted"}],
+                    "conclusion": conclusion,
+                }
+
+        # 2e) 推理产生但规则未识别：诚实降级，不给部分证明当完整
         return {"mode": "derived", "rule": None, "axioms": [], "premises": [],
                 "conclusion": conclusion}
 

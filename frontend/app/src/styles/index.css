@@ -117,6 +117,17 @@ body {
 /* #20：通用模式徽标与常驻横幅 */
 .mode-badge { font-size: 12px; background: #d83b01; color: #fff; padding: 3px 10px; border-radius: 12px; margin-left: 8px; }
 .mode-banner { background: #fdf1e9; border: 1px solid #f0c7a8; color: #7a3b12; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; margin-bottom: 14px; }
+/* #55：推理提示横幅——文案两行且左对齐占满，关闭按钮 flex 右置；
+   不用绝对定位（内容换行时会压到文字），点击热区不小于 24×24。 */
+.inference-banner { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.inference-banner-text { flex: 1 1 auto; }
+.inference-banner-close {
+  flex: 0 0 auto; width: 26px; height: 26px; padding: 0;
+  border: none; background: transparent; color: #7a3b12; font-size: 16px; line-height: 1;
+  cursor: pointer; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.inference-banner-close:hover { background: rgba(122, 59, 18, .1); }
 /* #21：编辑入口锚点跳转后的短暂高亮 */
 .flash-highlight { outline: 3px solid #ff9800; outline-offset: 4px; border-radius: 10px; transition: outline-color 0.3s; }
 /* #22：校验分组 */

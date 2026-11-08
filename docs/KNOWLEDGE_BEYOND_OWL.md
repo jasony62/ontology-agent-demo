@@ -16,7 +16,7 @@
 |---|---|---|---|
 | R1 能力匹配 | 有能力的 Agent 可执行需要该能力的任务 | ✅ 能（属性链） | owl：`can_execute` 属性链 |
 | R3 依赖传递 | 依赖关系可传递 | ✅ 能（传递属性） | owl：`depends_on` |
-| R2 复合任务委派 | 可执行全部子任务 ⇒ 可执行复合任务 | ❌ 不能（聚合） | 代码：adapter.py |
+| R2 复合任务委派 | 可执行全部子任务 ⇒ 可执行复合任务 | ❌ RL 推不出（聚合；规则层 SHACL 可表达） | 规则层：`rules/R2_complex_task_delegation.ttl` |
 | R4 合规约束 | 合规任务禁止分配给未认证 Agent | ❌ 不能（禁止性） | 代码：adapter.py |
 
 加上智能体要**使用**本体服务所需的接口契约、语义锚定、解释模板等知识，
@@ -251,7 +251,8 @@ flowchart LR
 | 分类/关系/可推导公理 | 本体 OWL 文件 | 否（owl 本身） |
 | 语义配置（类名/属性名/顶层类/隐藏类） | `domains/<领域>/config.json` | 是 |
 | 解释模板与推导链组装 | `domains/<领域>/derivation.json` | 是 |
-| 业务规则（R2/R4/分类阈值） | `domains/<领域>/adapter.py` | 是 |
+| 业务规则（R2 复合委派，推新结论） | `domains/<领域>/rules/*.ttl`（SHACL 规则层） | 是 |
+| 校验规则（R4 冲突 / 分类阈值，不推新结论） | `domains/<领域>/adapter.py` | 是 |
 | 工具契约（工具名/描述/参数） | `domains/<领域>/mcp.py` | 是 |
 | 实体清单（短名⇄中文） | `entities()` 工具（读取 owl 个体 + label） | 部分（源自 owl，但"汇总视图"是补充的） |
 | 通用接口（SPARQL/图谱/类查询） | `reasoner/engine.py` + 通用 MCP 工具 | 否（与本体无关的 L1 通用层） |
@@ -264,7 +265,7 @@ flowchart LR
 
 - [ ] **语义配置**：类名/属性名/顶层类/隐藏类 → `config.json`
 - [ ] **解释模板**：每条规则一句人话 + 事实/结论叙述 + 组装逻辑 → `derivation.json`
-- [ ] **业务规则**：owl 表达不了的聚合/禁止/阈值逻辑 → `adapter.py`
+- [ ] **业务规则**：owl 推不出的聚合逻辑 → `rules/*.ttl`（SHACL 规则层）；禁止/阈值等校验 → `adapter.py`
 - [ ] **工具契约**：每个工具的 description（含示例短名）+ 参数 schema → `mcp.py`
 - [ ] **实体可查询**：所有个体都有中文 label（否则 entities 回显空白）
 - [ ] **问法-工具示例**：常见自然语言问法对应的工具调用（放入工具描述或 skill 文档）

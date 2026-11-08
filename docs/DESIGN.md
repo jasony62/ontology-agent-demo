@@ -458,7 +458,7 @@ python3 -m venv .venv
 curl -s http://127.0.0.1:8000/api/health                      # 健康检查
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
   -H "Content-Type: application/json" -d '{"kind":"capability_match","params":{"task":"t_login_dev"}}'
-.venv/bin/python -m pytest tests/ -q                          # 自动化测试套件全绿（约 430 项，以 pytest 实测为准）
+.venv/bin/python -m pytest tests/ -q                          # 自动化测试套件全绿（项数以 pytest 实测为准）
 ```
 
 ### 10.4 Skill 封装（可选）
@@ -475,7 +475,7 @@ python scripts/query.py capability_match --task t_login_dev --local  # 内嵌引
 
 ## 11. 测试
 
-`tests/` 共约 430 项自动化测试，覆盖：
+`tests/` 自动化测试（项数以 pytest 实测为准），覆盖：
 
 - `test_reasoning.py`：R1 属性链匹配、R2 复合任务委派、R3 传递闭包、R4 冲突、
   推导链结构（fact/rule/conclusion）、分类、语义覆盖；
@@ -511,12 +511,14 @@ python scripts/query.py capability_match --task t_login_dev --local  # 内嵌引
 
 ```python
 from reasoner.engine import OntologyEngine
-from domains.agent_task import AgentTaskAdapter, DEFAULT_CONFIG
+from ontology_plugin_sdk import PluginContext
+from domains.agent_task import create_adapter_ctx, DEFAULT_CONFIG
 
-eng = OntologyEngine("your_ontology.owl")
-adapter = AgentTaskAdapter(eng, DEFAULT_CONFIG.update(
+eng = OntologyEngine("your_ontology.owl", ns="http://ontology.localhost/worker-job#")
+ctx = PluginContext.for_engine(eng, config=DEFAULT_CONFIG.update(
     agent_class="Worker", task_class="Job", complex_task_class="Pipeline",
     has_capability="owns_skill", requires_capability="needs_skill"))
+adapter = create_adapter_ctx(ctx)   # 领域包唯一工厂：create_adapter_ctx(ctx)
 ```
 
 ### 13.2 新建一个领域（异构：不同的业务）
@@ -551,22 +553,27 @@ adapter = AgentTaskAdapter(eng, DEFAULT_CONFIG.update(
 │   ├── engine.py                   #   通用引擎（加载/推理/通用查询原语）
 │   ├── semantic.py                 #   语义配置容器 + JSON 加载器
 │   ├── derivation.py               #   推导链声明式规则解释器
+│   ├── pipeline_gate.py            #   G1–G4 建模闸门（规格见 docs/MODELING_GATES.md）
 │   └── __init__.py                 #   导出
+├── packages/ontology-plugin-sdk/   # 领域插件 SDK（领域包唯一可依赖的宿主无关包）
 ├── domains/                        # 领域层（运行时动态加载）
 │   ├── __init__.py                 #   纯导出
 │   ├── registry.py                 #   注册表（list_domains / load_domain）
 │   └── agent_task/                 # 「智能体任务编排」领域（自包含）
 │       ├── __init__.py             #   纯导出（门面：NAME/DESCRIPTION/ONTO_FILE/适配器符号）
-│       ├── adapter.py              #   适配器（R2/R4 规则 + 5 查询 + 图谱）
+│       ├── adapter.py              #   适配器（R4 校验 + 5 查询 + 图谱；R2 在规则层）
 │       ├── config.json             #   语义配置（类角色映射）
 │       ├── derivation.json         #   推导链配置（文案 + 规则）
-│       ├── mcp.py                  #   领域 MCP 工具注册（9 个领域工具）
+│       ├── mcp.py                  #   领域 MCP 工具注册（16 个：业务 9 + 建模/质量 7）
+│       ├── rules/                  #   SHACL 规则层（R2 委派 / R5 / R6，加载流水线执行）
+│       ├── shapes/                 #   SHACL 形状（G4 与 validate_shapes 用）
 │       └── agent_task_ontology.owl #   本体定义
 ├── api/                            # REST API（FastAPI，:8000，领域端点走适配器）
 ├── mcp/mcp_server.py               # MCP Server 通用出口（:9000，--domain 动态加载领域工具）
-├── frontend/                       # 图谱展示页
+├── pipeline/gates.json             # G1–G4 闸门配置
+├── frontend/app/                   # 图谱工作台（React/Vite，构建产物由 API 托管）
 ├── scripts/build_ontology.py       # 一键重建本体（含结构自检）
-├── tests/                          # 自动化测试套件（约 430 项，以 pytest 实测为准）
+├── tests/                          # 自动化测试套件（项数以 pytest 实测为准）
 └── requirements.txt
 ```
 

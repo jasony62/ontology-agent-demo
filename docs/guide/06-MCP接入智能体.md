@@ -55,7 +55,7 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 - **建模 / 质量工具 7 个**——也随领域包注册（`guide_tbox_draft`/`validate_tbox_draft`/`validate_shapes`/`guide_cq_generation`/`validate_cqs`/`validate_cqs_declared`/`cq_regression`），做篇 8「造自己的领域」时才用；
 - **引擎通用工具 15 个**——任意 `.owl` 可用（SPARQL、个体、类、类型、属性、重推理、证明、守卫、闸门、规则执行、合并预检等）。
 
-入门只需掌握 **3 个核心工具**（完整 30 个清单与参数见文末《附录-速查表》§C）：
+入门只需掌握 **3 个核心工具**（完整 31 个清单与参数见文末《附录-速查表》§C）：
 
 | 工具 | 说明 |
 |---|---|

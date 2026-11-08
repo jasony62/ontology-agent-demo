@@ -161,6 +161,67 @@ def test_dry_run_does_not_persist_then_real_run_derives(engine):
     assert rep["total_derived"] == 1
 
 
+def test_r5_flags_low_risk_parent_via_risky_descendant(engine):
+    """正例⑥（#63 方案 B）：复合任务自身风险 3、子任务含高风险 → 仍被 R5 拦下。
+
+    复合任务风险语义上就是「子任务的最大值」，靠人工把父任务填对迟早出事：
+    父任务填成 3，旧判定（只看自身 has_risk_level）整条高风险链静默消失。
+    现判定看「自身 ∨ composed_of+ 子孙」。探针父任务由 t_login_dev(2) 与
+    t_deploy(4) 组成——没有任何单一 Agent 同时具备编码与部署，R2 不授予
+    整体 can_execute，「无人可整体接」成立。
+    """
+    from rdflib import Literal, RDF as _RDF
+
+    e = engine
+    e.g.add((ns("t_probe_low"), _RDF.type, ns("ComplexTask")))
+    e.g.add((ns("t_probe_low"), ns("composed_of"), ns("t_login_dev")))
+    e.g.add((ns("t_probe_low"), ns("composed_of"), ns("t_deploy")))
+    e.g.add((ns("t_probe_low"), ns("has_risk_level"), Literal(3)))
+    e.reparse()
+    rep = rules_mod.apply_rules(e, [R5])
+    assert "t_probe_low" in _derived_subjects(rep)
+
+
+def test_low_risk_parent_scenario_system_outputs_stable(engine):
+    """正例⑦（#63 验收原文）：把 t_double_dev 风险改成 3，两组产出仍齐。
+
+    needs_manual_review 仍产出（t_feature 自身风险 4）；needs_second_review
+    仍产出（t_deploy=4、t_compliance_dev=5，R6 看单片自身风险，不受父任务
+    填写影响）。复合链的拦截改由 R5 的子孙判定兜住，与 R6 无错位。
+    """
+    from rdflib import Literal
+
+    e = engine
+    e.g.remove((ns("t_double_dev"), ns("has_risk_level"), None))
+    e.g.add((ns("t_double_dev"), ns("has_risk_level"), Literal(3)))
+    e.reparse()
+    rep = rules_mod.apply_rules(e, [R5, R6])
+    r5_subjects = _derived_subjects(rep, index=0)
+    r6_subjects = _derived_subjects(rep, index=1)
+    assert r5_subjects == {"t_feature"}
+    assert r6_subjects == {"t_deploy", "t_compliance_dev"}
+
+
+def test_no_inconsistency_from_descendant_check(engine):
+    """边界（#63 方案 B 取舍）：判定只读图不写图，has_risk_level 保持单值。
+
+    方案 A（父任务风险 = 子任务最大值）会往 FunctionalProperty 写第二个值
+    推出不一致；方案 B 只改判定口径，风险断言原样不动。
+    """
+    from rdflib import Literal, RDF as _RDF
+
+    e = engine
+    before_risk = list(e.g.objects(ns("t_double_dev"), ns("has_risk_level")))
+    e.g.add((ns("t_probe_low"), _RDF.type, ns("ComplexTask")))
+    e.g.add((ns("t_probe_low"), ns("composed_of"), ns("t_deploy")))
+    e.g.add((ns("t_probe_low"), ns("has_risk_level"), Literal(3)))
+    e.reparse()
+    rules_mod.apply_rules(e, [R5])
+    # 父任务风险未被改写
+    assert list(e.g.objects(ns("t_probe_low"), ns("has_risk_level"))) == [Literal(3)]
+    assert len(before_risk) == 1
+
+
 # ---------------- 边界 ----------------
 
 def _sparql_rule(construct_query: str) -> str:

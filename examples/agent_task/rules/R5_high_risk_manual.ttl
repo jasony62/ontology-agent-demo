@@ -1,7 +1,20 @@
-# R5 · 高风险复合任务无人可整体执行 → 需人工介入
+# R5 · 高风险任务无人可整体执行 → 需人工介入
 #
-# 业务语义：任务风险等级 ≥ 4，且图中没有任何 Agent 的 can_execute 指向它——
-#   每个子任务也许都有人做，但没人能对整体负责，必须人工介入编排与担责。
+# 业务语义：任务「自身或任一子孙任务」风险等级 ≥ 4，且图中没有任何 Agent 的
+#   can_execute 指向它——每个子任务也许都有人做，但没人能对整体负责，
+#   必须人工介入编排与担责。
+# 为什么看子孙（#63 方案 B）：复合任务的风险语义上就是「子任务的最大值」，
+#   但靠人工把父任务填对是迟早出事的约定——父任务填成 3，整条高风险链
+#   静默消失且无任何提示。判定的风险来源改为「自身 ∨ composed_of+ 子孙」，
+#   人工填错/漏填父任务的风险不再影响拦截。不采用「父任务风险 = 子任务
+#   最大值」的合成规则（方案 A）：has_risk_level 是 FunctionalProperty，
+#   往图里写第二个值会推出不一致。
+# 判定口径分工（与 R6 一起看，避免错位）：R5 管复合链——复合任务（含
+#   风险来自子任务的父任务）无人能整体接 → needs_manual_review；
+#   R6 管单片——SimpleTask 自身风险 ≥ 4 → needs_second_review。
+#   同一个风险 SimpleTask 不会两头都抓（R6 只瞄 SimpleTask）。
+# WHERE 里显式声明 ?this rdf:type demo:Task：不依赖 sh:targetClass 兜底，
+#   规则文件被复制到别处（或 target 改动）也不会误伤其他任务。
 # 维护方式：懂业务的人直接改这个文件，保存即生效（run_rules 下次执行用新规则，
 #   不需要改代码发版）。
 # 注意：sh:construct 字符串内必须自带 PREFIX 声明（执行器不注入本文件头的 @prefix），
@@ -9,6 +22,7 @@
 
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix demo: <http://ontology.localhost/agent-task#> .
 
 demo:HighRiskManualReviewShape a sh:NodeShape ;
@@ -17,13 +31,19 @@ demo:HighRiskManualReviewShape a sh:NodeShape ;
 
 demo:R5_high_risk_manual a sh:SPARQLRule ;
   rdfs:label "R5 高风险无人接手需人工介入" ;
-  rdfs:comment "risk_level >= 4 且无任何 Agent 可整体执行 → needs_manual_review 置真" ;
+  rdfs:comment "任务自身或任一子孙 risk_level >= 4 且无任何 Agent 可整体执行 → needs_manual_review 置真" ;
   sh:construct """
     PREFIX demo: <http://ontology.localhost/agent-task#>
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
     CONSTRUCT { ?this demo:needs_manual_review true }
     WHERE {
-      ?this demo:has_risk_level ?lvl .
-      FILTER(?lvl >= 4)
+      ?this rdf:type demo:Task .
+      FILTER EXISTS {
+        { ?this demo:has_risk_level ?lvl . FILTER(?lvl >= 4) }
+        UNION
+        { ?this demo:composed_of+ ?desc .
+          ?desc demo:has_risk_level ?lvl2 . FILTER(?lvl2 >= 4) }
+      }
       FILTER NOT EXISTS { ?agent demo:can_execute ?this }
     }
   """ .

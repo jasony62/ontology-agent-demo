@@ -33,6 +33,8 @@
 
 ### Fixed
 
+- **R5/R6 派生谓词补进词汇表声明（#62）**：`needs_manual_review`（需人工介入）与 `needs_second_review`（需双人复核）此前只存在于规则产出与图数据里——`.owl` 里 0 次出现，没有 `rdfs:domain` / `rdfs:range` / label / comment，图谱导出、实体详情、OpenAPI、SHACL 形状与前端状态展示全都无可依赖的定义，消费方只能硬编码字符串去猜。现声明为 `owl:DatatypeProperty`（domain=Task，range=xsd:boolean，中文 label + 生成规则注释）；值仍由规则产出（`true` 字面量），不改动任何规则行为。CQ 锚点表运行时属性 12 → 14。
+
 - **`can_execute` 对多能力任务改按 AND 全覆盖判定（#59）**：R1 曾由 `.owl` 的 `owl:propertyChainAxiom`（`has_capability ◦ required_by ⊑ can_execute`）推出，属性链是逐条独立蕴含——任务要求「编码 + 部署」时，只具备其中一项的 Agent 同样被判可执行。现有 8 个任务每个只挂 1 条能力，错误在旧数据上不可见，任何人照模板加多能力任务就会中招。现属性链公理从 `.owl` 移除（单一来源），R1 落规则层 `rules/R1_capability_coverage.ttl`（要求的集合 ⊆ 具备的集合，与 R2 同一机制），按文件名排序先于 R2 执行（R2 读它的 `can_execute` 产出）；`_rule_for` 归属改为按判定语义反推（断言边/能力全覆盖 → R1，其余 → R2）。配套两件框架事：① 引擎支持规则重放——宿主向 `engine.set_rule_paths()` 登记清单后 `reparse()` 在物化后按同一清单重放（领域适配器构造时登记本包 `rules/*.ttl`），否则实时 `classify` 新建任务推不出 `can_execute`、删除个体后规则派生边也回不来；② G3 冒烟断言集把 `can_execute ≥ 1` 换成 `required_by ≥ 1`（G3 只跑 owlrl 物化不含规则，规则层产出由 CQ 回归守护）。`derivation.json` 的 rule_r1 模板、docs/guide 0/2/3/5/6/7/8 与 README 的 R1 描述同步新口径。探针回归：编码+部署无人可执行（修复前 dev/junior/deploy 三个全 true）、编码+审查仅 dev_agent、单能力任务与 12 道 CQ 不变。
 
 - **`classes()` 不再把 OWL 内建类混进业务类树（#71）**：owlrl 物化会推出「owl:Nothing ⊑ 每个类」（空集语义成立）与「owl:Thing ⊑ owl:Thing」（自指），`classes()` 取「第一个具名父类」时前者让 `Nothing.parent` 变成图里碰巧第一个被迭代到的类——rdflib 内存图迭代顺序受进程哈希种子影响，同一文件连跑三次 parent 各不相同（DevAgent / CICD / DeployAgent），后者让 Thing 自指、自环过滤后从树里消失。现在 `Nothing` 整体排除，`Thing` 保留为类树根节点且 `parent=None`（Agent/Task 等的 asserted 父类都是它，前端树根照常成立）；`/api/classes` 返回 27 → 26（25 业务类 + Thing）。新增跨 10 个 PYTHONHASHSEED 子进程的一致性断言（此类漂移同进程内复现不了，必须换哈希种子才抓得住）。

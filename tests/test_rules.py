@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from rdflib import Graph, URIRef
+from rdflib import Graph, OWL, RDF, RDFS, URIRef
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -60,6 +60,22 @@ def _derived_subjects(report: dict, index: int = 0) -> set:
 
 
 # ---------------- 正例 ----------------
+
+def test_owl_declares_r5_r6_derived_predicates(engine):
+    """词汇表卫生（#62）：R5/R6 派生谓词在 .owl 里有 domain/range/label 声明。
+
+    规则往图里写结论（needs_manual_review / needs_second_review），词汇表
+    必须先有声明——不声明的话图谱导出、实体详情、OpenAPI、SHACL 形状
+    全都没有可依赖的定义，消费方只能硬编码字符串去猜。
+    """
+    XSD_BOOLEAN = URIRef("http://www.w3.org/2001/XMLSchema#boolean")
+    for short in ("needs_manual_review", "needs_second_review"):
+        p = ns(short)
+        assert (p, RDFS.domain, ns("Task")) in engine.raw, f"{short} 缺 rdfs:domain"
+        assert (p, RDFS.range, XSD_BOOLEAN) in engine.raw, f"{short} 缺 rdfs:range"
+        assert engine.label(p), f"{short} 缺 rdfs:label"
+        assert (p, RDF.type, OWL.DatatypeProperty) in engine.raw
+
 
 def test_r5_hits_exactly_unowned_high_risk(engine):
     """正例①·验收①：三条件全满足 → 精确产出（risk≥4 且无人可整体执行的任务）。

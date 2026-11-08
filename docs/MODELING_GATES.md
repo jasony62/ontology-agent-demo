@@ -40,7 +40,9 @@ OWL 2 DL 之外的本体（OWL-Full）会被 DL 推理机拒收，最常见的�
 
 - 物化是否异常；
 - 是否有类被推出 `⊑ owl:Nothing`（不可满足）；
-- `owl:disjointWith` 与 `rdfs:subClassOf` 是否互相矛盾（子类关系穿过不相交声明）。
+- 是否有主体被推出 `rdf:type owl:Nothing`；
+- `owl:disjointWith` 与 `rdfs:subClassOf` 是否互相矛盾（子类关系穿过不相交声明）；
+- **个体级互斥**：同一主体是否同时落在某个 `owl:disjointWith` 互斥对的两边（类型经物化已含子类展开，如 `JuniorDevAgent` 实例命中 `DevAgent ⊥ TestAgent`）。OWL 2 RL 规则集没有个体级 disjoint 推理（owlrl 不会为此推出 `rdf:type owl:Nothing`），此项为结构直查——不查的话，「把任务错标成智能体」「一个体既 Simple 又 Complex」这类 ABox 冲突永远全绿。
 
 空类（无实例也无子类）只作**信息性提示**，不参与 fail 判定——纯 TBox 草稿无 ABox 时空类属正常状态。HermiT 全量一致性需要 JVM，默认走「owlrl + 结构检查」降级路线并在报告中显式标注 `mode=degraded`（不冒充完整 DL 闸）；生产 / CI 环境可选开启 HermiT 增强。
 

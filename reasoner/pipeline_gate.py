@@ -155,9 +155,35 @@ def _gate_g2(g: Graph, domain: str, degraded: list) -> dict:
             if isinstance(s, URIRef) and s != OWL.Nothing)
         if nothing_sub:
             conflicts.append(f"类被推出 ⊑ owl:Nothing（不可满足）：{nothing_sub}")
+        nothing_individuals = sorted(
+            _short(s) for s, _p, _o in gg.triples((None, RDF.type, OWL.Nothing))
+            if isinstance(s, URIRef) and s != OWL.Nothing)
+        if nothing_individuals:
+            conflicts.append(f"个体被推出 rdf:type owl:Nothing（不可满足）：{nothing_individuals}")
+        # 类级：互斥类之间不得有子类关系
         for x, _p, y in g.triples((None, OWL.disjointWith, None)):
             if (x, RDFS.subClassOf, y) in g or (y, RDFS.subClassOf, x) in g:
                 conflicts.append(f"{_short(x)} ⊑ {_short(y)} 与 owl:disjointWith 冲突")
+        # 个体级：同一个体不得同时属于互斥对的两边（类型经物化已含子类展开）。
+        # OWL 2 RL 规则集没有个体级 disjoint 推理（owlrl 不会为此推出
+        # rdf:type owl:Nothing），只查类级的话，"把任务错标成智能体、
+        # 一个体既 Simple 又 Complex" 这类 ABox 冲突 G2 永远全绿。
+        seen_pairs = {
+            frozenset((x, y))
+            for x, _p, y in gg.triples((None, OWL.disjointWith, None))
+            if isinstance(x, URIRef) and isinstance(y, URIRef)
+        }
+        if seen_pairs:
+            for ind in sorted(
+                (s for s in set(gg.subjects(RDF.type, None))
+                 if isinstance(s, URIRef) and s != OWL.Nothing), key=str):
+                types = {t for t in gg.objects(ind, RDF.type) if isinstance(t, URIRef)}
+                for pair in sorted(seen_pairs, key=sorted):
+                    if pair <= types:
+                        conflicts.append(
+                            f"个体 {_short(ind)} 同时属于互斥类 "
+                            f"{_short(sorted(pair)[0])} / {_short(sorted(pair)[1])}"
+                            "（owl:disjointWith）")
     except Exception as exc:
         conflicts.append(f"owlrl 物化异常：{exc}")
     # 空类检查（信息性：纯 TBox 草稿无 ABox 时空类正常，不单独阻断）

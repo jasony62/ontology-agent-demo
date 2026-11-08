@@ -212,8 +212,14 @@ class AgentTaskAdapter:
             return 0
 
     def is_certified(self, agent) -> bool:
-        vals = self.engine.objects_of(local(agent), self.c.resolve("has_certified"))
-        return bool(vals) and str(vals[0]).strip().lower() in ("true", "1")
+        """Agent 是否持有**未过期**认证（#65）。
+
+        认证是个体（holds_certification），有效期判定由规则层 R7 派生
+        cert_valid——这里读规则产出而非重算日期，与 R4 合规判定、
+        capability_match 的 certified 标记同源。引擎未跑规则的轻量场景
+        （FakeEngine 等）下恒为 False，属诚实降级。
+        """
+        return bool(list(self.engine.g.objects(self.NS[local(agent)], self._p("cert_valid"))))
 
     def capabilities_of(self, iri) -> list:
         return self.engine.objects_of(local(iri), self.c.resolve("has_capability"))
@@ -251,10 +257,11 @@ class AgentTaskAdapter:
                 "type": "合规认证冲突",
                 "message": (
                     f"任务「{self.label(task)}」要求合规认证，"
-                    f"但 Agent「{self.label(agent)}」未通过认证（{self.c.resolve('has_certified')}=false）"
+                    f"但 Agent「{self.label(agent)}」未持有有效认证"
+                    f"（holds_certification 无未过期项，#65 起认证带有效期）"
                 ),
                 "violated_axiom": f"任务 {self.c.resolve('requires_constraint')} {self.c.compliance_constraint_class} ∧ "
-                                  f"Agent {self.c.resolve('has_certified')}=false 不允许分配",
+                                  f"Agent {self.c.resolve('holds_certification')} 无未过期认证（cert_valid=false）不允许分配",
                 "rule": "R4",
             }
         return None

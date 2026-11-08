@@ -37,14 +37,16 @@ def _engine() -> OntologyEngine:
 # ---------------- V1：事实源净化 ----------------
 
 def test_v1_schema_map_excludes_meta_terms():
-    """V1：25 类 / 12 属性，元词一个不剩，返回形状不变。"""
+    """V1：27 类 / 18 属性（#64/#65 个体化 + 认证个体化），元词一个不剩。"""
     sm = tbox.schema_map(_engine())
 
     assert isinstance(sm, dict) and set(sm) == {"classes", "properties"}
     assert all(set(c) == {"name", "label"} for c in sm["classes"])
     assert all(isinstance(p, str) for p in sm["properties"])
     # 数字绑定仓库内当前 agent_task 本体；本体演进时改成「不含元词」的集合断言。
-    assert (len(sm["classes"]), len(sm["properties"])) == (25, 14)  # #62 起 +needs_manual_review/needs_second_review
+    # #62 起 +needs_manual_review/needs_second_review；#65 起 +Certification/SecurityTeam、
+    # −has_certified、+holds_certification/certified_for/issued_by/valid_until/cert_valid
+    assert (len(sm["classes"]), len(sm["properties"])) == (27, 18)
     names = {c["name"] for c in sm["classes"]} | set(sm["properties"])
     assert not (set(META_TERMS) & names), names & set(META_TERMS)
 
@@ -113,7 +115,7 @@ def test_v5_final_anchor_set_is_runtime_union_handwritten():
              | set(prompts["schema_terms"]["classes"])
              | set(prompts["schema_terms"]["properties"]))
 
-    assert len(final) == 40  # #62 起 +needs_manual_review/needs_second_review
+    assert len(final) == 46  # #62/#64/#65 词汇表演进后的运行时 ∪ 手写表
     assert {"IDE", "GitRepo", "HighRiskTask"} <= final
     assert not (set(META_TERMS) & final)
 

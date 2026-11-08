@@ -60,10 +60,33 @@
   <rdfs:range rdf:resource="#Tool"/>
 </owl:ObjectProperty>
 
-<owl:DatatypeProperty rdf:about="#has_certified">
+<owl:ObjectProperty rdf:about="#holds_certification">
+  <rdfs:domain rdf:resource="#Agent"/>
+  <rdfs:range rdf:resource="#Certification"/>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#certified_for">
+  <rdfs:domain rdf:resource="#Certification"/>
+  <rdfs:range rdf:resource="#Capability"/>
+</owl:ObjectProperty>
+
+<owl:ObjectProperty rdf:about="#issued_by">
+  <rdfs:domain rdf:resource="#Certification"/>
+  <rdfs:range rdf:resource="#SecurityTeam"/>
+</owl:ObjectProperty>
+
+<owl:DatatypeProperty rdf:about="#valid_until">
   <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
+  <rdfs:domain rdf:resource="#Certification"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#date"/>
+</owl:DatatypeProperty>
+
+<!-- R7 派生谓词：认证有效期判定（规则层比对当前日期，词汇表先有声明） -->
+<owl:DatatypeProperty rdf:about="#cert_valid">
   <rdfs:domain rdf:resource="#Agent"/>
   <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#boolean"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">认证有效</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">R7 派生：Agent 持有的认证中存在 valid_until 未过期的（与当前日期比对）</rdfs:comment>
 </owl:DatatypeProperty>
 
 <owl:DatatypeProperty rdf:about="#has_risk_level">
@@ -214,6 +237,19 @@
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">安全要求</rdfs:label>
 </owl:Class>
 
+<!-- 认证以独立个体表达（#65）：范围（certified_for）、签发方（issued_by）、
+     有效期（valid_until）都可承载——布尔值 has_certified 时代
+     「过期这件事不可推理」，只能等过期后人工把 true 改成 false。 -->
+<owl:Class rdf:about="#Certification">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">资质认证</rdfs:label>
+</owl:Class>
+
+<owl:Class rdf:about="#SecurityTeam">
+  <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">安全团队</rdfs:label>
+</owl:Class>
+
 <owl:Class rdf:about="#CertifiedAgent">
   <rdfs:subClassOf rdf:resource="#Agent"/>
   <owl:equivalentClass>
@@ -221,8 +257,11 @@
       <owl:intersectionOf rdf:parseType="Collection">
         <rdf:Description rdf:about="#Agent"/>
         <owl:Restriction>
-          <owl:onProperty rdf:resource="#has_certified"/>
-          <owl:hasValue rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</owl:hasValue>
+          <!-- #65：认证升级为个体后，defined class 表达「持有至少一张认证」；
+               「当前有效（未过期）」涉及日期比对，由规则层 R7 派生 cert_valid 判定，
+               OWL 公理表达不了日期不等式 -->
+          <owl:onProperty rdf:resource="#holds_certification"/>
+          <owl:someValuesFrom rdf:resource="#Certification"/>
         </owl:Restriction>
       </owl:intersectionOf>
     </owl:Class>
@@ -301,12 +340,51 @@
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">默认合规认证要求</rdfs:label>
 </owl:NamedIndividual>
 
+<!-- ============ 认证个体（#65）：范围 + 签发方 + 有效期 ============ -->
+
+<owl:NamedIndividual rdf:about="#sec_team">
+  <rdf:type rdf:resource="#SecurityTeam"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">安全合规团队</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cert_dev_coding">
+  <rdf:type rdf:resource="#Certification"/>
+  <certified_for rdf:resource="#cap_coding"/>
+  <issued_by rdf:resource="#sec_team"/>
+  <valid_until rdf:datatype="http://www.w3.org/2001/XMLSchema#date">2027-06-30</valid_until>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">研发编码合规认证</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cert_req_analysis">
+  <rdf:type rdf:resource="#Certification"/>
+  <certified_for rdf:resource="#cap_requirement_analysis"/>
+  <issued_by rdf:resource="#sec_team"/>
+  <valid_until rdf:datatype="http://www.w3.org/2001/XMLSchema#date">2027-06-30</valid_until>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析合规认证</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cert_testing">
+  <rdf:type rdf:resource="#Certification"/>
+  <certified_for rdf:resource="#cap_testing"/>
+  <issued_by rdf:resource="#sec_team"/>
+  <valid_until rdf:datatype="http://www.w3.org/2001/XMLSchema#date">2027-06-30</valid_until>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">测试执行合规认证</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cert_deployment">
+  <rdf:type rdf:resource="#Certification"/>
+  <certified_for rdf:resource="#cap_deployment"/>
+  <issued_by rdf:resource="#sec_team"/>
+  <valid_until rdf:datatype="http://www.w3.org/2001/XMLSchema#date">2027-06-30</valid_until>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">部署发布合规认证</rdfs:label>
+</owl:NamedIndividual>
+
 <owl:NamedIndividual rdf:about="#req_agent">
   <rdf:type rdf:resource="#RequirementAgent"/>
   <has_capability rdf:resource="#cap_requirement_analysis"/>
   <uses_tool rdf:resource="#tool_knowledge_base"/>
+  <holds_certification rdf:resource="#cert_req_analysis"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">负责需求分析、用户故事与验收标准编写</has_description>
-  <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析Agent</rdfs:label>
 </owl:NamedIndividual>
 
@@ -316,8 +394,8 @@
   <has_capability rdf:resource="#cap_code_review"/>
   <uses_tool rdf:resource="#tool_ide"/>
   <uses_tool rdf:resource="#tool_git_repo"/>
+  <holds_certification rdf:resource="#cert_dev_coding"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">负责编码实现与代码审查，已通过合规认证</has_description>
-  <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">研发Agent</rdfs:label>
 </owl:NamedIndividual>
 
@@ -326,7 +404,6 @@
   <has_capability rdf:resource="#cap_coding"/>
   <uses_tool rdf:resource="#tool_ide"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">仅具备编码能力，尚未通过合规认证</has_description>
-  <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">false</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">初级研发Agent</rdfs:label>
 </owl:NamedIndividual>
 
@@ -334,8 +411,8 @@
   <rdf:type rdf:resource="#TestAgent"/>
   <has_capability rdf:resource="#cap_testing"/>
   <uses_tool rdf:resource="#tool_cicd"/>
+  <holds_certification rdf:resource="#cert_testing"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">负责测试执行与质量门禁</has_description>
-  <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">测试Agent</rdfs:label>
 </owl:NamedIndividual>
 
@@ -344,8 +421,8 @@
   <has_capability rdf:resource="#cap_deployment"/>
   <uses_tool rdf:resource="#tool_cicd"/>
   <uses_tool rdf:resource="#tool_git_repo"/>
+  <holds_certification rdf:resource="#cert_deployment"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">负责生产部署与发布</has_description>
-  <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">部署Agent</rdfs:label>
 </owl:NamedIndividual>
 

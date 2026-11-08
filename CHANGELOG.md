@@ -15,6 +15,8 @@
 
 ### Changed
 
+- **认证从布尔值升级为独立个体：范围、签发方、有效期可推理（#65）**：`has_certified` 只是一个 `true/false` 字面量——「只认证了编码没认证部署」「谁签发的」「下月到期」全都没地方放，过期这件事不可推理（只能等过期后人工把 true 改成 false）。现新增 `Certification` 与 `SecurityTeam` 类、`holds_certification` / `certified_for` / `issued_by` 对象属性与 `valid_until` 日期属性，4 个已认证 Agent 各挂一张认证个体（范围指向能力实例、签发方 `sec_team`、有效期 2027-06-30）。`CertifiedAgent` 等价类改为「持有至少一张认证」（`someValuesFrom`）；「当前有效」涉及日期不等式，OWL 表达不了，由新增规则层 `rules/R7_certificate_validity.ttl` 派生 `cert_valid`（比对当前日期；rdflib 对 date/dateTime 混比不可靠、`xsd:date` 字面量转换不受支持，采用 ISO-8601 字符串字典序比较的可移植写法）。R4 合规判定与 `capability_match.certified` 改读 `cert_valid`（有证但过期 → 如实判不合格）；`has_certified` 谓词删除，不保留双源。
+
 - **能力/工具/约束以「类」被当值引用 → 全部实例化，10 个标签获得承载属性的位置（#64）**：此前任务与 Agent 把类当值写（`t_login_dev requires_capability #Coding`），10 个名字（5 能力 + 4 工具 + 1 约束）既在类树里又出现在值位置——标签无法承载认证等级、有效期等属性，也是 #61 ComplianceTask `someValuesFrom` 推不出的根因。现类保留为类型，新增 10 个个体（`cap_coding` / `cap_code_review` / `cap_testing` / `cap_deployment` / `cap_requirement_analysis`、`tool_ide` / `tool_git_repo` / `tool_cicd` / `tool_knowledge_base`、`creq_default`，全部带中文 label），全部引用改写为实例，`infer()` 个体 13 → 23。配套：`classify` / `import` 的 payload 仍收类名（`"Coding"`）也收实例名，`_value_instance` 归一为实例写图（解析不到唯一实例报 400）；R4 合规判定与 ComplianceTask 分类改按「约束实例 ∈ 合规约束类的实例集」判定；`graph_groups` 新增 Capability / Tool / Constraint 三组，工作台图例与节点配色随配置自动生效；`build_ontology.py` 的构建期自检改为「requires_capability 指向能力类**或**能力实例」，类当值引用（`t → #Coding`）会被拦下——防回退。
 
 - **首屏默认视图改为「显示推理全貌」，三档视图与概览统计术语口语化**：工作台打开即见推理结论（绿色虚线），不再藏在「物化后（并集）」标签后——本项目不可替代的能力是推理，首屏就该看到它；两视图同源一次 `/api/ontology/materialized` 请求，切换无加载时序差异，generic 模式（推理为空）下两种视图视觉一致。三档按钮改为「只看原始的 / 显示推理全貌 / 只看新推出的」，顺序不变（原始 ⊂ 全貌，新增 = 全貌 − 原始），原术语保留在悬停提示里；图谱概览的统计标签同步为「文件里声明的 / 推理后的全部 / 推出来的」，消除同屏两套词。新增 `ViewModeToggle.test.tsx`。（#54）

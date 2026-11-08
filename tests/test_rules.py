@@ -39,6 +39,7 @@ R1 = RULES_DIR / "R1_capability_coverage.ttl"
 R2 = RULES_DIR / "R2_complex_task_delegation.ttl"
 R5 = RULES_DIR / "R5_high_risk_manual.ttl"
 R6 = RULES_DIR / "R6_high_risk_second_review.ttl"
+R7 = RULES_DIR / "R7_certificate_validity.ttl"
 
 
 @pytest.fixture()
@@ -96,6 +97,38 @@ def test_r6_hits_exactly_high_risk_simple(engine):
     rep = rules_mod.apply_rules(engine, [R6])
     assert _derived_subjects(rep) == {"t_deploy", "t_compliance_dev"}
     assert all(t["p"] == "needs_second_review" for t in rep["files"][0]["derived_triples"])
+
+
+def test_r7_expired_certification_not_valid(engine):
+    """R7（#65）：认证有效期判定——未过期派生 cert_valid，全过期不派生。
+
+    探针两个 Agent：valid_agent 持 2099 年有效证；expired_agent 只持 2020 年
+    过期证。R7 比对当前日期（ISO 字符串字典序，可移植写法——rdflib 对
+    date/dateTime 混比不可靠、xsd:date 字面量转换不受支持）。
+    defined class 分层如实记录：expired_agent 仍是 CertifiedAgent
+    （someValuesFrom 不看日期），「未过期」由 cert_valid 承载。
+    """
+    from rdflib.namespace import XSD
+    from rdflib import Literal, RDF as _RDF
+
+    e = engine
+    e.g.add((ns("valid_agent"), _RDF.type, ns("Agent")))
+    e.g.add((ns("valid_agent"), ns("holds_certification"), ns("cert_probe_new")))
+    e.g.add((ns("cert_probe_new"), _RDF.type, ns("Certification")))
+    e.g.add((ns("cert_probe_new"), ns("valid_until"),
+             Literal("2099-01-01", datatype=XSD.date)))
+    e.g.add((ns("expired_agent"), _RDF.type, ns("Agent")))
+    e.g.add((ns("expired_agent"), ns("holds_certification"), ns("cert_probe_old")))
+    e.g.add((ns("cert_probe_old"), _RDF.type, ns("Certification")))
+    e.g.add((ns("cert_probe_old"), ns("valid_until"),
+             Literal("2020-01-01", datatype=XSD.date)))
+    e.reparse()
+    rep = rules_mod.apply_rules(e, [R7])
+    subjects = _derived_subjects(rep)
+    assert "valid_agent" in subjects
+    assert "expired_agent" not in subjects, "过期认证不应派生 cert_valid"
+    # 分层口径：someValuesFrom 的 defined class 不看日期（诚实记录，不冒充）
+    assert "expired_agent" in e.individuals("CertifiedAgent")
 
 
 def test_per_file_attribution_disjoint(engine):

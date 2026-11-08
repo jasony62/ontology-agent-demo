@@ -1,0 +1,43 @@
+# R7 · 认证有效期判定：持有未过期认证的 Agent → cert_valid 置真
+#
+# 业务语义（#65）：认证是独立个体（Certification），带范围（certified_for）、
+#   签发方（issued_by）与有效期（valid_until）。「当前有效」涉及日期比对，
+#   OWL 公理表达不了日期不等式，落在规则层——比对当前日期（NOW()）。
+# 产出语义：?agent 名下任一认证 valid_until 未过期 → cert_valid true。
+#   全部过期的 Agent 不产出（R4 的合规判定与 capability_match 的 certified
+#   标记据此区分「有证但过期」与「证还活着」）。
+# defined class 的分工：CertifiedAgent（OWL 等价类）= 持有至少一张认证
+#   （someValuesFrom，owlrl 可推）；「未过期」由本规则判定——两层各管各的，
+#   报告口径里如实分开。
+# 日期比较写法（可移植性）：rdflib 对 xsd:date 与 NOW()(dateTime) 的混比
+#   返回 false（不可靠），xsd:date(…) 字面量转换不受支持；ISO-8601 日期
+#   字符串字典序与时间序一致，故用 STR(?until) 与 SUBSTR(STR(NOW()),1,10)
+#   比较——正确且跨 SPARQL 实现可移植。
+# 执行顺序：R7 按文件名排在 R1/R2/R5/R6 之后执行；当前没有规则读它的产出
+#   （合规判定走适配器 R4，读 engine.g 里的 cert_valid），新规则若要消费
+#   cert_valid，文件名必须排在 R7 之后。
+# WHERE 里显式声明 ?agent rdf:type demo:Agent：不依赖 sh:targetClass 兜底。
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
+
+demo:CertificationValidityShape a sh:NodeShape ;
+  sh:targetClass demo:Agent ;
+  sh:rule demo:R7_certificate_validity .
+
+demo:R7_certificate_validity a sh:SPARQLRule ;
+  rdfs:label "R7 认证有效期判定" ;
+  rdfs:comment "Agent 持有 valid_until 未过期的认证 → cert_valid 置真（与当前日期比对）" ;
+  sh:construct """
+    PREFIX demo: <http://ontology.localhost/agent-task#>
+    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    CONSTRUCT { ?agent demo:cert_valid true }
+    WHERE {
+      ?agent rdf:type demo:Agent .
+      ?agent demo:holds_certification ?cert .
+      ?cert demo:valid_until ?until .
+      FILTER(STR(?until) >= SUBSTR(STR(NOW()), 1, 10))
+    }
+  """ .

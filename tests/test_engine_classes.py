@@ -58,14 +58,57 @@ def _write_mini_owl(tmp_path):
 def test_default_ontology_exposes_only_named_classes():
     """正例：默认 agent_task 本体 classes() 只含具名语义类，零 BNode 幽灵。
 
-    修复前 29 条类含 2 条 BNode 幽灵 → 修复后 27 条真实类；若上游本体演化使总数
-    变化，断言零幽灵与关键类保留仍成立（27 以「已知类数 − 幽灵数」形式注释）。
+    修复前 29 条类含 2 条 BNode 幽灵 + owl:Nothing → 修复后 26 条真实类
+    （25 业务类 + owl:Thing，Nothing 与幽灵都不再出现）；若上游本体演化使总数
+    变化，断言零幽灵与关键类保留仍成立（26 以「已知类数 − 内建/幽灵数」形式注释）。
     """
     engine = OntologyEngine(ONTO_PATH)
     names = [c["name"] for c in engine.classes()]
     assert not any(_is_ghost_bnode(n) for n in names)
-    assert len(names) == 27  # 29（含 2 幽灵）− 2 = 27
+    assert len(names) == 26  # 29（含 2 幽灵 + Nothing）− 3 = 26
     assert {"CertifiedAgent", "ComplianceTask"} <= set(names)
+
+
+def test_owl_builtin_nothing_excluded_thing_is_root():
+    """OWL 内建类不进业务类树：Nothing 整体排除，Thing 保留为根（parent=None）。
+
+    owlrl 物化会推出「owl:Nothing ⊑ 每个类」与「owl:Thing ⊑ owl:Thing」自指：
+    前者让 Nothing 的 parent 随图迭代顺序（进程哈希种子）漂移，类树显示不稳定；
+    后者让 Thing 自指，前端 childrenOf 过滤自环后 Thing 会从树里消失。
+    """
+    engine = OntologyEngine(ONTO_PATH)
+    rows = {c["name"]: c for c in engine.classes()}
+    assert "Nothing" not in rows, "owl:Nothing 不该出现在类树里"
+    assert "Thing" in rows, "owl:Thing 保留（前端类树根节点：Agent/Task 的 asserted 父类都是它）"
+    assert rows["Thing"]["parent"] is None, "Thing 的 parent 不得自指"
+
+
+def test_classes_stable_across_hash_seeds():
+    """验收：连续 10 次运行（不同 PYTHONHASHSEED 子进程），classes() 完全一致。
+
+    漂移的根源是「Nothing ⊑ 每个类」物化后 next() 命中哪个父类取决于图迭代
+    顺序，而 rdflib 内存图的迭代顺序受进程字符串哈希随机化影响——同一进程内
+    逐次构建结果相同，复现不了；必须换哈希种子起子进程才抓得住。
+    """
+    import json
+    import os
+    import subprocess
+    import sys
+
+    snippet = (
+        "from reasoner.engine import ONTO_PATH, OntologyEngine; "
+        "import json; "
+        "print(json.dumps(OntologyEngine(ONTO_PATH).classes(), ensure_ascii=False))"
+    )
+    signatures = set()
+    for seed in range(10):
+        env = {**os.environ, "PYTHONHASHSEED": str(seed)}
+        proc = subprocess.run(
+            [sys.executable, "-c", snippet], env=env, capture_output=True, text=True,
+            check=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
+        signatures.add(proc.stdout.strip())
+    assert len(signatures) == 1, f"classes() 跨哈希种子不稳定：{len(signatures)} 种结果"
 
 
 def test_minimal_equivalent_intersection_bnode_is_skipped(tmp_path):

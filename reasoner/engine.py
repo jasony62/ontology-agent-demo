@@ -455,15 +455,28 @@ class OntologyEngine:
         return self.individuals_of(class_name)
 
     def classes(self) -> list[dict]:
-        """全部类：name/label/direct_parent（rdfs:subClassOf 直接父类短名）。"""
+        """全部类：name/label/direct_parent（rdfs:subClassOf 直接父类短名）。
+
+        OWL 内建类不进业务类树：owlrl 物化会推出「owl:Nothing ⊑ 每个类」
+        （空集是任何类的子集，语义成立）与「owl:Thing ⊑ owl:Thing」（自指）。
+        前者让 Nothing 的 parent 变成"图里碰巧第一个被迭代到的类"——rdflib
+        内存图的迭代顺序受进程哈希种子影响，同一个文件每次运行结果都不同
+        （类树显示不稳定）；后者让 Thing 自指。处置：Nothing 整体排除；
+        Thing 保留（前端类树根节点，Agent/Task 等的 asserted 父类都是它），
+        parent 取具名父类时排除 BNode 与自指，自然落为 None。
+        """
         out = []
         for cls in sorted(self.g.subjects(RDF.type, OWL.Class), key=str):
             if isinstance(cls, BNode):  # 跳过 owlrl 物化混入的 Restriction 匿名空节点
                 continue
+            if cls == OWL.Nothing:
+                continue
             # 取第一个具名父类；owlrl 物化也会把匿名类表达式（BNode）注入 subClassOf
-            # 对象位置，value() 可能恰好命中 BNode，导致 parent 输出幽灵名
+            # 对象位置，value() 可能恰好命中 BNode，导致 parent 输出幽灵名；
+            # 自指（Thing ⊑ Thing）同样跳过，否则根节点会从类树里消失
             parent = next(
-                (o for o in self.g.objects(cls, RDFS.subClassOf) if not isinstance(o, BNode)),
+                (o for o in self.g.objects(cls, RDFS.subClassOf)
+                 if not isinstance(o, BNode) and o != cls),
                 None,
             )
             out.append({

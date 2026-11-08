@@ -45,6 +45,15 @@
        这里只保留 domain/range 声明；can_execute 由规则层派生，不断言。 -->
 </owl:ObjectProperty>
 
+<!-- #60：can_execute 只承诺「能力够」（能做某一步/每一步）；「能对整体负责」
+     是更强的判定（能力够 ∧ 约束满足 ∧ 子任务可担责），由规则层
+     rules/R2b_can_own.ttl 派生 can_own。R2/R5 一律以 can_own 为担责前提，
+     未认证 Agent 不再「能力够」就被当成能整体接管合规任务。 -->
+<owl:ObjectProperty rdf:about="#can_own">
+  <rdfs:domain rdf:resource="#Agent"/>
+  <rdfs:range rdf:resource="#Task"/>
+</owl:ObjectProperty>
+
 <owl:ObjectProperty rdf:about="#assigned_to">
   <rdfs:domain rdf:resource="#Task"/>
   <rdfs:range rdf:resource="#Agent"/>

@@ -1,0 +1,61 @@
+# R2b · 能担责判定：can_execute 且任务约束全部满足 ⇒ can_own
+#
+# 业务语义（#60）：can_execute 只回答「能力够不够」（R1 全覆盖 / R2 子任务
+#   委派），R4 只在 assign 时校验合规——中间缺一个「能对整体负责」的谓词。
+#   此前 R2/R5 把 can_execute 当担责前提用，后果是自相矛盾：系统一边断言
+#   合规任务不能派未认证 Agent（R4），一边推出未认证的 junior_dev 可以
+#   整体执行包含合规子任务的双模块开发（can_execute 虚高）。
+# 判定：
+#   can_own(?agent, ?this) ⇔ can_execute(?agent, ?this)
+#     ∧ ?this 的每条约束都被 ?agent 满足（合规约束 ⇒ 持有未过期认证
+#       cert_valid，且认证范围覆盖该能力——「认证了编码」才能担编码的责）
+#     ∧ ?this 的每个子任务 ?agent 都能 can_own（递归到不动点，复合任务
+#       的担责由子任务的担责合成，junior_dev 能力够但子任务里有一个
+#       合规任务担不了 → 整体担不了）。
+# 无约束、无子任务的任务（如 t_login_dev）can_own ≡ can_execute——
+#   无约束的任务不该被认证卡掉。
+# 执行顺序：本文件消费 can_execute（R1/R2_complex）与 cert_valid（R2a），
+#   产出被 R5（「无人可接手」改判 can_own）消费——文件名排序
+#   R1 < R2_ < R2a_ < R2b_ < R5 < R6，改名时保持这条链。
+# WHERE 里显式声明 ?this rdf:type demo:Task：不依赖 sh:targetClass 兜底。
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
+
+demo:CanOwnShape a sh:NodeShape ;
+  sh:targetClass demo:Task ;
+  sh:rule demo:R2b_can_own .
+
+demo:R2b_can_own a sh:SPARQLRule ;
+  rdfs:label "R2b 能担责判定" ;
+  rdfs:comment "can_execute 且全部约束满足（合规 ⇒ 未过期认证覆盖所需能力）且全部子任务可担责 → can_own" ;
+  sh:construct """
+    PREFIX demo: <http://ontology.localhost/agent-task#>
+    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    CONSTRUCT { ?agent demo:can_own ?this }
+    WHERE {
+      ?this  rdf:type demo:Task .
+      ?agent demo:can_execute ?this .
+      # 约束满足：任务的每项所需能力都有未过期认证覆盖（认证了编码才能担编码的责）。
+      # 任务有约束但没声明任何能力时视为不可满足（无法核验合规范围，从严拒绝）。
+      FILTER NOT EXISTS {
+        ?this demo:requires_constraint ?cons .
+        FILTER NOT EXISTS {
+          ?this demo:requires_capability ?need .
+          FILTER EXISTS {
+            ?agent demo:holds_certification ?cert .
+            ?cert demo:certified_for ?need .
+            ?cert demo:valid_until ?until .
+            FILTER(STR(?until) >= SUBSTR(STR(NOW()), 1, 10))
+          }
+        }
+      }
+      # 子任务担责合成：复合任务的担责由子任务的担责递归合成（迭代到不动点）
+      FILTER NOT EXISTS {
+        ?this demo:composed_of ?sub .
+        FILTER NOT EXISTS { ?agent demo:can_own ?sub }
+      }
+    }
+  """ .

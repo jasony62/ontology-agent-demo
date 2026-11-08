@@ -156,7 +156,7 @@ def register_tools(server: MCPServer, get_adapter) -> None:
     get_adapter 为无参工厂：返回当前生效的领域适配器实例（热重载后指向新实例）。
     """
 
-    @server.tool(description="能力匹配（R1/R2）：查询哪些智能体可执行指定任务，返回匹配列表与推导链。task 为本体个体短名，如 t_login_dev、t_compliance_dev、t_double_dev。")
+    @server.tool(description="能力匹配（R1/R2）：查询哪些智能体可执行指定任务，返回匹配列表（含「能否担责 can_own」标注，#60）与推导链。task 为本体个体短名，如 t_login_dev、t_compliance_dev、t_double_dev。")
     def capability_match(task: str) -> dict:
         a = get_adapter()
         return a.capability_match(a.NS[task])

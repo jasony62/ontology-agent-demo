@@ -31,7 +31,7 @@ demo:HighRiskManualReviewShape a sh:NodeShape ;
 
 demo:R5_high_risk_manual a sh:SPARQLRule ;
   rdfs:label "R5 高风险无人接手需人工介入" ;
-  rdfs:comment "任务自身或任一子孙 risk_level >= 4 且无任何 Agent 可整体执行 → needs_manual_review 置真" ;
+  rdfs:comment "任务自身或任一子孙 risk_level >= 4 且无任何 Agent 可担责（can_own）→ needs_manual_review 置真" ;
   sh:construct """
     PREFIX demo: <http://ontology.localhost/agent-task#>
     PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -44,6 +44,8 @@ demo:R5_high_risk_manual a sh:SPARQLRule ;
         { ?this demo:composed_of+ ?desc .
           ?desc demo:has_risk_level ?lvl2 . FILTER(?lvl2 >= 4) }
       }
-      FILTER NOT EXISTS { ?agent demo:can_execute ?this }
+      # #60：「无人可接手」以 can_own 为准——有人能做每一步（can_execute）
+      # 但没人能担责（认证不够）的高风险任务，同样要人工介入
+      FILTER NOT EXISTS { ?agent demo:can_own ?this }
     }
   """ .

@@ -78,6 +78,23 @@
   <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
 </owl:DatatypeProperty>
 
+<!-- R5/R6 的派生谓词：规则往图里写结论，词汇表必须先有声明（#62）。
+     不声明的话，图谱导出、实体详情、OpenAPI、SHACL 形状全都
+     没有任何声明可依赖，消费方只能硬编码字符串去猜。 -->
+<owl:DatatypeProperty rdf:about="#needs_manual_review">
+  <rdfs:domain rdf:resource="#Task"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#boolean"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需人工介入</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">R5 派生：高风险任务（risk_level ≥ 4）且无任何 Agent 可整体执行时置真，提示人工介入编排与担责</rdfs:comment>
+</owl:DatatypeProperty>
+
+<owl:DatatypeProperty rdf:about="#needs_second_review">
+  <rdfs:domain rdf:resource="#Task"/>
+  <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#boolean"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需双人复核</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">R6 派生：高风险单片任务（SimpleTask 且 risk_level ≥ 4）置真，强制第二人复核后放行</rdfs:comment>
+</owl:DatatypeProperty>
+
 <owl:Class rdf:about="#Agent">
   <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">智能体</rdfs:label>

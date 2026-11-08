@@ -1,10 +1,17 @@
-@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix demo: <http://ontology.localhost/agent-task#> .
 
 # agent_task 领域 SHACL 数据形状（G4 约束层）
-# 路径与命名对齐 docs/MODELING_PIPELINE.md §5.4 G4（pipeline/shapes/<domain>.ttl）。
-# 设计守则：只声明「当前数据满足」的约束——不让现有 ABox 变红；约束只表达
-# 关系型/取值类规则（非空/基数），推理公理（属性链/传递）交给 OWL（引擎已处理）。
+# 路径与命名对齐 docs/MODELING_GATES.md §5.4 G4（pipeline/shapes/<domain>.ttl）。
+#
+# 设计守则（#67 重写）：形状表达**建模规范**，不是「当前数据满足什么就声明
+# 什么」——只声明数据已满足的约束，G4 就退化成「保证通过」，读者会误以为
+# 「G4 通过 = 数据没问题」。每条形状都要能失败：复合任务少于两个子任务、
+# 风险等级越界、简单任务挂子任务、认证缺范围/有效期，都必须被拦下。
+# 约束只表达关系型/取值类规则（非空/基数/取值范围），推理公理（属性链/传递）
+# 交给 OWL（引擎已处理）；形状校验对象是**断言图**（engine.raw，不含推理
+# 闭包），派生谓词（can_execute / can_own / cert_valid 等）不参与校验。
 
 demo:TaskShape a sh:NodeShape ;
   # 仅约束 SimpleTask（复合任务由子任务组合，无单一能力要求）
@@ -14,3 +21,32 @@ demo:TaskShape a sh:NodeShape ;
 demo:AgentShape a sh:NodeShape ;
   sh:targetClass demo:Agent ;
   sh:property [ sh:path demo:has_capability ; sh:minCount 1 ] .
+
+# 复合任务至少两个子任务：composed_of 只挂 1 条时「复合」名不副实，
+# 编排与委派都失去意义（那是简单任务，该用 SimpleTask）
+demo:ComplexTaskShape a sh:NodeShape ;
+  sh:targetClass demo:ComplexTask ;
+  sh:property [ sh:path demo:composed_of ; sh:minCount 2 ] .
+
+# 简单任务不该有子任务（与 #66 的 SimpleTask ⊥ ComplexTask 互斥声明呼应）
+demo:SimpleTaskShape a sh:NodeShape ;
+  sh:targetClass demo:SimpleTask ;
+  sh:property [ sh:path demo:composed_of ; sh:maxCount 0 ] .
+
+# 风险等级取值范围 1-5：挡住 99 这类手误——R5/R6 以 risk >= 4 为触发条件，
+# 越界值会让高风险判定失真且无任何提示
+demo:RiskLevelShape a sh:NodeShape ;
+  sh:targetClass demo:Task ;
+  sh:property [
+    sh:path demo:has_risk_level ;
+    sh:minInclusive 1 ;
+    sh:maxInclusive 5 ;
+  ] .
+
+# 认证个体必须声明范围与有效期（#65）：certified_for 是 R2b 担责判定的依据
+# （认证了编码才能担编码的责），valid_until 是 R2a 有效期判定的依据——
+# 缺了这两项，认证个体就是装饰，担责与过期判定都会静默失真
+demo:CertificationShape a sh:NodeShape ;
+  sh:targetClass demo:Certification ;
+  sh:property [ sh:path demo:certified_for ; sh:minCount 1 ] ;
+  sh:property [ sh:path demo:valid_until ; sh:minCount 1 ] .

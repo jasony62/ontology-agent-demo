@@ -641,8 +641,10 @@ class AgentTaskAdapter:
             caps = item.get("capabilities") or []
             cons = item.get("constraints") or []
             risk = int(item.get("risk_level", 3))
-            if not (0 <= risk <= 10):
-                raise ValueError(f"risk_level 需在 0-10: {name}={risk}（事务中止）")
+            if not (1 <= risk <= 5):
+                # 与 shapes/agent_task.ttl 的 RiskLevelShape 同一口径（#67）：
+                # 越界值会让 R5/R6 的高风险判定失真，两层都拦
+                raise ValueError(f"risk_level 需在 1-5: {name}={risk}（事务中止）")
             for c in caps:
                 if (self.NS[c], RDFS.subClassOf, self.NS[self.c.capability_class]) not in self.engine.g:
                     # 实例名直传也放行（_value_instance 里做归属校验）

@@ -19,8 +19,12 @@ demo:R6_high_risk_second_review a sh:SPARQLRule ;
   rdfs:comment "SimpleTask 且 risk_level >= 4 → needs_second_review 置真" ;
   sh:construct """
     PREFIX demo: <http://ontology.localhost/agent-task#>
+    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
     CONSTRUCT { ?this demo:needs_second_review true }
     WHERE {
+      # 显式声明类型（#67）：不依赖 sh:targetClass 兜底——规则文件被复制到
+      # 别处（或 target 改动）时，WHERE 自含类型条件才不会误伤所有高风险任务
+      ?this rdf:type demo:SimpleTask .
       ?this demo:has_risk_level ?lvl .
       FILTER(?lvl >= 4)
     }

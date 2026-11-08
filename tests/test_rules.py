@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from _helpers import domain_module, make_adapter  # noqa: E402
 from reasoner import rules as rules_mod  # noqa: E402
 from reasoner.engine import OntologyEngine  # noqa: E402
 
@@ -37,22 +38,24 @@ EXAMPLES = ROOT / "examples" / "agent_task"
 RULES_DIR = EXAMPLES / "rules"
 R1 = RULES_DIR / "R1_capability_coverage.ttl"
 R2 = RULES_DIR / "R2_complex_task_delegation.ttl"
+R2A = RULES_DIR / "R2a_certificate_validity.ttl"
+R2B = RULES_DIR / "R2b_can_own.ttl"
 R5 = RULES_DIR / "R5_high_risk_manual.ttl"
 R6 = RULES_DIR / "R6_high_risk_second_review.ttl"
-R7 = RULES_DIR / "R7_certificate_validity.ttl"
 
 
 @pytest.fixture()
 def engine():
     """真模型引擎（直接读 examples 源，事实与运行态安装副本一致）。
 
-    预跑 R1+R2（激活流水线同序：owlrl 物化 → R1 能力全覆盖 → R2 委派）：
-    R5/R6 的前提读 can_execute，而 can_execute 自 #59 起由规则层派生
-    （.owl 不再声明属性链公理）——不预跑的话 R5 会把所有高风险任务都
-    判成"无人可执行"，测的是空前提下的退化行为而非规则本身。
+    预跑 R1+R2+R2a+R2b（激活流水线同序：owlrl 物化 → can_execute →
+    cert_valid → can_own）：R5/R6 的前提读 can_own，而 can_own 自 #60 起
+    由规则层派生（can_execute + 约束满足 + 子任务可担责）——不预跑的话
+    R5 会把所有高风险任务都判成"无人可担责"，测的是空前提下的退化行为
+    而非规则本身。
     """
     e = OntologyEngine(onto_path=str(EXAMPLES / "agent_task_ontology.owl"))
-    rules_mod.apply_rules(e, [R1, R2])
+    rules_mod.apply_rules(e, [R1, R2, R2A, R2B])
     return e
 
 
@@ -99,11 +102,11 @@ def test_r6_hits_exactly_high_risk_simple(engine):
     assert all(t["p"] == "needs_second_review" for t in rep["files"][0]["derived_triples"])
 
 
-def test_r7_expired_certification_not_valid(engine):
-    """R7（#65）：认证有效期判定——未过期派生 cert_valid，全过期不派生。
+def test_r2a_expired_certification_not_valid(engine):
+    """R2a（#65，#60 起由 R7_ 改名排序到 R2_ 之后）：认证有效期判定。
 
     探针两个 Agent：valid_agent 持 2099 年有效证；expired_agent 只持 2020 年
-    过期证。R7 比对当前日期（ISO 字符串字典序，可移植写法——rdflib 对
+    过期证。R2a 比对当前日期（ISO 字符串字典序，可移植写法——rdflib 对
     date/dateTime 混比不可靠、xsd:date 字面量转换不受支持）。
     defined class 分层如实记录：expired_agent 仍是 CertifiedAgent
     （someValuesFrom 不看日期），「未过期」由 cert_valid 承载。
@@ -123,7 +126,7 @@ def test_r7_expired_certification_not_valid(engine):
     e.g.add((ns("cert_probe_old"), ns("valid_until"),
              Literal("2020-01-01", datatype=XSD.date)))
     e.reparse()
-    rep = rules_mod.apply_rules(e, [R7])
+    rep = rules_mod.apply_rules(e, [R2A])
     subjects = _derived_subjects(rep)
     assert "valid_agent" in subjects
     assert "expired_agent" not in subjects, "过期认证不应派生 cert_valid"
@@ -253,6 +256,91 @@ def test_no_inconsistency_from_descendant_check(engine):
     # 父任务风险未被改写
     assert list(e.g.objects(ns("t_probe_low"), ns("has_risk_level"))) == [Literal(3)]
     assert len(before_risk) == 1
+
+
+def test_can_own_semantics_split_from_can_execute(engine):
+    """#60 验收：can_execute 只回答「能力够」，can_own 才回答「能担责」。
+
+    - can_own(t_compliance_dev) 不含 junior_dev（能力够，认证不够）
+    - can_own(t_double_dev) 不含 junior_dev（子任务里有合规任务担不了）
+    - can_execute(t_compliance_dev) 仍含 junior_dev（确实能写这段代码）
+    - can_own(t_login_dev) 仍含 junior_dev（无约束的任务不被认证卡掉）
+    """
+    from rdflib import RDF as _RDF
+
+    e = engine
+    D = e.NS
+
+    def agents(pred, task):
+        return {local(s) for s, o in e.g.subject_objects(D[pred]) if o == D[task]}
+
+    from rdflib.term import URIRef
+
+    def local(x):
+        return str(x).rsplit("#", 1)[-1]
+
+    assert agents("can_own", "t_compliance_dev") == {"dev_agent"}
+    assert agents("can_own", "t_double_dev") == {"dev_agent"}
+    assert agents("can_execute", "t_compliance_dev") == {"dev_agent", "junior_dev"}
+    assert agents("can_own", "t_login_dev") == {"dev_agent", "junior_dev"}
+    # 未认证的 junior 对合规任务只有 can_execute 边、没有 can_own 边
+    assert (D.junior_dev, D.can_own, D.t_compliance_dev) not in e.g
+    assert (D.junior_dev, D.can_execute, D.t_compliance_dev) in e.g
+
+
+def test_capability_match_reports_can_own_field(engine):
+    """#60：capability_match 候选仍按 can_execute 返回，每项标注「能否接」。
+
+    候选集与既有行为一致；junior_dev 出现在候选里但 can_own=false，
+    「呈现所有候选并标注资格」是正确行为（工具消费方据此分流）。
+    """
+    a = make_adapter(domain_module(), engine)
+    m = a.capability_match(engine.NS.t_compliance_dev, with_derivation=False)
+    by_agent = {x["agent"]: x for x in m["matches"]}
+    assert set(by_agent) == {"dev_agent", "junior_dev"}
+    assert by_agent["dev_agent"]["can_own"] is True
+    assert by_agent["junior_dev"]["can_own"] is False
+    # 排序：可担责者优先
+    assert m["matches"][0]["agent"] == "dev_agent"
+
+
+def test_r5_uses_can_own_not_can_execute(engine):
+    """#60 验收：R5「无人可接手」以 can_own 为准。
+
+    can_execute 虚高会让 R5 漏报（高风险任务明明只有未认证 Agent「能做」，
+    系统却认为有人接得住）。当前数据两组判据产出一致（{t_feature}）——
+    差异场景见 test_r5_flags_unqualified_only_coverage。
+    """
+    rep = rules_mod.apply_rules(engine, [R5])
+    assert _derived_subjects(rep) == {"t_feature"}
+
+
+def test_r5_flags_unqualified_only_coverage(engine):
+    """#60 差异场景：合规任务只有未认证 Agent 能做 → R5 必须报 needs_manual_review。
+
+    探针任务需要编码（dev/junior 都能做），带合规约束且无人持有效认证覆盖
+    ——can_execute 有 2 人、can_own 有 0 人。旧判据（can_execute）漏报，
+    新判据（can_own）如实拦截。
+    """
+    from rdflib import Literal, RDF as _RDF
+    from rdflib.namespace import XSD
+
+    e = engine
+    # junior_dev 挂一张已过期认证 → cert_valid 为假（能力够、资格不够）
+    e.g.add((ns("junior_dev"), ns("holds_certification"), ns("cert_junior_expired")))
+    e.g.add((ns("cert_junior_expired"), _RDF.type, ns("Certification")))
+    e.g.add((ns("cert_junior_expired"), ns("certified_for"), ns("cap_coding")))
+    e.g.add((ns("cert_junior_expired"), ns("valid_until"),
+             Literal("2020-01-01", datatype=XSD.date)))
+    e.g.add((ns("t_probe_unqualified"), _RDF.type, ns("SimpleTask")))
+    e.g.add((ns("t_probe_unqualified"), ns("requires_capability"), ns("cap_coding")))
+    e.g.add((ns("t_probe_unqualified"), ns("requires_constraint"), ns("creq_default")))
+    e.g.add((ns("t_probe_unqualified"), ns("has_risk_level"), Literal(5)))
+    e.reparse()
+    rep = rules_mod.apply_rules(e, [R2A, R2B, R5])
+    # R2A：junior 的过期证不派生 cert_valid；R2B：t_probe_unqualified 无人 can_own
+    r5_subjects = _derived_subjects(rep, index=2)
+    assert "t_probe_unqualified" in r5_subjects
 
 
 # ---------------- 边界 ----------------

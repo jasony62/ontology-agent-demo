@@ -214,7 +214,7 @@ class AgentTaskAdapter:
     def is_certified(self, agent) -> bool:
         """Agent 是否持有**未过期**认证（#65）。
 
-        认证是个体（holds_certification），有效期判定由规则层 R7 派生
+        认证是个体（holds_certification），有效期判定由规则层 R2a 派生
         cert_valid——这里读规则产出而非重算日期，与 R4 合规判定、
         capability_match 的 certified 标记同源。引擎未跑规则的轻量场景
         （FakeEngine 等）下恒为 False，属诚实降级。
@@ -235,6 +235,19 @@ class AgentTaskAdapter:
 
     def agents_for_task(self, task) -> list:
         return [a for a, t in self.can_execute_pairs() if t == local(task)]
+
+    def can_own_agents_for_task(self, task) -> list:
+        """能担责（can_own）该任务的 Agent 短名（#60）。
+
+        can_execute 只回答「能力够」；「能对整体负责」还要约束满足与
+        子任务可担责（rules/R2b_can_own.ttl 派生）。R5 的「无人可接手」
+        与 capability_match 的「能否接」都以它为准。
+        """
+        return [
+            local(a) for a, t in
+            self.engine.subject_objects(self.c.resolve("can_own"))
+            if t == local(task)
+        ]
 
     # ---------------- 业务规则（R4） ----------------
 
@@ -318,6 +331,7 @@ class AgentTaskAdapter:
         task = URIRef(task_iri) if not isinstance(task_iri, URIRef) else task_iri
         g = self.engine.g
         matched = []
+        can_own_set = set(self.can_own_agents_for_task(task))
         for agent in self.agents():
             if (agent, self._p("can_execute"), task) in g:
                 shared = self._shared_caps(agent, task)
@@ -326,12 +340,16 @@ class AgentTaskAdapter:
                     "agent": local(agent),
                     "agent_label": self.label(agent),
                     "certified": self.is_certified(agent),
+                    # #60：候选仍按 can_execute 返回（能力够就列出并标注），
+                    # 「能否接」以 can_own 为准（约束满足 + 子任务可担责）
+                    "can_own": local(agent) in can_own_set,
                     "shared_capabilities": [local(c) for c in shared],
                     "shared_capability_labels": [self.label(c) for c in shared],
                     "rule": rule,
                 })
-        # 排序：已认证优先，匹配能力数多者优先
-        matched.sort(key=lambda m: (not m["certified"], -len(m["shared_capabilities"]), m["agent_label"]))
+        # 排序：可担责者优先，已认证次之，匹配能力数多者优先
+        matched.sort(key=lambda m: (not m["can_own"], not m["certified"],
+                                    -len(m["shared_capabilities"]), m["agent_label"]))
         for i, m in enumerate(matched, 1):
             m["i"] = i
             m["rule_tmpl"] = "rule_r2" if m["rule"] == "R2" else "rule_r1"

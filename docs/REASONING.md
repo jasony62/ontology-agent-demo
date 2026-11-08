@@ -250,7 +250,7 @@ t_a depends_on t_b，t_b depends_on t_c  ⇒  t_a depends_on t_c   （传递闭�
 `ComplianceTask`（`∃requires_constraint.ComplianceRequirement`）在 #64 约束实例化后
 成立；此前 `ComplianceTask` 推不出并非 owlrl 能力限制，而是图里只有类没有实例
 （#61）。两个 defined class 都由 owlrl 自动归类，「认证未过期」这种日期不等式
-OWL 表达不了，由规则层 R7 的 `cert_valid` 判定（与 defined class 的
+OWL 表达不了，由规则层 R2a 的 `cert_valid` 判定（与 defined class 的
 「持有至少一张认证」口径如实分开）。
 
 ---

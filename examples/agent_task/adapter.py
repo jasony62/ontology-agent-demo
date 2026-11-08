@@ -151,6 +151,7 @@ class AgentTaskAdapter:
         self.direct_composed = sorted((s, o) for s, o in raw.subject_objects(self._p("composed_of")))
         self.direct_has_cap = sorted((s, o) for s, o in raw.subject_objects(self._p("has_capability")))
         self.direct_req_cap = sorted((s, o) for s, o in raw.subject_objects(self._p("requires_capability")))
+        self.direct_uses_tool = sorted((s, o) for s, o in raw.subject_objects(self._p("uses_tool")))
 
     # ---------------- 语义配置访问 ----------------
 
@@ -718,6 +719,10 @@ class AgentTaskAdapter:
             edges.append({"source": local(s), "target": local(o), "property": self.c.resolve("depends_on"), "inferred": False})
         for s, o in self.direct_composed:
             edges.append({"source": local(s), "target": local(o), "property": self.c.resolve("composed_of"), "inferred": False})
+        # uses_tool 的唯一消费方：图谱里把工具连到使用它的 Agent——
+        # 没有这条线，4 个工具个体在工作台是孤儿节点（#70）
+        for s, o in self.direct_uses_tool:
+            edges.append({"source": local(s), "target": local(o), "property": self.c.resolve("uses_tool"), "inferred": False})
         ind_names = {i["name"] for i in individuals}
         can_execute_pred = self._p("can_execute")
         for s, o in self.can_execute_pairs():

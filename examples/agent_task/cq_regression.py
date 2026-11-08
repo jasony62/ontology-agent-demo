@@ -35,7 +35,7 @@ _HINTS = {
     "R1": "R1 属性链退化：检查 has_capability / required_by 断言与 can_execute 的 propertyChainAxiom 公理",
     "R2": "R2 委派退化：检查复合任务 composed_of 与子任务能力/认证断言（CertifiedAgent 委派链）",
     "R3": "R3 传递闭包退化：检查 depends_on 断言与 TransitiveProperty 公理（物化是否如期触发）",
-    "R4": "R4 合规冲突退化：检查 requires_constraint（ComplianceRequirement）与 Agent has_certified 断言",
+    "R4": "R4 合规冲突退化：检查 requires_constraint（合规约束实例）与 Agent 认证个体（holds_certification / cert_valid）",
 }
 _HINT_DEFAULT = "退化定位：对照 expect/actual 检查相关断言与公理是否变化"
 

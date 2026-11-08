@@ -208,10 +208,12 @@ def test_types_of_generic(engine):
 
 def test_property_values_generic(engine):
     caps = engine.property_values("dev_agent", "has_capability")
-    # #64 起能力以实例引用（cap_coding / cap_code_review）
+    # #64 起能力以实例引用（cap_coding / cap_code_review）；#65 起认证是个体
     assert set(caps) == {"cap_coding", "cap_code_review"}
+    # junior_dev 无任何认证（原 has_certified=false 的个体化表达）
+    assert engine.property_values("junior_dev", "holds_certification") == []
     cert = engine.property_values("junior_dev", "has_certified")
-    assert cert == ["false"]
+    assert cert == []
 
 
 def test_infer_generic(engine):

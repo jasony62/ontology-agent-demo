@@ -23,7 +23,7 @@
     ],
     "properties": [
       "has_capability", "requires_capability", "can_execute", "depends_on",
-      "composed_of", "requires_constraint", "has_certified", "has_risk_level", "assigned_to"
+      "composed_of", "requires_constraint", "holds_certification", "has_risk_level", "assigned_to"
     ]
   },
   "declared_anchor_stopwords": [

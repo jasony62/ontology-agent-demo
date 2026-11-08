@@ -20,6 +20,7 @@
 """
 
 import argparse
+import datetime
 import os
 import sys
 
@@ -119,6 +120,13 @@ def build() -> Ontology:
         class SecurityRequirement(Constraint):
             pass
 
+        # --- 认证（#65：认证个体化，范围/签发方/有效期可承载） ---
+        class Certification(Thing):
+            pass
+
+        class SecurityTeam(Thing):
+            pass
+
         # ================= 对象属性 =================
         class has_capability(Agent >> Capability):
             """智能体具备的能力"""
@@ -154,9 +162,22 @@ def build() -> Ontology:
         class uses_tool(Agent >> Tool):
             """智能体使用的工具"""
 
+        # 认证个体化（#65）：范围 / 签发方 / 有效期都能承载
+        class holds_certification(Agent >> Certification):
+            """Agent 持有的认证"""
+
+        class certified_for(Certification >> Capability):
+            """认证覆盖的能力范围"""
+
+        class issued_by(Certification >> SecurityTeam):
+            """认证的签发方"""
+
         # ================= 数据属性 =================
-        class has_certified(Agent >> bool, FunctionalProperty):
-            """是否具备合规认证"""
+        class valid_until(Certification >> datetime.date, FunctionalProperty):
+            """认证有效期"""
+
+        class cert_valid(Agent >> bool):
+            """R7 派生：持有未过期认证（规则层比对当前日期，不手工断言）"""
 
         class has_risk_level(Task >> int, FunctionalProperty):
             """风险等级 1-5"""
@@ -170,8 +191,10 @@ def build() -> Ontology:
         # 多能力任务只满足一项即被判可执行（#59），不再用属性链表达。
 
         # 等价类（供 HermiT 自动分类演示）
+        # CertifiedAgent = 持有至少一张认证（someValuesFrom）；
+        # 「未过期」涉及日期比对，OWL 公理表达不了，由规则层 R7 判 cert_valid
         class CertifiedAgent(Agent):
-            equivalent_to = [Agent & has_certified.value(True)]
+            equivalent_to = [Agent & holds_certification.some(Certification)]
 
         class ComplianceTask(Task):
             equivalent_to = [Task & requires_constraint.some(ComplianceRequirement)]
@@ -196,6 +219,8 @@ def build() -> Ontology:
         Constraint.label = ["约束"]
         ComplianceRequirement.label = ["合规认证要求"]
         SecurityRequirement.label = ["安全要求"]
+        Certification.label = ["资质认证"]
+        SecurityTeam.label = ["安全团队"]
 
         # ================= 个体：能力 / 工具 / 约束（#64） =================
         # 任务/Agent 引用这些**实例**而非类本身：类无法承载认证等级、有效期等
@@ -221,13 +246,33 @@ def build() -> Ontology:
         creq_default = ComplianceRequirement("creq_default")
         creq_default.label = ["默认合规认证要求"]
 
+        # ================= 个体：认证（#65：范围 + 签发方 + 有效期） =================
+        sec_team = SecurityTeam("sec_team")
+        sec_team.label = ["安全合规团队"]
+        cert_dev_coding = Certification(
+            "cert_dev_coding", certified_for=[cap_coding], issued_by=[sec_team],
+            valid_until=datetime.date(2027, 6, 30))
+        cert_dev_coding.label = ["研发编码合规认证"]
+        cert_req_analysis = Certification(
+            "cert_req_analysis", certified_for=[cap_requirement_analysis], issued_by=[sec_team],
+            valid_until=datetime.date(2027, 6, 30))
+        cert_req_analysis.label = ["需求分析合规认证"]
+        cert_testing = Certification(
+            "cert_testing", certified_for=[cap_testing], issued_by=[sec_team],
+            valid_until=datetime.date(2027, 6, 30))
+        cert_testing.label = ["测试执行合规认证"]
+        cert_deployment = Certification(
+            "cert_deployment", certified_for=[cap_deployment], issued_by=[sec_team],
+            valid_until=datetime.date(2027, 6, 30))
+        cert_deployment.label = ["部署发布合规认证"]
+
         # ================= 个体：智能体 =================
         req_agent = RequirementAgent(
             "req_agent",
             has_description="负责需求分析、用户故事与验收标准编写",
             has_capability=[cap_requirement_analysis],
             uses_tool=[tool_knowledge_base],
-            has_certified=True,
+            holds_certification=[cert_req_analysis],
         )
         req_agent.label = ["需求分析Agent"]
 
@@ -236,7 +281,7 @@ def build() -> Ontology:
             has_description="负责编码实现与代码审查，已通过合规认证",
             has_capability=[cap_coding, cap_code_review],
             uses_tool=[tool_ide, tool_git_repo],
-            has_certified=True,
+            holds_certification=[cert_dev_coding],
         )
         dev_agent.label = ["研发Agent"]
 
@@ -245,7 +290,6 @@ def build() -> Ontology:
             has_description="仅具备编码能力，尚未通过合规认证",
             has_capability=[cap_coding],
             uses_tool=[tool_ide],
-            has_certified=False,
         )
         junior_dev.label = ["初级研发Agent"]
 
@@ -254,7 +298,7 @@ def build() -> Ontology:
             has_description="负责测试执行与质量门禁",
             has_capability=[cap_testing],
             uses_tool=[tool_cicd],
-            has_certified=True,
+            holds_certification=[cert_testing],
         )
         test_agent.label = ["测试Agent"]
 
@@ -263,7 +307,7 @@ def build() -> Ontology:
             has_description="负责生产部署与发布",
             has_capability=[cap_deployment],
             uses_tool=[tool_cicd, tool_git_repo],
-            has_certified=True,
+            holds_certification=[cert_deployment],
         )
         deploy_agent.label = ["部署Agent"]
 

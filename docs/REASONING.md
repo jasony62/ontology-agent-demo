@@ -46,23 +46,23 @@
 | 规则 1（看主语） | 主语是**类或属性**（`owl:Class` / `owl:ObjectProperty` / `owl:DatatypeProperty`） | **TBox** |
 | 规则 1（看主语） | 主语是**个体**（`owl:NamedIndividual`） | **ABox** |
 | 规则 2（看谓词） | 声明/公理谓词：`rdf:type owl:Class`、`rdfs:subClassOf`、`owl:equivalentClass`、`owl:propertyChainAxiom`、`owl:inverseOf`、`rdfs:domain/range` | **TBox** |
-| 规则 2（看谓词） | 断言谓词：个体上的 `rdf:type 某类`、领域属性（`has_capability`）、数据属性（`has_certified`）、`rdfs:label` | **ABox** |
+| 规则 2（看谓词） | 断言谓词：个体上的 `rdf:type 某类`、领域属性（`has_capability`）、数据属性（`valid_until`）、`rdfs:label` | **ABox** |
 
 **示例本体 owl 文件的实际分布**（以书写顺序看，TBox 在前、ABox 在后）：
 
 | 区域 | 内容 | 归属 |
 |---|---|---|
-| 属性声明 | 9 个 `ObjectProperty` + 3 个 `DatatypeProperty` + 公理（propertyChainAxiom / inverseOf / TransitiveProperty） | **TBox** |
-| 类声明 | 25 个 `Class` + `subClassOf` 层次 + 4 个 `equivalentClass` 定义类 | **TBox** |
-| 个体断言 | 13 个 `NamedIndividual` + 类型/属性/数据断言 + label | **ABox** |
+| 属性声明 | 12 个 `ObjectProperty` + 6 个 `DatatypeProperty` + 公理（inverseOf / TransitiveProperty；#59 起属性链迁规则层） | **TBox** |
+| 类声明 | 27 个 `Class` + `subClassOf` 层次 + 2 个 `equivalentClass` 定义类 | **TBox** |
+| 个体断言 | 28 个 `NamedIndividual` + 类型/属性/数据断言 + label（#64/#65 起含能力 / 工具 / 约束 / 认证实例） | **ABox** |
 
 以 `dev_agent` 为例，同一段 XML 里混着两种逻辑成分：
 
 ```xml
 <owl:NamedIndividual rdf:about="#dev_agent">              ← ABox：声明这是个体
   <rdf:type rdf:resource="#DevAgent"/>                    ← ABox：个体类型断言
-  <has_capability rdf:resource="#Coding"/>                ← ABox：属性断言
-  <has_certified rdf:datatype="...#boolean">true</has_certified>  ← ABox：数据断言
+  <has_capability rdf:resource="#cap_coding"/>            ← ABox：属性断言（#64 起指向实例）
+  <holds_certification rdf:resource="#cert_dev_coding"/>  ← ABox：认证个体（#65）
   <rdfs:label ...>研发Agent</rdfs:label>                  ← ABox：标注（类也有 label，见下）
 </owl:NamedIndividual>
 ```
@@ -158,9 +158,9 @@ owlrl.DeductiveClosure(owlrl.OWLRL_Semantics).expand(self.g)
 ```xml
 <owl:NamedIndividual rdf:about="#dev_agent">
   <rdf:type rdf:resource="#DevAgent"/>
-  <has_capability rdf:resource="#Coding"/>
-  <has_capability rdf:resource="#CodeReview"/>
-  <has_certified rdf:datatype="...XMLSchema#boolean">true</has_certified>
+  <has_capability rdf:resource="#cap_coding"/>
+  <has_capability rdf:resource="#cap_code_review"/>
+  <holds_certification rdf:resource="#cert_dev_coding"/>
   <rdfs:label rdf:datatype="...XMLSchema#string">研发Agent</rdfs:label>
 </owl:NamedIndividual>
 
@@ -209,10 +209,10 @@ t_a depends_on t_b，t_b depends_on t_c  ⇒  t_a depends_on t_c   （传递闭�
 
 ### 2.4 子类 / 等价类归类（subClassOf / equivalentClass）
 
-**owl 定义中的对应内容**（4 个定义类中的两个）：
+**owl 定义中的对应内容**（2 个定义类）：
 
 ```xml
-<!-- CertifiedAgent：Agent 且 has_certified=true（值约束定义类） -->
+<!-- CertifiedAgent：Agent 且持有至少一张认证（#65 起认证是个体，someValuesFrom） -->
 <owl:Class rdf:about="#CertifiedAgent">
   <rdfs:subClassOf rdf:resource="#Agent"/>
   <owl:equivalentClass>
@@ -220,8 +220,8 @@ t_a depends_on t_b，t_b depends_on t_c  ⇒  t_a depends_on t_c   （传递闭�
       <owl:intersectionOf rdf:parseType="Collection">
         <rdf:Description rdf:about="#Agent"/>
         <owl:Restriction>
-          <owl:onProperty rdf:resource="#has_certified"/>
-          <owl:hasValue rdf:datatype="...XMLSchema#boolean">true</owl:hasValue>
+          <owl:onProperty rdf:resource="#holds_certification"/>
+          <owl:someValuesFrom rdf:resource="#Certification"/>
         </owl:Restriction>
       </owl:intersectionOf>
     </owl:Class>
@@ -245,11 +245,13 @@ t_a depends_on t_b，t_b depends_on t_c  ⇒  t_a depends_on t_c   （传递闭�
 </owl:Class>
 ```
 
-**能力边界**：owlrl 对**值约束**定义类（`CertifiedAgent ≡ Agent ∩ has_certified=true`）
-能自动归类个体（`owl:hasValue`）；但对**存在量词**定义类
-（`ComplianceTask ≡ Task ∩ requires_constraint some ComplianceRequirement`，
-`owl:someValuesFrom`）的个体分类支持有限——所以 `ComplianceTask` 的识别由
-通道 B 的 `classify()` 模式匹配兜底（见 3.3 与第 6 节局限）。
+**能力边界**：`someValuesFrom` 定义类的个体归类要求**值域约束指向的类有实例**——
+`CertifiedAgent`（`∃holds_certification.Certification`）在 #65 认证个体化后成立，
+`ComplianceTask`（`∃requires_constraint.ComplianceRequirement`）在 #64 约束实例化后
+成立；此前 `ComplianceTask` 推不出并非 owlrl 能力限制，而是图里只有类没有实例
+（#61）。两个 defined class 都由 owlrl 自动归类，「认证未过期」这种日期不等式
+OWL 表达不了，由规则层 R7 的 `cert_valid` 判定（与 defined class 的
+「持有至少一张认证」口径如实分开）。
 
 ---
 

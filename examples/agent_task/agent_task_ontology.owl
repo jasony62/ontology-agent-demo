@@ -97,6 +97,8 @@
 
 <owl:Class rdf:about="#Agent">
   <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <owl:disjointWith rdf:resource="#Task"/>
+  <owl:disjointWith rdf:resource="#Capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">智能体</rdfs:label>
 </owl:Class>
 
@@ -107,6 +109,7 @@
 
 <owl:Class rdf:about="#DevAgent">
   <rdfs:subClassOf rdf:resource="#Agent"/>
+  <owl:disjointWith rdf:resource="#TestAgent"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">研发Agent类</rdfs:label>
 </owl:Class>
 
@@ -127,11 +130,14 @@
 
 <owl:Class rdf:about="#Task">
   <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <owl:disjointWith rdf:resource="#Agent"/>
+  <owl:disjointWith rdf:resource="#Capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务</rdfs:label>
 </owl:Class>
 
 <owl:Class rdf:about="#SimpleTask">
   <rdfs:subClassOf rdf:resource="#Task"/>
+  <owl:disjointWith rdf:resource="#ComplexTask"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">简单任务</rdfs:label>
 </owl:Class>
 
@@ -142,6 +148,8 @@
 
 <owl:Class rdf:about="#Capability">
   <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
+  <owl:disjointWith rdf:resource="#Agent"/>
+  <owl:disjointWith rdf:resource="#Task"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">能力</rdfs:label>
 </owl:Class>
 

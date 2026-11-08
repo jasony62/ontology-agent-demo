@@ -36,6 +36,12 @@ BAD_TASK_TTL = """@prefix demo: <http://ontology.localhost/agent-task#> .
 demo:t_bad_task a demo:SimpleTask .
 """
 
+# 个体级互斥素材：现行本体（已声明 SimpleTask ⊥ ComplexTask，#66）+ 一个
+# 同时属于两个互斥类的个体
+BAD_INDIVIDUAL_TTL = """@prefix demo: <http://ontology.localhost/agent-task#> .
+demo:t_bad_split a demo:SimpleTask, demo:ComplexTask .
+"""
+
 
 def _current_ttl(with_bad_task: bool = False) -> str:
     """现行 agent_task 真实资产（原始断言图）作为过闸素材。"""
@@ -87,6 +93,39 @@ def test_g2_conflict_fails_and_later_gates_not_run():
     assert any("CertifiedAgent" in c for c in g2["evidence"]["conflicts"])
     assert [t["status"] for t in r["gate_trace"][2:]] == ["not_run", "not_run"]
     assert "回 S2" in r["next"]
+
+
+def test_g2_catches_individual_in_disjoint_classes():
+    """正例②续（#66）：个体同时属于互斥类（SimpleTask ∧ ComplexTask）→ G2 fail。
+
+    OWL 2 RL 规则集没有个体级 disjoint 推理（owlrl 不会推出 rdf:type
+    owl:Nothing），只查类级子类冲突的话，这类 ABox 冲突永远全绿——
+    必须结构直查互斥对两边的类型集。违规个体在错误信息中被点名。
+    """
+    r = pipeline_gate.run_gates(_current_ttl() + "\n" + BAD_INDIVIDUAL_TTL, gates=["G2"])
+    g2 = next(t for t in r["gate_trace"] if t["gate"] == "G2_consistency")
+    assert g2["status"] == "fail"
+    assert any("t_bad_split" in c and "disjointWith" in c
+               for c in g2["evidence"]["conflicts"])
+
+
+def test_raw_declares_business_disjoint_with():
+    """现行本体（#66）：raw 断言图声明业务类互斥 ≥ 4 对，G2 才有东西可拦。
+
+    此前 raw 里 owl:disjointWith 为 0 条（物化图里的 3 条全是 owlrl 给
+    XSD 内建类型补的，与业务无关），G2 的互斥检查对 agent_task 是装饰。
+    """
+    from rdflib import OWL, RDF
+
+    e = OntologyEngine(ONTO_PATH)
+    pairs = [frozenset((s, o)) for s, _, o in e.raw.triples((None, OWL.disjointWith, None))]
+    assert len(pairs) >= 4
+    # 都是业务类：两端在本体里声明为 owl:Class，且不是 XSD / owl 内建
+    builtins = {OWL.Thing, OWL.Nothing, OWL.Class}
+    for pair in pairs:
+        for cls in pair:
+            assert (cls, RDF.type, OWL.Class) in e.raw, f"{cls} 不是本体声明的类"
+            assert cls not in builtins
 
 
 def test_g4_shacl_violation_passthrough():

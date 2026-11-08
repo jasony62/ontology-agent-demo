@@ -425,7 +425,9 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
 URL 填 `http://127.0.0.1:9000/mcp` → 保存后即可在对话中直接调用（如"登录模块开发谁能做？"）。
 
 > 技术要点：MCP SDK 2.x，入口为 `from mcp.server.mcpserver import MCPServer`；
-> 默认端口 8000 与 API 冲突，故用 9000。
+> 默认端口 8000 与 API 冲突，故用 9000。仓库的 `mcp/` 目录与 pip 的 `mcp` SDK 包同名
+> （目录遮蔽 SDK 包），`mcp/` 内的兄弟模块（`policy.py` / `tool_guard.py`）因此按文件路径
+> importlib 加载，不能写 `from mcp import policy`。
 
 ---
 
@@ -458,7 +460,7 @@ python3 -m venv .venv
 curl -s http://127.0.0.1:8000/api/health                      # 健康检查
 curl -s -X POST http://127.0.0.1:8000/api/domains/current/capabilities/query \
   -H "Content-Type: application/json" -d '{"kind":"capability_match","params":{"task":"t_login_dev"}}'
-.venv/bin/python -m pytest tests/ -q                          # 自动化测试套件全绿（约 430 项，以 pytest 实测为准）
+.venv/bin/python -m pytest tests/ -q                          # 自动化测试套件全绿（项数以 pytest 实测为准）
 ```
 
 ### 10.4 Skill 封装（可选）
@@ -475,7 +477,7 @@ python scripts/query.py capability_match --task t_login_dev --local  # 内嵌引
 
 ## 11. 测试
 
-`tests/` 共约 430 项自动化测试，覆盖：
+`tests/` 自动化测试（项数以 pytest 实测为准），覆盖：
 
 - `test_reasoning.py`：R1 属性链匹配、R2 复合任务委派、R3 传递闭包、R4 冲突、
   推导链结构（fact/rule/conclusion）、分类、语义覆盖；
@@ -489,34 +491,20 @@ python scripts/query.py capability_match --task t_login_dev --local  # 内嵌引
 
 ---
 
-## 12. 关键技术决策与踩坑记录
-
-| 决策 / 坑 | 说明 |
-|---|---|
-| 推理器选型 | HermiT 需 Java → 改用纯 Python `owlrl`（OWL 2 RL）；本体仍标准 OWL 2，Protege + HermiT 可校验 |
-| 属性链建模 | owlready2 需显式逆属性 + PropertyChain；owlrl 推理后 `can_execute` 从 0 → 8 条 |
-| 语义配置参数化 | 类角色映射外置 JSON；属性名"语义名即短名"（`resolve()` 兜底），恒等条目零配置 |
-| 中文名唯一事实源 | 全部放 owl `rdfs:label`，`label()` 支持 URIRef 与短名（objects_of 返回短名） |
-| 推导链声明式化 | step/loop/if + `$path` 引用，`explain.py` 死代码删除，规则进 `derivation.json` |
-| 拓扑排序 | 编排边取反（o→s），使"无依赖者"排最前 |
-| MCP 撞名 | `mcp` 是三方包名，验证时 `sys.path.insert(0,'mcp'); import mcp_server` |
-| 领域包数据缺失 | config.json / derivation.json 缺失即抛错（坏包快速失败，不静默兜底） |
-| classify 副作用 | 修改单例图，测试断言用 `>=` 防污染 |
-
----
-
-## 13. 扩展指南
+## 12. 扩展指南
 
 ### 13.1 换一个本体（同构：类/属性名不同）
 
 ```python
 from reasoner.engine import OntologyEngine
-from domains.agent_task import AgentTaskAdapter, DEFAULT_CONFIG
+from ontology_plugin_sdk import PluginContext
+from domains.agent_task import create_adapter_ctx, DEFAULT_CONFIG
 
-eng = OntologyEngine("your_ontology.owl")
-adapter = AgentTaskAdapter(eng, DEFAULT_CONFIG.update(
+eng = OntologyEngine("your_ontology.owl", ns="http://ontology.localhost/worker-job#")
+ctx = PluginContext.for_engine(eng, config=DEFAULT_CONFIG.update(
     agent_class="Worker", task_class="Job", complex_task_class="Pipeline",
     has_capability="owns_skill", requires_capability="needs_skill"))
+adapter = create_adapter_ctx(ctx)   # 领域包唯一工厂：create_adapter_ctx(ctx)
 ```
 
 ### 13.2 新建一个领域（异构：不同的业务）
@@ -543,7 +531,7 @@ adapter = AgentTaskAdapter(eng, DEFAULT_CONFIG.update(
 
 ---
 
-## 14. 目录结构总览
+## 13. 目录结构总览
 
 ```
 <项目根目录>/
@@ -551,27 +539,30 @@ adapter = AgentTaskAdapter(eng, DEFAULT_CONFIG.update(
 │   ├── engine.py                   #   通用引擎（加载/推理/通用查询原语）
 │   ├── semantic.py                 #   语义配置容器 + JSON 加载器
 │   ├── derivation.py               #   推导链声明式规则解释器
+│   ├── pipeline_gate.py            #   G1–G4 建模闸门（规格见 docs/MODELING_GATES.md）
 │   └── __init__.py                 #   导出
+├── packages/ontology-plugin-sdk/   # 领域插件 SDK（领域包唯一可依赖的宿主无关包）
 ├── domains/                        # 领域层（运行时动态加载）
 │   ├── __init__.py                 #   纯导出
 │   ├── registry.py                 #   注册表（list_domains / load_domain）
 │   └── agent_task/                 # 「智能体任务编排」领域（自包含）
 │       ├── __init__.py             #   纯导出（门面：NAME/DESCRIPTION/ONTO_FILE/适配器符号）
-│       ├── adapter.py              #   适配器（R2/R4 规则 + 5 查询 + 图谱）
+│       ├── adapter.py              #   适配器（R4 校验 + 5 查询 + 图谱；R2 在规则层）
 │       ├── config.json             #   语义配置（类角色映射）
 │       ├── derivation.json         #   推导链配置（文案 + 规则）
-│       ├── mcp.py                  #   领域 MCP 工具注册（9 个领域工具）
+│       ├── mcp.py                  #   领域 MCP 工具注册（16 个：业务 9 + 建模/质量 7）
+│       ├── rules/                  #   SHACL 规则层（R2 委派 / R5 / R6，加载流水线执行）
+│       ├── shapes/                 #   SHACL 形状（G4 与 validate_shapes 用）
 │       └── agent_task_ontology.owl #   本体定义
 ├── api/                            # REST API（FastAPI，:8000，领域端点走适配器）
 ├── mcp/mcp_server.py               # MCP Server 通用出口（:9000，--domain 动态加载领域工具）
-├── frontend/                       # 图谱展示页
+├── pipeline/gates.json             # G1–G4 闸门配置
+├── frontend/app/                   # 图谱工作台（React/Vite，构建产物由 API 托管）
 ├── scripts/build_ontology.py       # 一键重建本体（含结构自检）
-├── tests/                          # 自动化测试套件（约 430 项，以 pytest 实测为准）
+├── tests/                          # 自动化测试套件（项数以 pytest 实测为准）
 └── requirements.txt
 ```
 
 ---
 
 *本文档与代码同步维护；行为基线以 `tests/` 与 `README.md` 为准。*
-
-> AI生成

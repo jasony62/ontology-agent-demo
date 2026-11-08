@@ -1,8 +1,7 @@
-"""管线质量门禁 pipeline_gate：S3 四道闸门的在线执行器（通用引擎层，与任何领域无关）。
+"""管线质量门禁 pipeline_gate：四道闸门的在线执行器（通用引擎层，与任何领域无关）。
 
-落地上游 `docs/MODELING_PIPELINE.md` §5 已约定但未实现的四道闸门（S1-S4 管线代码
-未动工不影响闸门作为独立工具先服务人工/Agent 建模场景；上游实现 s1-s4 脚本时
-复用同一检查器）：
+实现 `docs/MODELING_GATES.md` 规格的四道闸门，作为独立工具先服务人工/Agent 建模
+场景（上游建模流水线的 s1-s4 脚本落地时复用同一检查器）：
 
     G1 DL 格式        防 OWL-Full（主键陷阱等违规公理拦截）
     G2 一致性         TBox/ABox 逻辑矛盾（owlrl 降级路线，HermiT 为可选增强）
@@ -17,7 +16,7 @@
     降级结构断言；冒烟集为空 / shapes 缺失 → skipped 如实声明，绝不假通过；
   - **只读**：草稿在拷贝图上物化，不写回任何主图。
 
-闸门语义以上游文档 G1-G4 为权威（与调研报告简写「术语→结构→SHACL→推理」不同，
+闸门语义以 `docs/MODELING_GATES.md` 为权威（与调研报告简写「术语→结构→SHACL→推理」不同，
 术语/结构层面校验对应 PR#9 validate_tbox_draft 的 L1-L5，不是闸门本身）。
 
 用法：
@@ -58,7 +57,7 @@ GATE_NAMES = {
     "G3": "G3_materialize_smoke",
     "G4": "G4_shacl_tests",
 }
-# 失败处置（上游文档口径：G1/G2 回 S2、G3 检查骨架/公理、G4 修数据字典或 SHACL）
+# 失败处置（规格文档口径：G1/G2 回公理补全、G3 检查骨架/公理、G4 修数据字典或 SHACL）
 REMEDIATION = {
     "G1_dl_format": "移除违规公理（主键唯一等不该用 OWL 表达的约束改放 SHACL），回 S2",
     "G2_consistency": "回 S2 修公理（移除矛盾公理或调整子类层级；空类需补个体或声明为纯抽象类）",
@@ -169,7 +168,7 @@ def _gate_g2(g: Graph, domain: str, degraded: list) -> dict:
         and not list(g.triples((None, RDFS.subClassOf, c)))   # 无子类
     )
     # HermiT 需 JVM，默认降级路线（上游文档 §5.2：生产 / CI 可选开启）——显式标注不冒充
-    degraded.append("G2 走 owlrl + 结构检查降级路线（HermiT 需 JVM，按上游 MODELING_PIPELINE.md §5.2 生产环境可选开启）")
+    degraded.append("G2 走 owlrl + 结构检查降级路线（HermiT 需 JVM，生产环境可选开启，见 docs/MODELING_GATES.md）")
     return {
         "gate": "G2_consistency",
         "status": "fail" if conflicts else "pass",

@@ -66,7 +66,7 @@ description: 从零新建领域包：为新业务领域完成选域、TBox/ABox 
 - [references/mcp-extensions.md](references/mcp-extensions.md) — MCP 出口层六类扩展模式（受控语义/SHACL 体检/时序 ABox/调用护栏/管线门禁/CQ 出题）
 - [references/proof-export.md](references/proof-export.md) — explain_proof 结构化证明导出：三态诚实降级与三类规则反查
 - [references/upstream-contribution.md](references/upstream-contribution.md) — 上游贡献礼仪：跨 fork token 选型、撞车三查、CHANGELOG 硬要求、PR 跟进
-- `docs/guide/08-扩展新领域.md`（九步新建领域教程）、`docs/manual/06-二次开发指南.md`（四步版）、`docs/DOMAIN_PACKAGE_GENERATION.md`（知识库驱动分层生成）
+- `docs/guide/08-扩展新领域.md`（九步新建领域教程）、`docs/manual/06-二次开发指南.md`（四步版）
 
 ## 6. 安全与边界
 

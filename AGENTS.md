@@ -26,7 +26,7 @@ Chinese-language ontology × agent demo: a domain-agnostic OWL 2 RL engine (`rea
 - Neither `api/main.py` nor `mcp/mcp_server.py` names a domain any more: both resolve the default via config and load through `domains.registry`. `reasoner.engine.ONTO_PATH` is resolved at import time from the configured default domain (`default_onto_path()`: package `config.json` `onto_file` → unique `*.owl` → legacy path), so `reasoner` never imports a domain adapter (that would be circular).
 - Domain display names come from `rdfs:label` in the OWL file; do not duplicate them in `config.json`. Property names default to ontology short names (`config.json` only overrides them).
 - `frontend/app/` is the real UI. `frontend/app/dist/` is gitignored and built by `npm run build` or the Docker frontend stage; it is not committed.
-- `pipeline/gates.json` + the domain package's own `shapes/<domain>.ttl` configure G1–G4 gates (`"shapes_file": "@domain"` makes G4 resolve the file from the active domain package, so it works under any runtime root); `docs/MODELING_PIPELINE.md` is the authoritative gate spec, `reasoner/pipeline_gate.py` the implementation.
+- `pipeline/gates.json` + the domain package's own `shapes/<domain>.ttl` configure G1–G4 gates (`"shapes_file": "@domain"` makes G4 resolve the file from the active domain package, so it works under any runtime root); `docs/MODELING_GATES.md` is the authoritative gate spec, `reasoner/pipeline_gate.py` the implementation.
 
 ## Commands
 

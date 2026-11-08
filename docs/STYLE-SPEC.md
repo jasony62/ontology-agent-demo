@@ -154,6 +154,16 @@
 - 建议：`.level-suggestion`（灰 `#8a94a6`）
 - 点击条目可定位到对应实体（见 Designer 实现）。
 
+### 3.5 在线编辑（OntologyEditor）与可视化编辑对齐
+
+两个编辑器消费同一套 token 与原语，任何原语改动两边同步：
+
+- 工具栏 `.editor-toolbar` 与 `.designer-toolbar` 同构：标题左、操作右、间距 `--sp-3`；
+- 按钮一律 `.btn` 变体，行内「删」用 `.btn.ghost.danger-text`；
+- 表单字段一律 `.field` / `.field-label`，不引入旧 `.ef-field` 一类散落类；
+- `.ef-row`（对象/数据属性/实例卡片）与 `.ef-tree-row`（类层次树）只引用 `--border` / `--radius` / 间距 token，底色 `--panel` / `--panel-2`；
+- 成功提示 `.notice-banner` 用 `--success-bg` / `--success-border` / `--success`。
+
 ---
 
 ## 4. 布局与排版约定
@@ -175,22 +185,7 @@
 
 ---
 
-## 6. 本次应用：在线编辑（OntologyEditor）对齐
+## 6. 参考
 
-将 OntologyEditor 从 legacy 样式迁移到本规范：
-
-- 工具栏 `.editor-toolbar` 对齐 `.designer-toolbar`（标题左、操作右、间距 `--sp-3`）。
-- 所有 `<button>` 改为 `.btn` 变体；行内「删」用 `.btn.ghost.danger-text`。
-- 所有字段改用 `.field` / `.field-label`（替换旧的 `.ef-field`）。
-- `.ef-row`（对象/数据属性/实例卡片）、`.ef-tree-row`（类层次树）改用 `--border` / `--radius` / 间距 token，底色 `--panel` / `--panel-2`。
-- 成功提示 `.notice-banner` 改用 `--success-bg` / `--success-border` / `--success`。
-
-> 功能（四栏编辑、撤销/重做/脏标记/保存/另存/覆盖/下载）**完全不变**，仅重构视觉层。
-
----
-
-## 7. 参考
-
-- `docs/DESIGN-visual-editor-redesign.md`：可视化编辑改版方案（token 体系起源）
 - `frontend/app/src/styles/index.css`：token 与原语实现（唯一落点）
 - `frontend/app/src/components/Designer.tsx` / `OntologyEditor.tsx`：两套编辑器的消费方

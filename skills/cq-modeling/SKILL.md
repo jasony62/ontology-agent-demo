@@ -77,7 +77,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 
 - 数据体检：`validate_shapes`（SHACL，形状文件随领域包 `shapes/*.ttl`）——管「数据合不合格」；**只校验断言图，不含推理闭包**（给派生谓词写形状需显式对物化图执行，结果会不同）；
 - 业务规则：`run_rules` / `list_rules`（SHACL 规则，`rules/*.ttl` 随领域包）——管「推出新结论」，与校验同语言；
-- 建模管线四闸门：`pipeline_gate`（G1–G4，规格见 `docs/MODELING_PIPELINE.md`）。
+- 建模管线四闸门：`pipeline_gate`（G1–G4，规格见 `docs/MODELING_GATES.md`）。
 
 ## 4. 常见坑与自救
 
@@ -93,7 +93,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 
 ## 5. 深入阅读
 
-- `docs/MODELING_PIPELINE.md`：G1–G4 闸门权威规格
+- `docs/MODELING_GATES.md`：G1–G4 闸门权威规格
 - `examples/agent_task/cq_tests.json`：回归题库样例（12 题平移自评测题库）
 - 仓库 README「MCP 接入」：建模/质量 5 工具清单
 - `docs/guide/03-本体推理原理.md`：R1–R4 规则原理（退化定位 hint 依据）

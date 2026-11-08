@@ -62,7 +62,7 @@ docker compose exec api python -m pytest tests/ -q
 | 04 本体与知识图谱 | `frontend/index.html`（图谱渲染） | 访问 Demo 页面看图谱 |
 | 05 搭建本体推理服务 | `api/main.py` + `scripts/demo.sh` | `docker compose up -d api` 后用 `bash scripts/demo.sh` 跑一遍接口 |
 | 06 MCP 接入智能体 | `mcp/mcp_server.py` + `domains/agent_task/mcp.py` | `docker compose up -d mcp` 启动后在豆包中添加连接器 |
-| 07 智能体协作实战 | `domains/agent_task/adapter.py`（R2/R4 规则） | 用 `/api/assign` 分配一次任务并看推导链 |
+| 07 智能体协作实战 | `domains/agent_task/adapter.py`（R4 校验）+ `rules/*.ttl`（R2 规则层） | 用 `POST /api/domains/current/capabilities/apply`（`kind=assign`）分配一次任务并看推导链 |
 | 08 扩展新领域 | `domains/` + `scripts/build_ontology.py` | 仿照 `domains/agent_task/` 新建一个领域包 |
 
 ## 术语速查

@@ -54,7 +54,7 @@
 | 通道 | 入口 | 智能体参与 | 典型场景 |
 |---|---|---|---|
 | **A. 豆包对话** | MCP Server `http://127.0.0.1:9000/mcp`（连接器） | ✅ ①接入能力面 → 理解 + 编排 + 回答 | 自然语言提问（推荐主通道） |
-| **B. REST API** | `http://127.0.0.1:8000/api/...` | ❌ 程序直连，按 type 调用 | 程序集成、curl、自动化测试 |
+| **B. REST API** | `http://127.0.0.1:8000/api/...` | ❌ 程序直连，按 `kind` 调用 | 程序集成、curl、自动化测试 |
 | **C. Skill CLI** | `ontology-reasoning` skill 的 `query.py` | ❌ | 本地脚本 / 离线（--local 内嵌引擎） |
 
 > **接入 = 选能力面**：MCP 服务按 `--domain` 启动（`mcp/mcp_server.py --domain agent_task`），
@@ -191,7 +191,7 @@ def capability_match(task: str) -> dict:
 参数转换的关键：智能体传入的是**短名**（`t_login_dev`），`adapter.NS[task]`
 把它解析成本体命名空间下的完整 IRI（`http://ontology.localhost/agent-task#t_login_dev`）。
 
-### 4.2 REST 通道：读写两张表，按 type 分支路由
+### 4.2 REST 通道：读写两张表，按 `kind` 分支路由
 
 `api/main.py` 把能力表按副作用拆开，读端点只认 `QUERY_KINDS`，写端点只认
 `APPLY_KINDS`（两者各自并入领域注册的 `QUERY_HANDLERS` / `APPLY_HANDLERS`）：
@@ -486,4 +486,4 @@ def __init__(self, onto_path, ns=None):
 
 ---
 
-*本文档与代码同步维护；行为基线以 `tests/`（自动化测试套件，约 430 项，以 `pytest` 实测为准）与 `README.md` 为准。*
+*本文档与代码同步维护；行为基线以 `tests/`（自动化测试套件，项数以 `pytest` 实测为准）与 `README.md` 为准。*

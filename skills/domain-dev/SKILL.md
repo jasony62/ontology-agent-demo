@@ -99,7 +99,7 @@ adapter = domain_module.create_adapter_ctx(ctx)
 
 ### 3.6 高阶：知识库驱动的分层生成
 
-已有 OWL + 业务知识库时，可按 `docs/DOMAIN_PACKAGE_GENERATION.md` 的分层自动化生成领域包：确定性（类/属性/label）交给脚本提取、语义性（公理→人话、场景→工具描述）交给 LLM 生成、业务性（聚合/禁止/阈值规则）必须知识库先有、安全性交给人工确认——不是全自动，是「不发明规则，只翻译规则」。
+已有 OWL + 业务知识库时，可按「分层自动化」生成领域包：确定性（类/属性/label）交给脚本提取、语义性（公理→人话、场景→工具描述）交给 LLM 生成、业务性（聚合/禁止/阈值规则）必须知识库先有、安全性交给人工确认——不是全自动，是「不发明规则，只翻译规则」。
 
 ## 4. 常见坑与自救
 
@@ -118,7 +118,6 @@ adapter = domain_module.create_adapter_ctx(ctx)
 - `docs/guide/08-扩展新领域.md`：三条扩展路径 + 九步新建领域（学习版）
 - `docs/manual/06-二次开发指南.md`：四步新建 + 多领域热切换（手册版）
 - 仓库 README「架构：SDK（领域契约）→ 宿主 → 运行态领域包」
-- `docs/DOMAIN_PACKAGE_GENERATION.md`：知识库驱动分层生成
 - AGENTS.md「Layout boundaries」：契约与布局的工程约定（贡献者视角）
 
 ## 6. 安全与边界

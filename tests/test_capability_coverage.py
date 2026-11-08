@@ -50,6 +50,12 @@ def _add_probe_task(engine: OntologyEngine, name: str, capabilities: tuple) -> N
     engine.reparse()
 
 
+# #64 起能力以实例引用：探针任务的 requires_capability 指向 cap_* 个体
+CAP_CODING = "cap_coding"
+CAP_DEPLOYMENT = "cap_deployment"
+CAP_CODE_REVIEW = "cap_code_review"
+
+
 # ---------------- #59 验收探针 ----------------
 
 def test_probe_coding_plus_deployment_matches_nobody():
@@ -58,7 +64,7 @@ def test_probe_coding_plus_deployment_matches_nobody():
     修复前（属性链 OR）：dev_agent / junior_dev / deploy_agent 三个都 true。
     """
     e = _pipeline_engine()
-    _add_probe_task(e, "t_probe_multi", ("Coding", "Deployment"))
+    _add_probe_task(e, "t_probe_multi", (CAP_CODING, CAP_DEPLOYMENT))
     for ag in ("dev_agent", "junior_dev", "deploy_agent", "test_agent"):
         assert (e.NS[ag], e.NS.can_execute, e.NS.t_probe_multi) not in e.g, (
             f"{ag} 缺项却被判可执行——属性链 OR 语义回退了")
@@ -67,7 +73,7 @@ def test_probe_coding_plus_deployment_matches_nobody():
 def test_probe_coding_plus_review_matches_only_dev_agent():
     """探针②：需要「编码 + 审查」→ 只有 dev_agent 同时具备（AND 而非全灭）。"""
     e = _pipeline_engine()
-    _add_probe_task(e, "t_probe_review", ("Coding", "CodeReview"))
+    _add_probe_task(e, "t_probe_review", (CAP_CODING, CAP_CODE_REVIEW))
     assert (e.NS.dev_agent, e.NS.can_execute, e.NS.t_probe_review) in e.g
     assert (e.NS.junior_dev, e.NS.can_execute, e.NS.t_probe_review) not in e.g
 
@@ -125,7 +131,7 @@ def test_reparse_replays_rules_after_mutation():
     e = _pipeline_engine()
     # junior_dev 原本没有 CodeReview → 不能执行 t_login_review（需要审查能力）
     assert (e.NS.junior_dev, e.NS.can_execute, e.NS.t_login_review) not in e.g
-    e.g.add((e.NS.junior_dev, e.NS.has_capability, e.NS.CodeReview))
+    e.g.add((e.NS.junior_dev, e.NS.has_capability, e.NS[CAP_CODE_REVIEW]))
     e.reparse()
     # 重放后新覆盖立即成立（同时 Coding 覆盖的旧边保持）
     assert (e.NS.junior_dev, e.NS.can_execute, e.NS.t_login_review) in e.g

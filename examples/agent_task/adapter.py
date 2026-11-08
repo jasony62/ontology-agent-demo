@@ -19,7 +19,7 @@
 
 import os
 
-from rdflib import URIRef, RDF, RDFS
+from rdflib import URIRef, RDF, RDFS, OWL
 
 # 只从领域插件 SDK 导入（P4）：SDK 之外的宿主模块（引擎实现、API、MCP）
 # 一律不许出现在领域包里——这是"领域可独立开发/发布"的实际判据。
@@ -169,6 +169,31 @@ class AgentTaskAdapter:
     def tasks(self) -> list:
         return [self.NS[t] for t in self.engine.individuals_of(self.c.task_class)]
 
+    def _value_instance(self, name: str, class_name: str) -> str:
+        """能力/约束引用统一解析为**实例**短名（#64）。
+
+        实例化后任务/Agent 在图里引用能力与约束的个体（cap_coding / creq_default），
+        不再引用类本身——类无法承载认证等级、有效期等属性，也是
+        ComplianceTask someValuesFrom 推不出的根因。对外 payload 保持类名
+        （"Coding"）或实例名（"cap_coding"）两种写法都收，写图一律归一为实例：
+        类名按类型解析到该类下的唯一实例；实例名校验其类型属于该类（含子类）。
+        解析失败抛 ValueError（classify/import 的事务边界转 400）。
+        """
+        g = self.engine.g
+        if (self.NS[name], RDF.type, OWL.Class) in g:
+            instances = [
+                i for i in self.engine.individuals_of(name)
+                if name in self.engine.types_of(i)
+            ]
+            if len(instances) != 1:
+                raise ValueError(
+                    f"{class_name} 类 {name} 没有唯一实例（找到 {len(instances)} 个）："
+                    "请先在领域包内为该类建一个实例个体")
+            return instances[0]
+        if name in self.engine.individuals_of(class_name):
+            return name
+        raise ValueError(f"{name} 既不是 {class_name} 类，也不是其实例")
+
     def is_complex_task(self, task) -> bool:
         return self.engine.has_type(local(task), self.c.complex_task_class)
 
@@ -213,10 +238,15 @@ class AgentTaskAdapter:
     # 它不产出新事实，只是 assign 时的校验（禁止性规则），留在代码里是
     # 正确分层，不随 R2 一起搬。
 
+    def _compliance_constraint_instances(self) -> set:
+        """合规约束类的实例短名集合（#64 起约束以个体引用）。"""
+        return set(self.engine.individuals_of(self.c.compliance_constraint_class))
+
     def _compliance_conflict(self, task, agent) -> dict | None:
         """R4：任务要求合规认证、Agent 未认证 ⇒ 冲突。"""
-        cons = self.constraints_of(task)
-        if self.c.compliance_constraint_class in cons and not self.is_certified(agent):
+        cons = self.constraints_of(task)          # 实例短名（cap/creq 个体化后）
+        compliance = self._compliance_constraint_instances()
+        if any(c in compliance for c in cons) and not self.is_certified(agent):
             return {
                 "type": "合规认证冲突",
                 "message": (
@@ -467,9 +497,12 @@ class AgentTaskAdapter:
         engine.add_type(local(iri), self.c.simple_task_class)
         if risk_level:
             engine.add_literal(local(iri), self.c.resolve("has_risk_level"), risk_level)
-        for c in capabilities:
+        # 能力/约束统一解析为实例（#64）：payload 收类名或实例名，写图一律个体
+        cap_instances = [self._value_instance(c, self.c.capability_class) for c in capabilities]
+        con_instances = [self._value_instance(c, self.c.constraint_class) for c in constraints]
+        for c in cap_instances:
             engine.add_triple(local(iri), self.c.resolve("requires_capability"), c)
-        for c in constraints:
+        for c in con_instances:
             engine.add_triple(local(iri), self.c.resolve("requires_constraint"), c)
 
         # 重新推理（新增个体可能触发 R1 属性链 / 分类）
@@ -480,9 +513,9 @@ class AgentTaskAdapter:
             triples = [(local(iri), RDF.type, self.c.simple_task_class)]
             if risk_level:
                 triples.append((local(iri), self.c.resolve("has_risk_level"), int(risk_level)))
-            for c in capabilities:
+            for c in cap_instances:
                 triples.append((local(iri), self.c.resolve("requires_capability"), c))
-            for c in constraints:
+            for c in con_instances:
                 triples.append((local(iri), self.c.resolve("requires_constraint"), c))
             persisted = self.abox.write_increment("classify", local(iri), triples)
         self.abox.note_change("classify", {
@@ -494,7 +527,8 @@ class AgentTaskAdapter:
 
         inferred_types = []
         cons = self.constraints_of(iri)
-        if self.c.compliance_constraint_class in cons:
+        compliance = self._compliance_constraint_instances()
+        if any(c in compliance for c in cons):
             inferred_types.append({
                 "class": "ComplianceTask",
                 "class_label": "合规任务",
@@ -563,10 +597,12 @@ class AgentTaskAdapter:
         )
 
     def _plan_import(self, individuals: list[dict]) -> tuple[list[tuple], list[str]]:
-        """导入校验 + 断言生成（领域规则：能力/约束必须是本体里存在的类）。
+        """导入校验 + 断言生成（领域规则：能力/约束必须是本体里存在的类，解析到实例）。
 
         返回 (三元组清单, 个体名清单)；任一校验失败抛 ValueError，整批中止。
         同一份三元组清单既用于写图也用于落盘，杜绝"内存写了、文件漏了"。
+        #64 起写图值统一为能力/约束的**实例**（payload 类名或实例名皆可，
+        `_value_instance` 归一）。
         """
         triples: list[tuple] = []
         names: list[str] = []
@@ -584,19 +620,24 @@ class AgentTaskAdapter:
                 raise ValueError(f"risk_level 需在 0-10: {name}={risk}（事务中止）")
             for c in caps:
                 if (self.NS[c], RDFS.subClassOf, self.NS[self.c.capability_class]) not in self.engine.g:
-                    raise ValueError(f"未知能力类: {c}（事务中止）")
+                    # 实例名直传也放行（_value_instance 里做归属校验）
+                    if c not in self.engine.individuals_of(self.c.capability_class):
+                        raise ValueError(f"未知能力类: {c}（事务中止）")
             for c in cons:
                 if (self.NS[c], RDFS.subClassOf, self.NS[self.c.constraint_class]) not in self.engine.g:
-                    raise ValueError(f"未知约束类: {c}（事务中止）")
+                    if c not in self.engine.individuals_of(self.c.constraint_class):
+                        raise ValueError(f"未知约束类: {c}（事务中止）")
 
             names.append(name)
             triples.append((name, RDF.type, self.c.simple_task_class))
             if risk:
                 triples.append((name, self.c.resolve("has_risk_level"), int(risk)))
             for c in caps:
-                triples.append((name, self.c.resolve("requires_capability"), c))
+                triples.append((name, self.c.resolve("requires_capability"),
+                                self._value_instance(c, self.c.capability_class)))
             for c in cons:
-                triples.append((name, self.c.resolve("requires_constraint"), c))
+                triples.append((name, self.c.resolve("requires_constraint"),
+                                self._value_instance(c, self.c.constraint_class)))
         return triples, names
 
     def explain(self) -> dict:

@@ -244,10 +244,67 @@
   </owl:equivalentClass>
 </owl:Class>
 
+<!-- ============ 能力/工具/约束的实例（#64） ============
+     此前 10 个名字以「类」被当值引用（t_login_dev requires_capability #Coding），
+     标签无法承载任何属性（认证等级/有效期/熟练度没地方挂），也让
+     ComplianceTask 的 someValuesFrom 永远推不出（值域要求实例，图里只有类）。
+     现类保留为类型，引用一律指向个体：类树与实体列表不再出现
+     「类同时是实例」的歧义；rdfs:range / 规则的推导路径不变（个体同样满足值域）。 -->
+
+<owl:NamedIndividual rdf:about="#cap_requirement_analysis">
+  <rdf:type rdf:resource="#RequirementAnalysis"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析能力</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cap_coding">
+  <rdf:type rdf:resource="#Coding"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">编码实现能力</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cap_code_review">
+  <rdf:type rdf:resource="#CodeReview"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">代码审查能力</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cap_testing">
+  <rdf:type rdf:resource="#Testing"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">测试执行能力</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#cap_deployment">
+  <rdf:type rdf:resource="#Deployment"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">部署发布能力</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#tool_ide">
+  <rdf:type rdf:resource="#IDE"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">IDE 工具</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#tool_git_repo">
+  <rdf:type rdf:resource="#GitRepo"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Git 仓库工具</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#tool_cicd">
+  <rdf:type rdf:resource="#CICD"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">CI/CD 流水线工具</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#tool_knowledge_base">
+  <rdf:type rdf:resource="#KnowledgeBase"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">知识库工具</rdfs:label>
+</owl:NamedIndividual>
+
+<owl:NamedIndividual rdf:about="#creq_default">
+  <rdf:type rdf:resource="#ComplianceRequirement"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">默认合规认证要求</rdfs:label>
+</owl:NamedIndividual>
+
 <owl:NamedIndividual rdf:about="#req_agent">
   <rdf:type rdf:resource="#RequirementAgent"/>
-  <has_capability rdf:resource="#RequirementAnalysis"/>
-  <uses_tool rdf:resource="#KnowledgeBase"/>
+  <has_capability rdf:resource="#cap_requirement_analysis"/>
+  <uses_tool rdf:resource="#tool_knowledge_base"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">负责需求分析、用户故事与验收标准编写</has_description>
   <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析Agent</rdfs:label>
@@ -255,10 +312,10 @@
 
 <owl:NamedIndividual rdf:about="#dev_agent">
   <rdf:type rdf:resource="#DevAgent"/>
-  <has_capability rdf:resource="#Coding"/>
-  <has_capability rdf:resource="#CodeReview"/>
-  <uses_tool rdf:resource="#IDE"/>
-  <uses_tool rdf:resource="#GitRepo"/>
+  <has_capability rdf:resource="#cap_coding"/>
+  <has_capability rdf:resource="#cap_code_review"/>
+  <uses_tool rdf:resource="#tool_ide"/>
+  <uses_tool rdf:resource="#tool_git_repo"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">负责编码实现与代码审查，已通过合规认证</has_description>
   <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">研发Agent</rdfs:label>
@@ -266,8 +323,8 @@
 
 <owl:NamedIndividual rdf:about="#junior_dev">
   <rdf:type rdf:resource="#JuniorDevAgent"/>
-  <has_capability rdf:resource="#Coding"/>
-  <uses_tool rdf:resource="#IDE"/>
+  <has_capability rdf:resource="#cap_coding"/>
+  <uses_tool rdf:resource="#tool_ide"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">仅具备编码能力，尚未通过合规认证</has_description>
   <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">false</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">初级研发Agent</rdfs:label>
@@ -275,8 +332,8 @@
 
 <owl:NamedIndividual rdf:about="#test_agent">
   <rdf:type rdf:resource="#TestAgent"/>
-  <has_capability rdf:resource="#Testing"/>
-  <uses_tool rdf:resource="#CICD"/>
+  <has_capability rdf:resource="#cap_testing"/>
+  <uses_tool rdf:resource="#tool_cicd"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">负责测试执行与质量门禁</has_description>
   <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">测试Agent</rdfs:label>
@@ -284,9 +341,9 @@
 
 <owl:NamedIndividual rdf:about="#deploy_agent">
   <rdf:type rdf:resource="#DeployAgent"/>
-  <has_capability rdf:resource="#Deployment"/>
-  <uses_tool rdf:resource="#CICD"/>
-  <uses_tool rdf:resource="#GitRepo"/>
+  <has_capability rdf:resource="#cap_deployment"/>
+  <uses_tool rdf:resource="#tool_cicd"/>
+  <uses_tool rdf:resource="#tool_git_repo"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">负责生产部署与发布</has_description>
   <has_certified rdf:datatype="http://www.w3.org/2001/XMLSchema#boolean">true</has_certified>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">部署Agent</rdfs:label>
@@ -294,7 +351,7 @@
 
 <owl:NamedIndividual rdf:about="#t_req">
   <rdf:type rdf:resource="#SimpleTask"/>
-  <requires_capability rdf:resource="#RequirementAnalysis"/>
+  <requires_capability rdf:resource="#cap_requirement_analysis"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析：新功能用户故事与验收标准</has_description>
   <has_risk_level rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">1</has_risk_level>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析任务</rdfs:label>
@@ -302,7 +359,7 @@
 
 <owl:NamedIndividual rdf:about="#t_login_dev">
   <rdf:type rdf:resource="#SimpleTask"/>
-  <requires_capability rdf:resource="#Coding"/>
+  <requires_capability rdf:resource="#cap_coding"/>
   <depends_on rdf:resource="#t_req"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">登录模块开发</has_description>
   <has_risk_level rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">2</has_risk_level>
@@ -311,7 +368,7 @@
 
 <owl:NamedIndividual rdf:about="#t_login_review">
   <rdf:type rdf:resource="#SimpleTask"/>
-  <requires_capability rdf:resource="#CodeReview"/>
+  <requires_capability rdf:resource="#cap_code_review"/>
   <depends_on rdf:resource="#t_login_dev"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">登录模块代码审查</has_description>
   <has_risk_level rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">2</has_risk_level>
@@ -320,7 +377,7 @@
 
 <owl:NamedIndividual rdf:about="#t_login_test">
   <rdf:type rdf:resource="#SimpleTask"/>
-  <requires_capability rdf:resource="#Testing"/>
+  <requires_capability rdf:resource="#cap_testing"/>
   <depends_on rdf:resource="#t_login_review"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">登录模块测试执行</has_description>
   <has_risk_level rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">3</has_risk_level>
@@ -329,7 +386,7 @@
 
 <owl:NamedIndividual rdf:about="#t_deploy">
   <rdf:type rdf:resource="#SimpleTask"/>
-  <requires_capability rdf:resource="#Deployment"/>
+  <requires_capability rdf:resource="#cap_deployment"/>
   <depends_on rdf:resource="#t_login_test"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">生产环境部署发布</has_description>
   <has_risk_level rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">4</has_risk_level>
@@ -338,8 +395,8 @@
 
 <owl:NamedIndividual rdf:about="#t_compliance_dev">
   <rdf:type rdf:resource="#SimpleTask"/>
-  <requires_capability rdf:resource="#Coding"/>
-  <requires_constraint rdf:resource="#ComplianceRequirement"/>
+  <requires_capability rdf:resource="#cap_coding"/>
+  <requires_constraint rdf:resource="#creq_default"/>
   <has_description rdf:datatype="http://www.w3.org/2001/XMLSchema#string">涉及敏感数据的报表开发（需合规认证）</has_description>
   <has_risk_level rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">5</has_risk_level>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">敏感数据报表开发</rdfs:label>

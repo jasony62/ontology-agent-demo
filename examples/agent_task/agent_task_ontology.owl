@@ -11,29 +11,39 @@
 <owl:ObjectProperty rdf:about="#has_capability">
   <rdfs:domain rdf:resource="#Agent"/>
   <rdfs:range rdf:resource="#Capability"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">智能体具备能力</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Agent 拥有的能力（#64 起指向能力实例 cap_*）。R1 全覆盖判定的前提之一。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#requires_capability">
   <rdfs:domain rdf:resource="#Task"/>
   <rdfs:range rdf:resource="#Capability"/>
   <owl:inverseOf rdf:resource="#required_by"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务所需能力</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务完成所需的能力（#64 起指向能力实例）。要求多项时按 AND 全覆盖判定（#59，R1）。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#required_by">
   <rdfs:domain rdf:resource="#Capability"/>
   <rdfs:range rdf:resource="#Task"/>
   <owl:inverseOf rdf:resource="#requires_capability"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">能力被任务需要</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">requires_capability 的显式逆属性（owl:inverseOf）：按「能力 → 任务」方向检索用；由 owlrl 物化产出，G3 冒烟断言其存在。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#depends_on">
   <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
   <rdfs:domain rdf:resource="#Task"/>
   <rdfs:range rdf:resource="#Task"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务依赖</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务间前置依赖（宾语先于主语执行）。声明为 TransitiveProperty：闭包由 owlrl 物化，编排（orchestrate）按它排序。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#composed_of">
   <rdfs:domain rdf:resource="#ComplexTask"/>
   <rdfs:range rdf:resource="#Task"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">复合任务的子任务</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">复合任务的直接子任务（≥ 2，G4 形状强制）；委派（R2）与担责（R2b）都从子任务合成。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#can_execute">
@@ -43,6 +53,8 @@
        任务要求多能力时「集合全覆盖」超出属性链的单路径蕴含表达力，
        属性链会按 OR 逐条独立推出（只满足一项即判可执行，#59）。
        这里只保留 domain/range 声明；can_execute 由规则层派生，不断言。 -->
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">可执行</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">R1/R2 派生（不断言）：Agent 能做该任务的每一步——只承诺「能力够」，不承诺能担责；担责看 can_own（#60）。</rdfs:comment>
 </owl:ObjectProperty>
 
 <!-- #60：can_execute 只承诺「能力够」（能做某一步/每一步）；「能对整体负责」
@@ -52,42 +64,58 @@
 <owl:ObjectProperty rdf:about="#can_own">
   <rdfs:domain rdf:resource="#Agent"/>
   <rdfs:range rdf:resource="#Task"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">能担责</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">R2b 派生（不断言，#60）：can_execute 且任务约束全部满足（合规 ⇒ 未过期认证覆盖每项所需能力）且全部子任务可担责。R2 整体委派的担责面与 R5「无人可接手」以此为前提。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#assigned_to">
   <rdfs:domain rdf:resource="#Task"/>
   <rdfs:range rdf:resource="#Agent"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">分配给</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务当前分配的 Agent（图断言，persist 可恢复）。分配时的合规冲突由 R4 在适配器代码层校验。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#requires_constraint">
   <rdfs:domain rdf:resource="#Task"/>
   <rdfs:range rdf:resource="#Constraint"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务约束要求</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务的资质约束（#64 起指向约束实例 creq_default）。约束满足判定见 can_own（R2b）。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#uses_tool">
   <rdfs:domain rdf:resource="#Agent"/>
   <rdfs:range rdf:resource="#Tool"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">使用工具</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Agent 使用的工具设施（#64 起指向工具实例 tool_*）。消费方为图谱展示（graph_export 的工具连线），不参与推理判定。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#holds_certification">
   <rdfs:domain rdf:resource="#Agent"/>
   <rdfs:range rdf:resource="#Certification"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">持有认证</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Agent 持有的认证个体（#65）。CertifiedAgent defined class 与 R2a 有效期判定的前提。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#certified_for">
   <rdfs:domain rdf:resource="#Certification"/>
   <rdfs:range rdf:resource="#Capability"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">认证覆盖能力</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">认证覆盖的能力范围——担责判定按范围逐项比对（认证了编码才能担编码的责，#60）。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#issued_by">
   <rdfs:domain rdf:resource="#Certification"/>
   <rdfs:range rdf:resource="#SecurityTeam"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">认证签发方</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">认证的签发团队（SecurityTeam 实例，示例中 sec_team 统一签发）。</rdfs:comment>
 </owl:ObjectProperty>
 
 <owl:DatatypeProperty rdf:about="#valid_until">
   <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
   <rdfs:domain rdf:resource="#Certification"/>
   <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#date"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">认证有效期至</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">认证有效期（xsd:date）。R2a 以当前日期比对派生 cert_valid——过期由此可推理（#65 前只能人工改布尔值）。</rdfs:comment>
 </owl:DatatypeProperty>
 
 <!-- R7 派生谓词：认证有效期判定（规则层比对当前日期，词汇表先有声明） -->
@@ -102,12 +130,16 @@
   <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
   <rdfs:domain rdf:resource="#Task"/>
   <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#integer"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">风险等级</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务风险等级 1-5（FunctionalProperty，G4 形状限定取值范围）。R5/R6 以 ≥ 4 为高风险阈值；复合任务风险语义上是子任务最大值，R5 按「自身或任一子孙」判定（#63）。</rdfs:comment>
 </owl:DatatypeProperty>
 
 <owl:DatatypeProperty rdf:about="#has_description">
   <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#FunctionalProperty"/>
   <rdfs:domain rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
   <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#string"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">描述</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">人类可读的中文描述（FunctionalProperty），仅展示用，不参与推理。</rdfs:comment>
 </owl:DatatypeProperty>
 
 <!-- R5/R6 的派生谓词：规则往图里写结论，词汇表必须先有声明（#62）。
@@ -132,32 +164,38 @@
   <owl:disjointWith rdf:resource="#Task"/>
   <owl:disjointWith rdf:resource="#Capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">智能体</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">能承担任务的执行主体。与 Task、Capability 互斥（owl:disjointWith）；子类按角色划分（需求/研发/测试/部署），个体是具体的 Agent。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#RequirementAgent">
   <rdfs:subClassOf rdf:resource="#Agent"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析Agent类</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析 Agent 角色：承担需求分析类工作（如 t_req）。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#DevAgent">
   <rdfs:subClassOf rdf:resource="#Agent"/>
   <owl:disjointWith rdf:resource="#TestAgent"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">研发Agent类</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">研发 Agent 角色（含其子类初级研发）。与 TestAgent 互斥（owl:disjointWith）——一个 Agent 不同时承担研发与测试两个角色。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#JuniorDevAgent">
   <rdfs:subClassOf rdf:resource="#DevAgent"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">初级研发Agent类</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">初级研发 Agent：能力窄于 DevAgent（示例中仅编码），且未持有任何认证——未认证 Agent 的典型样本。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#TestAgent">
   <rdfs:subClassOf rdf:resource="#Agent"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">测试Agent类</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">测试 Agent 角色：执行测试与质量门禁。与 DevAgent 互斥（owl:disjointWith）。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#DeployAgent">
   <rdfs:subClassOf rdf:resource="#Agent"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">部署Agent类</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">部署 Agent 角色：生产部署与发布，通常是链条上风险最高的一环。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#Task">
@@ -165,17 +203,20 @@
   <owl:disjointWith rdf:resource="#Agent"/>
   <owl:disjointWith rdf:resource="#Capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">任务：被编排、分配与推理的最小工作单元。与 Agent、Capability 互斥（owl:disjointWith）；子类按结构划分——SimpleTask 单步、ComplexTask 组合。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#SimpleTask">
   <rdfs:subClassOf rdf:resource="#Task"/>
   <owl:disjointWith rdf:resource="#ComplexTask"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">简单任务</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">简单任务：单步工作，恰好声明一项能力要求（requires_capability，G4 形状强制）。与 ComplexTask 互斥（owl:disjointWith），不得挂 composed_of（G4 形状）。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#ComplexTask">
   <rdfs:subClassOf rdf:resource="#Task"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">复合任务</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">复合任务：由 ≥ 2 个子任务组成（composed_of，G4 形状），本身不直接声明能力；能否整体执行由 R2 委派、能否担责由 R2b 从子任务担责合成。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#Capability">
@@ -183,68 +224,81 @@
   <owl:disjointWith rdf:resource="#Agent"/>
   <owl:disjointWith rdf:resource="#Task"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">能力</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">能力：任务对 Agent 的技能要求。#64 起以个体引用（cap_* 个体），类仅作类型；与 Agent、Task 互斥（owl:disjointWith）。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#RequirementAnalysis">
   <rdfs:subClassOf rdf:resource="#Capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">需求分析能力：产出用户故事与验收标准的技能。实例 cap_requirement_analysis。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#Coding">
   <rdfs:subClassOf rdf:resource="#Capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">编码实现</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">编码实现能力：编写与修改代码的技能。实例 cap_coding。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#CodeReview">
   <rdfs:subClassOf rdf:resource="#Capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">代码审查</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">代码审查能力：评审代码质量的技能。实例 cap_code_review。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#Testing">
   <rdfs:subClassOf rdf:resource="#Capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">测试执行</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">测试执行能力：运行测试与质量门禁的技能。实例 cap_testing。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#Deployment">
   <rdfs:subClassOf rdf:resource="#Capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">部署发布</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">部署发布能力：生产环境发布的技能，通常风险最高。实例 cap_deployment。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#Tool">
   <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">工具</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">工具：Agent 执行任务时使用的软件设施（IDE / Git / CI/CD / 知识库）。#64 起以个体引用（tool_* 个体），由图谱展示消费 uses_tool 连线。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#IDE">
   <rdfs:subClassOf rdf:resource="#Tool"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">集成开发环境</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">集成开发环境工具。实例 tool_ide（dev_agent、junior_dev 使用）。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#GitRepo">
   <rdfs:subClassOf rdf:resource="#Tool"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Git 仓库</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Git 代码仓库工具。实例 tool_git_repo（dev_agent、deploy_agent 使用）。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#CICD">
   <rdfs:subClassOf rdf:resource="#Tool"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">CI/CD 流水线</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">CI/CD 流水线工具。实例 tool_cicd（test_agent、deploy_agent 使用）。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#KnowledgeBase">
   <rdfs:subClassOf rdf:resource="#Tool"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">知识库</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">知识库工具。实例 tool_knowledge_base（req_agent 使用）。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#Constraint">
   <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">约束</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">约束：任务的前置资质要求（任务 requires_constraint 某约束实例）。约束是否被某 Agent 满足由 R2b 担责判定消费。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#ComplianceRequirement">
   <rdfs:subClassOf rdf:resource="#Constraint"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">合规认证要求</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">合规认证要求：约束的一种——挂此约束的任务（合规任务）只能派给持有未过期合规认证的 Agent（R4 分配校验、R2b 担责判定）。实例 creq_default。</rdfs:comment>
 </owl:Class>
 
-<owl:Class rdf:about="#SecurityRequirement">
-  <rdfs:subClassOf rdf:resource="#Constraint"/>
-  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">安全要求</rdfs:label>
-</owl:Class>
 
 <!-- 认证以独立个体表达（#65）：范围（certified_for）、签发方（issued_by）、
      有效期（valid_until）都可承载——布尔值 has_certified 时代
@@ -252,22 +306,26 @@
 <owl:Class rdf:about="#Certification">
   <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">资质认证</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">资质认证（#65）：认证以个体表达，带范围（certified_for）、签发方（issued_by）与有效期（valid_until）；Agent 通过 holds_certification 持有。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#SecurityTeam">
   <rdfs:subClassOf rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">安全团队</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">安全团队：认证的签发方（issued_by 的值域），示例中 sec_team 统一签发。</rdfs:comment>
 </owl:Class>
 
 <owl:Class rdf:about="#CertifiedAgent">
   <rdfs:subClassOf rdf:resource="#Agent"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">已认证智能体</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">已认证智能体（defined class）：持有至少一张认证（∃holds_certification.Certification）的 Agent。「认证未过期」不在此判定——日期不等式 OWL 表达不了，看 R2a 派生的 cert_valid。</rdfs:comment>
   <owl:equivalentClass>
     <owl:Class>
       <owl:intersectionOf rdf:parseType="Collection">
         <rdf:Description rdf:about="#Agent"/>
         <owl:Restriction>
           <!-- #65：认证升级为个体后，defined class 表达「持有至少一张认证」；
-               「当前有效（未过期）」涉及日期比对，由规则层 R7 派生 cert_valid 判定，
+               「当前有效（未过期）」涉及日期比对，由规则层 R2a 派生 cert_valid 判定，
                OWL 公理表达不了日期不等式 -->
           <owl:onProperty rdf:resource="#holds_certification"/>
           <owl:someValuesFrom rdf:resource="#Certification"/>
@@ -279,6 +337,8 @@
 
 <owl:Class rdf:about="#ComplianceTask">
   <rdfs:subClassOf rdf:resource="#Task"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">合规任务</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">合规任务（defined class）：requires_constraint 指向合规约束实例（∃requires_constraint.ComplianceRequirement）的任务，如 t_compliance_dev（#61 起可推导）。</rdfs:comment>
   <owl:equivalentClass>
     <owl:Class>
       <owl:intersectionOf rdf:parseType="Collection">

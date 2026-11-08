@@ -58,15 +58,15 @@ def _write_mini_owl(tmp_path):
 def test_default_ontology_exposes_only_named_classes():
     """正例：默认 agent_task 本体 classes() 只含具名语义类，零 BNode 幽灵。
 
-    修复前 29 条类含 2 条 BNode 幽灵 + owl:Nothing → 修复后 28 条真实类
-    （27 业务类 + owl:Thing；#65 起业务类含 Certification 与 SecurityTeam，
-    Nothing 与幽灵都不再出现）；若上游本体演化使总数变化，
-    断言零幽灵与关键类保留仍成立。
+    修复前 29 条类含 2 条 BNode 幽灵 + owl:Nothing → 修复后 27 条真实类
+    （26 业务类 + owl:Thing；#65 起业务类含 Certification 与 SecurityTeam，
+    #70 删除死类 SecurityRequirement；Nothing 与幽灵都不再出现）；
+    若上游本体演化使总数变化，断言零幽灵与关键类保留仍成立。
     """
     engine = OntologyEngine(ONTO_PATH)
     names = [c["name"] for c in engine.classes()]
     assert not any(_is_ghost_bnode(n) for n in names)
-    assert len(names) == 28  # 29（含 2 幽灵 + Nothing）− 3 + 2（#65 新类）= 28
+    assert len(names) == 27  # 29（含 2 幽灵 + Nothing）− 3 + 2（#65 新类）− 1（#70 删死类）= 27
     assert {"CertifiedAgent", "ComplianceTask"} <= set(names)
 
 

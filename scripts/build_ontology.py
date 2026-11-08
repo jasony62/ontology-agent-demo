@@ -4,6 +4,15 @@
 用法:
     .venv/bin/python scripts/build_ontology.py [--clean]
 
+.. warning:: 与权威源已脱节（勿用于生成）
+
+    本体自 #59 起改为**手工维护** `examples/agent_task/agent_task_ontology.owl`
+    （权威源）：属性链迁规则层、能力/工具/约束/认证实例化、can_own、
+    disjointWith、全套中文 label/comment 等都未同步进本脚本——运行会把
+    运行态副本（domains/agent_task/agent_task_ontology.owl）覆盖回旧定义，
+    与 examples 漂移。保留本文件仅作 001 批次的历史参考；改动本体请直接
+    编辑 examples 下的 .owl 并用 `ontologyctl domain install --force` 重装。
+
 --clean: 仅重建核心定义（agent_task_ontology.owl），显式不触碰 extensions/ 增量文件；
          不带 --clean 时行为相同（构建脚本本就只写核心 .owl），该选项用于 CI /
          运维脚本的显式语义声明（001 批次，REQ-06 分层文件）。

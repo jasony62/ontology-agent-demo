@@ -197,10 +197,11 @@ def test_classes_generic(engine):
 def test_types_of_generic(engine):
     types = engine.types_of("dev_agent")
     assert {"DevAgent", "Agent"} <= set(types)
-    # 显式类型 + 子类推理结论（owlrl 不把 existential 等价类用于个体分类，
-    # ComplianceTask 由 classify() 的模式匹配规则给出，不属于 owlrl 推理产物）
+    # 显式类型 + 子类推理结论 + defined class（#61/#64 修复后：requires_constraint
+    # 指向实例 creq_default，someValuesFrom 成立，owlrl 推出 ComplianceTask）
     types_t = engine.types_of("t_compliance_dev")
     assert {"SimpleTask", "Task"} <= set(types_t)
+    assert "ComplianceTask" in types_t
     # #64：能力以实例存在——个体挂类型 Coding，经子类链可达 Capability
     assert {"Coding", "Capability"} <= set(engine.types_of("cap_coding"))
 

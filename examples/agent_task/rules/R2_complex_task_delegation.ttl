@@ -1,0 +1,40 @@
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
+
+# R2 复合任务委派：Agent 可执行复合任务的全部直接子任务 ⇒ 可执行该复合任务。
+#
+# 这条规则的"全称量词 + 跨层递归"超出了 OWL 2 RL 的表达边界
+# （属性链只能表达单路径蕴含），所以不能写进 .owl 公理——但它是**规则**，
+# 落点应该是规则层（rules/*.ttl，SHACL SPARQLRule），而不是适配器代码：
+# 规则进了规则层才能吃到不动点循环（pyshacl 单遍 × 本层轮次循环），
+# 派生结果与任务命名顺序无关；也不能退回 Python 双循环（单遍求值，
+# 父任务若排在子任务之前被处理就会漏推）。
+#
+# 执行顺序：本文件名（R2_…）排在 R5/R6 之前，`apply_rules` 按文件名排序执行，
+# 前序文件的产出（can_execute）会进入后续规则（R5 需读 can_execute 判
+# "无人可执行"）的条件——这个顺序是显式、可审查的。
+#
+# `?agent demo:can_execute ?sub` 是预筛半连接，不是语义的一部分：能覆盖
+# 全部子任务的 Agent 必然已覆盖 ?sub，它只是把 agents × tasks 的笛卡尔积
+# 压成 join（语义等价，已对照验证）。
+
+demo:ComplexTaskDelegationShape a sh:NodeShape ;
+  sh:targetClass demo:ComplexTask ;
+  sh:rule demo:R2_complex_task_delegation .
+
+demo:R2_complex_task_delegation a sh:SPARQLRule ;
+  rdfs:label "R2 复合任务委派" ;
+  rdfs:comment "Agent 可执行复合任务的全部子任务 → 可执行该复合任务" ;
+  sh:construct """
+    PREFIX demo: <http://ontology.localhost/agent-task#>
+    CONSTRUCT { ?agent demo:can_execute ?this }
+    WHERE {
+      ?this  demo:composed_of ?sub .
+      ?agent demo:can_execute ?sub .
+      FILTER NOT EXISTS {
+        ?this demo:composed_of ?missing .
+        FILTER NOT EXISTS { ?agent demo:can_execute ?missing }
+      }
+    }
+  """ .

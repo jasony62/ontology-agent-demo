@@ -155,7 +155,7 @@ def test_import_ok_persist_reload(ext_dir):
     adapter = make_adapter(_d, _make_engine(ext_dir), DEFAULT_CONFIG)
     r = adapter.import_individuals([
         {"name": "t_import_a", "capabilities": ["Coding"], "risk_level": 2},
-        {"name": "t_import_b", "capabilities": ["Testing"], "constraints": ["ComplianceRequirement"], "risk_level": 6},
+        {"name": "t_import_b", "capabilities": ["Testing"], "constraints": ["ComplianceRequirement"], "risk_level": 5},
     ], persist=True)
     assert r["imported"] == 2
     assert r["persisted"] is not None

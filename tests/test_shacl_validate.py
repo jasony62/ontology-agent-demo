@@ -9,7 +9,7 @@
 import os
 
 import pyshacl
-from rdflib import Graph
+from rdflib import Graph, RDF
 
 from reasoner.engine import ONTO_PATH, OntologyEngine
 from domains import package_shapes_path
@@ -34,6 +34,13 @@ def _copy_raw(e) -> Graph:
     return g
 
 
+def _lit(value):
+    """整数字面量（风险等级越界用例）。"""
+    from rdflib import Literal
+
+    return Literal(value)
+
+
 def _run(data_graph, engine):
     """对给定数据图跑 SHACL，返回 (conforms, violations)。"""
     shapes = Graph()
@@ -45,12 +52,35 @@ def _run(data_graph, engine):
 # ---------------- 正例 ----------------
 
 def test_default_abox_conforms():
-    """正例：main 默认 ABox + 默认 shapes → conforms=true，计数正确。"""
+    """正例：main 默认 ABox + 默认 shapes → conforms=true，计数正确。
+
+    #67 起形状表达建模规范（6 个 NodeShape、8 条属性约束）：现有数据全部
+    通过说明补的是约束而非把好数据改红。
+    """
     e = _engine()
     r = domain_mcp.run_shacl_validation(e)
     assert r["conforms"] is True
-    assert r["summary"]["shapes_checked"] == 2
+    assert r["summary"]["shapes_checked"] == 6
     assert r["violations"] == []
+
+
+def test_new_shapes_catch_violations(tmp_path):
+    """#67：新形状必须能失败——复合任务子任务不足、风险越界都被点名。
+
+    （每个形状的坏 fixture 系统化覆盖见 #69；这里先证明形状本身有效。）
+    """
+    e = _engine()
+    data = _copy_raw(e)
+    # 复合任务只挂 1 个子任务（minCount 2 违规）+ 风险等级 99（越界）
+    data.add((e.NS.t_bad_complex, RDF.type, e.NS.ComplexTask))
+    data.add((e.NS.t_bad_complex, e.NS.composed_of, e.NS.t_req))
+    data.add((e.NS.t_bad_complex, e.NS.has_risk_level, _lit(99)))
+    conforms, violations = _run(data, e)
+    assert conforms is False
+    by_path = {(v["focus_node"], v["path"]): v["constraint"] for v in violations}
+    assert ("t_bad_complex", "composed_of") in by_path
+    assert ("t_bad_complex", "has_risk_level") in by_path
+    assert "maxinclusive" in by_path[("t_bad_complex", "has_risk_level")].lower()
 
 
 # ---------------- 反例 ----------------

@@ -25,6 +25,26 @@ SDK_SRC = ROOT / "packages" / "ontology-plugin-sdk" / "src"
 
 # ---------------- SDK 的独立性 ----------------
 
+def test_sdk_top_level_exports_match_all():
+    """__all__ 承诺的每个名字都能顶层导入（#74）。
+
+    根因：__all__ 列了 query_handlers，但 `from .protocol import (...)` 块
+    漏转发——顶层包公共 API 自相矛盾，按 __all__ 的承诺写
+    `from ontology_plugin_sdk import query_handlers`（或 import *）必踩坑。
+    防回归：__all__ 里每个非模块名都能 getattr 到。
+    """
+    import importlib
+
+    missing = [
+        name for name in sdk.__all__
+        if not hasattr(sdk, name)
+    ]
+    assert missing == [], f"__all__ 承诺了但顶层不存在: {missing}"
+    # 点名复现路径：修复前 from ontology_plugin_sdk import query_handlers 抛 ImportError
+    qh = importlib.import_module("ontology_plugin_sdk").query_handlers
+    assert callable(qh)
+
+
 def test_sdk_imports_without_touching_host(tmp_path):
     """SDK 导入时不得连带加载任何 reasoner.* 模块。
 

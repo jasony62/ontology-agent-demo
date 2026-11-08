@@ -56,6 +56,7 @@ from .protocol import (
     graph_group_members,
     missing_methods,
     normalize_entity_payload,
+    query_handlers,
     supports,
     undeclared_missing,
     validate_entity_schema,

@@ -47,6 +47,8 @@
 
 ### Fixed
 
+- **SDK 顶层补转发 `query_handlers`，`__all__` 不再自相矛盾（#74）**：`packages/ontology-plugin-sdk/src/ontology_plugin_sdk/__init__.py` 的 `__all__` 承诺了 `query_handlers`，但 `from .protocol import (...)` 块漏转发（只导了兄弟 `apply_handlers` / `conflicting_handlers`）——按承诺写 `from ontology_plugin_sdk import query_handlers` 或 `import *` 直接 ImportError（`protocol.query_handlers` 本身存在）。一行补转发 + 防回归测试（`__all__` 里每个名字都能顶层 getattr）。项目内代码全走 `ontology_plugin_sdk.protocol` 直导，服务与测试不受影响——这是公共 API 自洽性修复。
+
 - **`ComplianceTask` 可推导（#61）**：defined class `ComplianceTask ≡ Task ⊓ ∃requires_constraint.ComplianceRequirement` 用 `someValuesFrom`，要求存在「属于该类的个体」，而 `ComplianceRequirement` 此前在整个图里没有任何实例（`t_compliance_dev` 指向的是类本身）——`types_of('t_compliance_dev')` 只有 `SimpleTask/Task`，等价类永远是死分支。#64 实例化约束后（`creq_default a ComplianceRequirement`，任务指向它），owlrl 按等价类规则正常推出 `ComplianceTask`，与同一文件里靠 `hasValue` 存活的 `CertifiedAgent` 对称。未采用放宽 `someValuesFrom #ComplianceRequirement` 为 `#Constraint` 的替代方案（那会把「合规任务」退化成「任何带约束的任务」，是改弱断言迁就数据）。CQ 题库补 T2-13 锚定该结论（修复前必红，12 → 13 题）；`test_reasoning` 的旧口径注释（「owlrl 不做 existential 等价类分类」）一并修正。
 
 - **复合任务风险判定改看「自身或任一子孙」，高风险链不再因父任务漏填而静默消失（#63）**：R5/R6 都以 `risk_level ≥ 4` 为触发条件，而复合任务的风险语义上就是「子任务的最大值」——靠人工把父任务填对是迟早出事的约定，父任务填成 3（或漏填），整条高风险链静默消失且无任何提示。采用方案 B（改判定口径、不写图）：R5 的风险判定改为「自身 ∨ `composed_of+` 子孙 ≥ 4」，方案 A（合成规则写 `has_risk_level`）因该属性是 FunctionalProperty 会推出不一致而否决；判定口径分工不变——R5 管复合链（含风险来自子任务的父任务）无人能整体接，R6 管单片自身风险，同一任务不会两头都抓。顺带在 R5 的 WHERE 里显式声明 `?this rdf:type demo:Task`，不再依赖 `sh:targetClass` 兜底（规则文件被复制走也不会误伤）。现有数据产出集合不变，12 道 CQ 全过。

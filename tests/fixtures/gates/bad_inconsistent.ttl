@@ -1,0 +1,15 @@
+# G2 坏 fixture（#69）：个体同时属于两个互斥类——ABox 级一致性冲突
+#
+# 前提（#66 已就位）：本体声明 SimpleTask ⊥ ComplexTask。OWL 2 RL 规则集
+# 没有个体级 disjoint 推理，G2 靠结构直查「同一主体落在互斥对两边」拦截。
+#
+# 预期：run_gates(...) → overall=fail, failed_at=G2_consistency，
+#       conflicts 含关键词「disjointWith」且违规个体 t_bad_split 被点名。
+
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
+
+demo:SimpleTask owl:disjointWith demo:ComplexTask .
+
+demo:t_bad_split a demo:SimpleTask, demo:ComplexTask .

@@ -1,0 +1,34 @@
+# G4 坏 fixture（#69）：SHACL 形状违规——Agent 无能力、风险等级越界
+#
+# 形状（#67 已补齐）：AgentShape 要求 has_capability ≥ 1；RiskLevelShape
+# 限定 has_risk_level ∈ [1, 5]。「Agent 没有能力」「风险写成 99」这类
+# 手误此前 G4 一句不报（形状只声明「当前数据满足」的约束）。
+#
+# G3 闸先被喂饱（required_by ≥ 1、depends_on ≥ 2 的最小数据在本图内给足），
+# 才能让 fail-fast 走到 G4，违规精确归因到本闸。
+#
+# 预期：run_gates(...) → overall=fail, failed_at=G4_shacl_tests，
+#       violations 含（bad_agent, has_capability, minCount）与
+#       （t_bad_risk, has_risk_level, MaxInclusive）。
+
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
+
+# 类层次要自带：形状按 targetClass（含子类闭包）聚焦，没有这条，
+# RiskLevelShape（targetClass demo:Task）就抓不到 SimpleTask 实例
+demo:SimpleTask rdfs:subClassOf demo:Task .
+
+demo:bad_agent a demo:Agent .
+
+demo:t_bad_risk a demo:SimpleTask ;
+    demo:requires_capability demo:cap_coding ;
+    demo:has_risk_level 99 .
+
+# G3 冒烟的最小饱料：depends_on 传递闭包 ≥ 2、required_by 逆属性 ≥ 1
+# （逆属性公理要自己带——本文件是自足图，不随领域 .owl 加载）
+demo:requires_capability owl:inverseOf demo:required_by .
+demo:t_x a demo:Task ;
+    demo:requires_capability demo:cap_testing ;
+    demo:depends_on demo:t_y .
+demo:t_y a demo:Task ; demo:depends_on demo:t_z .

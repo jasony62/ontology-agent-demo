@@ -21,6 +21,8 @@
 
 四道闸门回答四个不同的问题：**格式对不对（G1）→ 逻辑有没有矛盾（G2）→ 推理动不动得起来（G3）→ 数据合不合格（G4）**。任何一道不过，建模产物就不进入查询暴露。
 
+> **坏 fixture（#69）**：`tests/fixtures/gates/` 下有四份故意坏掉的图，每个闸门一份——`bad_owlfull.ttl`（G1 主键陷阱）、`bad_inconsistent.ttl`（G2 个体级互斥冲突）、`bad_smoke.ttl`（G3 冒烟闭包退化）、`bad_shacl.ttl`（G4 形状违规）。每份 fixture 的失败断言校验**错误信息关键词**（主键陷阱 / disjointWith / required_by+depends_on / minCount+MaxInclusive），并有反向验证：把闸门改坏，对应 fixture 不再被拦——「一个从没失败过的检查，和一个被 return True 掉的检查，在 CI 输出上没有区别」这件事由测试咬合守住。
+
 ---
 
 ## G1 DL 格式：防 OWL-Full

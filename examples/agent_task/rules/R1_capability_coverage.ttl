@@ -1,0 +1,42 @@
+# R1 · 能力全覆盖：任务要求的每项能力 Agent 都具备 ⇒ 可执行该任务
+#
+# 为什么在规则层而不是 .owl 公理：任务可能要求**多项**能力，「要求的集合
+# 必须全部被覆盖」是全称量词 + 集合包含语义——OWL 属性链只能表达逐条独立的
+# 单路径蕴含（has_capability ◦ required_by ⊑ can_execute），链条之间没有
+# 「必须同时满足」约束。曾经属性链就是 R1 的实现，后果是：多能力任务只满足
+# 一项即被判可执行（issue #59 的探针：需要「编码 + 部署」的任务，
+# 只会编码的 junior_dev 也被推出 can_execute）。属性链公理已从 .owl 移除，
+# R1 现在只有这一个来源——同一个谓词不再并存两套语义。
+#
+# 执行顺序（显式契约，不靠猜）：apply_rules 按文件名排序执行，
+#   R1（本文件，能力全覆盖）→ R2（复合委派，读 R1 的 can_execute 判子任务
+#   是否被覆盖）→ R5 → R6。所以本文件必须排在 R2_ 之前；前序产出进入
+#   后续规则的前提，这个顺序是可审查的，改名/加文件时保持它。
+#
+# 判定语义：?this 至少声明一条 requires_capability（否则无从谈覆盖），
+# 且不存在任何 ?this 要求而 ?agent 不具备的能力——即要求的集合 ⊆ 具备的集合。
+# 每个满足条件的 (?agent, ?need) 组合产出一条 can_execute（图自动去重）。
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
+
+demo:CapabilityCoverageShape a sh:NodeShape ;
+  sh:targetClass demo:Task ;
+  sh:rule demo:R1_capability_coverage .
+
+demo:R1_capability_coverage a sh:SPARQLRule ;
+  rdfs:label "R1 能力全覆盖" ;
+  rdfs:comment "任务要求的每项能力 Agent 都具备 → 可执行该任务（多能力按 AND 判定）" ;
+  sh:construct """
+    PREFIX demo: <http://ontology.localhost/agent-task#>
+    CONSTRUCT { ?agent demo:can_execute ?this }
+    WHERE {
+      ?this  demo:requires_capability ?need .
+      ?agent demo:has_capability ?need .
+      FILTER NOT EXISTS {
+        ?this demo:requires_capability ?missing .
+        FILTER NOT EXISTS { ?agent demo:has_capability ?missing }
+      }
+    }
+  """ .

@@ -15,6 +15,7 @@ from rdflib.namespace import RDF
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from reasoner.engine import OntologyEngine, ONTO_PATH, DEFAULT_NS, local  # noqa: E402
+from reasoner.rules import apply_rules  # noqa: E402
 
 from _helpers import domain_module, make_adapter, submodule  # noqa: E402
 
@@ -44,8 +45,19 @@ def ext_dir(tmp_path):
     return str(tmp_path)
 
 
-def _make_engine(extensions_dir):
-    return OntologyEngine(ONTO_PATH, extensions_dir=extensions_dir)
+def _make_engine(extensions_dir, with_rules: bool = False):
+    """构造引擎；with_rules=True 时按激活流水线补跑规则（owlrl 物化 → rules/*.ttl）。
+
+    #59 起 can_execute 由规则层派生（.owl 无属性链公理），模拟重启的用例
+    必须走完整流水线，能力匹配才有前提。
+    """
+    e = OntologyEngine(ONTO_PATH, extensions_dir=extensions_dir)
+    if with_rules:
+        from pathlib import Path
+
+        rules_dir = Path(_d.__file__).parent / "rules"
+        apply_rules(e, sorted(rules_dir.glob("*.ttl")))
+    return e
 
 
 # ---------------- P1-1 多文件加载 ----------------
@@ -138,14 +150,14 @@ def test_classify_persist_roundtrip(ext_dir, tmp_path):
     # 源 .owl 字节不变（增量在 extensions/）
     assert open(ONTO_PATH, "rb").read() == before_bytes
 
-    # 模拟重启：全新引擎 + 全新适配器，从 extensions 恢复
-    engine2 = _make_engine(ext_dir)
+    # 模拟重启：全新引擎（完整流水线：owlrl → rules）+ 全新适配器，从 extensions 恢复
+    engine2 = _make_engine(ext_dir, with_rules=True)
     adapter2 = make_adapter(_d, engine2, DEFAULT_CONFIG)
     inds = {local(t) for t in adapter2.tasks()}
     assert "t_persist_task" in inds
     # 基础类型断言恢复（SimpleTask 为 OWL 事实）
     assert "SimpleTask" in engine2.types_of("t_persist_task")
-    # 能力匹配仍生效（R1 属性链基于扩展个体物化 can_execute）
+    # 能力匹配仍生效（R1 能力全覆盖对扩展个体重新派生 can_execute）
     m = adapter2.capability_match(engine2.NS.t_persist_task, with_derivation=False)
     assert {x["agent"] for x in m["matches"]} >= {"dev_agent"}
 

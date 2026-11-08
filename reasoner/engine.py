@@ -213,6 +213,10 @@ class OntologyEngine:
         self._parse_sources(self.raw)
         self._parse_sources(self.g)
 
+        # 领域规则清单：默认空，由宿主（domains/manager / mcp 启动流程）按
+        # 本领域包目录显式登记；reparse() 会按它重放（见 set_rule_paths）
+        self._rule_paths: list[str] = []
+
         # 默认命名空间：显式 ns > 从本体自动推导（xml:base / IRI 频率） > DEFAULT_NS
         # 多文件（启用 extensions）时跳过 xml:base 文件头依赖，用 IRI 频率推导
         self.NS = Namespace(ns) if ns else Namespace(
@@ -396,9 +400,30 @@ class OntologyEngine:
         """断言数据属性三元组（value 为字面量，如数字/字符串）。"""
         self.g.add((self.NS[subject], self.NS[property_name], Literal(value)))
 
+    def set_rule_paths(self, paths) -> None:
+        """登记领域规则文件清单（宿主在加载流水线时调用；空/None = 清除）。
+
+        引擎不发现规则（发现逻辑按运行态默认领域解析，热切换下会读错包），
+        路径一律由 domains/manager / mcp 启动流程按**本领域包目录**显式给出，
+        与 apply_rules 用的同一份清单。登记后 reparse() 会在物化后重放它们。
+        """
+        self._rule_paths = [str(p) for p in (paths or [])]
+
     def reparse(self) -> None:
-        """重新执行 OWL 2 RL 推理（新增断言后调用）。"""
+        """重新执行 OWL 2 RL 推理（新增断言后调用）。
+
+        宿主登记过领域规则（set_rule_paths）时，物化后按同一份清单重放：
+        派生谓词已从 OWL 公理迁到规则层的领域（如 agent_task 的 can_execute
+        能力全覆盖），不重放的话新增断言后的结论会与启动时脱节——classify
+        新建任务永远匹配不到 Agent、delete 后其他个体的规则派生边也回不来。
+        重放沿用 apply_rules 的失败语义（单文件错误隔离在该文件报告里，
+        整体不抛）；规则执行报告以加载流水线挂到领域快照的那份为准。
+        """
         owlrl.DeductiveClosure(owlrl.OWLRL_Semantics).expand(self.g)
+        if self._rule_paths:
+            from reasoner.rules import apply_rules   # 延迟导入：避免模块加载环
+
+            apply_rules(self, self._rule_paths)
 
     def triples_count(self) -> int:
         return len(self.g)

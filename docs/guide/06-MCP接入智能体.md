@@ -79,7 +79,7 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 
 1. **豆包听懂问题**：识别出这是"找任务执行者"的意图；
 2. **调用工具**：`capability_match(task="t_login_dev")`；
-3. **本体推理**：R1 属性链匹配，生成 `matches` 与推导链。
+3. **本体推理**：R1 能力覆盖匹配（规则层），生成 `matches` 与推导链。
 
 **在当前默认数据下，实际返回的是空态**：
 

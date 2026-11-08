@@ -137,8 +137,8 @@ def test_activate_runs_rule_pipeline(matched_api):
     assert rep is not None and rep["ok"] is True
     assert rep["total_derived"] > 0
     files = [f["file"] for f in rep["files"]]
-    assert files[0].startswith("R2")          # R2 按文件名排序先于 R5/R6 执行
-    assert set(files) >= {"R2_complex_task_delegation.ttl",
+    assert files[0].startswith("R1")          # R1 能力全覆盖先于 R2/R5/R6（R2 要读它的 can_execute 产出）
+    assert set(files) >= {"R1_capability_coverage.ttl", "R2_complex_task_delegation.ttl",
                           "R5_high_risk_manual.ttl", "R6_high_risk_second_review.ttl"}
     assert handle.info()["rules"]["total_derived"] == rep["total_derived"]
 

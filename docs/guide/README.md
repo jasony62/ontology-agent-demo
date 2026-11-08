@@ -58,7 +58,7 @@ docker compose exec api python -m pytest tests/ -q
 | 00 为什么需要本体 | 全仓库 | `docker compose up -d api` 后跑 `bash scripts/demo.sh`（宿主机 curl 访问容器服务）看推导 |
 | 01 本体入门 | `domains/agent_task/agent_task_ontology.owl` | 用 Protege 打开 OWL 文件看类层次 |
 | 02 解剖示例本体 | 同上 + `reasoner/engine.py` | 在 Protege 里逐个查看类 / 个体 / 属性 |
-| 03 本体推理原理 | `reasoner/engine.py` + `tests/test_reasoning.py::test_r1_*` | 跑 `docker compose exec api python -m pytest tests/test_reasoning.py -k r1` 验证属性链 |
+| 03 本体推理原理 | `reasoner/engine.py` + `tests/test_reasoning.py::test_r1_*` | 跑 `docker compose exec api python -m pytest tests/test_reasoning.py -k r1` 验证 R1 能力覆盖规则 |
 | 04 本体与知识图谱 | `frontend/index.html`（图谱渲染） | 访问 Demo 页面看图谱 |
 | 05 搭建本体推理服务 | `api/main.py` + `scripts/demo.sh` | `docker compose up -d api` 后用 `bash scripts/demo.sh` 跑一遍接口 |
 | 06 MCP 接入智能体 | `mcp/mcp_server.py` + `domains/agent_task/mcp.py` | `docker compose up -d mcp` 启动后在豆包中添加连接器 |
@@ -73,7 +73,7 @@ docker compose exec api python -m pytest tests/ -q
 | 三元组 | 主语-谓语-宾语，RDF 的基本单元 |
 | TBox / ABox | 模式层（类与公理）/ 数据层（个体与事实） |
 | OWL 2 RL | 一种可高效推理的 OWL 2 子集 |
-| 属性链 | `has_capability ◦ required_by ⊑ can_execute` 这类公理 |
+| 属性链 | `p1 ◦ p2 ⊑ p3` 这类公理（逐条独立蕴含；R1 的 AND 全覆盖已迁规则层，见篇 3/8） |
 | 推导链 | 事实 → 规则 → 结论 的推理路径（可解释性来源） |
 | MCP | Model Context Protocol，智能体的工具协议 |
 | 语义配置 | 把类角色映射到业务词的 JSON（改配置即换语义） |

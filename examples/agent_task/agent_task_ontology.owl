@@ -39,17 +39,10 @@
 <owl:ObjectProperty rdf:about="#can_execute">
   <rdfs:domain rdf:resource="#Agent"/>
   <rdfs:range rdf:resource="#Task"/>
-  <owl:propertyChainAxiom>
-    <rdf:Description>
-      <rdf:first rdf:resource="#has_capability"/>
-      <rdf:rest>
-        <rdf:Description>
-          <rdf:first rdf:resource="#required_by"/>
-          <rdf:rest rdf:resource="http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"/>
-        </rdf:Description>
-      </rdf:rest>
-    </rdf:Description>
-  </owl:propertyChainAxiom>
+  <!-- R1 能力匹配已迁到规则层 rules/R1_capability_coverage.ttl：
+       任务要求多能力时「集合全覆盖」超出属性链的单路径蕴含表达力，
+       属性链会按 OR 逐条独立推出（只满足一项即判可执行，#59）。
+       这里只保留 domain/range 声明；can_execute 由规则层派生，不断言。 -->
 </owl:ObjectProperty>
 
 <owl:ObjectProperty rdf:about="#assigned_to">

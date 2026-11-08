@@ -19,15 +19,13 @@
 
 import os
 
-from rdflib import URIRef, RDF, RDFS, OWL
+from rdflib import URIRef, RDF, RDFS
 
 # 只从领域插件 SDK 导入（P4）：SDK 之外的宿主模块（引擎实现、API、MCP）
 # 一律不许出现在领域包里——这是"领域可独立开发/发布"的实际判据。
 from ontology_plugin_sdk import (
     PluginContext,
     SemanticConfig,
-    chain_properties,
-    find_chain_path,
     graph_group_members,
     load_derivation_config,
     load_domain_config,
@@ -126,6 +124,20 @@ class AgentTaskAdapter:
             ),
             assignment_predicate="assigned_to",
         )
+
+        # 规则重放登记：把本包 rules/*.ttl 交给引擎，此后每次 engine.reparse()
+        # （classify / import / delete 等实时变更后）都会在物化后按文件名序重放。
+        # 为什么必须登记：R1 能力覆盖 / R2 委派都是规则层派生（.owl 不再声明
+        # 属性链公理，#59），只靠激活时跑一次的话，实时新增的个体永远推不出
+        # can_execute、删除个体后其他个体的规则派生边也回不来。这里只把
+        # **路径**交给引擎（重放执行在引擎侧），领域包不 import 宿主模块，
+        # SDK 边界不破。引擎不支持登记时（FakeEngine 等轻量替身）静默跳过。
+        rules_dir = self.ctx.path("rules")
+        if os.path.isdir(rules_dir) and hasattr(self.engine, "set_rule_paths"):
+            self.engine.set_rule_paths(
+                sorted(os.path.join(rules_dir, f)
+                       for f in os.listdir(rules_dir) if f.endswith(".ttl"))
+            )
 
         # 快照断言（直接）边，用于图谱展示与编排。
         # 断言边来自 engine.raw（原始断言图），推理闭包在 engine.g（owlrl 物化
@@ -242,26 +254,26 @@ class AgentTaskAdapter:
         return sorted(acaps & tcaps, key=str)
 
     def _rule_for(self, agent, task) -> str:
-        """can_execute 边的规则归属：先查 R1 证据（属性链），再落到 R2。
+        """can_execute 边的规则归属：断言边 → R1；能力全覆盖 → R1；否则 R2。
 
-        R2 已迁到规则层（rules/R2_complex_task_delegation.ttl），图里不再有
-        "R2 断言集合"可查；归属判据与结构化证明（reasoner.proof）共用同一套：
-        断言边 → R1（R1 无贡献，边本来就在）；沿 can_execute 的
-        propertyChainAxiom（R1 属性链）找得到路径 → R1；否则是规则层推出的
-        → R2。不要简化成"是复合任务就算 R2"——复合任务的 can_execute 也
-        可能来自 R1 属性链。判据里的 `engine.raw` 是**断言图**（不含推理闭包），
-        与 `validate_shapes` 的校验对象同一口径。
+        R1（能力全覆盖）与 R2（子任务全覆盖）都在规则层（rules/*.ttl），
+        图里没有各自的"断言集合"可查，归属按语义判据反推——与结构化证明
+        （reasoner.proof）共用同一口径：断言边 → R1（R1 无贡献，边本来就在）；
+        任务要求的每项能力该 Agent 都具备（R1 的判定语义）→ R1；
+        其余是 R2 委派推出的（复合任务子任务全覆盖，且该任务没有可供 R1
+        判定的 requires_capability，或能力覆盖不完整）。判据里的
+        `engine.raw` 是**断言图**（不含推理闭包），与 `validate_shapes`
+        的校验对象同一口径。
+
+        不做"是复合任务就算 R2"的简化：复合任务若同时声明了
+        requires_capability 且被全覆盖，R1 也会对它产出 can_execute。
         """
         pred = self._p("can_execute")
         if (agent, pred, task) in self.engine.raw:
             return "R1"          # 断言边，R1 无贡献
-        for pc in self.engine.g.objects(pred, OWL.propertyChainAxiom):
-            chain = find_chain_path(
-                self.engine.g, agent, task,
-                chain_properties(self.engine.g, pc),
-            )
-            if chain is not None:
-                return "R1"
+        needed = {local(c) for c in self.required_capabilities(task)}
+        if needed and needed <= {local(c) for c in self.capabilities_of(agent)}:
+            return "R1"          # 能力全覆盖（R1_capability_coverage 的判定语义）
         return "R2"
 
     def capability_match(self, task_iri, with_derivation: bool = True) -> dict:

@@ -12,6 +12,7 @@ import os
 import pytest
 
 from reasoner.engine import ONTO_PATH, OntologyEngine
+from reasoner.rules import apply_rules
 
 _POLICY_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mcp", "policy.py")
@@ -21,7 +22,16 @@ _spec.loader.exec_module(policy)
 
 
 def _engine():
-    return OntologyEngine(ONTO_PATH)
+    """激活流水线同序：owlrl 物化 → R1/R2（can_execute 自 #59 起由规则层派生，
+    预定义查询 who_executes 的前提）。"""
+    from pathlib import Path
+
+    from _helpers import domain_module
+
+    e = OntologyEngine(ONTO_PATH)
+    rules_dir = Path(domain_module().__file__).parent / "rules"
+    apply_rules(e, sorted(rules_dir.glob("*.ttl")))
+    return e
 
 
 def _policy():

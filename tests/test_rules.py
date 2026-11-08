@@ -35,14 +35,24 @@ def ns(name: str) -> URIRef:
 
 EXAMPLES = ROOT / "examples" / "agent_task"
 RULES_DIR = EXAMPLES / "rules"
+R1 = RULES_DIR / "R1_capability_coverage.ttl"
+R2 = RULES_DIR / "R2_complex_task_delegation.ttl"
 R5 = RULES_DIR / "R5_high_risk_manual.ttl"
 R6 = RULES_DIR / "R6_high_risk_second_review.ttl"
 
 
 @pytest.fixture()
 def engine():
-    """真模型引擎（直接读 examples 源，事实与运行态安装副本一致）。"""
-    return OntologyEngine(onto_path=str(EXAMPLES / "agent_task_ontology.owl"))
+    """真模型引擎（直接读 examples 源，事实与运行态安装副本一致）。
+
+    预跑 R1+R2（激活流水线同序：owlrl 物化 → R1 能力全覆盖 → R2 委派）：
+    R5/R6 的前提读 can_execute，而 can_execute 自 #59 起由规则层派生
+    （.owl 不再声明属性链公理）——不预跑的话 R5 会把所有高风险任务都
+    判成"无人可执行"，测的是空前提下的退化行为而非规则本身。
+    """
+    e = OntologyEngine(onto_path=str(EXAMPLES / "agent_task_ontology.owl"))
+    rules_mod.apply_rules(e, [R1, R2])
+    return e
 
 
 def _derived_subjects(report: dict, index: int = 0) -> set:
@@ -52,11 +62,15 @@ def _derived_subjects(report: dict, index: int = 0) -> set:
 # ---------------- 正例 ----------------
 
 def test_r5_hits_exactly_unowned_high_risk(engine):
-    """正例①·验收①：三条件全满足 → 精确产出（risk≥4 且无人可整体执行的任务）。"""
+    """正例①·验收①：三条件全满足 → 精确产出（risk≥4 且无人可整体执行的任务）。
+
+    预跑 R1+R2 后，t_double_dev 的子任务被 dev_agent/junior_dev 全覆盖
+    （R2 委派产出 can_execute），只有 t_feature 五个子任务无人能一人包揽。
+    """
     rep = rules_mod.apply_rules(engine, [R5])
     assert rep["ok"] is True
-    assert rep["total_derived"] == 2
-    assert _derived_subjects(rep) == {"t_feature", "t_double_dev"}
+    assert rep["total_derived"] == 1
+    assert _derived_subjects(rep) == {"t_feature"}
     assert all(t["p"] == "needs_manual_review" for t in rep["files"][0]["derived_triples"])
     assert rep["files"][0]["stable"] is True
 
@@ -86,7 +100,6 @@ def test_derived_lands_in_engine_graph(engine):
     """正例④：非 dry_run → 派生三元组落在引擎图上（可被后续查询消费）。"""
     rules_mod.apply_rules(engine, [R5])
     assert engine.g.value(ns("t_feature"), ns("needs_manual_review")) is not None
-    assert engine.g.value(ns("t_double_dev"), ns("needs_manual_review")) is not None
 
 
 def test_rerun_after_landing_reports_zero_honestly(engine):
@@ -105,7 +118,8 @@ def test_owned_high_risk_not_flagged(engine):
     rep = rules_mod.apply_rules(engine, [R5])
     hits = _derived_subjects(rep)
     assert "t_deploy" not in hits          # deploy_agent 可整体执行
-    assert "t_compliance_dev" not in hits  # junior_dev/dev_agent 可整体执行
+    assert "t_compliance_dev" not in hits  # dev_agent/junior_dev 能力全覆盖（R1）
+    assert "t_double_dev" not in hits      # 子任务全覆盖（R2 委派）
 
 
 def test_low_risk_not_flagged_by_either_rule(engine):
@@ -120,7 +134,7 @@ def test_dry_run_leaves_graph_untouched(engine):
     before = set(engine.g)
     rep = rules_mod.apply_rules(engine, [R5, R6], dry_run=True)
     assert rep["dry_run"] is True
-    assert rep["total_derived"] == 4       # 预览可见全部产出
+    assert rep["total_derived"] == 3       # 预览可见全部产出（R5: t_feature；R6: t_deploy/t_compliance_dev）
     assert set(engine.g) == before         # 原图不动
 
 
@@ -128,7 +142,7 @@ def test_dry_run_does_not_persist_then_real_run_derives(engine):
     """反例④：dry_run 后再真跑 → 仍能全部产出（预览没有副作用）。"""
     rules_mod.apply_rules(engine, [R5], dry_run=True)
     rep = rules_mod.apply_rules(engine, [R5])
-    assert rep["total_derived"] == 2
+    assert rep["total_derived"] == 1
 
 
 # ---------------- 边界 ----------------
@@ -195,8 +209,8 @@ def test_bad_file_fails_fast_others_continue(tmp_path, engine):
     assert f_bad["error"] is not None
     assert f_bad["derived_new"] == 0
     assert f_good["file"] == "R5_high_risk_manual.ttl"
-    assert f_good["derived_new"] == 2          # 好文件照常执行
-    assert rep["total_derived"] == 2
+    assert f_good["derived_new"] == 1          # 好文件照常执行
+    assert rep["total_derived"] == 1
     assert "bad.ttl" in rep["note"]
 
 
@@ -302,7 +316,7 @@ def test_mcp_run_rules_and_list_rules_registered(engine):
     assert "list_rules" in server.tools
 
     rep = server.tools["run_rules"](rules=[str(R5), str(R6)], dry_run=True)
-    assert rep["ok"] is True and rep["total_derived"] == 4
+    assert rep["ok"] is True and rep["total_derived"] == 3  # R5: t_feature；R6: t_deploy/t_compliance_dev
 
     cat = server.tools["list_rules"](rules=[str(R5), str(R6)])
     assert cat["count"] == 2

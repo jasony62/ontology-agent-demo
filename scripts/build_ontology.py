@@ -12,9 +12,11 @@
     domains/agent_task/agent_task_ontology.owl   （领域包自包含，可在 Protege 中打开）
 
 推理设计:
-    R1 能力匹配   has_capability ◦ requires_capability⁻  ⊑  can_execute   （OWL 属性链，HermiT 推理）
+    R1 能力覆盖   任务要求的每项能力 Agent 都具备 ⇒ can_execute
+                 （规则层 rules/R1_capability_coverage.ttl——多能力 AND 覆盖
+                  超出属性链表达力，.owl 不再声明 propertyChainAxiom，#59）
     R3 依赖传递   depends_on 为传递属性（TransitiveProperty）
-    R2 复合任务委派 / R4 合规冲突 由 domains/agent_task/ 领域适配器中的规则执行
+    R2 复合任务委派 / R4 合规冲突 由 examples/agent_task/ 领域包的规则与适配器执行
 """
 
 import argparse
@@ -25,7 +27,6 @@ from owlready2 import (
     Thing,
     TransitiveProperty,
     FunctionalProperty,
-    PropertyChain,
     Ontology,
     get_ontology,
 )
@@ -137,7 +138,12 @@ def build() -> Ontology:
             """复合任务的子任务"""
 
         class can_execute(Agent >> Task):
-            """推理结论：智能体可执行任务（不手工断言）"""
+            """推理结论：智能体可执行任务（不手工断言）
+
+            R1 已迁规则层 rules/R1_capability_coverage.ttl（能力 AND 全覆盖）：
+            属性链只能逐条独立蕴含，多能力任务会按 OR 误判（#59），
+            因此这里不再声明 property_chain。
+            """
 
         class assigned_to(Task >> Agent):
             """任务分配（分配点，用于合规冲突检测）"""
@@ -159,8 +165,9 @@ def build() -> Ontology:
             """中文描述"""
 
         # ================= 推理公理 =================
-        # R1 能力匹配：A has_capability C 且 T requires_capability C  ⇒  A can_execute T
-        can_execute.property_chain = [PropertyChain([has_capability, required_by])]
+        # R1 能力匹配：已迁规则层 rules/R1_capability_coverage.ttl（能力 AND 全覆盖）。
+        # 属性链 has_capability ◦ required_by ⊑ can_execute 按 OR 逐条独立蕴含，
+        # 多能力任务只满足一项即被判可执行（#59），不再用属性链表达。
 
         # 等价类（供 HermiT 自动分类演示）
         class CertifiedAgent(Agent):

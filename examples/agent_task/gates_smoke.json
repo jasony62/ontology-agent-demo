@@ -1,7 +1,7 @@
 {
   "expected_derived": [
-    {"label": "属性链产出 can_execute（has_capability ◦ required_by）至少 1 条",
-     "predicate": "can_execute", "min_count": 1},
+    {"label": "逆属性物化 required_by（requires_capability ⇄ required_by）至少 1 条",
+     "predicate": "required_by", "min_count": 1},
     {"label": "传递依赖 depends_on 物化至少 2 条",
      "predicate": "depends_on", "min_count": 2}
   ]

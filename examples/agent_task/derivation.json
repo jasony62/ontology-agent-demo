@@ -1,6 +1,6 @@
 {
   "templates": {
-    "rule_r1": "规则 R1（OWL 属性链）：has_capability ◦ required_by ⊑ can_execute",
+    "rule_r1": "规则 R1（能力全覆盖）：任务要求的每项能力 Agent 都具备 ⇒ 可执行该任务",
     "rule_r2": "规则 R2（复合任务委派）：Agent 可执行复合任务的全部子任务 ⇒ 可执行复合任务",
     "rule_r4": "规则 R4（合规约束）：分配前检查任务约束与 Agent 资质",
     "fact_agent_has_cap": "Agent「{agent}」具备能力「{cap}」（has_capability）",

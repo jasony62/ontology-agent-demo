@@ -54,7 +54,9 @@ export const useAppStore = create<AppState>((set) => ({
   materialized: { asserted: null, inferred: null, stats: null },
   sourceXml: '',
   sourceName: '',
-  viewMode: 'asserted',
+  // 默认视图为推理全貌（#54）：本项目不可替代的能力是推理，首屏即应看到结论；
+  // 两个视图同源于一次 materialized 请求，切换无加载时序差异。
+  viewMode: 'materialized',
   syncedToBackend: false,
   error: null,
   selectedId: null,

@@ -49,11 +49,11 @@ describe('图谱右侧栏', () => {
     const text = el.textContent ?? '';
 
     expect(text).toContain('图谱概览');
-    expect(text).toContain('原始三元组');
+    expect(text).toContain('文件里声明的');
     expect(text).toContain('120');
-    expect(text).toContain('物化后三元组');
+    expect(text).toContain('推理后的全部');
     expect(text).toContain('168');
-    expect(text).toContain('推理新增');
+    expect(text).toContain('推出来的');
     expect(text).toContain('48');
     expect(text).toContain('图例');
     expect(text).toContain('执行者（2）');

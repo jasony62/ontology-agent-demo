@@ -31,15 +31,15 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
       {stats ? (
         <div className="overview-stats" aria-label="三元组统计">
           <div className="overview-stat">
-            <span className="label">原始三元组</span>
+            <span className="label">文件里声明的</span>
             <span className="num">{stats.triples_asserted}</span>
           </div>
           <div className="overview-stat">
-            <span className="label">物化后三元组</span>
+            <span className="label">推理后的全部</span>
             <span className="num">{stats.triples_materialized}</span>
           </div>
           <div className="overview-stat">
-            <span className="label">推理新增</span>
+            <span className="label">推出来的</span>
             <span className="num inferred">{stats.inferred_added}</span>
           </div>
         </div>

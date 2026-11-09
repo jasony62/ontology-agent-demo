@@ -81,6 +81,7 @@ export function validateEditModel(m: EditModel): string[] {
     if (why) errors.push(`个体 "${i.label || '(未命名)'}" 的 id ${why}`);
     if (indIds.has(i.id)) errors.push(`个体 id 重复: ${i.id}`);
     indIds.add(i.id);
+    if (i.types.length === 0) errors.push(`个体 "${i.id}" 未声明类型`);
     for (const t of i.types) {
       if (!classIds.has(t)) errors.push(`个体 "${i.id}" 的类型类不存在: ${t}`);
     }

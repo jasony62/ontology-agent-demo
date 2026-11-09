@@ -1,4 +1,5 @@
 import type { Ontology } from '../data/ontology';
+import { isDeclaredAssertionProp } from './assertionProps';
 
 /**
  * 可写入性校验——检查「这份模型能否被本编辑器安全写回」，非语义校验。
@@ -26,7 +27,7 @@ export interface ValidationIssue {
 }
 
 /** IRI 中不允许出现、且用户可控制的字符（空格与 XML/URI 危险符号）。 */
-const ILLEGAL_ID_CHARS = /[\s<>"'{}|\\^`]/;
+export const ILLEGAL_ID_CHARS = /[\s<>"'{}|\\^`]/;
 
 export function validateOntology(o: Ontology): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -84,6 +85,49 @@ export function validateOntology(o: Ontology): ValidationIssue[] {
     const validCard = ['one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'];
     if (!validCard.includes(r.cardinality)) {
       issues.push({ level: 'required', message: `关系 "${r.name}" 基数非法: ${r.cardinality}` });
+    }
+  }
+
+  // ---- 个体（草图侧补齐：#102 P3）----
+  const instanceIds = new Set<string>();
+  for (const inst of o.instances ?? []) {
+    const label = inst.label || inst.id || '(未命名)';
+    if (instanceIds.has(inst.id)) {
+      issues.push({ level: 'blocker', message: `个体 id 重复: ${inst.id}`, targetId: inst.id });
+    }
+    instanceIds.add(inst.id);
+
+    if (!inst.id?.trim()) {
+      issues.push({ level: 'required', message: `个体 "${label}" 缺少短名`, targetId: inst.id });
+    } else if (ILLEGAL_ID_CHARS.test(inst.id)) {
+      issues.push({ level: 'required', message: `个体 "${label}" 的短名含 IRI 非法字符`, targetId: inst.id });
+    }
+
+    const types = inst.types ?? (inst.entityTypeId ? [inst.entityTypeId] : []);
+    if (types.length === 0) {
+      issues.push({ level: 'required', message: `个体 "${label}" 未选择所属类型`, targetId: inst.id });
+    }
+    for (const t of types) {
+      if (!o.entityTypes.some((e) => e.id === t)) {
+        issues.push({ level: 'blocker', message: `个体 "${label}" 的类型类不存在: ${t}`, targetId: inst.id });
+      }
+    }
+
+    for (const a of inst.assertions ?? []) {
+      if (!a.prop?.trim()) {
+        issues.push({ level: 'required', message: `个体 "${label}" 存在空属性名`, targetId: inst.id });
+        continue;
+      }
+      if (!isDeclaredAssertionProp(o, a.prop)) {
+        issues.push({
+          level: 'required',
+          message: `个体 "${label}" 的断言属性未在模型中声明: ${a.prop}`,
+          targetId: inst.id,
+        });
+      }
+      if (!a.value?.trim()) {
+        issues.push({ level: 'required', message: `个体 "${label}" 的断言 ${a.prop} 缺少取值`, targetId: inst.id });
+      }
     }
   }
 

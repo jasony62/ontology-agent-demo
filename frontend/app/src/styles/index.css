@@ -249,6 +249,8 @@ body {
 }
 .modal h3 { font-size: 16px; }
 .modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
+/* #102：添加示例事实的短名 + 类型两字段对话框，不需要 640px 宽 */
+.create-fact-modal { width: min(420px, 94vw); }
 
 /* 覆盖当前本体文件确认框：逐条说明后果，而不是一句「确定继续？」 */
 .overwrite-confirm { width: min(720px, 94vw); }
@@ -892,7 +894,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 @container (min-width: 340px) {
   .element-assertion-row {
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 90px) minmax(0, 1.2fr) auto;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) auto;
     align-items: start;
   }
 }

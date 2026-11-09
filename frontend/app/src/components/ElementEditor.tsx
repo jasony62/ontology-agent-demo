@@ -10,6 +10,7 @@ import type {
 } from '../data/ontology';
 import type { ValidationIssue } from '../data/validate';
 import { nextUniqueId } from '../data/sketch';
+import { assertionPropOptions } from '../data/assertionProps';
 import { CARDINALITIES, COLORS, PROPERTY_TYPES } from '../data/ontologyOptions';
 
 export type ElementTarget =
@@ -29,14 +30,15 @@ interface Props {
   onSelect: (id: string | null) => void;
   onDeleteClass: (id: string) => void;
   onDeleteRelation: (id: string) => void;
+  onDeleteInstance: (id: string) => void;
 }
 
 function StatusBar() {
   return (
     <div className="element-status" role="note">
-      <span className="element-status-badge">仅预览 · 改动不写入系统</span>
+      <span className="element-status-badge">仅预览 · 不写入系统、不进查询与推理结果</span>
       <span className="element-status-hint">
-        要写入当前本体，请用右侧「在线编辑」；要留住草图，请导出文件。
+        要留住请导出当前编辑模型；写入本体文件会丢弃本次草图。要写入本体定义，请用右侧「在线编辑」。
       </span>
     </div>
   );
@@ -66,6 +68,7 @@ export default function ElementEditor({
   onSelect,
   onDeleteClass,
   onDeleteRelation,
+  onDeleteInstance,
 }: Props) {
   const nameRef = useRef<HTMLInputElement>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -121,7 +124,9 @@ export default function ElementEditor({
       ontology={ontology}
       instance={target.instance}
       issues={issues}
+      nameRef={nameRef}
       onCommit={onCommit}
+      onDeleteInstance={onDeleteInstance}
     />
   );
 }
@@ -407,10 +412,13 @@ interface InstanceFormProps {
   ontology: Ontology;
   instance: EntityInstance;
   issues: ValidationIssue[];
+  nameRef: RefObject<HTMLInputElement | null>;
   onCommit: (next: Ontology) => void;
+  onDeleteInstance: (id: string) => void;
 }
 
-function InstanceForm({ ontology, instance, issues, onCommit }: InstanceFormProps) {
+function InstanceForm({ ontology, instance, issues, nameRef, onCommit, onDeleteInstance }: InstanceFormProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const update = (patch: Partial<EntityInstance>) =>
     onCommit({
       ...ontology,
@@ -419,10 +427,29 @@ function InstanceForm({ ontology, instance, issues, onCommit }: InstanceFormProp
 
   const types = instance.types ?? (instance.entityTypeId ? [instance.entityTypeId] : []);
   const assertions = instance.assertions ?? [];
+  const propOptions = assertionPropOptions(ontology);
+  const propByValue = new Map(propOptions.map((o) => [o.value, o]));
   const updateAssertion = (idx: number, patch: Partial<InstanceAssertion>) =>
     update({ assertions: assertions.map((a, i) => (i === idx ? { ...a, ...patch } : a)) });
   const deleteAssertion = (idx: number) => update({ assertions: assertions.filter((_, i) => i !== idx) });
-  const addAssertion = () => update({ assertions: [...assertions, { prop: '', value: '', isObject: false }] });
+  const addAssertion = () => {
+    const first = propOptions[0];
+    update({
+      assertions: [...assertions, { prop: first?.value ?? '', value: '', isObject: first?.isObject ?? false }],
+    });
+  };
+  /** 属性名只能从模型里选；类型（对象 / 字面量）跟随属性声明。 */
+  const selectProp = (idx: number, prop: string) => {
+    const current = assertions[idx];
+    const option = propByValue.get(prop);
+    const isObject = option ? option.isObject : current.isObject;
+    updateAssertion(idx, {
+      prop,
+      isObject,
+      // 对象 / 字面量切换时旧取值不再可用，清空重选
+      value: option && option.isObject !== current.isObject ? '' : current.value,
+    });
+  };
 
   const objectValues = Array.from(
     new Set([
@@ -437,7 +464,8 @@ function InstanceForm({ ontology, instance, issues, onCommit }: InstanceFormProp
       <h2>个体 · {instance.label || instance.id}</h2>
       <IssueList issues={issues} />
       <p className="element-hint">
-        个体属性值不画在图上；这里改的是导出文件里的断言。本期不提供「新建个体」入口。
+        属性名从模型已声明的对象 / 数据属性里选；属性值不画在图上，只写进导出文件。
+        新建的示例事实不参与后端推理。
       </p>
 
       <div className="element-section">
@@ -449,6 +477,7 @@ function InstanceForm({ ontology, instance, issues, onCommit }: InstanceFormProp
           <div className="field">
             <label>显示名</label>
             <input
+              ref={nameRef}
               value={instance.label ?? ''}
               placeholder={instance.id}
               onChange={(e) => update({ label: e.target.value })}
@@ -474,8 +503,13 @@ function InstanceForm({ ontology, instance, issues, onCommit }: InstanceFormProp
       <div className="element-section">
         <div className="element-section-head">
           <h3>属性值（{assertions.length}）</h3>
-          <button type="button" className="btn secondary" onClick={addAssertion}>+ 新增属性值</button>
+          <button type="button" className="btn secondary" onClick={addAssertion} disabled={propOptions.length === 0}>
+            + 新增属性值
+          </button>
         </div>
+        {propOptions.length === 0 && (
+          <p className="element-hint element-hint-warn">模型里还没有对象 / 数据属性，请先到在线编辑声明属性。</p>
+        )}
         {assertions.length === 0 ? (
           <div className="element-empty-inline">暂无属性值。</div>
         ) : (
@@ -483,17 +517,16 @@ function InstanceForm({ ontology, instance, issues, onCommit }: InstanceFormProp
             {assertions.map((a, idx) => (
               <div className="element-assertion-row" key={idx}>
                 <div className={`field${!a.prop.trim() ? ' has-error' : ''}`}>
-                  <input value={a.prop} placeholder="属性短名" onChange={(e) => updateAssertion(idx, { prop: e.target.value })} />
-                  {!a.prop.trim() && <span className="field-error">属性名必填</span>}
-                </div>
-                <div className="field">
-                  <select
-                    value={a.isObject ? 'object' : 'literal'}
-                    onChange={(e) => updateAssertion(idx, { isObject: e.target.value === 'object', value: '' })}
-                  >
-                    <option value="literal">字面量</option>
-                    <option value="object">个体/类</option>
+                  <select value={a.prop} onChange={(e) => selectProp(idx, e.target.value)}>
+                    <option value="">（选择属性）</option>
+                    {propOptions.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                    {a.prop && !propByValue.has(a.prop) && (
+                      <option value={a.prop}>{a.prop}（未在模型中声明）</option>
+                    )}
                   </select>
+                  {!a.prop.trim() && <span className="field-error">属性名必填</span>}
                 </div>
                 <div className="field">
                   {a.isObject ? (
@@ -509,6 +542,18 @@ function InstanceForm({ ontology, instance, issues, onCommit }: InstanceFormProp
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      <div className="element-danger-zone">
+        {confirmDelete ? (
+          <span className="element-confirm">
+            <span>删除该个体？其它个体中指向它的对象断言会一并清理。</span>
+            <button type="button" className="btn danger" onClick={() => onDeleteInstance(instance.id)}>删除</button>
+            <button type="button" className="btn secondary" onClick={() => setConfirmDelete(false)}>取消</button>
+          </span>
+        ) : (
+          <button type="button" className="btn ghost danger-text" onClick={() => setConfirmDelete(true)}>删除这个个体</button>
         )}
       </div>
     </div>

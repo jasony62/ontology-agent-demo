@@ -1,4 +1,5 @@
 import type { Ontology, DataBinding } from '../../data/ontology';
+import { dataPropertyLocalName } from '../../data/assertionProps';
 
 /**
  * Escape XML special characters in a string.
@@ -104,7 +105,7 @@ export function serializeToRDF(
     if (keyProps.length > 0) {
       rdf += '        <owl:hasKey rdf:parseType="Collection">\n';
       for (const prop of keyProps) {
-        rdf += `            <rdf:Description rdf:about="${baseUri}${entity.id}_${prop.name}"/>\n`;
+        rdf += `            <rdf:Description rdf:about="${baseUri}${dataPropertyLocalName(entity, prop)}"/>\n`;
       }
       rdf += '        </owl:hasKey>\n';
     }
@@ -120,7 +121,7 @@ export function serializeToRDF(
     const className = capitalize(entity.id);
 
     for (const prop of entity.properties) {
-      const propName = `${entity.id}_${prop.name}`;
+      const propName = dataPropertyLocalName(entity, prop);
       const xsdType = XSD_TYPE_MAP[prop.type] || 'xsd:string';
       const xsdLocalName = xsdType.split(':')[1];
 
@@ -142,6 +143,30 @@ export function serializeToRDF(
       rdf += `        <ont:propertyType>${escapeXml(prop.type)}</ont:propertyType>\n`;
       rdf += '    </owl:DatatypeProperty>\n\n';
     }
+  }
+
+  // 全局数据属性（domain = owl:Thing / 缺省）：没有类前缀，直接用 IRI 短名写出。
+  // 断言里引用的是同一个短名，导出后谓词与声明指向同一个资源。
+  for (const prop of ontology.globalProperties ?? []) {
+    const propName = prop.iriName || prop.name;
+    const xsdType = XSD_TYPE_MAP[prop.type] || 'xsd:string';
+    const xsdLocalName = xsdType.split(':')[1];
+
+    rdf += `    <owl:DatatypeProperty rdf:about="${escapeXml(baseUri)}${escapeXml(propName)}">\n`;
+    rdf += `        <rdfs:label>${escapeXml(prop.name)}</rdfs:label>\n`;
+    rdf += `        <rdfs:domain rdf:resource="http://www.w3.org/2002/07/owl#Thing"/>\n`;
+    rdf += `        <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#${xsdLocalName}"/>\n`;
+    if (prop.description) {
+      rdf += `        <rdfs:comment>${escapeXml(prop.description)}</rdfs:comment>\n`;
+    }
+    if (prop.unit) {
+      rdf += `        <ont:unit>${escapeXml(prop.unit)}</ont:unit>\n`;
+    }
+    if (prop.values && prop.values.length > 0) {
+      rdf += `        <ont:enumValues>${escapeXml(prop.values.join(','))}</ont:enumValues>\n`;
+    }
+    rdf += `        <ont:propertyType>${escapeXml(prop.type)}</ont:propertyType>\n`;
+    rdf += '    </owl:DatatypeProperty>\n\n';
   }
 
   // Object Properties (relationships)
@@ -195,9 +220,9 @@ export function serializeToRDF(
       for (const a of inst.assertions ?? []) {
         if (!a.prop || !isValidXmlName(a.prop)) continue;
         if (a.isObject) {
-          rdf += `        <${a.prop} rdf:resource="${escapeXml(baseUri)}${escapeXml(a.value)}"/>\n`;
+          rdf += `        <ont:${a.prop} rdf:resource="${escapeXml(baseUri)}${escapeXml(a.value)}"/>\n`;
         } else {
-          rdf += `        <${a.prop} rdf:datatype="http://www.w3.org/2001/XMLSchema#string">${escapeXml(a.value)}</${a.prop}>\n`;
+          rdf += `        <ont:${a.prop} rdf:datatype="http://www.w3.org/2001/XMLSchema#string">${escapeXml(a.value)}</ont:${a.prop}>\n`;
         }
       }
       rdf += '    </owl:NamedIndividual>\n\n';

@@ -1,4 +1,4 @@
-import type { Ontology, EntityType, Relationship } from './ontology';
+import type { Ontology, EntityType, EntityInstance, Relationship } from './ontology';
 import { COLORS } from './ontologyOptions';
 
 /**
@@ -18,6 +18,14 @@ export function nextUniqueId(base: string, used: Iterable<string>): string {
   let n = 2;
   while (taken.has(`${base}${n}`)) n += 1;
   return `${base}${n}`;
+}
+
+/** 带数字后缀的候选（ind1 / ind2…）：找最小的空闲序号，删中间再新增也不会撞 id。 */
+export function nextUniqueNumberedId(prefix: string, used: Iterable<string>): string {
+  const taken = new Set(used);
+  let n = 1;
+  while (taken.has(`${prefix}${n}`)) n += 1;
+  return `${prefix}${n}`;
 }
 
 function classIds(o: Ontology): string[] {
@@ -51,17 +59,63 @@ export function createRelationship(o: Ontology): { ontology: Ontology; id: strin
   return { ontology: { ...o, relationships: [...o.relationships, rel] }, id };
 }
 
-/** 删除类：同批删掉 from/to 指向它的关系，并清理个体上的类型与孤立个体。 */
+/**
+ * 新建一条「示例事实」（图谱草图里的个体）。
+ *
+ * 短名 = 个体 id（之后不可改，改短名等于换 IRI）；类型必填——先选类型再落图，
+ * 避免出现没有归类边的空圆点。id 仍然探测空闲值，防止调用方漏做重复检查。
+ */
+export function createInstance(
+  o: Ontology,
+  classId: string,
+  shortName: string,
+  label: string,
+): { ontology: Ontology; id: string } {
+  const instances = o.instances ?? [];
+  const id = nextUniqueId(shortName.trim(), instances.map((i) => i.id));
+  const instance: EntityInstance = {
+    id,
+    entityTypeId: classId,
+    label: label.trim() || id,
+    types: [classId],
+    assertions: [],
+  };
+  return { ontology: { ...o, instances: [...instances, instance] }, id };
+}
+
+/**
+ * 删除个体：同批清掉其它个体里指向它的对象断言，避免导出后留下断头引用。
+ */
+export function deleteInstance(o: Ontology, id: string): Ontology {
+  const instances = (o.instances ?? [])
+    .filter((inst) => inst.id !== id)
+    .map((inst) => ({
+      ...inst,
+      assertions: (inst.assertions ?? []).filter((a) => !(a.isObject && a.value === id)),
+    }));
+  return { ...o, instances };
+}
+
+/** 删除类：同批删掉 from/to 指向它的关系，并清理个体上的类型、孤立个体与悬空断言。 */
 export function deleteClass(o: Ontology, id: string): Ontology {
+  const removedRefs = new Set<string>([id]);
   const instances = (o.instances ?? [])
     .map((inst) => {
       const current = inst.types ?? (inst.entityTypeId ? [inst.entityTypeId] : []);
       if (!current.includes(id)) return inst; // 与本次删除无关的个体原样保留
       const types = current.filter((t) => t !== id);
-      if (types.length === 0) return null; // 失去全部类型 = 孤立点，同批清理
+      if (types.length === 0) {
+        removedRefs.add(inst.id); // 失去全部类型 = 孤立点，同批清理
+        return null;
+      }
       return { ...inst, types, entityTypeId: types[0] };
     })
-    .filter((inst): inst is NonNullable<typeof inst> => inst !== null);
+    .filter((inst): inst is NonNullable<typeof inst> => inst !== null)
+    // 指向被删类 / 被删个体的对象断言一并清理（悬空引用不写进导出文件）
+    .map((inst) => ({
+      ...inst,
+      assertions: (inst.assertions ?? []).filter((a) => !(a.isObject && removedRefs.has(a.value))),
+    }));
 
   return {
     ...o,

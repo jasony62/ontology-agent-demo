@@ -140,7 +140,7 @@ describe('图谱右侧编辑框（#91 融合重构）', () => {
     const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
     const text = el.textContent ?? '';
     expect(text).toContain('类 · Agent');
-    expect(text).toContain('仅预览 · 改动不写入系统');
+    expect(text).toContain('仅预览 · 不写入系统、不进查询与推理结果');
     expect(text).toContain('父类');
     expect(text).not.toContain('图谱概览');
   });
@@ -149,7 +149,8 @@ describe('图谱右侧编辑框（#91 融合重构）', () => {
     seed('dev_agent');
     const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
     expect(el.textContent).toContain('个体 · 研发Agent');
-    expect(el.textContent).toContain('本期不提供「新建个体」入口');
+    expect(el.textContent).toContain('属性名从模型已声明的对象 / 数据属性里选');
+    expect(el.textContent).not.toContain('要写入当前本体');
 
     const typeSelect = Array.from(el.querySelectorAll('select')).find((s) =>
       Array.from(s.options).some((o) => o.value === 'task'));
@@ -164,8 +165,36 @@ describe('图谱右侧编辑框（#91 融合重构）', () => {
     expect(edges).not.toContain('dev_agent--rdf:type--agent');
   });
 
-  it('选中结构边 → 只读指路，不出现输入框', () => {
-    seed('edge|agent--subClassOf--task');
+  it('删除个体后从模型移除，并清掉其它个体指向它的对象断言（#102）', () => {
+    seed('dev_agent');
+    act(() => {
+      useAppStore.setState({
+        ontology: {
+          ...ontology,
+          instances: [
+            { id: 'dev_agent', entityTypeId: 'agent', types: ['agent'], label: '研发Agent', assertions: [] },
+            {
+              id: 'lead_agent', entityTypeId: 'agent', types: ['agent'], label: '负责人',
+              assertions: [{ prop: 'can_execute', value: 'dev_agent', isObject: true }],
+            },
+          ],
+        },
+      });
+    });
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+
+    const del = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === '删除这个个体')!;
+    act(() => del.click());
+    const confirm = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === '删除')!;
+    act(() => confirm.click());
+
+    const state = useAppStore.getState();
+    expect(state.ontology?.instances?.map((i) => i.id)).toEqual(['lead_agent']);
+    expect(state.ontology?.instances?.[0].assertions).toEqual([]);
+    expect(state.selectedId).toBeNull();
+  });
+
+  it('选中结构边 → 只读指路，不出现输入框', () => {    seed('edge|agent--subClassOf--task');
     const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
     const text = el.textContent ?? '';
     expect(text).toContain('结构边 · 父类');

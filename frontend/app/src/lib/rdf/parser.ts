@@ -304,6 +304,7 @@ export function parseRDF(rdfXml: string): {
 
   // Collect relationship attributes separately
   const relAttrMap = new Map<string, RelationshipAttribute[]>();
+  const globalProperties: Property[] = [];
 
   for (const dtProp of parsedDtProps) {
     if (dtProp.relationshipAttributeOf) {
@@ -318,11 +319,13 @@ export function parseRDF(rdfXml: string): {
       continue;
     }
 
-    // Regular entity property — match to entity by domain URI
-    if (!dtProp.domainUri) continue;
-
-    const entity = entityMap.get(dtProp.domainUri);
-    if (!entity) continue;
+    // 不属于具体类的数据属性（owl:Thing / 缺省 / domain 悬空）→ 全局属性。
+    // 默认本体的 has_description 就是这一类，断言里直接用 IRI 短名。
+    const entity = dtProp.domainUri ? entityMap.get(dtProp.domainUri) : undefined;
+    const isGlobal =
+      !dtProp.domainUri ||
+      dtProp.domainUri === `${OWL_NS}Thing` ||
+      !entity;
 
     // Determine property type
     let propType: PropertyType = 'string';
@@ -338,6 +341,8 @@ export function parseRDF(rdfXml: string): {
     const prop: Property = {
       name: dtProp.label,
       type: propType,
+      // 保留原 IRI 短名：默认本体 label 是中文（「有效期至」），不能靠 label 反推 IRI。
+      iriName: localNameFromUri(dtProp.about),
     };
 
     if (dtProp.isIdentifier) prop.isIdentifier = true;
@@ -347,7 +352,8 @@ export function parseRDF(rdfXml: string): {
     }
     if (dtProp.comment) prop.description = dtProp.comment;
 
-    entity.properties.push(prop);
+    if (isGlobal) globalProperties.push(prop);
+    else entity!.properties.push(prop);
   }
 
   // --- Extract ObjectProperties → Relationships ---
@@ -510,6 +516,7 @@ export function parseRDF(rdfXml: string): {
     entityTypes,
     relationships,
     instances,
+    globalProperties,
   };
 
   return { ontology, bindings, warnings };

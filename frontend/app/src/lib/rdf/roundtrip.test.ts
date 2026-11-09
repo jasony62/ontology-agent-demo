@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { serializeToRDF } from './serializer';
+import { serializeToRDF, deriveBaseUri } from './serializer';
 import { parseRDF } from './parser';
 import { cosmicCoffeeOntology, sampleBindings } from '../../data/ontology';
 import { sampleOntologies } from '../../data/sampleOntologies';
@@ -218,8 +218,49 @@ describe('RDF round-trip tests', () => {
     expectOntologiesEqual(parsed, ontology);
   });
 
-  it('round-trips an empty ontology', () => {
+  it('断言与属性声明使用同一命名空间短名（iriName 保留原 IRI）', () => {
     const ontology: Ontology = {
+      name: 'Assertion NS Test',
+      description: '',
+      entityTypes: [
+        {
+          id: 'certification', name: 'Certification', description: '', icon: '📜', color: '#111',
+          properties: [{ name: '有效期至', type: 'date', iriName: 'valid_until' }],
+        },
+      ],
+      relationships: [],
+      instances: [
+        {
+          id: 'cert_1', entityTypeId: 'certification', label: '认证1', types: ['certification'],
+          assertions: [{ prop: 'valid_until', value: '2027-06-30', isObject: false }],
+        },
+      ],
+    };
+    const rdf = serializeToRDF(ontology);
+    // 属性声明与断言都落在同一个 IRI（ont:valid_until）
+    expect(rdf).toContain(`<owl:DatatypeProperty rdf:about="${deriveBaseUri(ontology.name)}valid_until">`);
+    expect(rdf).toContain('<ont:valid_until rdf:datatype=');
+    const { ontology: parsed } = parseRDF(rdf);
+    expect(parsed.instances![0].assertions).toEqual(ontology.instances![0].assertions);
+  });
+
+  it('round-trips a global (owl:Thing) data property', () => {
+    const ontology: Ontology = {
+      name: 'Global Prop Test',
+      description: '',
+      entityTypes: [{ id: 'agent', name: 'Agent', description: '', icon: '🤖', color: '#111', properties: [] }],
+      relationships: [],
+      instances: [],
+      globalProperties: [{ name: '描述', type: 'string', iriName: 'has_description' }],
+    };
+    const rdf = serializeToRDF(ontology);
+    expect(rdf).toContain(`<owl:DatatypeProperty rdf:about="${deriveBaseUri(ontology.name)}has_description">`);
+    const { ontology: parsed } = parseRDF(rdf);
+    expect(parsed.globalProperties).toHaveLength(1);
+    expect(parsed.globalProperties![0]).toMatchObject({ name: '描述', type: 'string', iriName: 'has_description' });
+  });
+
+  it('round-trips an empty ontology', () => {    const ontology: Ontology = {
       name: 'Empty',
       description: '',
       entityTypes: [],

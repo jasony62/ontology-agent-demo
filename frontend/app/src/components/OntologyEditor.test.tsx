@@ -148,8 +148,43 @@ describe('OntologyEditor（#89 分类导航 + 单一工作区）', () => {
   });
 });
 
-describe('OntologyEditor 写盘文案与覆盖确认（#92 #100）', () => {
-  function toolbarButton(text: string): HTMLButtonElement {
+describe('OntologyEditor 新建实例（#102 P2）', () => {
+  it('新增实例探测空闲 id，并默认带上第一个类作为类型', () => {
+    useEditorStore.setState({
+      model: {
+        ...MODEL,
+        individuals: [
+          { id: 'ind1', label: '个体1', types: ['Capability'], assertions: [] },
+          { id: 'ind3', label: '个体3', types: ['Capability'], assertions: [] },
+        ],
+      },
+    });
+    render();
+    click(tabs()[3]);
+    const add = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((b) => b.textContent?.trim() === '+ 新增实例')!;
+    expect(add).toBeTruthy();
+    click(add);
+
+    const inds = useEditorStore.getState().model!.individuals;
+    expect(inds.map((i) => i.id)).toContain('ind2');
+    expect(inds.find((i) => i.id === 'ind2')!.types).toEqual(['DomainPackage']);
+  });
+
+  it('无类型实例在实时校验里被指出', () => {
+    useEditorStore.setState({
+      model: {
+        ...MODEL,
+        individuals: [{ id: 'bad', label: '无类型', types: [], assertions: [] }],
+      },
+    });
+    render();
+    click(tabs()[3]);
+    expect(container!.textContent).toContain('未声明类型');
+  });
+});
+
+describe('OntologyEditor 写盘文案与覆盖确认（#92 #100）', () => {  function toolbarButton(text: string): HTMLButtonElement {
     const hit = [...container!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === text);
     if (!hit) throw new Error(`button not found: ${text}`);
     return hit;

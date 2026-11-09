@@ -3,7 +3,7 @@ import { useAppStore } from '../store/appStore';
 import type { LegendFocus } from '../lib/graphGroups';
 import type { GraphData, GraphEdge } from '../api/client';
 import { findEntityByGraphId, findInstanceByGraphId, findRelationshipByEdge, mergeOntologyIntoGraph } from '../data/toGraphData';
-import { deleteClass, deleteRelationship } from '../data/sketch';
+import { deleteClass, deleteInstance, deleteRelationship } from '../data/sketch';
 import { validateOntology } from '../data/validate';
 import type { Ontology } from '../data/ontology';
 import GraphOverview from './GraphOverview';
@@ -30,7 +30,7 @@ function findEdge(graph: GraphData | null, edgeId: string): GraphEdge | null {
  * 结构边 / 推理边 / 推理新增节点 / 模型外元素 → 只读 Inspector。
  *
  * 编辑框不是独立页面：它叠加在 `.graph-side` 上，标题跟随选中元素（类 / 关系 / 个体），
- * 顶部常驻「仅预览 · 改动不写入系统」（#91 D1 / D2）。
+ * 顶部常驻「仅预览 · 不写入系统、不进查询与推理结果」（#91 D1 / D2、#102）。
  */
 export default function GraphSidePanel({ focus, onToggleFocus }: Props) {
   const selectedId = useAppStore((s) => s.selectedId);
@@ -67,6 +67,10 @@ export default function GraphSidePanel({ focus, onToggleFocus }: Props) {
     commit(deleteRelationship(ontology, id));
     setSelectedId(null);
   };
+  const handleDeleteInstance = (id: string) => {
+    commit(deleteInstance(ontology, id));
+    setSelectedId(null);
+  };
 
   // 新建关系草稿：还没落图（起止未填），用特殊选中 id 打开同一张表单
   if (selectedId.startsWith('sketch|rel|')) {
@@ -87,6 +91,7 @@ export default function GraphSidePanel({ focus, onToggleFocus }: Props) {
         onSelect={setSelectedId}
         onDeleteClass={handleDeleteClass}
         onDeleteRelation={handleDeleteRelation}
+        onDeleteInstance={handleDeleteInstance}
       />
     );
   }
@@ -110,6 +115,7 @@ export default function GraphSidePanel({ focus, onToggleFocus }: Props) {
         onSelect={setSelectedId}
         onDeleteClass={handleDeleteClass}
         onDeleteRelation={handleDeleteRelation}
+        onDeleteInstance={handleDeleteInstance}
       />
     );
   }
@@ -133,23 +139,28 @@ export default function GraphSidePanel({ focus, onToggleFocus }: Props) {
         onSelect={setSelectedId}
         onDeleteClass={handleDeleteClass}
         onDeleteRelation={handleDeleteRelation}
+        onDeleteInstance={handleDeleteInstance}
       />
     );
   }
 
   const instance = findInstanceByGraphId(ontology, selectedId);
   if (!instance) return <Inspector onJump={setSelectedId} />;
+  const instanceIssues = issues.filter(
+    (i) => (i.targetId ?? '').toLowerCase() === instance.id.toLowerCase(),
+  );
   return (
     <ElementEditor
       ontology={ontology}
       target={{ kind: 'instance', instance }}
-      issues={[]}
+      issues={instanceIssues}
       focusKey={editorFocusId}
       onFocusConsumed={() => setEditorFocusId(null)}
       onCommit={commit}
       onSelect={setSelectedId}
-      onDeleteClass={(id) => { commit(deleteClass(ontology, id)); setSelectedId(null); }}
-      onDeleteRelation={(id) => { commit(deleteRelationship(ontology, id)); setSelectedId(null); }}
+      onDeleteClass={handleDeleteClass}
+      onDeleteRelation={handleDeleteRelation}
+      onDeleteInstance={handleDeleteInstance}
     />
   );
 }

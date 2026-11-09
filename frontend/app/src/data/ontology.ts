@@ -3,6 +3,12 @@
 export interface Property {
   name: string;
   type: 'string' | 'integer' | 'decimal' | 'double' | 'date' | 'datetime' | 'boolean' | 'enum';
+  /**
+   * 属性 IRI 的 localName（从文件解析时保留；新建属性没有该字段）。
+   * 默认本体用 `valid_until` 这类短名，而 `rdfs:label` 是中文——只靠 label
+   * 反推不出 IRI。导出时优先用它，保证谓词与属性声明指向同一个资源。
+   */
+  iriName?: string;
   isIdentifier?: boolean;
   unit?: string;
   values?: string[];
@@ -65,6 +71,11 @@ export interface Ontology {
   relationships: Relationship[];
   /** 具名个体（草图模型；导入时从 OWL 解析，导出时写回 NamedIndividual） */
   instances?: EntityInstance[];
+  /**
+   * 不属于某个类的数据属性（`rdfs:domain owl:Thing`、缺省或 domain 悬空）。
+   * 默认本体的 `has_description` 就在这一类；导出时用 IRI 短名直接写出。
+   */
+  globalProperties?: Property[];
 }
 
 export interface DataBinding {

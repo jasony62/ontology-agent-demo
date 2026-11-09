@@ -7,6 +7,7 @@ import { mergeOntologyIntoGraph } from '../data/toGraphData';
 import { PROPERTY_CHARACTERISTICS, XSD_DATATYPES } from '../data/editModel';
 import type { EditModel, EditModelAssertion } from '../data/editModel';
 import { validateEditModel } from '../data/validateEditModel';
+import { nextUniqueNumberedId } from '../data/sketch';
 
 /** 通用小部件：带标签的输入行 */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -507,6 +508,7 @@ export default function OntologyEditor() {
                       {model.classes.map((c) => <option key={c.id} value={c.id}>{c.label || c.id}</option>)}
                     </select>
                   </Field>
+                  <div className="field-hint">这里的实例随写入进文件，会影响查询与推理。</div>
                   <div className="ef-assertions">
                     {ind.assertions.map((a, idx) => (
                       <AssertionRow
@@ -548,22 +550,30 @@ export default function OntologyEditor() {
             className="ef-add"
             onClick={() => {
               if (activeCategory === 'class') {
-                const id = `NewClass${model.classes.length + 1}`;
+                const id = nextUniqueNumberedId('NewClass', model.classes.map((c) => c.id));
                 commit({ ...model, classes: [...model.classes, { id, label: `新类${model.classes.length + 1}`, parent: null, description: '' }] });
                 setOpenClasses((prev) => ({ ...prev, [id]: true }));
               } else if (activeCategory === 'obj') {
-                const id = `newProp${model.objectProps.length + 1}`;
+                const id = nextUniqueNumberedId('newProp', model.objectProps.map((p) => p.id));
                 commit({ ...model, objectProps: [...model.objectProps, { id, label: '', domain: null, range: null, characteristics: [] }] });
                 setAllCards('obj', model.objectProps.length + 1, false);
                 toggleCard('obj', model.objectProps.length);
               } else if (activeCategory === 'data') {
-                const id = `newData${model.dataProps.length + 1}`;
+                const id = nextUniqueNumberedId('newData', model.dataProps.map((p) => p.id));
                 commit({ ...model, dataProps: [...model.dataProps, { id, label: '', domain: null, range: 'string' }] });
                 setAllCards('data', model.dataProps.length + 1, false);
                 toggleCard('data', model.dataProps.length);
               } else {
-                const id = `ind${model.individuals.length + 1}`;
-                commit({ ...model, individuals: [...model.individuals, { id, label: `个体${model.individuals.length + 1}`, types: [], assertions: [] }] });
+                const id = nextUniqueNumberedId('ind', model.individuals.map((x) => x.id));
+                // 新建实例必须带类型：默认取模型第一个类，避免落一个无类型个体
+                const firstClass = model.classes[0]?.id ?? '';
+                commit({
+                  ...model,
+                  individuals: [
+                    ...model.individuals,
+                    { id, label: `个体${model.individuals.length + 1}`, types: firstClass ? [firstClass] : [], assertions: [] },
+                  ],
+                });
                 setAllCards('ind', model.individuals.length + 1, false);
                 toggleCard('ind', model.individuals.length);
               }
@@ -602,7 +612,7 @@ export default function OntologyEditor() {
               </li>
               <li>
                 <b>图谱右侧的草图改动会被丢弃</b>：右侧编辑框里尚未导出的改动只存在浏览器内存中；
-                保存成功后系统会重新读取新文件并重建草图，这些改动不会进文件。
+                保存成功后系统会重新读取新文件并重建草图，这些改动不会进文件（包括新建的示例事实）。
                 要留住请先走「导出当前编辑模型」。
               </li>
               <li>

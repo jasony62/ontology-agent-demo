@@ -144,3 +144,70 @@ describe('validateOntology', () => {
     expect(flattened).toEqual(['b', 'r']);
   });
 });
+
+describe('validateOntology · 个体（#102 P3）', () => {
+  const base = () =>
+    ontology({
+      entityTypes: [
+        entity({ properties: [
+          { name: 'customerId', type: 'string', isIdentifier: true },
+          { name: '有效期至', type: 'date', iriName: 'valid_until' },
+        ] }),
+      ],
+      relationships: [relationship({ id: 'customer_places_order', from: 'customer', to: 'customer' })],
+    });
+
+  it('类型与断言都对齐时通过（iriName 保留的原短名视为已声明）', () => {
+    const o = {
+      ...base(),
+      instances: [{
+        id: 'c1', entityTypeId: 'customer', types: ['customer'], label: '客户1',
+        assertions: [
+          { prop: 'valid_until', value: '2027-06-30', isObject: false },
+          { prop: 'customerId', value: 'C-1', isObject: false },
+        ],
+      }],
+    };
+    // 数据属性 customerId 的短名是 customer_customerId，不是 customerId
+    expect(validateOntology(o).map((i) => i.message)).toEqual([
+      expect.stringContaining('未在模型中声明: customerId'),
+    ]);
+
+    o.instances[0].assertions[1].prop = 'customer_customerId';
+    expect(validateOntology(o)).toEqual([]);
+  });
+
+  it('无类型 / 类型类不存在 / 断言为空或未声明都会被拦下', () => {
+    const issues = validateOntology({
+      ...base(),
+      instances: [
+        { id: 'no_type', entityTypeId: '', types: [], label: '无类型', assertions: [] },
+        { id: 'bad_type', entityTypeId: 'ghost', types: ['ghost'], label: '鬼类', assertions: [] },
+        { id: 'bad_assert', entityTypeId: 'customer', types: ['customer'], label: '坏断言', assertions: [
+          { prop: '', value: '', isObject: false },
+          { prop: 'ghost_prop', value: '', isObject: false },
+        ] },
+      ],
+    });
+    const required = byLevel(issues, 'required').map((i) => i.message);
+    const blocker = byLevel(issues, 'blocker').map((i) => i.message);
+    expect(required.some((m) => m.includes('未选择所属类型'))).toBe(true);
+    expect(required.some((m) => m.includes('存在空属性名'))).toBe(true);
+    expect(required.some((m) => m.includes('未在模型中声明: ghost_prop'))).toBe(true);
+    expect(required.some((m) => m.includes('缺少取值'))).toBe(true);
+    expect(blocker.some((m) => m.includes('类型类不存在: ghost'))).toBe(true);
+  });
+
+  it('个体短名重复是 blocker，非法字符是 required', () => {
+    const issues = validateOntology({
+      ...base(),
+      instances: [
+        { id: 'dup', entityTypeId: 'customer', types: ['customer'], label: '甲', assertions: [] },
+        { id: 'dup', entityTypeId: 'customer', types: ['customer'], label: '乙', assertions: [] },
+        { id: 'bad id', entityTypeId: 'customer', types: ['customer'], label: '丙', assertions: [] },
+      ],
+    });
+    expect(byLevel(issues, 'blocker').some((i) => i.message.includes('个体 id 重复: dup'))).toBe(true);
+    expect(byLevel(issues, 'required').some((i) => i.message.includes('IRI 非法字符'))).toBe(true);
+  });
+});

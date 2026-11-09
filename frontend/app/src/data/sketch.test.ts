@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Ontology } from './ontology';
-import { createClass, createRelationship, deleteClass, nextUniqueId } from './sketch';
+import { createClass, createInstance, createRelationship, deleteClass, deleteInstance, nextUniqueId } from './sketch';
 
 function ontology(): Ontology {
   return {
@@ -52,5 +52,55 @@ describe('草图的唯一 id 与删除清理', () => {
     expect(next.entityTypes.map((e) => e.id)).toEqual(['order']);
     expect(next.relationships).toEqual([]);
     expect(next.instances).toEqual([]);
+  });
+
+  it('新建示例事实带类型，短名冲突时探测空闲 id', () => {
+    const first = createInstance(ontology(), 'order', 'demo_fact', '新示例事实 1');
+    expect(first.id).toBe('demo_fact');
+    const inst = first.ontology.instances!.find((i) => i.id === first.id)!;
+    expect(inst.types).toEqual(['order']);
+    expect(inst.entityTypeId).toBe('order');
+    expect(inst.assertions).toEqual([]);
+
+    const second = createInstance(first.ontology, 'order', 'demo_fact', '新示例事实 2');
+    expect(second.id).toBe('demo_fact2');
+    const ids = second.ontology.instances!.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('删除个体时清掉其它个体指向它的对象断言，字面量断言不受影响', () => {
+    const o: Ontology = {
+      ...ontology(),
+      instances: [
+        { id: 'c1', entityTypeId: 'customer', types: ['customer'], label: '客户1', assertions: [] },
+        { id: 'o1', entityTypeId: 'order', types: ['order'], label: '订单1', assertions: [
+          { prop: 'customer_places_order', value: 'c1', isObject: true },
+          { prop: 'note', value: 'c1', isObject: false },
+        ] },
+      ],
+    };
+    const next = deleteInstance(o, 'c1');
+    expect(next.instances!.map((i) => i.id)).toEqual(['o1']);
+    expect(next.instances![0].assertions).toEqual([{ prop: 'note', value: 'c1', isObject: false }]);
+  });
+
+  it('删类时一并清掉指向被删类 / 被删个体的悬空对象断言', () => {
+    const o: Ontology = {
+      ...ontology(),
+      instances: [
+        { id: 'c1', entityTypeId: 'customer', types: ['customer'], label: '客户1', assertions: [] },
+        { id: 'o1', entityTypeId: 'order', types: ['order'], label: '订单1', assertions: [
+          { prop: 'customer_places_order', value: 'c1', isObject: true },
+        ] },
+        { id: 'o2', entityTypeId: 'order', types: ['order'], label: '订单2', assertions: [
+          { prop: 'ref', value: 'customer', isObject: true },
+          { prop: 'keep', value: 'order', isObject: true },
+        ] },
+      ],
+    };
+    const next = deleteClass(o, 'customer');
+    expect(next.instances!.map((i) => i.id)).toEqual(['o1', 'o2']);
+    expect(next.instances![0].assertions).toEqual([]);
+    expect(next.instances![1].assertions).toEqual([{ prop: 'keep', value: 'order', isObject: true }]);
   });
 });

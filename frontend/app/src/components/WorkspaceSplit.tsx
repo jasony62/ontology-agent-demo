@@ -162,7 +162,7 @@ function PanePlaceholder({ onOpenTab }: { onOpenTab: (tab: WorkspaceTab) => void
   return (
     <div className="pane-placeholder">
       <div className="pane-placeholder-icon">◫</div>
-      <p>右侧是本体写入通道「在线编辑」。图谱上的改动只是预览，不写入系统；要真正保存，请用这里。</p>
+      <p>右侧是本体写入通道「在线编辑」。图谱上的改动只是预览，不写入系统；要写入本体定义，请用这里。</p>
       <div className="pane-placeholder-actions">
         <button type="button" className="btn" onClick={() => onOpenTab('editor')}>
           在线编辑

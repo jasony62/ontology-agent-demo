@@ -1,6 +1,8 @@
 import type {
   Ontology,
   EntityType,
+  EntityInstance,
+  InstanceAssertion,
   Property,
   Relationship,
   RelationshipAttribute,
@@ -214,6 +216,8 @@ export function parseRDF(rdfXml: string): {
   // 类 IRI → owl:hasKey 列出的属性 IRI（保持声明顺序）。
   // 只记录非空列表：空 Collection 等于没声明键，按旧行为处理。
   const keyUrisByClass = new Map<string, string[]>();
+  // 类 IRI → rdfs:subClassOf 的目标 IRI（等所有类都建好后再解析成 entity id）
+  const parentUriByClass = new Map<string, string>();
 
   for (let i = 0; i < classEls.length; i++) {
     const el = classEls[i];
@@ -236,8 +240,19 @@ export function parseRDF(rdfXml: string): {
       properties: [],
     });
 
+    // 只认具名父类；owl:Thing 视为「无父类」，restriction 等 bnode 表达不进入草图。
+    const parentUri = getChildResource(el, 'subClassOf');
+    if (parentUri && parentUri !== `${OWL_NS}Thing`) parentUriByClass.set(about, parentUri);
+
     const keyUris = readHasKeyUris(el);
     if (keyUris.length > 0) keyUrisByClass.set(about, keyUris);
+  }
+
+  // 所有类都建好后再把父类 IRI 解析成 entity id（解析不到的父类忽略，不写悬空引用）。
+  for (const [classUri, parentUri] of parentUriByClass) {
+    const entity = entityMap.get(classUri);
+    const parent = entityMap.get(parentUri);
+    if (entity && parent && parent.id !== entity.id) entity.parent = parent.id;
   }
 
   // 复合键降级提示：编辑器按单布尔 isIdentifier 处理，只认第一个键。
@@ -389,6 +404,72 @@ export function parseRDF(rdfXml: string): {
     relationships.push(rel);
   }
 
+  // --- Extract NamedIndividuals → EntityInstances ---
+  // 只收原始断言里的类型与属性值；推理结论不在这里（§4.3）。
+  const classIdByLocal = new Map<string, string>();
+  for (const entity of entityMap.values()) classIdByLocal.set(entity.id.toLowerCase(), entity.id);
+
+  const classIdOfType = (resource: string | null): string | null => {
+    if (!resource) return null;
+    const direct = entityMap.get(resource);
+    if (direct) return direct.id;
+    return classIdByLocal.get(localNameFromUri(resource).toLowerCase()) ?? null;
+  };
+
+  const instances: EntityInstance[] = [];
+  const seenInstances = new Set<string>();
+
+  /** 读取一个具名个体；返回是否真的收集到类型（供 rdf:Description 兜底判断）。 */
+  const readInstance = (el: Element, requireType: boolean): boolean => {
+    const about = el.getAttribute('rdf:about') || el.getAttributeNS(RDF_NS, 'about') || '';
+    if (!about || entityMap.has(about)) return false;
+    const id = localNameFromUri(about);
+    if (!id || seenInstances.has(id)) return false;
+
+    const types = new Set<string>();
+    const assertions: InstanceAssertion[] = [];
+    for (let i = 0; i < el.children.length; i++) {
+      const child = el.children[i];
+      const local = childLocalName(child);
+      if (local === 'type') {
+        const cls = classIdOfType(getChildAttr(child, 'resource'));
+        if (cls) types.add(cls);
+        continue;
+      }
+      if (local === 'label' || local === 'comment') continue;
+      // 匿名嵌套（restriction 等）不是可编辑的字段值，跳过
+      if (child.children.length > 0) continue;
+      const resource = getChildAttr(child, 'resource');
+      if (resource) {
+        assertions.push({ prop: local, value: localNameFromUri(resource), isObject: true });
+        continue;
+      }
+      const text = child.textContent ?? '';
+      if (text.trim()) assertions.push({ prop: local, value: text, isObject: false });
+    }
+
+    if (requireType && types.size === 0) return false;
+    seenInstances.add(id);
+    instances.push({
+      id,
+      entityTypeId: Array.from(types)[0] ?? '',
+      label: getChildText(el, 'label', RDFS_NS) || id,
+      types: Array.from(types),
+      assertions,
+    });
+    return true;
+  };
+
+  const namedIndEls = root.getElementsByTagNameNS(OWL_NS, 'NamedIndividual');
+  for (let i = 0; i < namedIndEls.length; i++) {
+    readInstance(namedIndEls[i], false);
+  }
+  // 兼容没有 owl:NamedIndividual 声明、直接用 rdf:Description + rdf:type 写个体的文件。
+  const descEls = root.getElementsByTagNameNS(RDF_NS, 'Description');
+  for (let i = 0; i < descEls.length; i++) {
+    readInstance(descEls[i], true);
+  }
+
   // --- Extract DataBindings ---
   const bindings: DataBinding[] = [];
   // Look for ont:DataBinding elements (they use the ontology namespace)
@@ -428,6 +509,7 @@ export function parseRDF(rdfXml: string): {
     description: ontologyDescription,
     entityTypes,
     relationships,
+    instances,
   };
 
   return { ontology, bindings, warnings };

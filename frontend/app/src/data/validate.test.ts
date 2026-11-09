@@ -77,7 +77,7 @@ describe('validateOntology', () => {
       expect(issues.filter((i) => i.message.includes('标识属性'))).toEqual([]);
     });
 
-    it('复合键只给 suggestion，不阻断写入', () => {
+    it('复合键不再报 suggestion（D7 已整层删除建议）', () => {
       const issues = validateOntology(
         ontology({
           entityTypes: [
@@ -91,16 +91,12 @@ describe('validateOntology', () => {
         }),
       );
       const hits = issues.filter((i) => i.message.includes('标识属性'));
-      expect(hits).toHaveLength(1);
-      expect(hits[0].level).toBe('suggestion');
-      expect(hits[0].message).toContain('复合键');
+      expect(hits).toEqual([]);
     });
 
-    it('无属性的实体给 suggestion', () => {
+    it('无属性的实体不报任何级别（开放世界，属性不是必填）', () => {
       const issues = validateOntology(ontology({ entityTypes: [entity({ properties: [] })] }));
-      const hits = issues.filter((i) => i.message.includes('尚无属性'));
-      expect(hits).toHaveLength(1);
-      expect(hits[0].level).toBe('suggestion');
+      expect(issues).toEqual([]);
     });
   });
 
@@ -140,12 +136,11 @@ describe('validateOntology', () => {
     });
   });
 
-  it('flattenValidationIssues 按 blocker → required → suggestion 排序', () => {
+  it('flattenValidationIssues 按 blocker → required 排序', () => {
     const flattened = flattenValidationIssues([
-      { level: 'suggestion', message: 's' },
       { level: 'required', message: 'r' },
       { level: 'blocker', message: 'b' },
     ]);
-    expect(flattened).toEqual(['b', 'r', 's']);
+    expect(flattened).toEqual(['b', 'r']);
   });
 });

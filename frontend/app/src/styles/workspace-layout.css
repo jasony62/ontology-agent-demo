@@ -126,7 +126,7 @@
 .workspace-graph > .graph-row { flex: 1 1 auto; }
 .workspace-graph .graph-row { display: flex; gap: 10px; min-height: 0; }
 .workspace-graph .graph-col { flex: 1 1 480px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.workspace-graph .graph-side { flex: 0 1 280px; min-width: 220px; min-height: 0; overflow-y: auto; }
+.workspace-graph .graph-side { flex: 0 1 320px; min-width: 220px; min-height: 0; overflow-y: auto; container-type: inline-size; }
 .workspace-graph .graph-shell { flex: 1 1 auto; min-height: 0; }
 .workspace-graph .graph-wrap { flex: 1 1 auto; height: auto; min-height: 0; }
 .workspace-graph .graph-fallback { height: 100%; min-height: 180px; }
@@ -144,12 +144,6 @@
 .editor-panel > .editor-body { flex: 1 1 auto; min-height: 0; }
 .editor-footnote { font-size: 12px; color: #8a94a6; margin-top: 8px; line-height: 1.7; }
 
-/* ---- 可视化编辑器：工具条固定，列表/详情在面板内滚动 ---- */
-.designer-shell { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.designer-shell > .designer-toolbar { flex: 0 0 auto; }
-.designer-shell > .designer-main { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.designer-shell > .validation-groups { flex: 0 0 auto; max-height: 42%; overflow-y: auto; margin-bottom: 0; }
-
 /* ---- 右侧无活动编辑区时的占位 ---- */
 .pane-placeholder {
   flex: 1 1 auto;
@@ -162,18 +156,28 @@
 .pane-placeholder p { max-width: 320px; font-size: 13px; color: var(--muted); line-height: 1.7; }
 .pane-placeholder-actions { display: flex; gap: 8px; }
 
-/* ---- 窄屏回退：标签页（< 1280px） ---- */
-.workspace-narrow { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+/* ---- 窄屏回退：左侧竖直标签页（< 1280px） ----
+   标签放左侧而不是顶部：省下一条横向标签栏的垂直空间给图谱/编辑器，
+   同时给正文留出固定的左侧导航宽度。 */
+.workspace-narrow {
+  flex: 1 1 auto; display: flex; flex-direction: row; gap: 10px;
+  min-height: 0; min-width: 0;
+}
 .workspace-tabs {
-  flex: 0 0 auto; align-self: flex-start;
-  display: flex; gap: 4px; background: #eef2f8; border-radius: 8px; padding: 3px; margin-bottom: 12px;
+  flex: 0 0 auto; align-self: stretch;
+  width: 44px; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 4px;
+  background: #eef2f8; border-radius: 8px; padding: 4px;
+  overflow-y: auto;
 }
 .workspace-tab {
-  display: inline-flex; align-items: center; gap: 6px;
-  border: none; background: transparent; border-radius: 6px; padding: 6px 14px;
-  font-size: 13px; color: var(--muted); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; box-sizing: border-box;
+  border: none; background: transparent; border-radius: 6px; padding: 12px 4px;
+  font-size: 13px; color: var(--muted); cursor: pointer; white-space: nowrap;
+  writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 2px;
 }
 .workspace-tab:hover { color: var(--text); }
 .workspace-tab.active { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .workspace-tab:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
-.workspace-narrow-body { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.workspace-narrow-body { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0; }

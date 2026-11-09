@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from './store/appStore';
 import { api } from './api/client';
-import type { DomainInfo } from './api/client';
+import type { DomainInfo, GraphData } from './api/client';
 import { parseRDF } from './lib/rdf/parser';
 import { sameLegendFocus } from './lib/graphGroups';
 import type { LegendFocus } from './lib/graphGroups';
+import { mergeOntologyIntoGraph } from './data/toGraphData';
+import { validateOntology } from './data/validate';
 import GraphView from './components/GraphView';
 import GraphErrorBoundary from './components/GraphErrorBoundary';
 import GraphSidePanel from './components/GraphSidePanel';
@@ -13,7 +15,7 @@ import InferenceNotice, { NoticeRestoreButton } from './components/InferenceNoti
 import SourceView from './components/SourceView';
 import ImportModal from './components/ImportModal';
 import ExportDialog from './components/ExportDialog';
-import Designer from './components/Designer';
+import CreateElementBar from './components/CreateElementBar';
 import OntologyEditor from './components/OntologyEditor';
 import ServiceGuideModal from './components/ServiceGuideModal';
 import WorkspaceSplit from './components/WorkspaceSplit';
@@ -37,14 +39,14 @@ export default function App() {
   const viewMode = useAppStore((s) => s.viewMode);
   const sourceName = useAppStore((s) => s.sourceName);
   const selectedId = useAppStore((s) => s.selectedId);
+  const ontology = useAppStore((s) => s.ontology);
 
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
-  // 工作区右侧编辑区：tab 决定显示哪个编辑器，mounted 决定是否已挂载（首次打开才挂载）
+  // 工作区右侧编辑区：只有一个「在线编辑」Tab，mounted 决定是否已挂载（首次打开才挂载）
   const [rightTab, setRightTab] = useState<WorkspaceTab | null>(null);
-  const [designerMounted, setDesignerMounted] = useState(false);
   const [editorMounted, setEditorMounted] = useState(false);
   // 领域包切换器：清单来自 /api/domains（切换不落盘，进程重启回默认领域）
   const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null);
@@ -82,18 +84,9 @@ export default function App() {
     setRightTab(null);
   };
 
-  const openDesigner = () => {
-    setDesignerMounted(true);
-    setRightTab('designer');
-  };
-
-  /** 关闭右侧编辑区：在线编辑走 dirty 确认，可视化编辑直接收起（组件保活） */
+  /** 关闭右侧编辑区：在线编辑走 dirty 确认（组件保活） */
   const closeRightPane = () => {
-    if (rightTab === 'editor') {
-      closeEditor();
-      return;
-    }
-    setRightTab(null);
+    closeEditor();
   };
 
   /** 图例聚焦：点一次只看该类/该组，再点一次恢复全图 */
@@ -125,10 +118,14 @@ export default function App() {
     } catch {
       setOntologyMode(null);
     }
+    // 后端断言图是合并草图的底图；解析源码后要用它重建一份「模型 + 实例事实」的图谱。
+    let baseAsserted: GraphData | null = null;
     try {
       const mat = await api.materialized();
       setMaterialized(mat);
-      setGraphData(mat.asserted);
+      baseAsserted = mat.asserted;
+      // 先不画：等源码解析出草图模型后一次性画「模型 + 实例事实」，
+      // 否则会出现后端短名（Agent）与草图 id（agent）并存的瞬间双节点。
     } catch (e) {
       setError(`本体加载/物化失败：${e instanceof Error ? e.message : String(e)}\n请检查当前本体文件是否可读（通用模式下文件缺失时重载本体或重启服务恢复默认本体）。`);
     }
@@ -146,11 +143,16 @@ export default function App() {
       try {
         const { ontology } = parseRDF(src.content);
         setOntology(ontology);
+        // 草图画布与右侧编辑框共用同一份 Ontology：以模型为准重建节点，
+        // 结构边按 parent / types 生成，个体事实边从断言图保留（#91 §5）。
+        setGraphData(mergeOntologyIntoGraph(baseAsserted, null, ontology));
       } catch {
         // 默认本体含 parser 未覆盖的公理时：保留后端图数据，模型置空
         setOntology(null);
+        if (baseAsserted) setGraphData(baseAsserted);
       }
     } catch (e) {
+      if (baseAsserted) setGraphData(baseAsserted);
       setError(`OWL 源码读取失败：${e instanceof Error ? e.message : String(e)}\n本体文件可能缺失，可重新加载本体或重启服务恢复默认本体。`);
     }
     // 领域清单是切换器的数据源：拿不到就禁用下拉，但读图不受影响
@@ -181,6 +183,10 @@ export default function App() {
     try {
       const res = await action();
       setSelectedId(null);
+      // 上一个领域的编辑模型不能带进新本体：关掉在线编辑，下次打开重新拉取
+      editorCloseStore();
+      setEditorMounted(false);
+      setRightTab(null);
       await loadWorkspace();
       setDomainNote(`${label}完成：${res.domain}${typeof res.triples === 'number' ? ` · ${res.triples} 三元组` : ''}`);
       window.setTimeout(() => setDomainNote(null), 4000);
@@ -191,6 +197,17 @@ export default function App() {
       setDomainBusy(false);
     }
   };
+
+  // 节点角标：blocker 优先于 required（#91 S8，取消底部常驻校验清单）
+  const issueLevels = useMemo(() => {
+    const levels: Record<string, 'blocker' | 'required'> = {};
+    if (!ontology) return levels;
+    for (const issue of validateOntology(ontology)) {
+      if (!issue.targetId) continue;
+      if (issue.level === 'blocker' || !levels[issue.targetId]) levels[issue.targetId] = issue.level;
+    }
+    return levels;
+  }, [ontology]);
 
   return (
     <div className="app">
@@ -267,16 +284,19 @@ export default function App() {
                   <GraphErrorBoundary>
                     <GraphView
                       viewMode={viewMode}
-                      asserted={viewMode === 'diff' ? null : graphData ?? materialized.asserted}
+                      asserted={viewMode === 'diff' ? null : graphData}
                       inferred={materialized.inferred}
                       groups={graphGroups}
                       focus={focus}
                       selectedId={selectedId}
+                      issueLevels={issueLevels}
                       toolbarLeading={
                         <>
                           <ViewModeToggle />
                           {/* 恢复按钮与切换器并列但在组外：三格是互斥视图，不能混进第四个按钮 */}
                           <NoticeRestoreButton />
+                          {/* D9：新建入口常驻画布工具栏，不依赖选中态 */}
+                          <CreateElementBar />
                         </>
                       }
                       onSelect={(id) => setSelectedId(id)}
@@ -290,13 +310,12 @@ export default function App() {
             </div>
           )}
           activeTab={rightTab}
-          onOpenTab={(tab) => (tab === 'designer' ? openDesigner() : void openEditor())}
+          onOpenTab={() => void openEditor()}
           onCloseTab={closeRightPane}
           dirty={{ editor: editorDirty }}
           panes={{
-            // key 跟着本体文件走：切领域 / 重载本体后重建，避免「重置」把上一个本体的快照写回来
-            designer: designerMounted ? <Designer key={sourceName} /> : null,
-            editor: editorMounted ? <OntologyEditor /> : null,
+            // key 跟着本体文件走：切领域 / 重载本体后重建，避免上一个本体的草稿被带过来
+            editor: editorMounted ? <OntologyEditor key={sourceName} /> : null,
           }}
         />
       </main>

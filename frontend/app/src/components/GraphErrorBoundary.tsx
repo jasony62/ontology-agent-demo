@@ -10,7 +10,7 @@ interface State {
 
 /**
  * 图谱渲染错误边界：cytoscape 建元素 / 布局异常时只降级图谱面板，
- * 不再让整个应用白屏（页面其它能力——源码、可视化编辑、物化视图——保持可用）。
+ * 不再让整个应用白屏（页面其它能力——源码、右侧编辑框、物化视图——保持可用）。
  */
 export default class GraphErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
@@ -33,7 +33,7 @@ export default class GraphErrorBoundary extends Component<Props, State> {
             <h3>图谱渲染失败</h3>
             <p className="graph-fallback-msg">{error.message}</p>
             <p className="graph-fallback-hint">
-              其它功能（OWL 源码、可视化编辑、物化视图）不受影响。若刚在编辑器里改动过实体，可先修复对应字段再重试。
+              其它功能（OWL 源码、右侧编辑框、物化视图）不受影响。若刚在编辑器里改动过实体，可先修复对应字段再重试。
             </p>
             <button type="button" className="btn" onClick={() => this.setState({ error: null })}>
               重试渲染

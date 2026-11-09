@@ -102,7 +102,9 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
         </div>
       </section>
 
-      <p className="overview-footnote">点击图例项聚焦对应节点；在图中点选节点或边可查看详情。</p>
+      <p className="overview-footnote">
+        点图上的元素可改；要加新的，用画布左上角「新建」。点击图例项聚焦对应节点。
+      </p>
     </div>
   );
 }

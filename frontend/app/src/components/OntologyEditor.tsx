@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { useAppStore } from '../store/appStore';
 import { api } from '../api/client';
+import { parseRDF } from '../lib/rdf/parser';
+import { mergeOntologyIntoGraph } from '../data/toGraphData';
 import { PROPERTY_CHARACTERISTICS, XSD_DATATYPES } from '../data/editModel';
 import type { EditModel, EditModelAssertion } from '../data/editModel';
 import { validateEditModel } from '../data/validateEditModel';
@@ -86,9 +88,13 @@ export default function OntologyEditor() {
   const setMaterialized = useAppStore((s) => s.setMaterialized);
   const setSource = useAppStore((s) => s.setSource);
   const setGraphData = useAppStore((s) => s.setGraphData);
+  const setOntology = useAppStore((s) => s.setOntology);
+  const sourceName = useAppStore((s) => s.sourceName);
   const [filename, setFilename] = useState('');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // 覆盖确认框：把原来一句 window.confirm 换成能逐条说明后果的结构化对话框
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   // 分类导航：同一时刻只渲染一个工作区（#89）
   const [activeCategory, setActiveCategory] = useState<Category>('class');
   const [search, setSearch] = useState('');
@@ -185,12 +191,8 @@ export default function OntologyEditor() {
     );
   };
 
-  const save = async (mode: 'new' | 'overwrite') => {
-    if (errors.length > 0) {
-      setError(`存在 ${errors.length} 项校验错误，请先修复：\n${errors.join('\n')}`);
-      return;
-    }
-    if (mode === 'overwrite' && !window.confirm('将覆盖当前已加载的本体文件（默认本体覆盖后领域推理保留）。确定继续？')) return;
+  /** 真正写盘：覆盖确认框确认后才走到这里；「生成新本体文件」直接走这里。 */
+  const doSave = async (mode: 'new' | 'overwrite') => {
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -198,11 +200,20 @@ export default function OntologyEditor() {
       const name = filename.trim() || `${model.ontologyName || 'edited'}-edited.owl`;
       const res = await api.saveModel(model, name, mode);
       markSaved(res.filename, res.stats);
-      // 刷新全局：物化 / 源码 / 图谱（断言视图）
+      // 刷新全局：物化 / 源码 / 草图模型 / 图谱（断言视图）。
+      // 保存成功后草图快照必须失效重拉——否则切回图谱仍是保存前的旧模型（#91 S9）。
       setMaterialized(res.materialized);
       const src = await api.source();
       setSource(src.content, src.filename);
-      setGraphData(res.materialized.asserted);
+      try {
+        const { ontology } = parseRDF(src.content);
+        setOntology(ontology);
+        setGraphData(mergeOntologyIntoGraph(res.materialized.asserted, null, ontology));
+      } catch {
+        // 新文件含 parser 未覆盖的公理：保留后端断言图，模型置空
+        setOntology(null);
+        setGraphData(res.materialized.asserted);
+      }
       setNotice(
         `已保存（${mode === 'overwrite' ? '覆盖' : '另存'}）：${res.filename} · 三元组 ${res.stats.triples_before} → ${res.stats.triples_after}（推理新增 ${res.stats.inferred_added}）`,
       );
@@ -211,6 +222,24 @@ export default function OntologyEditor() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const save = (mode: 'new' | 'overwrite') => {
+    if (errors.length > 0) {
+      setError(`存在 ${errors.length} 项校验错误，请先修复：\n${errors.join('\n')}`);
+      return;
+    }
+    // 只有「覆盖当前本体文件」需要结构化确认；生成新文件不动原文件，不弹框
+    if (mode === 'overwrite') {
+      setConfirmOverwrite(true);
+      return;
+    }
+    void doSave(mode);
+  };
+
+  const confirmOverwriteNow = () => {
+    setConfirmOverwrite(false);
+    void doSave('overwrite');
   };
 
   const q = search.trim();
@@ -269,10 +298,10 @@ export default function OntologyEditor() {
               title="另存文件名（默认 本体名-edited.owl）"
             />
             <button className="btn" onClick={() => save('new')} disabled={saving || loading}>
-              {saving ? '保存中…' : '另存为新本体'}
+              {saving ? '写入中…' : '生成新本体文件'}
             </button>
             <button className="btn danger" onClick={() => save('overwrite')} disabled={saving || loading}>
-              覆盖当前本体
+              {saving ? '写入中…' : '覆盖当前本体文件'}
             </button>
             {savedFilename && (
               <a className="download-link" href={api.downloadUrl(savedFilename)} download={savedFilename}>
@@ -548,6 +577,61 @@ export default function OntologyEditor() {
       <div className="editor-footnote">
         编辑模型由后端 rdflib 从当前本体提取（任意 OWL 可编辑）；保存后后端重建引擎并自动重推理，物化三视图与图谱随之刷新。本编辑器是工作台唯一的本体写入通道。
       </div>
+
+      {confirmOverwrite && (
+        <div className="modal-backdrop" onClick={() => setConfirmOverwrite(false)}>
+          <div
+            className="modal overwrite-confirm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="overwrite-confirm-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="overwrite-confirm-title">覆盖当前本体文件？</h3>
+            <p className="overwrite-confirm-subtitle">
+              将替换系统当前加载的本体文件：<b>{sourceName || '（当前文件）'}</b>
+            </p>
+            <ol className="overwrite-impact-list">
+              <li>
+                <b>整份替换，不是只改你改过的几处</b>：新文件由这份表单重新生成，当前文件原有内容会被覆盖，
+                没有撤销按钮，也没有自动备份。
+              </li>
+              <li>
+                <b>复杂规则可能不保留</b>：表单表达不了的限制、属性链等公理不会写进新文件；
+                保存回执里的三元组数可能比原来少，值得核对一眼。
+              </li>
+              <li>
+                <b>图谱右侧的草图改动会被丢弃</b>：右侧编辑框里尚未导出的改动只存在浏览器内存中；
+                保存成功后系统会重新读取新文件并重建草图，这些改动不会进文件。
+                要留住请先走「导出当前编辑模型」。
+              </li>
+              <li>
+                <b>图谱与源码会立即重算</b>：物化数据、OWL 源码、图谱三个视图
+                （原始断言 / 推理全貌 / 仅差异）一起刷新，推理结论重新生成。
+              </li>
+              <li>
+                <b>影响所有使用者</b>：这是服务端共享的本体文件，不是本机草稿；
+                保存成功后查询、推理以及 API / MCP 看到的定义同步变化。
+              </li>
+              <li>
+                <b>模式不变</b>：覆盖不会切换到通用模式；若当前加载的是领域本体，领域推理保留。
+              </li>
+            </ol>
+            <p className="overwrite-confirm-compare">
+              只想留一份改动、不动系统当前文件？请用「生成新本体文件」——它写到 data/uploads/
+              并进入通用模式，但服务重启后不会自动成为当前本体。
+            </p>
+            <div className="actions">
+              <button type="button" className="btn secondary" autoFocus onClick={() => setConfirmOverwrite(false)}>
+                取消
+              </button>
+              <button type="button" className="btn danger" disabled={saving} onClick={confirmOverwriteNow}>
+                确认覆盖 {sourceName || '当前文件'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

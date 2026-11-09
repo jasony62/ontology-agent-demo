@@ -7,6 +7,8 @@
 
 ### Added
 
+- **图谱右侧编辑框取代「可视化编辑」页（#91）**：点图谱上的类 / 业务关系 / 个体，右侧同一块 panel 直接改，改动即时反映到画布；panel 顶部常驻「仅预览 · 改动不写入系统」，要写盘仍走右侧「在线编辑」。结构边（`subClassOf` / `rdf:type`）不再保留旧边，统一按 `parent` / `types` 字段重算——改完个体所属类型，图上只连新类，不会残留幽灵边；推理边保持只读，点击仍显示依据链并指路「改产生它的公理」。画布工具栏常驻「新建类 / 新建关系」，新建后自动选中、聚焦同一张表单并可撤销一次，新 id 探测空闲值、关系起止未填不落图。个体在草图中获得 `instances` 容器（显示名 / 所属类型 / 属性值），导出 OWL 时写回 `owl:NamedIndividual` 与 `rdf:type`；在线编辑保存后草图快照失效重拉，切领域时关闭旧编辑模型。
+
 - **新增 `GET /api/ontology/proof`：单条三元组的结构化推导依据（REST 出口）**：`reasoner/proof.py` 的 `build_proof` 一直只有 MCP 的 `explain_proof` 在用，REST 侧没有出口——前端点开推理边只能看到「由 OWL 2 RL 推理推导」这句结论复述，回答不了「凭什么」。现按短名 `s` / `p` / `o` 返回 `{mode, rule, axioms, premises, conclusion}`（asserted / derived / unproven，诚实降级，绝不伪造前提），与 `materialized` 同属「本体管理」且不挂领域守卫（generic 模式推理照常可用，导入自定义本体同样可查）；不存在的三元组返回 `mode=unproven` 而非报错，短名为空走既有 400。
 - **新增 `examples/onto_playground/` 异构领域示例，随仓库一同分发**：把本仓库自身的构件世界（领域包 / 软件模块 / 适配器 / 能力 / 落点 / 闸门 / 通道 / 规则 / 违规）建成可推理本体。含四条 OWL 公理（属性链 `declaredBy ◦ servedOn ⊑ reachableVia`、传递依赖、等价类 `NonCompliantPackage`、对逆属性）、三个领域自有只读能力 `reachability` / `activation_check` / `compliance_check`（`QUERY_HANDLERS` 注册）、领域自声明的 `ENTITY_SCHEMA` 与 `shapes/onto_playground.ttl` SHACL 形状。安装后可直接热切换到该领域，框架代码无需改动；`examples/README.md` 补上"异构样本"的分工说明，`tests/test_examples.py` 守住三个示例都可安装、只暴露唯一工厂、且能真正加载推理。
 - **API 文档补齐成功响应、业务错误码与真实 media type**：`GET /openapi.json` 的 29 个操作不再统一是 `Successful Response` + 空 schema——形状稳定的端点（健康检查、SPARQL、个体 / 类 / 类型 / 属性、本体加载 / 保存 / 重载 / 状态、领域重载 / 切换等）给出字段级中文说明，形状随领域变化的端点用带中文说明的开放对象占位；新增统一 `ErrorResponse`，并在实际会抛出的端点上声明 `400` / `404` / `408` / `501`；`GET /api/ontology/export` 与 `/download` 按实际返回声明 `text/turtle` / `application/rdf+xml` / `text/n3`，不再误标为 `application/json`。全部通过 `responses={"model": ...}` 做纯文档声明，**不使用 `response_model=`**，运行时返回值不变。新增 `api/response_schemas.py`，`tests/test_openapi.py` 增四条契约断言（成功响应说明、业务错误码、非 JSON media type、端点说明）守护。
@@ -14,6 +16,10 @@
 - **图谱选中节点高亮直连邻域**：在图上点选一个节点后，该节点及其直接相连的节点、连线保持原色，其余节点与连线统一压成浅灰半透明；点空白处取消选中即恢复。选区优先于图例聚焦（图例把某组压灰后，点开组内节点仍能看到它连向哪里），选中边或选中项已不在图中时退回图例规则；搜索高亮不受影响。淡化计算抽到 `lib/graphSelection.ts`，并用无头 Cytoscape 覆盖邻域、聚焦叠加与回退场景。
 
 ### Changed
+
+- **在线编辑按钮改名与覆盖确认框（#92）**：「另存为新本体 / 覆盖当前本体」改为「生成新本体文件 / 覆盖当前本体文件」，加载态统一为「写入中…」；覆盖入口不再用一句 `window.confirm`，改为结构化确认框，逐条列明「整份替换、复杂规则可能不保留、草图改动会丢、图谱与源码立即重算、影响所有使用者、模式不变」，并显示真实目标文件名与「生成新本体文件」的对比指引。仅在覆盖且校验通过时弹出；取消不发请求、不改状态，生成新文件不弹框。
+
+- **校验只剩 blocker / required，改为节点角标 + 就地修复（#91 D7）**：删除 suggestion 整层（缺描述、尚无属性、复合键降级等不再提示），图谱节点以 ⚠ 角标标出 blocker / required，编辑框内就地修复；导出对话框统一汇总并拦截未修复的模型，底部常驻校验清单随之移除。
 
 - **词汇表卫生：死类删除、全量中文 label/comment、装饰边接上消费方（#70）**：① 删除 0 引用 0 实例的死类 `SecurityRequirement`（读者会以为它在起作用）；② 6 个无中文 label 的类补齐（IDE/GitRepo/CICD/KnowledgeBase/CertifiedAgent/ComplianceTask），26 个业务类全部有一句 `rdfs:comment`（什么情况下属于这个类、与相邻类的边界——如 can_execute 与 can_own 的分工、CertifiedAgent 与 cert_valid 的分层）；③ 19 个属性全部补 `rdfs:label` + `rdfs:comment`，`can_execute` 的注释明确「只承诺能力够，担责看 can_own」，`valid_until` 注明「过期由此可推理（#65 前只能人工改布尔值）」；④ `uses_tool`（有断言、无消费的纯装饰边）决定保留并接上消费方——`graph_export` 补 uses_tool 连线，工具个体在工作台不再是无边孤儿节点。词汇表从此没有任何「只存在于图数据里、词汇表却看不到」或「只声明不消费」的成员。`build_ontology.py` 文档头补显式警告：本体自 #59 起以 examples 下的 .owl 为权威源手工维护，脚本已与权威源脱节，运行会覆盖运行态副本（保留仅作历史参考）。
 
@@ -47,6 +53,8 @@
 - **在线编辑标签页改为「分类导航 + 单一工作区」（#89）**：四栏平铺在常见宽度下每栏不足 300px，中文名、英文短名与 `domain → range` 三项同时被裁；折行后固定高度又被按行数均分（2×2 时每栏只剩一半），49 条实例挤在窄栏里且没有查找手段。现改为左侧 180px 分类导航（带计数、`role="tablist"`）+ 单一工作区：卡片主行只放中文名（14px、不截断、最多两行、`title` 全量），次行放短名与 `domain → range`；每类都有搜索与「全部展开/折叠」，新增按钮吸底；65 个常驻红字「删」收进「⋯」菜单（`summary` 可聚焦，删除按钮带 `aria-label`）；工具条按「编辑 / 保存 / 关闭」分组换行。高度改由面板纵向 flex 分配，工作区是唯一滚动容器；断点用 `@container` 挂在编辑面板自身宽度（≥720px 竖排导航 / 480–720px 顶部横向 tab / <480px 表单单列），不再用视口媒体查询误判编辑区宽度。切换分类不会重置撤销栈、dirty 标记与展开状态。同时移除编辑器内部重复且绕过未保存确认的「关闭」按钮（关闭职责归面板头的 `✕`），并移除工具条标题（当前领域已在页面顶部显示）。类层次节点标题字号统一为 13px，不再继承 body 的 16px 而显得放大。
 
 ### Removed
+
+- **删除「可视化编辑」独立页与其组件（#91）**：`Designer.tsx` / `DesignerList.tsx` / `DesignerDetail.tsx` / `designerConstants.ts` 及 `.designer-*` 样式移除，右侧工作区收敛为单一「在线编辑」Tab；编辑能力以 `ElementEditor` 的形式融入图谱右侧 panel。
 
 - **工作台移除误导性的「源码编辑」通道，OWL 源码弹窗收敛为只读（#87）**：页头「OWL 源码」「源码编辑」原本只是同一个 `SourceView` 弹窗的两种 mode，而编辑态的「保存并回读校验」只在前端 `parseRDF(draft)` 后更新 store，从不调用写盘 API——保存后图谱与「导出①」变了，推理引擎 / 物化三视图 / SPARQL / MCP 仍是旧本体，刷新即丢失。现页头只留「OWL 源码」，弹窗只读（语法高亮 + 下载原始文件），工作台唯一的本体写入通道收敛为右侧「在线编辑本体定义」（`POST /api/ontology/save` 写盘 + 重建引擎 + 重推理）；「下载原始文件」因此也不再可能下到草稿。同时把 `SourceView` / `ImportModal` / `ExportDialog` 的按钮对齐到既有 `.btn` 体系（此前 `className="secondary"` 是没有对应 CSS 的幽灵类名），主次可辨并具备 hover / focus / disabled 态；README、用户手册与工作台内说明统一为只读口径。后端端点、`parseRDF` 与 store action 均未改动。
 

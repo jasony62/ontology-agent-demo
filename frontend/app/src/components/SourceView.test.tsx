@@ -41,10 +41,10 @@ function buttons(): HTMLButtonElement[] {
 }
 
 describe('SourceView（#87 只读弹窗）', () => {
-  it('只有「关闭」与「下载原始文件」，没有任何编辑入口', () => {
+  it('只有「关闭」与「原样备份」，没有任何编辑入口', () => {
     render(<SourceView onClose={() => {}} />);
 
-    expect(buttons().map((b) => b.textContent)).toEqual(['关闭', '下载原始文件']);
+    expect(buttons().map((b) => b.textContent)).toEqual(['关闭', '原样备份（下载原始文件）']);
     expect(container!.querySelector('textarea')).toBeNull();
 
     const text = container!.textContent ?? '';

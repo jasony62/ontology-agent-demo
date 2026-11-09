@@ -26,7 +26,9 @@ export default function SourceView({ onClose }: Props) {
         <div className="source-view">{highlightRdf(sourceXml, RDF_HIGHLIGHT_DARK)}</div>
         <div className="actions">
           <button className="btn secondary" onClick={onClose}>关闭</button>
-          <button className="btn" onClick={handleDownload}>下载原始文件</button>
+          <button className="btn" onClick={handleDownload} title="原样备份 · 与系统当前文件完全一致">
+            原样备份（下载原始文件）
+          </button>
         </div>
       </div>
     </div>

@@ -2,20 +2,24 @@ import { useEffect, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { api } from '../api/client';
 import type { GraphData, GraphNode, GraphEdge, ProofResponse } from '../api/client';
-import type { Ontology } from '../data/ontology';
 
 function findNode(graph: GraphData | null, id: string): GraphNode | null {
   return graph?.nodes.find((n) => n.id === id) ?? null;
 }
 
+/** 图上的边 id 形如 `edge|rel--<关系 id>` 或 `edge|<source>--<label>--<target>` */
 function findEdge(graph: GraphData | null, edgeId: string): GraphEdge | null {
-  return graph?.edges.find((e) => `edge|${e.source}--${e.label}--${e.target}` === edgeId) ?? null;
+  if (!graph) return null;
+  const raw = edgeId.startsWith('edge|') ? edgeId.slice('edge|'.length) : edgeId;
+  return (
+    graph.edges.find((e) => e.id === raw) ??
+    graph.edges.find((e) => `edge|${e.source}--${e.label}--${e.target}` === edgeId) ??
+    null
+  );
 }
 
-/** entity id 由 parser 生成为首字母小写（requirementAnalysis），图谱节点 id 为后端短名（RequirementAnalysis），做大小写不敏感匹配 */
-function findEntity(ontology: Ontology | null, id: string) {
-  const lower = id.toLowerCase();
-  return ontology?.entityTypes.find((e) => e.id.toLowerCase() === lower || e.name.toLowerCase() === lower) ?? null;
+function edgeRawId(edge: GraphEdge): string {
+  return `edge|${edge.id || `${edge.source}--${edge.label}--${edge.target}`}`;
 }
 
 /**
@@ -45,8 +49,6 @@ function EdgeProof({ proof, failed }: { proof: ProofResponse | null; failed: boo
     );
   }
   if (proof.mode !== 'derived' || proof.premises.length === 0) {
-    // derived 且无前提（领域自定义规则）是设计边界内的常态；asserted 理论上
-    // 不会走到（只对推理边请求），一并归入「无法给出公理级依据」的如实呈现。
     const ruleNote = proof.mode === 'derived'
       ? '已确认由推理产生，但当前证明器无法给出公理级依据（领域自定义规则）。'
       : '该结论在本体文件里直接声明。';
@@ -72,30 +74,35 @@ function EdgeProof({ proof, failed }: { proof: ProofResponse | null; failed: boo
   );
 }
 
-export default function Inspector() {
-  const ontology = useAppStore((s) => s.ontology);
-  const materialized = useAppStore((s) => s.materialized);
+interface Props {
+  /** 跳转到另一个可编辑元素（结构边指路 / 实例断言指路） */
+  onJump: (id: string) => void;
+}
+
+/**
+ * 只读检视器：结构边、推理边、推理新增节点、不在草图模型里的元素都走这里。
+ * 不给灰掉的表单——只给「身份 + 来源 + 该去哪里改」（#91 §4）。
+ */
+export default function Inspector({ onJump }: Props) {
+  const graphData = useAppStore((s) => s.graphData);
+  const inferred = useAppStore((s) => s.materialized.inferred);
   const viewMode = useAppStore((s) => s.viewMode);
   const selectedId = useAppStore((s) => s.selectedId);
 
-  const asserted = materialized.asserted;
-  const inferred = materialized.inferred;
   const isEdge = !!selectedId && selectedId.startsWith('edge|');
-  // 直接用 findEdge 返回的 GraphEdge，不解析 "edge|source--label--target" 字符串
-  // （标签含 -- 时字符串分割会出错）。
-  const edge = isEdge ? findEdge(asserted, selectedId!) ?? findEdge(inferred, selectedId!) : null;
-  const edgeIsInferred = isEdge && !!edge && !findEdge(asserted, selectedId!);
-  // #55：只在「推理新增」且当前视图看得到它（materialized / diff）时请求证明；
-  // 断言边没有证明可查（mode 恒为 asserted），请求是浪费。
-  const shouldFetchProof = isEdge && edgeIsInferred && viewMode !== 'asserted';
+  // diff 视图只画推理新增：同一 id 若两边都有，也应把推理侧当成本次展示的身份
+  const assertedEdge = isEdge && viewMode !== 'diff' ? findEdge(graphData, selectedId!) : null;
+  const inferredEdge = isEdge ? findEdge(inferred, selectedId!) : null;
+  const edge = assertedEdge ?? inferredEdge;
+  const edgeIsInferred = !!inferredEdge && !assertedEdge;
 
+  const shouldFetchProof = isEdge && edgeIsInferred && viewMode !== 'asserted';
   const [proof, setProof] = useState<ProofResponse | null>(null);
   const [proofFailed, setProofFailed] = useState(false);
 
   useEffect(() => {
     if (!shouldFetchProof || !edge) return;
-    // 竞态防护：快速点 A 边再点 B 边，A 的晚到响应不得覆盖 B 的结果——
-    // cleanup 把上一次请求标记为 cancelled，setState 前先看标记。
+    // 竞态防护：快速点 A 边再点 B 边，A 的晚到响应不得覆盖 B 的结果
     let cancelled = false;
     setProof(null);
     setProofFailed(false);
@@ -111,143 +118,165 @@ export default function Inspector() {
     };
   }, [shouldFetchProof, edge?.source, edge?.label, edge?.target]);
 
-  if (!selectedId) {
-    return (
-      <div className="panel">
-        <h2>检视器</h2>
-        <div style={{ fontSize: 13, color: '#5a6b7f' }}>点击图谱中的节点 / 边查看详情。</div>
-      </div>
-    );
-  }
+  if (!selectedId) return null;
+
+  const labelOf = (id: string) =>
+    findNode(graphData, id)?.label ?? findNode(inferred, id)?.label ?? id;
 
   if (isEdge) {
-    const edgeId = selectedId;
-    const provenance = !edge ? '' : edgeIsInferred ? '推理新增' : '原始断言';
-    const labelOf = (id: string) =>
-      findNode(asserted, id)?.label ?? findNode(inferred, id)?.label ?? id;
-    return (
-      <div className="panel">
-        <h2>关系 · {edge?.label ?? edgeId}</h2>
-        <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-          <div><b>来源 → 目标</b>：{labelOf(edge?.source ?? '')} → {labelOf(edge?.target ?? '')}</div>
-          <div><b>属性名</b>：{edge?.label}</div>
-          {provenance && <div><b>来源</b>：{provenance}</div>}
-          {viewMode === 'materialized' && provenance === '推理新增' && (
-            <div style={{ color: '#2f8f6b', fontSize: 12 }}>该边由 OWL 2 RL 推理推导（物化新增）。</div>
-          )}
-          {provenance === '推理新增' && viewMode !== 'asserted' && (
-            <EdgeProof proof={proof} failed={proofFailed} />
-          )}
+    const diffNote = viewMode === 'diff'
+      ? <div className="element-readonly-note">仅差异视图：这里只展示推理新增，编辑框降级为只读。切回「显示推理全貌」再改。</div>
+      : null;
+
+    if (inferredEdge) {
+      return (
+        <div className="panel element-editor">
+          <h2>推理结论 · {inferredEdge.label}</h2>
+          <div className="element-identity">
+            <div><b>来源 → 目标</b>：{labelOf(inferredEdge.source)} → {labelOf(inferredEdge.target)}</div>
+            <div><b>身份</b>：推理新增（物化产生，不在本体文件里）</div>
+          </div>
+          <div className="element-readonly-note">
+            这不是本体里写的，是推出来的；要改变它，改产生它的公理。
+          </div>
+          {viewMode !== 'asserted' && <EdgeProof proof={proof} failed={proofFailed} />}
+          {diffNote}
         </div>
+      );
+    }
+
+    if (!assertedEdge) {
+      return (
+        <div className="panel element-editor">
+          <h2>关系</h2>
+          <div className="element-readonly-note">该边已不在当前图中（可能已被删除或切换了视图）。</div>
+        </div>
+      );
+    }
+
+    // 结构边：边是字段的投影，不给输入框，只指路到字段
+    if (assertedEdge.kind === 'structure') {
+      const isSubClass = assertedEdge.label === 'subClassOf';
+      return (
+        <div className="panel element-editor">
+          <h2>{isSubClass ? '结构边 · 父类' : '结构边 · 实例归类'}</h2>
+          <div className="element-identity">
+            <div><b>连线</b>：{labelOf(assertedEdge.source)} → {labelOf(assertedEdge.target)}</div>
+            <div><b>身份</b>：结构边（由模型字段生成的投影，不是独立真源）</div>
+          </div>
+          <div className="element-readonly-note">
+            {isSubClass
+              ? `这是 ${labelOf(assertedEdge.source)} 的父类关系 · 不直接改连线，改「父类」字段。`
+              : `这是个体 ${labelOf(assertedEdge.source)} 属于类 ${labelOf(assertedEdge.target)} · 不直接改连线，改「所属类型」。`}
+          </div>
+          <button type="button" className="btn" onClick={() => onJump(assertedEdge.source)}>
+            {isSubClass ? '去改父类' : '去改所属类型'}
+          </button>
+        </div>
+      );
+    }
+
+    // 个体之间的对象属性断言：模型里的关系是「类 → 类」的规则，这条是事实，指路到个体属性值
+    return (
+      <div className="panel element-editor">
+        <h2>关系 · {assertedEdge.label}</h2>
+        <div className="element-identity">
+          <div><b>来源 → 目标</b>：{labelOf(assertedEdge.source)} → {labelOf(assertedEdge.target)}</div>
+          <div><b>身份</b>：个体属性断言（事实边，不是类之间的模型关系）</div>
+        </div>
+        <div className="element-readonly-note">
+          这条边属于个体 {labelOf(assertedEdge.source)} 的属性值 · 不直接改连线，改个体的「属性值」。
+        </div>
+        <button type="button" className="btn" onClick={() => onJump(assertedEdge.source)}>去改属性值</button>
+        {diffNote}
       </div>
     );
   }
 
-  const node = findNode(asserted, selectedId) ?? findNode(inferred, selectedId);
-  const entity = findEntity(ontology, selectedId);
-  const isInferredNode = !findNode(asserted, selectedId) && findNode(inferred, selectedId);
+  const assertedNode = viewMode === 'diff' ? null : findNode(graphData, selectedId);
+  const inferredNode = findNode(inferred, selectedId);
+  const node = assertedNode ?? inferredNode;
+  const isInferredNode = !assertedNode && !!inferredNode;
 
-  // 个体/类的关联属性边（出边 + 入边），来自断言与推理图数据
-  const labelOf = (id: string) =>
-    findNode(asserted, id)?.label ?? findNode(inferred, id)?.label ?? id;
+  if (!node) {
+    return (
+      <div className="panel element-editor">
+        <h2>未找到元素</h2>
+        <div className="element-readonly-note">该元素已不在当前视图中，请重新点选。</div>
+      </div>
+    );
+  }
+
   const relatedEdges: { edge: GraphEdge; direction: 'out' | 'in' }[] = [];
   const pushEdges = (graph: GraphData | null) => {
     if (!graph) return;
     const seen = new Set<string>();
     for (const e of graph.edges) {
-      const eid = `edge|${e.source}--${e.label}--${e.target}`;
+      const eid = edgeRawId(e);
       if (seen.has(eid)) continue;
       seen.add(eid);
       if (e.source === selectedId) relatedEdges.push({ edge: e, direction: 'out' });
       else if (e.target === selectedId) relatedEdges.push({ edge: e, direction: 'in' });
     }
   };
-  if (viewMode !== 'diff') pushEdges(asserted);
+  if (viewMode !== 'diff') pushEdges(graphData);
   if (viewMode === 'materialized' || viewMode === 'diff') pushEdges(inferred);
 
-  // 类节点：展示可编辑模型中的实体定义（描述 / 属性 / 关系）
-  const entityRelationships = entity
-    ? ontology!.relationships.filter(
-        (r) => r.from.toLowerCase() === entity.id.toLowerCase() || r.to.toLowerCase() === entity.id.toLowerCase(),
-      )
-    : [];
-
   return (
-    <div className="panel" style={{ maxHeight: 560, overflowY: 'auto' }}>
-      <h2>{node?.label ?? selectedId}</h2>
-      <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-        <div><b>类型</b>：{node?.type === 'class' ? '类（Class）' : '个体（Individual）'}</div>
-        {node?.types && node.types.length > 0 && (
-          <div>
-            <b>{node.type === 'class' ? '父类' : '所属类型'}</b>：{node.types.join('、')}
-          </div>
+    <div className="panel element-editor">
+      <h2>{node.label ?? selectedId}</h2>
+      <div className="element-identity">
+        <div><b>类型</b>：{node.type === 'class' ? '类（Class）' : '个体（Individual）'}</div>
+        {node.types && node.types.length > 0 && (
+          <div><b>{node.type === 'class' ? '父类' : '所属类型'}</b>：{node.types.join('、')}</div>
         )}
-        {isInferredNode && <div style={{ color: '#2f8f6b', fontSize: 12 }}>推理新增节点（物化产生）</div>}
-
-        {entity ? (
-          <>
-            {entity.description && <div><b>描述</b>：{entity.description}</div>}
-            {entity.properties.length > 0 && (
-              <>
-                <div><b>属性</b></div>
-                <ul style={{ listStyle: 'none', paddingLeft: 8, margin: '2px 0 6px' }}>
-                  {entity.properties.map((p) => (
-                    <li key={p.name}>
-                      {p.name} <span style={{ color: '#5a6b7f' }}>({p.type})</span>
-                      {p.isIdentifier ? ' 🔑' : ''}
-                      {p.unit ? ` · ${p.unit}` : ''}
-                      {p.description ? <div style={{ color: '#8a94a6', fontSize: 12 }}>{p.description}</div> : null}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            {entityRelationships.length > 0 && (
-              <>
-                <div><b>关系</b></div>
-                <ul style={{ listStyle: 'none', paddingLeft: 8, margin: '2px 0 6px' }}>
-                  {entityRelationships.map((r) => (
-                    <li key={r.id}>
-                      {r.name}{' '}
-                      <span style={{ color: '#5a6b7f' }}>
-                        ({r.from} {r.cardinality === 'one-to-one' ? '↔' : r.cardinality === 'many-to-many' ? '⇄' : '→'} {r.to})
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </>
-        ) : (
-          <div style={{ color: '#8a94a6' }}>
-            该节点不在可编辑模型（实体集）中，以下为图谱中的属性边。
-          </div>
-        )}
-
-        {relatedEdges.length > 0 && (
-          <>
-            <div style={{ marginTop: 4 }}><b>属性 / 关联</b></div>
-            <ul style={{ listStyle: 'none', paddingLeft: 8, margin: '2px 0 6px', fontSize: 12 }}>
-              {relatedEdges.map(({ edge, direction }) => (
-                <li key={`edge|${edge.source}--${edge.label}--${edge.target}`} style={{ marginBottom: 2 }}>
-                  {direction === 'out' ? (
-                    <>
-                      <span style={{ color: '#2f8f6b' }}>→</span> {edge.label}{' '}
-                      <span style={{ color: '#8a94a6' }}>→ {labelOf(edge.target)}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span style={{ color: '#8a94a6' }}>{labelOf(edge.source)}</span>{' '}
-                      <span style={{ color: '#2f8f6b' }}>→ {edge.label}</span>
-                    </>
-                  )}
-                  {edge.provenance === 'inferred' ? <span style={{ color: '#2f8f6b' }}> · 推理</span> : null}
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+        <div>
+          <b>身份</b>：
+          {isInferredNode ? '推理新增节点（物化产生，只读）' : '原始断言'}
+        </div>
       </div>
+
+      {isInferredNode && (
+        <div className="element-readonly-note">
+          这是推理新增的节点，图上只展示结论；要改变它，请改产生它的公理或断言。
+        </div>
+      )}
+
+      {viewMode === 'diff' && (
+        <div className="element-readonly-note">
+          仅差异视图：编辑框降级为只读。切回「显示推理全貌」或「只看原始的」再改。
+        </div>
+      )}
+
+      {!isInferredNode && viewMode !== 'diff' && (
+        <div className="element-readonly-note">
+          该元素不在草图模型中 · 要改个体或复杂规则，请用「在线编辑」或改 OWL 文件再导入。
+        </div>
+      )}
+
+      {relatedEdges.length > 0 && (
+        <div className="element-section">
+          <div><b>属性 / 关联</b></div>
+          <ul className="element-related-list">
+            {relatedEdges.map(({ edge: e, direction }) => (
+              <li key={edgeRawId(e)}>
+                {direction === 'out' ? (
+                  <>
+                    <span style={{ color: '#2f8f6b' }}>→</span> {e.label}{' '}
+                    <span style={{ color: '#8a94a6' }}>→ {labelOf(e.target)}</span>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ color: '#8a94a6' }}>{labelOf(e.source)}</span>{' '}
+                    <span style={{ color: '#2f8f6b' }}>→ {e.label}</span>
+                  </>
+                )}
+                {e.provenance === 'inferred' ? <span style={{ color: '#2f8f6b' }}> · 推理</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

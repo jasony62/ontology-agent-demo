@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { EditModel } from '../data/editModel';
 
-/** 编辑器状态：undo/redo（上限 20）+ 脏标记 + 保存结果（参照 Playground designerStore 范式） */
+/** 编辑器状态：undo/redo（上限 20）+ 脏标记 + 保存结果（参照 Playground 的编辑器 store 范式） */
 
 const MAX_HISTORY = 20;
 

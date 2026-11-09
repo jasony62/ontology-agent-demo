@@ -2,14 +2,14 @@
 
 - 项目：本体智能体协作系统 · 前端图谱工作台
 - 版本：v1.0 · 2026-10-28
-- 适用范围：所有前端页面与组件（可视化编辑 Designer、在线编辑 OntologyEditor，及未来新增模块）
+- 适用范围：所有前端页面与组件（图谱右侧编辑框 ElementEditor、在线编辑 OntologyEditor，及未来新增模块）
 - 配套实现：`frontend/app/src/styles/index.css`（token 与组件原语的唯一落点）
 
 ---
 
 ## 0. 为什么需要这份规范
 
-上一轮「可视化编辑」改版引入了设计 token 与 `.btn` / `.field` 原语，但**仅 Designer 消费了它们**；「在线编辑」仍使用 legacy 样式（灰色旧按钮、自创 `.ef-*` 散落类），导致两处编辑器观感割裂、且样式无法统一演进。
+上一轮「可视化编辑」改版引入了设计 token 与 `.btn` / `.field` 原语；#91 把编辑能力融合进图谱右侧 panel 后，`.designer-*` 已删除，改由 `.element-*` 与在线编辑共同消费同一套原语，避免两处编辑器观感割裂。
 
 本规范把设计语言**提升为项目级单一事实源**：
 
@@ -142,26 +142,27 @@
 | 类 | 用途 |
 |---|---|
 | `.panel` | 主容器卡片：白底、`--border`、`--radius-lg`、`--shadow-sm` |
-| `.editor-toolbar` / `.designer-toolbar` | 顶部工具栏：标题左、操作右（`.editor-actions` / `.designer-toolbar-actions` margin-left:auto） |
-| `.designer-group` / 内嵌块 | 带边框、`--radius-lg` 的分组容器；头 `.designer-group-head`（浅底 + 下边框） |
-| `.designer-badge` / `.dirty-dot` | 计数 / 状态胶囊（`--radius-pill`） |
-| `.validation-groups` | 校验分组折叠容器（阻断/必改/建议，三级语义色） |
+| `.editor-toolbar` / `.element-status` | 顶部工具栏 / 草图状态条：标题左、操作右 |
+| `.element-section` / 内嵌块 | 带边框、`--radius-lg` 的分组容器；头 `.element-section-head`（浅底 + 下边框） |
+| `.element-status-badge` / `.dirty-dot` | 状态胶囊（`--radius-pill`） |
+| `.element-issues` | 表单内校验摘要（阻断 / 必改，两级语义色） |
 
-### 3.4 校验分组（语义色）
+### 3.4 校验就地呈现（语义色）
 
-- 阻断：`.level-blocker`（红 `#c62828`）
-- 必改：`.level-required`（橙 `#d83b01`）
-- 建议：`.level-suggestion`（灰 `#8a94a6`）
-- 点击条目可定位到对应实体（见 Designer 实现）。
+- 阻断：`.level-blocker` / 节点 `issue-blocker`（红 `#c62828`）
+- 必改：`.level-required` / 节点 `issue-required`（橙 `#d83b01`）
+- 建议层已删除（#91 D7）：不做底部常驻校验清单，只有节点 ⚠ 角标 + 表单内就地修复；
+- 导出前统一汇总 blocker / required 并拦截。
 
-### 3.5 在线编辑（OntologyEditor）与可视化编辑对齐
+### 3.5 在线编辑（OntologyEditor）与图谱编辑框（ElementEditor）对齐
 
 两个编辑器消费同一套 token 与原语，任何原语改动两边同步：
 
-- 工具栏 `.editor-toolbar` 与 `.designer-toolbar` 同构：标题左、操作右、间距 `--sp-3`；
+- 工具栏 `.editor-toolbar` / `.element-status` 与区块标题同构：标题左、操作右、间距 `--sp-3`；
 - 按钮一律 `.btn` 变体，行内「删」用 `.btn.ghost.danger-text`；
 - 表单字段一律 `.field` / `.field-label`，不引入旧 `.ef-field` 一类散落类；
 - `.ef-row`（对象/数据属性/实例卡片）与 `.ef-tree-row`（类层次树）只引用 `--border` / `--radius` / 间距 token，底色 `--panel` / `--panel-2`；
+- 图谱编辑框的断点用 `@container`（容器是 `.graph-side`），不要用 `@media`——它的宽度受分栏拖拽影响；
 - 成功提示 `.notice-banner` 用 `--success-bg` / `--success-border` / `--success`。
 
 ---
@@ -170,22 +171,22 @@
 
 - **间距网格**：4 / 8 / 12 / 16 / 24（面板内统一 12~16）。
 - **字号层级**：12（辅助/标签）/ 13（正文控件）/ 14（区块标题）/ 15（面板标题）/ 16（大标题）/ 18（页面标题）。
-- **栅格**：多列区用 `.editor-grid`（`repeat(auto-fit, minmax(300px,1fr))`）；主从布局用 `grid-template-columns: minmax(260px,1fr) minmax(0,2fr)`（列表 1/3、详情 2/3），`@media (max-width:880px)` 退化为单列。
-- **空态**：居中图标 + 引导文案 + 快捷按钮（参考 `.designer-empty`）。
+- **栅格**：多列区用 `.editor-grid`（`repeat(auto-fit, minmax(300px,1fr))`）；图谱编辑框在 `.graph-side` 容器内用 `@container (min-width: 340px)` 从单列切双列。
+- **空态**：居中图标 + 引导文案 + 快捷按钮（参考 `.pane-placeholder` / `.element-empty-inline`）。
 
 ---
 
 ## 5. 新增 / 修改组件的流程（强制）
 
 1. **先查 token 表**（§2）。颜色 / 间距 / 字号 / 圆角 / 阴影 / 控件高度一律用 token。
-2. **优先复用原语**（§3）：按钮用 `.btn` 变体，表单用 `.field`，容器用 `.panel` / `.designer-group`。
+2. **优先复用原语**（§3）：按钮用 `.btn` 变体，表单用 `.field`，容器用 `.panel` / `.element-section`。
 3. **禁止**：组件内联 `style={{color:'#xxx'}}`、散落 CSS 写死 hex、`input`/`button` 裸默认外观。
 4. **新增通用值**：若确实需要新语义，先在 `:root` 加 token（命名 `--<语义>-<角色>`），再在对应原语里引用，**绝不**在调用处写死。
-5. **两编辑器对齐校验**：改任意原语后，可视化编辑与在线编辑都要目测一致（颜色、按钮高度、字段间距、圆角）。
+5. **两编辑器对齐校验**：改任意原语后，图谱编辑框与在线编辑都要目测一致（颜色、按钮高度、字段间距、圆角）。
 
 ---
 
 ## 6. 参考
 
 - `frontend/app/src/styles/index.css`：token 与原语实现（唯一落点）
-- `frontend/app/src/components/Designer.tsx` / `OntologyEditor.tsx`：两套编辑器的消费方
+- `frontend/app/src/components/ElementEditor.tsx` / `OntologyEditor.tsx`：两套编辑器的消费方

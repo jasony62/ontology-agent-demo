@@ -31,12 +31,31 @@ export interface EntityType {
   properties: Property[];
   icon: string;
   color: string;
+  /** 父类 id（rdfs:subClassOf，单个）；缺省 = 顶层类 */
+  parent?: string;
+}
+
+/** 个体的属性断言：对象属性指向另一个资源，数据属性保存字面量文本。 */
+export interface InstanceAssertion {
+  /** 属性短名（OWL ObjectProperty / DatatypeProperty 的 localName） */
+  prop: string;
+  /** isObject=true 时是个体 / 类短名；否则是字面量文本 */
+  value: string;
+  isObject: boolean;
 }
 
 export interface EntityInstance {
   id: string;
+  /** 主类型（与 types[0] 保持一致；保留字段以兼容样例数据） */
   entityTypeId: string;
-  values: Record<string, unknown>;
+  /** 显示名（rdfs:label） */
+  label?: string;
+  /** 原始断言里的 rdf:type（只收断言，不收推理结论） */
+  types?: string[];
+  /** 属性断言（对象属性 + 数据属性） */
+  assertions?: InstanceAssertion[];
+  /** 旧的样例数据形态；编辑器优先读 assertions */
+  values?: Record<string, unknown>;
 }
 
 export interface Ontology {
@@ -44,6 +63,8 @@ export interface Ontology {
   description: string;
   entityTypes: EntityType[];
   relationships: Relationship[];
+  /** 具名个体（草图模型；导入时从 OWL 解析，导出时写回 NamedIndividual） */
+  instances?: EntityInstance[];
 }
 
 export interface DataBinding {

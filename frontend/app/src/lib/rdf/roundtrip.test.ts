@@ -22,6 +22,7 @@ function expectOntologiesEqual(actual: Ontology, expected: Ontology) {
     expect(ae.description).toBe(ee.description);
     expect(ae.icon).toBe(ee.icon);
     expect(ae.color).toBe(ee.color);
+    expect(ae.parent || undefined).toBe(ee.parent || undefined);
     expect(ae.properties).toHaveLength(ee.properties.length);
 
     for (let j = 0; j < ee.properties.length; j++) {
@@ -59,6 +60,16 @@ function expectOntologiesEqual(actual: Ontology, expected: Ontology) {
         expect(ar.attributes![j].type).toBe(er.attributes[j].type);
       }
     }
+  }
+
+  expect(actual.instances ?? []).toHaveLength((expected.instances ?? []).length);
+  for (let i = 0; i < (expected.instances ?? []).length; i++) {
+    const ai = actual.instances![i];
+    const ei = expected.instances![i];
+    expect(ai.id).toBe(ei.id);
+    expect(ai.label).toBe(ei.label);
+    expect(ai.types ?? []).toEqual(ei.types ?? []);
+    expect(ai.assertions ?? []).toEqual(ei.assertions ?? []);
   }
 }
 
@@ -174,6 +185,37 @@ describe('RDF round-trip tests', () => {
     const { ontology: parsed, warnings } = parseRDF(rdf);
     expect(parsed.entityTypes[0].properties[0].isIdentifier).toBe(true);
     expect(warnings).toEqual([]);
+  });
+
+  it('round-trips class parents and named individuals', () => {
+    const ontology: Ontology = {
+      name: 'Individuals Test',
+      description: '',
+      entityTypes: [
+        { id: 'agent', name: 'Agent', description: '', icon: '🤖', color: '#111', properties: [] },
+        { id: 'devAgent', name: 'Dev Agent', description: '', icon: '👩‍💻', color: '#222', properties: [], parent: 'agent' },
+      ],
+      relationships: [
+        { id: 'uses_tool', name: '使用工具', from: 'agent', to: 'devAgent', cardinality: 'many-to-one' },
+      ],
+      instances: [
+        {
+          id: 'dev_agent',
+          entityTypeId: 'devAgent',
+          label: '研发Agent',
+          types: ['devAgent'],
+          assertions: [
+            { prop: 'uses_tool', value: 'dev_agent', isObject: true },
+            { prop: 'has_description', value: '负责编码实现', isObject: false },
+          ],
+        },
+      ],
+    };
+    const rdf = serializeToRDF(ontology);
+    expect(rdf).toContain('<owl:NamedIndividual');
+    expect(rdf).toContain('<rdfs:subClassOf');
+    const { ontology: parsed } = parseRDF(rdf);
+    expectOntologiesEqual(parsed, ontology);
   });
 
   it('round-trips an empty ontology', () => {

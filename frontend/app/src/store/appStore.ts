@@ -28,8 +28,10 @@ interface AppState {
   // 是否已同步到后端推理引擎（通用模式）
   syncedToBackend: boolean;
   error: string | null;
-  // 图谱选中项（节点 id 或 "edge|{edgeId}"）
+  // 图谱选中项（节点 id 或 "edge|{edgeId}"；新建关系草稿为 "sketch|rel|{id}"）
   selectedId: string | null;
+  // 新建元素后需要聚焦的编辑框（ElementEditor 消费一次）
+  editorFocusId: string | null;
   // 本体模式（#20：default=默认本体，generic=通用模式；null=未知）
   ontologyMode: 'default' | 'generic' | null;
   // #55：推理提示横幅的关闭标记。一个全局开关（不按视图分别记忆）——三个文案
@@ -47,6 +49,7 @@ interface AppState {
   setSynced: (v: boolean) => void;
   setError: (e: string | null) => void;
   setSelectedId: (id: string | null) => void;
+  setEditorFocusId: (id: string | null) => void;
   setOntologyMode: (m: 'default' | 'generic' | null) => void;
   setNoticeDismissed: (v: boolean) => void;
 }
@@ -66,6 +69,7 @@ export const useAppStore = create<AppState>((set) => ({
   syncedToBackend: false,
   error: null,
   selectedId: null,
+  editorFocusId: null,
   ontologyMode: null,
   noticeDismissed: isNoticeDismissed(),
 
@@ -79,6 +83,7 @@ export const useAppStore = create<AppState>((set) => ({
   setSynced: (v) => set({ syncedToBackend: v }),
   setError: (e) => set({ error: e }),
   setSelectedId: (id) => set({ selectedId: id }),
+  setEditorFocusId: (id) => set({ editorFocusId: id }),
   setOntologyMode: (m) => set({ ontologyMode: m }),
   setNoticeDismissed: (v) => set({ noticeDismissed: v }),
 }));

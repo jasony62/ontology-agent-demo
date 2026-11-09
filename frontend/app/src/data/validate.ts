@@ -9,15 +9,14 @@ import type { Ontology } from '../data/ontology';
  * `uncapitalize(localName(IRI))` 算出来的派生量，不是用户写进 OWL 的字段，
  * 因此这里不检查它的命名风格，只检查会破坏 IRI / 写入的非法字符。
  *
- * 返回结构化校验条目（按严重度分组：blocker / required / suggestion）；
- * 空数组 = 通过。
- *
- * 分组语义：
+ * 只保留两级（#91 D7）：
  * - blocker     阻断级：id 冲突、引用缺失——必须修复
  * - required    必改级：类型/基数/枚举合法性、缺失 id——影响可写入性
- * - suggestion  建议级：缺描述、无属性、复合键降级——不影响使用
+ *
+ * 「缺描述」「尚无属性」「复合键降级」这类质量建议已整层删除：融合后的编辑框
+ * 不承担本体质量验收，导出时只拦截 blocker / required。
  */
-export type ValidationLevel = 'blocker' | 'required' | 'suggestion';
+export type ValidationLevel = 'blocker' | 'required';
 
 export interface ValidationIssue {
   level: ValidationLevel;
@@ -45,22 +44,8 @@ export function validateOntology(o: Ontology): ValidationIssue[] {
       issues.push({ level: 'required', message: `实体 "${e.name}" 的 id 含 IRI 非法字符`, targetId: e.id });
     }
     if (!e.name) issues.push({ level: 'required', message: '存在未命名实体', targetId: e.id });
-    if (!e.description) issues.push({ level: 'suggestion', message: `实体 "${e.name}" 缺少描述（可优化项，不影响使用）`, targetId: e.id });
 
     const propNames = new Set<string>();
-    const identifierProps = e.properties.filter((p) => p.isIdentifier);
-    // OWL 没有强制主键概念：0 个标识属性是外部本体的常态，不报任何级别。
-    // >1 是合法的复合键（owl:hasKey 允许），但本编辑器按单键处理，降为建议。
-    if (identifierProps.length > 1) {
-      issues.push({
-        level: 'suggestion',
-        message: `实体 "${e.name}" 声明了 ${identifierProps.length} 个标识属性（可能为复合键，当前编辑器按单键处理）`,
-        targetId: e.id,
-      });
-    }
-    if (e.properties.length === 0) {
-      issues.push({ level: 'suggestion', message: `实体 "${e.name}" 尚无属性`, targetId: e.id });
-    }
     for (const p of e.properties) {
       if (!p.name) {
         issues.push({ level: 'required', message: `实体 "${e.name}" 存在未命名属性`, targetId: e.id });
@@ -87,11 +72,14 @@ export function validateOntology(o: Ontology): ValidationIssue[] {
     } else if (ILLEGAL_ID_CHARS.test(r.id)) {
       issues.push({ level: 'required', message: `关系 "${r.name}" 的 id 含 IRI 非法字符` });
     }
+    if (!r.name?.trim()) {
+      issues.push({ level: 'required', message: `关系 "${r.id || '(未命名)'}" 缺少名称` });
+    }
     if (!o.entityTypes.some((e) => e.id === r.from)) {
-      issues.push({ level: 'blocker', message: `关系 "${r.name}" 的 from 实体不存在: ${r.from}` });
+      issues.push({ level: 'blocker', message: `关系 "${r.name}" 的 from 实体不存在: ${r.from || '(未填)'}` });
     }
     if (!o.entityTypes.some((e) => e.id === r.to)) {
-      issues.push({ level: 'blocker', message: `关系 "${r.name}" 的 to 实体不存在: ${r.to}` });
+      issues.push({ level: 'blocker', message: `关系 "${r.name}" 的 to 实体不存在: ${r.to || '(未填)'}` });
     }
     const validCard = ['one-to-one', 'one-to-many', 'many-to-one', 'many-to-many'];
     if (!validCard.includes(r.cardinality)) {
@@ -104,6 +92,6 @@ export function validateOntology(o: Ontology): ValidationIssue[] {
 
 /** 兼容旧签名：按严重度从高到低展平为纯文本列表 */
 export function flattenValidationIssues(issues: ValidationIssue[]): string[] {
-  const order: ValidationLevel[] = ['blocker', 'required', 'suggestion'];
+  const order: ValidationLevel[] = ['blocker', 'required'];
   return order.flatMap((lv) => issues.filter((i) => i.level === lv).map((i) => i.message));
 }

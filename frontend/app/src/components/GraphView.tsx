@@ -22,6 +22,8 @@ interface Props {
   focus?: LegendFocus | null;
   /** 当前选中项（节点 id 或 "edge|..."）；选中节点时高亮其直接邻域 */
   selectedId?: string | null;
+  /** 需要就地表红的节点（blocker / required）；键为节点 id */
+  issueLevels?: Record<string, 'blocker' | 'required'>;
   /** 工具栏前置控件（视图模式切换等），与搜索 / 缩放同排以节省画布上方空间 */
   toolbarLeading?: ReactNode;
   onSelect?: (id: string | null) => void;
@@ -58,6 +60,14 @@ const stylesheet: StylesheetStyle[] = [
       'border-width': 2,
       'border-color': INFERRED_COLOR,
     },
+  },
+  {
+    selector: 'node.issue-required',
+    style: { 'border-width': 3, 'border-style': 'dashed', 'border-color': '#d83b01' },
+  },
+  {
+    selector: 'node.issue-blocker',
+    style: { 'border-width': 3, 'border-style': 'solid', 'border-color': '#c62828' },
   },
   {
     selector: 'node:selected',
@@ -141,20 +151,34 @@ function elementsFromGraphData(
   inferred: GraphData | null | undefined,
   viewMode: GraphViewMode,
   groupView: GroupView,
+  issueLevels: Record<string, 'blocker' | 'required'> = {},
 ): ElementDefinition[] {
   const elements: ElementDefinition[] = [];
   const seenNodes = new Set<string>();
   const seenEdges = new Set<string>();
   const colorOf = groupView.colorOf;
 
+  // 推理图的节点 id 来自后端短名（Coding / Agent），草图的类 id 是小写
+  // （coding / agent）。推理图只补充「新增结论」，不应把同一个类画成两个节点：
+  // 展示时把后端短名映射回断言图里的节点 id。边 id 仍保留后端形态，
+  // 检视器查依据时要拿它回后端。
+  const canonicalId = new Map<string, string>();
+  for (const n of asserted?.nodes ?? []) {
+    if (n.id) canonicalId.set(n.id.toLowerCase(), n.id);
+  }
+  const mapId = (id: string) => canonicalId.get(id.toLowerCase()) ?? id;
+
   const addData = (graph: GraphData | null | undefined, isInferred: boolean) => {
     if (!graph) return;
     for (const n of graph.nodes) {
       // 空 id 会让 cytoscape 抛 "Can not create element with invalid string ID"，
       // 这里直接跳过（实体 id 在编辑过程中可能被清空）。
-      const id = (n.id ?? '').trim();
+      const rawId = (n.id ?? '').trim();
+      const id = isInferred ? mapId(rawId) : rawId;
       if (!id || seenNodes.has(id)) continue;
       seenNodes.add(id);
+      const issue = !isInferred ? issueLevels[id] ?? issueLevels[id.toLowerCase()] : undefined;
+      const classes = [isInferred ? 'inferred' : '', issue ? `issue-${issue}` : ''].filter(Boolean).join(' ');
       elements.push({
         data: {
           id,
@@ -162,7 +186,7 @@ function elementsFromGraphData(
           // 但聚焦要按「类型 / 分组」判断，靠颜色反推不行（分组可能同色）
           kind: n.type === 'class' ? 'class' : 'individual',
           group: groupView.groupOf.get(id) ?? '',
-          label: `${n.type === 'class' ? '◈' : '●'} ${(n.label ?? '').trim() || id}`,
+          label: `${n.type === 'class' ? '◈' : '●'} ${(n.label ?? '').trim() || id}${issue ? ' ⚠' : ''}`,
           // diff 视图里推理新增一律走绿色（读者要一眼看出"这是新冒出来的"）；
           // 其余情况：类一种色、个体按领域声明的分组上色，未声明分组回落单色
           color: isInferred && viewMode === 'diff'
@@ -171,12 +195,16 @@ function elementsFromGraphData(
               ? CLASS_COLOR
               : colorOf.get(id) ?? INDIVIDUAL_COLOR,
         },
-        classes: isInferred ? 'inferred' : undefined,
+        classes: classes || undefined,
       });
     }
     for (const e of graph.edges) {
-      if (!seenNodes.has(e.source) || !seenNodes.has(e.target)) continue;
-      const eid = `${e.source}--${e.label}--${e.target}`;
+      const source = isInferred ? mapId(e.source) : e.source;
+      const target = isInferred ? mapId(e.target) : e.target;
+      if (!seenNodes.has(source) || !seenNodes.has(target)) continue;
+      // 用数据里的稳定 id：模型关系是 `rel--id`（改名不换边），后端边保持
+      // `src--label--dst`。不按 label 反查，避免改名后旧边残留（#91 §4.1）。
+      const eid = e.id || `${e.source}--${e.label}--${e.target}`;
       if (seenEdges.has(eid)) continue;
       seenEdges.add(eid);
       // 推理边统一绿色虚线；其余按业务/结构分类上色
@@ -186,7 +214,7 @@ function elementsFromGraphData(
           ? 'structure'
           : undefined;
       elements.push({
-        data: { id: `edge|${eid}`, source: e.source, target: e.target, label: e.label },
+        data: { id: `edge|${eid}`, source, target, label: e.label },
         classes: cls,
       });
     }
@@ -201,7 +229,9 @@ function elementsFromGraphData(
   return elements;
 }
 
-export default function GraphView({ viewMode, asserted, inferred, groups, focus, selectedId, toolbarLeading, onSelect }: Props) {
+export default function GraphView({
+  viewMode, asserted, inferred, groups, focus, selectedId, issueLevels, toolbarLeading, onSelect,
+}: Props) {
   const groupView = useMemo(() => buildGroupView(groups ?? []), [groups]);
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -262,7 +292,7 @@ export default function GraphView({ viewMode, asserted, inferred, groups, focus,
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const elements = elementsFromGraphData(asserted, inferred, viewMode, groupView);
+    const elements = elementsFromGraphData(asserted, inferred, viewMode, groupView, issueLevels);
 
     const nodeIds = elements.filter((el) => !('source' in el.data)).map((el) => String(el.data.id));
     const edgeIds = elements.filter((el) => 'source' in el.data).map((el) => String(el.data.id));
@@ -284,6 +314,8 @@ export default function GraphView({ viewMode, asserted, inferred, groups, focus,
         if (existing.nonempty() && existing.isNode() === isNode) {
           existing.data(el.data);
           existing.toggleClass('inferred', inferred);
+          existing.toggleClass('issue-blocker', el.classes === 'issue-blocker' || String(el.classes).includes('issue-blocker'));
+          existing.toggleClass('issue-required', el.classes === 'issue-required' || String(el.classes).includes('issue-required'));
         } else {
           cy.add(el);
           if (isNode) addedNodes.push(id);
@@ -335,7 +367,7 @@ export default function GraphView({ viewMode, asserted, inferred, groups, focus,
       cy.layout(fcoseOptions()).run();
       cy.fit(undefined, 28);
     }
-  }, [viewMode, asserted, inferred, groupView]);
+  }, [viewMode, asserted, inferred, groupView, issueLevels]);
 
   // 聚焦淡化：选中节点时看「节点 + 直连邻域」，否则沿用图例聚焦（详见 lib/graphSelection）。
   // 依赖里带上数据源：节点是增量增删的，新加的节点不会自动继承上一轮的 dim。

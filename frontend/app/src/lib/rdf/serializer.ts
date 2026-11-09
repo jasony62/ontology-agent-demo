@@ -16,6 +16,12 @@ function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+/** 断言里的属性名要作为 XML 元素名写回；非法名直接跳过，避免导出坏文件。 */
+const XML_NAME = /^[\p{L}_][\p{L}\p{N}_.-]*$/u;
+function isValidXmlName(name: string): boolean {
+  return XML_NAME.test(name);
+}
+
 const XSD_TYPE_MAP: Record<string, string> = {
   string: 'xsd:string',
   integer: 'xsd:integer',
@@ -83,6 +89,9 @@ export function serializeToRDF(
     rdf += `        <rdfs:label>${escapeXml(entity.name)}</rdfs:label>\n`;
     if (entity.description) {
       rdf += `        <rdfs:comment>${escapeXml(entity.description)}</rdfs:comment>\n`;
+    }
+    if (entity.parent) {
+      rdf += `        <rdfs:subClassOf rdf:resource="${escapeXml(baseUri)}${capitalize(entity.parent)}"/>\n`;
     }
     // Store icon and color as custom annotations
     rdf += `        <ont:icon>${escapeXml(entity.icon)}</ont:icon>\n`;
@@ -167,6 +176,31 @@ export function serializeToRDF(
         rdf += `        <ont:attributeType>${escapeXml(attr.type)}</ont:attributeType>\n`;
         rdf += '    </owl:DatatypeProperty>\n\n';
       }
+    }
+  }
+
+  // Named Individuals（个体 + 断言）
+  const instances = ontology.instances ?? [];
+  if (instances.length > 0) {
+    rdf += '    <!-- ================= -->\n';
+    rdf += '    <!-- Named Individuals -->\n';
+    rdf += '    <!-- ================= -->\n\n';
+
+    for (const inst of instances) {
+      rdf += `    <owl:NamedIndividual rdf:about="${escapeXml(baseUri)}${escapeXml(inst.id)}">\n`;
+      for (const type of inst.types ?? (inst.entityTypeId ? [inst.entityTypeId] : [])) {
+        rdf += `        <rdf:type rdf:resource="${escapeXml(baseUri)}${capitalize(type)}"/>\n`;
+      }
+      rdf += `        <rdfs:label>${escapeXml(inst.label || inst.id)}</rdfs:label>\n`;
+      for (const a of inst.assertions ?? []) {
+        if (!a.prop || !isValidXmlName(a.prop)) continue;
+        if (a.isObject) {
+          rdf += `        <${a.prop} rdf:resource="${escapeXml(baseUri)}${escapeXml(a.value)}"/>\n`;
+        } else {
+          rdf += `        <${a.prop} rdf:datatype="http://www.w3.org/2001/XMLSchema#string">${escapeXml(a.value)}</${a.prop}>\n`;
+        }
+      }
+      rdf += '    </owl:NamedIndividual>\n\n';
     }
   }
 

@@ -118,8 +118,7 @@ function renderSplit(options: RenderOptions = {}) {
       <WorkspaceSplit
         graph={<div data-testid="graph">图谱</div>}
         panes={{
-          designer: options.panes?.designer ?? <div data-testid="designer">可视化</div>,
-          editor: options.panes?.editor ?? null,
+          editor: options.panes?.editor ?? <div data-testid="editor">在线编辑</div>,
         }}
         activeTab={options.activeTab ?? null}
         onOpenTab={onOpenTab}
@@ -172,7 +171,7 @@ describe('WorkspaceSplit 折叠与持久化', () => {
       root.render(
         <WorkspaceSplit
           graph={<div />}
-          panes={{ designer: null, editor: null }}
+          panes={{ editor: null }}
           activeTab={null}
           onOpenTab={vi.fn()}
           onCloseTab={vi.fn()}
@@ -189,7 +188,7 @@ describe('WorkspaceSplit 折叠与持久化', () => {
       root.render(
         <WorkspaceSplit
           graph={<div />}
-          panes={{ designer: <div data-testid="designer" />, editor: null }}
+          panes={{ editor: <div data-testid="editor" /> }}
           activeTab={null}
           onOpenTab={onOpenTab}
           onCloseTab={vi.fn()}
@@ -198,8 +197,8 @@ describe('WorkspaceSplit 折叠与持久化', () => {
     });
     expect(columns(splitEl())).toBe('minmax(0, 1fr) 6px 40px');
 
-    act(() => button('打开可视化编辑')!.click());
-    expect(onOpenTab).toHaveBeenCalledWith('designer');
+    act(() => button('打开在线编辑')!.click());
+    expect(onOpenTab).toHaveBeenCalledWith('editor');
     expect(columns(splitEl())).toContain('50%');
   });
 
@@ -257,7 +256,7 @@ describe('WorkspaceSplit 折叠与持久化', () => {
 
   it('关闭编辑区走 onCloseTab（由 App 决定是否弹 dirty 确认）', () => {
     const onCloseTab = vi.fn();
-    renderSplit({ activeTab: 'designer', onCloseTab });
+    renderSplit({ activeTab: 'editor', onCloseTab });
     act(() => button('关闭编辑区')!.click());
     expect(onCloseTab).toHaveBeenCalledTimes(1);
   });

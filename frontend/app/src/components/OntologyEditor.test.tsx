@@ -1,9 +1,10 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import OntologyEditor from './OntologyEditor';
 import { useEditorStore } from '../store/editorStore';
+import { useAppStore } from '../store/appStore';
 import type { EditModel } from '../data/editModel';
 
 /** React 19 的 act 环境标记：不设会有 "not wrapped in act" 警告 */
@@ -38,6 +39,7 @@ let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
 beforeEach(() => {
+  useAppStore.setState({ sourceName: 'agent_task_ontology.owl' });
   useEditorStore.setState({
     model: MODEL,
     history: [],
@@ -58,6 +60,7 @@ afterEach(() => {
   root = null;
   container?.remove();
   container = null;
+  vi.unstubAllGlobals();
 });
 
 function render() {
@@ -142,5 +145,91 @@ describe('OntologyEditor（#89 分类导航 + 单一工作区）', () => {
     expect(del).not.toBeNull();
     click(del!);
     expect(useEditorStore.getState().model?.objectProps).toHaveLength(0);
+  });
+});
+
+describe('OntologyEditor 覆盖确认（#92）', () => {
+  function toolbarButton(text: string): HTMLButtonElement {
+    const hit = [...container!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === text);
+    if (!hit) throw new Error(`button not found: ${text}`);
+    return hit;
+  }
+
+  it('两个按钮文案指向本体文件，加载态不再出现「保存中…」', () => {
+    render();
+    expect(toolbarButton('生成新本体文件')).toBeTruthy();
+    expect(toolbarButton('覆盖当前本体文件')).toBeTruthy();
+    expect(container!.textContent).not.toContain('另存为新本体');
+    expect(container!.textContent).not.toContain('保存中…');
+  });
+
+  it('点覆盖先出结构化确认框，取消后不发请求、状态不变', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    render();
+
+    click(toolbarButton('覆盖当前本体文件'));
+
+    const dialog = container!.querySelector<HTMLElement>('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog!.textContent).toContain('覆盖当前本体文件？');
+    expect(dialog!.textContent).toContain('agent_task_ontology.owl');
+    expect(dialog!.textContent).toContain('草图改动会被丢弃');
+    expect(container!.querySelectorAll('.overwrite-impact-list li')).toHaveLength(6);
+    expect(dialog!.textContent).toContain('确认覆盖 agent_task_ontology.owl');
+
+    const cancel = [...dialog!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((b) => b.textContent?.trim() === '取消')!;
+    click(cancel);
+
+    expect(container!.querySelector('[role="dialog"]')).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().dirty).toBe(false);
+  });
+
+  it('校验不通过时两个入口都不弹确认框、不发请求', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    act(() => {
+      useEditorStore.getState().commit({
+        ...MODEL,
+        classes: [...MODEL.classes, { id: '', label: '坏类', parent: null, description: '' }],
+      });
+    });
+    render();
+
+    click(toolbarButton('覆盖当前本体文件'));
+    expect(container!.querySelector('[role="dialog"]')).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    click(toolbarButton('生成新本体文件'));
+    expect(container!.querySelector('[role="dialog"]')).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(container!.textContent).toContain('项校验错误');
+  });
+
+  it('确认覆盖后按 overwrite 模式发起保存请求', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      statusText: 'Boom',
+      json: async () => ({ detail: 'boom' }),
+    }));
+    vi.stubGlobal('fetch', fetchSpy);
+    render();
+
+    click(toolbarButton('覆盖当前本体文件'));
+    const confirm = [...container!.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+      .find((b) => b.textContent?.includes('确认覆盖'))!;
+    await act(async () => {
+      confirm.click();
+      await Promise.resolve();
+    });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/ontology/save');
+    expect(JSON.parse(String(init.body))).toMatchObject({ mode: 'overwrite' });
+    expect(container!.textContent).toContain('保存失败');
   });
 });

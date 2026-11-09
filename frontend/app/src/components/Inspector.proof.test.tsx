@@ -69,7 +69,7 @@ function stubFetch() {
 
 function renderInspector() {
   act(() => {
-    root!.render(<Inspector />);
+    root!.render(<Inspector onJump={() => {}} />);
   });
 }
 
@@ -94,6 +94,7 @@ beforeEach(() => {
     viewMode: 'materialized',
     ontologyMode: 'default',
     materialized,
+    graphData: materialized.asserted,
   });
   container = document.createElement('div');
   document.body.appendChild(container);

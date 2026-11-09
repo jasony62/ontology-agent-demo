@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
  * - 视口 < 1280px 回退为标签页（同一时刻只显示一个工作区）。
  */
 
-export type WorkspaceTab = 'designer' | 'editor';
+export type WorkspaceTab = 'editor';
 export type PaneMode = 'normal' | 'minimized';
 export type PaneSide = 'left' | 'right';
 
@@ -41,12 +41,11 @@ export const DEFAULT_LAYOUT: WorkspaceLayout = {
 };
 
 export const TAB_LABELS: Record<WorkspaceTab, string> = {
-  designer: '可视化编辑',
   editor: '在线编辑',
 };
 
-const TABS: WorkspaceTab[] = ['designer', 'editor'];
-const TAB_ICONS: Record<WorkspaceTab, string> = { designer: '✎', editor: '⌨' };
+const TABS: WorkspaceTab[] = ['editor'];
+const TAB_ICONS: Record<WorkspaceTab, string> = { editor: '⌨' };
 
 /** 宽度百分比收敛到 25–75，非有限值回落到 50 */
 export function clampLeftWidth(value: number): number {
@@ -163,11 +162,8 @@ function PanePlaceholder({ onOpenTab }: { onOpenTab: (tab: WorkspaceTab) => void
   return (
     <div className="pane-placeholder">
       <div className="pane-placeholder-icon">◫</div>
-      <p>右侧是本体编辑区：改模型，左侧图谱即时反馈，无需上下滚动。</p>
+      <p>右侧是本体写入通道「在线编辑」。图谱上的改动只是预览，不写入系统；要真正保存，请用这里。</p>
       <div className="pane-placeholder-actions">
-        <button type="button" className="btn secondary" onClick={() => onOpenTab('designer')}>
-          可视化编辑
-        </button>
         <button type="button" className="btn" onClick={() => onOpenTab('editor')}>
           在线编辑
         </button>
@@ -248,7 +244,7 @@ export default function WorkspaceSplit({
   if (narrow) {
     return (
       <div className="workspace-narrow">
-        <div className="workspace-tabs" role="tablist" aria-label="工作区视图">
+        <div className="workspace-tabs" role="tablist" aria-label="工作区视图" aria-orientation="vertical">
           <button
             type="button"
             role="tab"

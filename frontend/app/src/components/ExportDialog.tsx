@@ -50,7 +50,7 @@ export default function ExportDialog({ onClose }: Props) {
           <div className="panel" style={{ padding: 10 }}>
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>① 导出当前编辑模型（RDF/XML）</div>
             <div style={{ fontSize: 13, color: '#5a6b7f', marginBottom: 8 }}>
-              由可视化 / 源码编辑后的模型序列化，可在 Protege 打开。
+              由当前编辑模型序列化，可在 Protege 打开。
             </div>
             <button onClick={exportModel} disabled={!ontology}>导出 ontology.owl</button>
           </div>
@@ -71,7 +71,7 @@ export default function ExportDialog({ onClose }: Props) {
         </div>
         {error && <div className="error-banner">{error}</div>}
         <div className="actions">
-          <button onClick={onClose}>关闭</button>
+          <button className="btn secondary" onClick={onClose}>关闭</button>
         </div>
       </div>
     </div>

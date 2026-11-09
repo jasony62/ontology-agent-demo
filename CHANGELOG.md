@@ -45,6 +45,10 @@
 - **`build_proof` 补 `owl:inverseOf`（prp-inv）分支**：此前只实现 R1 属性链 / R3 传递 / R4 类归属，`required_by` 这类由逆属性推出的边（基线 6 条）点开无依据。现两个方向都查（`objects(p, inverseOf) ∪ subjects(inverseOf, p)`）——只查一个方向在双向声明的本体（agent_task 默认核心恰好双向声明）上能跑通，换单向声明就静默失效；前提判定用原始断言图 `engine.raw`，保证「前提是断言」。基线 22 条推理边的依据覆盖率 14/22 → 20/22，剩下 2 条领域自定义规则边如实标注、不伪造。单向声明的回归用例在 `tests/test_proof_inverse_of.py`（只查 objects 的实现会直接红）。MCP 的 `explain_proof` 同步受益。（#55）
 - **工作台推理边点开可查依据，并新增状态化推理提示横幅**：检视器对推理新增边（materialized / diff 视图）异步请求 `/api/ontology/proof`，四态渲染——有前提时给前提链（每跳标「断言 / 推理」+ 公理类型）；领域自定义规则如实说明「无法给出公理级依据」；`unproven` 时暴露「图中不存在该结论」；查询失败保留原有推理提示。竞态用 effect cleanup 防护，快速点两条边不会串结果。横幅按视图出三档口语化文案：数字全部从数据计算（换领域自动变，不写常量）、解释「545 条新增三元组 vs 图上 22 条连线」的口径差、generic 模式不出现领域能力字样；关闭标记入 `sessionStorage`（本次会话不再打扰、新开会话重新给出，不用 localStorage 永久关闭），关闭后图谱工具栏的视图切换器旁出现「?」恢复按钮——一个全局开关，关了也能回得来。（#55）
 
+### Removed
+
+- **工作台移除误导性的「源码编辑」通道，OWL 源码弹窗收敛为只读（#87）**：页头「OWL 源码」「源码编辑」原本只是同一个 `SourceView` 弹窗的两种 mode，而编辑态的「保存并回读校验」只在前端 `parseRDF(draft)` 后更新 store，从不调用写盘 API——保存后图谱与「导出①」变了，推理引擎 / 物化三视图 / SPARQL / MCP 仍是旧本体，刷新即丢失。现页头只留「OWL 源码」，弹窗只读（语法高亮 + 下载原始文件），工作台唯一的本体写入通道收敛为右侧「在线编辑本体定义」（`POST /api/ontology/save` 写盘 + 重建引擎 + 重推理）；「下载原始文件」因此也不再可能下到草稿。同时把 `SourceView` / `ImportModal` / `ExportDialog` 的按钮对齐到既有 `.btn` 体系（此前 `className="secondary"` 是没有对应 CSS 的幽灵类名），主次可辨并具备 hover / focus / disabled 态；README、用户手册与工作台内说明统一为只读口径。后端端点、`parseRDF` 与 store action 均未改动。
+
 ### Fixed
 
 - **SDK 顶层补转发 `query_handlers`，`__all__` 不再自相矛盾（#74）**：`packages/ontology-plugin-sdk/src/ontology_plugin_sdk/__init__.py` 的 `__all__` 承诺了 `query_handlers`，但 `from .protocol import (...)` 块漏转发（只导了兄弟 `apply_handlers` / `conflicting_handlers`）——按承诺写 `from ontology_plugin_sdk import query_handlers` 或 `import *` 直接 ImportError（`protocol.query_handlers` 本身存在）。一行补转发 + 防回归测试（`__all__` 里每个名字都能顶层 getattr）。项目内代码全走 `ontology_plugin_sdk.protocol` 直导，服务与测试不受影响——这是公共 API 自洽性修复。

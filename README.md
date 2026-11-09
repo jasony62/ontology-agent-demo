@@ -25,7 +25,7 @@
 | **业务规则 R1–R4** | 能力匹配、任务聚合、依赖传递、合规冲突检测，输出可解释推导链 | `make demo` |
 | **REST API** | 30 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
 | **MCP Server** | 31 个工具（领域业务 9 + 建模/质量 7 + 引擎通用 15），智能体（豆包等）一行配置接入 | `make mcp` |
-| **图谱工作台** | React 工作台：三视图图谱、OWL 源码编辑、导入导出、可视化编辑 | `npm run dev` |
+| **图谱工作台** | React 工作台：三视图图谱、OWL 源码查看、导入导出、可视化编辑 | `npm run dev` |
 | **CLI 双通道** | HTTP 优先、失败回退内嵌引擎（`--local` 零依赖） | `python scripts/query.py -h` |
 | **Docker 一键起** | 多阶段构建，compose 起 API + MCP | `docker compose up` |
 | **学习指南** | 9 篇《本体上手指南》随仓库分发，章节↔代码对照 | [本地阅读](docs/guide/README.md) |
@@ -121,7 +121,7 @@ bash scripts/backup.sh        # 核心 .owl + extensions/ → backups/<时间戳
 `frontend/app/` 是基于 [Microsoft Ontology-Playground](https://github.com/microsoft/Ontology-Playground)（MIT）代码实现的功能完整前端：
 
 - **图谱工作台**：Cytoscape.js 交互图谱，三种视图——原始断言 / 物化后（并集）/ 仅差异；推理新增边以虚线+独立色标注
-- **OWL 源码**：RDF/XML 源码语法高亮查看，支持源码编辑（保存时解析校验回读）
+- **OWL 源码**：RDF/XML 源码语法高亮只读查看，可下载原始文件；编辑请用「在线编辑本体定义」
 - **导入 / 导出**：拖拽上传 `.owl`/`.rdf` 解析展示；导出当前模型（RDF/XML）或物化后本体（Turtle / RDF/XML）
 - **可视化编辑**：实体 / 属性 / 关系 CRUD + 实时校验，改动即时反映到图谱
 - **在线编辑本体定义**：任意 OWL 本体的在线编辑——四栏编辑（类层次 / 对象属性 / 数据属性 / 实例断言），编辑模型由后端 rdflib 全量提取（不受前端 parser 子集限制，默认本体也可编辑）；撤销 / 重做 / 脏标记 / 实时校验；保存由后端序列化 OWL 并重建引擎自动重推理，物化三视图与图谱联动刷新；支持**另存为新本体**（写入 `data/uploads/` 并进入通用模式）或**覆盖当前本体**（默认本体覆盖后领域推理保留，需二次确认），保存后可直接**下载 OWL 文件**

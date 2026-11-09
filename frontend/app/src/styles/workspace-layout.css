@@ -141,7 +141,7 @@
 .editor-panel > .error-banner,
 .editor-panel > .notice-banner,
 .editor-panel > .editor-footnote { flex: 0 0 auto; }
-.editor-panel > .editor-grid { flex: 1 1 auto; height: auto; min-height: 0; }
+.editor-panel > .editor-body { flex: 1 1 auto; min-height: 0; }
 .editor-footnote { font-size: 12px; color: #8a94a6; margin-top: 8px; line-height: 1.7; }
 
 /* ---- 可视化编辑器：工具条固定，列表/详情在面板内滚动 ---- */

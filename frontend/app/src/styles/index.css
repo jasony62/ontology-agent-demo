@@ -151,13 +151,12 @@ body {
 /* #25：导入提示 */
 .import-hint { font-size: 12.5px; color: #7a3b12; background: #fdf1e9; border: 1px solid #f0c7a8; border-radius: 6px; padding: 8px 10px; line-height: 1.6; margin: 4px 0 10px; }
 /* #26：类层次折叠 */
-.ef-class-summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 5px 6px; border: 1px solid transparent; border-radius: 6px; user-select: none; }
+.ef-class-summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 5px 6px; border: 1px solid transparent; border-radius: 6px; user-select: none; font-size: var(--fs-md); }
 .ef-class-summary:hover { background: #f4f7fb; }
 .ef-class-summary.open { border-color: #dde5f0; background: #f4f7fb; }
 .ef-class-toggle { font-size: 11px; color: #8a94a6; width: 14px; }
 .ef-class-id { font-size: 11px; color: #8a94a6; background: #f0f3f8; padding: 1px 6px; border-radius: 8px; }
 .ef-class-parent { font-size: 11px; color: #0b57a0; }
-.ef-class-filter { width: 100%; margin-bottom: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; }
 
 .app-main { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 
@@ -285,46 +284,82 @@ textarea.source-editor {
   border-radius: 8px; padding: 8px 12px; font-size: 13px; white-space: pre-wrap;
 }
 
-/* 在线编辑：四列各自独立垂直滚动，整页高度受控，不再无限拉长。
-   要点：容器必须有「确定高度」+ 行高受约束(minmax(0,1fr))，列才会产生滚动条；
-        否则行高 = 内容高，列被容器 overflow:hidden 裁掉且无法滚动。 */
-.editor-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  grid-auto-rows: minmax(0, 1fr);
-  gap: 12px;
-  height: calc(100vh - 250px);
-  min-height: 320px;
-  overflow: hidden;
-}
-.editor-grid .col {
-  border: 1px solid var(--border); border-radius: 8px; padding: 10px;
-  min-height: 0; min-width: 0;
+/* 在线编辑：分类导航 + 单一工作区（#89）。
+   面板纵向 flex 分配高度，工作区是唯一滚动容器；
+   不再用固定 height + 按行数均分的 grid（那会在折行时把每栏高度腰斩）。
+   container-type 让断点挂在编辑面板自身宽度上，而不是视口宽度。 */
+.editor-panel {
+  flex: 1 1 auto; min-height: 0;
   display: flex; flex-direction: column;
+  container-type: inline-size;
+}
+.editor-body { flex: 1 1 auto; min-height: 0; display: flex; gap: 12px; }
+
+.ef-nav {
+  flex: 0 0 190px; width: 190px; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel-2);
+  overflow-y: auto; overscroll-behavior: contain;
+}
+.ef-nav-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 8px 10px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--text); font-size: 13px; text-align: left; cursor: pointer;
+}
+.ef-nav-item:hover { background: var(--surface-hover); }
+.ef-nav-item.active {
+  background: #fff; border-color: var(--border); color: var(--primary);
+  font-weight: 600; box-shadow: var(--shadow-sm);
+}
+.ef-nav-item:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.ef-nav-count {
+  flex: 0 0 auto; font-size: 11px; font-weight: 600; color: var(--muted);
+  background: #eef2f8; border-radius: 10px; padding: 1px 7px;
+}
+.ef-nav-item.active .ef-nav-count { color: var(--primary); background: var(--primary-soft); }
+
+.ef-workspace {
+  flex: 1 1 auto; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 8px;
   overflow-y: auto; overflow-x: hidden;
   overscroll-behavior: contain;
   /* 常驻可见滚动条：否则 macOS 覆盖式滚动条让用户误以为下方没有内容。
-     注意：Chrome 下若同时声明 scrollbar-width/color，会忽略 ::-webkit-scrollbar 规则，
-     导致只剩 2px 极细覆盖条 —— 故此处只使用 webkit 伪元素方案。 */
+     注意：Chrome 下若同时声明 scrollbar-width/color，会忽略 ::-webkit-scrollbar 规则。 */
 }
-.editor-grid .col::-webkit-scrollbar { width: 10px; height: 10px; }
-.editor-grid .col::-webkit-scrollbar-track { background: #f4f7fb; border-radius: 6px; }
-.editor-grid .col::-webkit-scrollbar-thumb {
+.ef-workspace::-webkit-scrollbar { width: 10px; height: 10px; }
+.ef-workspace::-webkit-scrollbar-track { background: #f4f7fb; border-radius: 6px; }
+.ef-workspace::-webkit-scrollbar-thumb {
   background: #c3cdd8; border-radius: 6px; border: 2px solid #f4f7fb;
   background-clip: content-box;
 }
-.editor-grid .col::-webkit-scrollbar-thumb:hover { background: #a3b2c4; background-clip: content-box; }
-/* 列头：标题 + 「全部展开/折叠」吸顶常驻 */
-.ef-col-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  position: sticky; top: 0; background: #fff; z-index: 2; padding-bottom: 2px; margin-bottom: 8px;
+.ef-workspace::-webkit-scrollbar-thumb:hover { background: #a3b2c4; background-clip: content-box; }
+
+/* 搜索 + 全部展开：吸顶；新增按钮吸底，二者都不参与列表滚动 */
+.ef-workspace-head {
+  position: sticky; top: 0; z-index: 3;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px; background: #fff; border-bottom: 1px solid var(--border);
 }
-.editor-grid .ef-col-head h4 { font-size: 14px; color: #33455f; margin: 0; }
+.ef-search {
+  flex: 1 1 180px; min-width: 0; height: var(--control-h); padding: 0 10px;
+  font-size: 12.5px; border: 1px solid var(--border); border-radius: 6px; box-sizing: border-box;
+}
+.ef-search:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+.ef-workspace-list { display: flex; flex-direction: column; padding: 10px; min-width: 0; }
+.ef-empty { padding: 24px 12px; text-align: center; font-size: 12.5px; color: var(--muted); }
+.ef-add {
+  position: sticky; bottom: 0; z-index: 2; align-self: flex-start;
+  display: inline-flex; align-items: center; height: var(--control-h-lg);
+  margin: auto 10px 10px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: #fff; color: var(--primary); font-size: var(--fs-md); cursor: pointer;
+  transition: background var(--t-base), border-color var(--t-base);
+}
+.ef-add:hover { background: var(--primary-soft); border-color: var(--border-strong); }
+.ef-add:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .ef-col-toggle { font-size: 11px; padding: 0 6px; height: 22px; flex: 0 0 auto; }
-.editor-grid h4 { font-size: 14px; margin-bottom: 8px; color: #33455f; }
-.editor-grid ul { list-style: none; }
-.editor-grid li { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 13px; }
-.editor-grid li button { margin-left: auto; }
 
 /* 折叠卡片：摘要行 + 展开后的字段体 */
 .ef-row-toggle {
@@ -334,13 +369,48 @@ textarea.source-editor {
   cursor: pointer; border-radius: 4px; line-height: 1;
 }
 .ef-row-toggle:hover { background: #eef2f8; color: var(--text); }
-.ef-row-summary {
-  flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px;
-  overflow: hidden; cursor: pointer; font-size: 13px; color: var(--text);
+/* 卡片两行式：主行中文名独立成行、不截断；次行辅助信息可截断但带 title */
+.ef-row-main {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 2px;
+  cursor: pointer;
 }
-.ef-row-summary b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ef-row-id { font-size: 11px; color: #8a94a6; background: #f0f3f8; padding: 1px 6px; border-radius: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ef-row-meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ef-row-titleline { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.ef-row-title {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 14px; font-weight: 500; line-height: 1.4; color: var(--text);
+  white-space: normal; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ef-row-subline { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ef-row-id {
+  flex: 0 1 auto; max-width: 45%; font-size: 11px; color: #8a94a6; background: #f0f3f8;
+  padding: 1px 6px; border-radius: 8px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ef-row-meta {
+  flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 「⋯」更多操作：默认只露一个按钮，删除收进菜单；summary 原生可聚焦 */
+.ef-row-more { position: relative; flex: 0 0 auto; margin-left: auto; }
+.ef-row-more > summary {
+  list-style: none; width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 6px;
+  color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer;
+}
+.ef-row-more > summary::-webkit-details-marker { display: none; }
+.ef-row-more > summary:hover { background: var(--surface-hover); color: var(--text); border-color: var(--border); }
+.ef-row-more > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.ef-row-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 5;
+  display: flex; flex-direction: column; gap: 4px; padding: 4px;
+  background: #fff; border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: var(--shadow-pop);
+}
+.ef-row-menu .btn { width: 100%; height: var(--control-h); justify-content: flex-start; }
 .ef-row-body { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .ef-row.open { border-color: var(--border-strong); }
 
@@ -590,9 +660,12 @@ textarea.source-editor {
 
 /* ---------- 在线编辑本体定义（OntologyEditor） ---------- */
 /* 与可视化编辑共用同一套设计 token（见 :root）与 .btn / .field 原语 */
-.editor-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.editor-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3); }
 .editor-toolbar h2 { font-size: var(--fs-xl); color: var(--heading); margin: 0; }
-.editor-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+/* 工具条按「编辑动作 / 保存动作 / 关闭」分组，窄容器按组换行而不是逐按钮散落 */
+.ef-toolbar-groups { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-left: auto; }
+.ef-toolbar-group { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.ef-toolbar-group + .ef-toolbar-group { padding-left: var(--sp-2); border-left: 1px solid var(--border); }
 
 .dirty-dot { width: 9px; height: 9px; border-radius: var(--radius-full); background: #c3cdd8; display: inline-block; }
 .dirty-dot.on { background: var(--danger); box-shadow: 0 0 0 2px var(--danger-bg); }
@@ -605,21 +678,6 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 
 .notice-banner { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-md); }
 
-/* 列宽统一由 .editor-grid 定义，此处不再重复覆盖 */
-
-/* 列内「+ 新增 X」按钮：吸底常驻，长列表滚动时始终可操作 */
-.editor-grid .col > button {
-  display: inline-flex; align-items: center; height: var(--control-h-lg);
-  padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: #fff; color: var(--primary); font-size: var(--fs-md); cursor: pointer;
-  transition: background var(--t-base), border-color var(--t-base);
-  margin-top: var(--sp-2); position: sticky; bottom: 0; z-index: 1;
-}
-.editor-grid .col > button:hover { background: var(--primary-soft); border-color: var(--border-strong); }
-
-.ef-class-filter { width: 100%; margin-bottom: var(--sp-2); padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; position: sticky; top: 30px; background: #fff; z-index: 1; }
-
-.ef-tree { display: flex; flex-direction: column; gap: var(--sp-2); }
 /* 类编辑行：2 列网格，字段成对排布，删除按钮规整靠右，消除换行错位 */
 /* minmax(0,1fr) 允许列收缩到内容以下，避免内容把列撑出横向滚动 */
 .ef-tree-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-3); align-items: end; border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-3); background: var(--panel-2); }
@@ -629,8 +687,8 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 
 /* 卡片：宽度可收缩到 0，避免内容把列撑出横向滚动条 */
 .ef-row { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-2); background: var(--panel); min-width: 0; }
-/* 头部：摘要行（可点击折叠）+ 常驻删除按钮；输入框已移入 .ef-row-body */
-.ef-row-head { display: flex; gap: var(--sp-1); align-items: center; min-width: 0; }
+/* 头部：主行（中文名 + 更多）+ 次行（id / meta）；输入框已移入 .ef-row-body */
+.ef-row-head { display: flex; gap: var(--sp-1); align-items: flex-start; min-width: 0; }
 .ef-row-head .btn { flex: 0 0 auto; height: var(--control-h); align-self: center; }
 .ef-row-head input { flex: 1 1 0; min-width: 0; height: var(--control-h); padding: 0 9px; font-size: var(--fs-sm2); border: 1px solid var(--border); border-radius: var(--radius-sm); box-sizing: border-box; }
 .ef-row-sub { display: flex; gap: var(--sp-3); min-width: 0; }
@@ -646,6 +704,23 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 /* 断言行 ✕ 按钮：与输入框同高，且不参与收缩 */
 .ef-assertion .btn { flex: 0 0 auto; height: var(--control-h); align-self: center; }
 .ef-assertion select:focus, .ef-assertion input:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
+
+/* 编辑面板容器查询：断点跟随编辑区自身宽度（拖拽分栏 / 窄屏标签页都生效），
+   不再用视口宽度媒体查询误判「宽屏」。#89 */
+@container (max-width: 719px) {
+  .editor-body { flex-direction: column; gap: var(--sp-2); }
+  .ef-nav {
+    flex: 0 0 auto; width: 100%; flex-direction: row;
+    overflow-x: auto; overflow-y: hidden; padding: 4px;
+  }
+  .ef-nav-item { width: auto; flex: 0 0 auto; white-space: nowrap; padding: 7px 10px; }
+  .ef-toolbar-groups { width: 100%; justify-content: flex-start; margin-left: 0; }
+  .ef-toolbar-group + .ef-toolbar-group { padding-left: 0; border-left: none; }
+}
+@container (max-width: 479px) {
+  .ef-row-sub { flex-direction: column; }
+  .ef-tree-row { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ============================================================
    Designer UI 改版 · S1 基础层（设计 token + 按钮 + 表单字段）

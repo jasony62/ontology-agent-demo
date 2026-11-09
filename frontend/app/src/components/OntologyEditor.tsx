@@ -6,10 +6,6 @@ import { PROPERTY_CHARACTERISTICS, XSD_DATATYPES } from '../data/editModel';
 import type { EditModel, EditModelAssertion } from '../data/editModel';
 import { validateEditModel } from '../data/validateEditModel';
 
-interface Props {
-  onClose: () => void;
-}
-
 /** 通用小部件：带标签的输入行 */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -82,10 +78,10 @@ const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'ind', label: '实例' },
 ];
 
-export default function OntologyEditor({ onClose }: Props) {
+export default function OntologyEditor() {
   const {
     model, history, future, dirty, loading, error, savedFilename,
-    commit, undo, redo, resetTo, setError, markSaved, closeEditor,
+    commit, undo, redo, resetTo, setError, markSaved,
   } = useEditorStore();
   const setMaterialized = useAppStore((s) => s.setMaterialized);
   const setSource = useAppStore((s) => s.setSource);
@@ -257,7 +253,7 @@ export default function OntologyEditor({ onClose }: Props) {
   return (
     <div className="panel editor-panel">
       <div className="editor-toolbar">
-        <h2>在线编辑本体定义 · {model.ontologyName || '—'}</h2>
+        <h2>{model.ontologyName || '—'}</h2>
         <div className="ef-toolbar-groups">
           <div className="ef-toolbar-group">
             <span className={`dirty-dot ${dirty ? 'on' : ''}`} title={dirty ? '有未保存修改' : '已保存'} />
@@ -284,9 +280,6 @@ export default function OntologyEditor({ onClose }: Props) {
                 下载 {savedFilename}
               </a>
             )}
-          </div>
-          <div className="ef-toolbar-group">
-            <button className="btn secondary" onClick={() => { closeEditor(); onClose(); }}>关闭</button>
           </div>
         </div>
       </div>

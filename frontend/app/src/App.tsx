@@ -296,7 +296,7 @@ export default function App() {
           panes={{
             // key 跟着本体文件走：切领域 / 重载本体后重建，避免「重置」把上一个本体的快照写回来
             designer: designerMounted ? <Designer key={sourceName} /> : null,
-            editor: editorMounted ? <OntologyEditor onClose={() => setRightTab(null)} /> : null,
+            editor: editorMounted ? <OntologyEditor /> : null,
           }}
         />
       </main>

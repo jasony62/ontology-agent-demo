@@ -62,7 +62,7 @@ afterEach(() => {
 
 function render() {
   act(() => {
-    root!.render(<OntologyEditor onClose={() => {}} />);
+    root!.render(<OntologyEditor />);
   });
 }
 

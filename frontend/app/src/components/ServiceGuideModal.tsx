@@ -119,7 +119,7 @@ cd <项目根目录>
             <li><b>默认本体</b>：领域推理（capability_match / orchestrate / assign / consistency / explain）与实体创建（entities，字段形状见 <code>/api/domains/current/entities/schema</code>）可用；</li>
             <li><b>通用模式</b>：导入自定义本体后，图谱 / 物化 / SPARQL / 个体 / 类型 / 属性等通用能力仍可用，领域推理返回明确提示；</li>
             <li><b>物化</b>：推理引擎按 OWL 2 RL（owlrl）+ R2/R4 业务规则扩展三元组，原始断言 ∪ 推理新增 = 物化后本体。</li>
-            <li><b>编辑通道</b>：「在线编辑」（结构化表单，适合新手/快速调整）与「源码编辑」（RDF/XML 文本，适合精确控制公理）操作同一本体文件，保存以后保存者为准。</li>
+            <li><b>编辑通道</b>：「在线编辑」（结构化表单，适合新手/快速调整）是工作台唯一的本体写入通道，保存后由后端写盘并重建引擎、自动重推理。</li>
           </ul>
         </div>
       </div>

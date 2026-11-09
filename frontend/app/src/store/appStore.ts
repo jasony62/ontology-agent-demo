@@ -9,7 +9,7 @@ interface AppState {
   // 后端连接状态
   backendOk: boolean;
   backendInfo: Record<string, unknown> | null;
-  // 当前本体（本地模型，来自默认本体 / 导入解析 / 源码编辑回读）
+  // 当前本体（本地模型，来自默认本体 / 导入解析）
   ontology: Ontology | null;
   // 后端图数据（/api/domains/current/ontology，领域图）与物化数据
   graphData: GraphData | null;

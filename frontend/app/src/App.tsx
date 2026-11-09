@@ -20,8 +20,6 @@ import WorkspaceSplit from './components/WorkspaceSplit';
 import type { WorkspaceTab } from './components/WorkspaceSplit';
 import { useEditorStore } from './store/editorStore';
 
-type SourceMode = 'closed' | 'view' | 'edit';
-
 export default function App() {
   const backendOk = useAppStore((s) => s.backendOk);
   const setBackendOk = useAppStore((s) => s.setBackendOk);
@@ -42,7 +40,7 @@ export default function App() {
 
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [sourceMode, setSourceMode] = useState<SourceMode>('closed');
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   // 工作区右侧编辑区：tab 决定显示哪个编辑器，mounted 决定是否已挂载（首次打开才挂载）
   const [rightTab, setRightTab] = useState<WorkspaceTab | null>(null);
@@ -238,8 +236,7 @@ export default function App() {
         <div className="toolbar" style={{ marginLeft: 'auto' }}>
           <button onClick={() => setImportOpen(true)}>导入</button>
           <button onClick={() => setExportOpen(true)}>导出</button>
-          <button onClick={() => setSourceMode('view')} disabled={!sourceName}>OWL 源码</button>
-          <button onClick={() => setSourceMode('edit')} disabled={!sourceName}>源码编辑</button>
+          <button onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>
           {/* 编辑入口只在工作区：右侧面板 Tab 条 / 40px 图标条 / 窄屏标签页，页头不再重复一份 */}
           <a className="toolbar-link secondary" href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
           <button className="secondary" onClick={() => setGuideOpen(true)}>服务能力</button>
@@ -307,9 +304,7 @@ export default function App() {
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
       {guideOpen && <ServiceGuideModal onClose={() => setGuideOpen(false)} />}
-      {sourceMode !== 'closed' && (
-        <SourceView mode={sourceMode} onClose={() => setSourceMode('closed')} onSwitchToEdit={() => setSourceMode('edit')} />
-      )}
+      {sourceOpen && <SourceView onClose={() => setSourceOpen(false)} />}
     </div>
   );
 }

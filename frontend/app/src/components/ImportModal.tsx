@@ -110,10 +110,10 @@ export default function ImportModal({ onClose }: Props) {
         {localError && <div className="error-banner">{localError}</div>}
 
         <div className="actions">
-          <button className="secondary" onClick={handleSync} disabled={!fileRef.current || syncState === 'syncing'}>
+          <button className="btn" onClick={handleSync} disabled={!fileRef.current || syncState === 'syncing'}>
             {syncState === 'syncing' ? '同步中…' : '同步到推理引擎（解锁物化）'}
           </button>
-          <button onClick={onClose}>完成</button>
+          <button className="btn secondary" onClick={onClose}>完成</button>
         </div>
       </div>
     </div>

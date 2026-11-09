@@ -88,6 +88,8 @@ describe('OntologyEditor（#89 分类导航 + 单一工作区）', () => {
     ]);
     expect(tabs()[0].getAttribute('aria-selected')).toBe('true');
     expect(tabs()[1].getAttribute('aria-selected')).toBe('false');
+    // 当前领域已在页面顶部显示，编辑区不再重复大标题
+    expect(container!.querySelector('.editor-panel h2')).toBeNull();
   });
 
   it('切换分类后，主行中文名完整可读、不出现省略号', () => {

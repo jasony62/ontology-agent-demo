@@ -253,7 +253,6 @@ export default function OntologyEditor() {
   return (
     <div className="panel editor-panel">
       <div className="editor-toolbar">
-        <h2>{model.ontologyName || '—'}</h2>
         <div className="ef-toolbar-groups">
           <div className="ef-toolbar-group">
             <span className={`dirty-dot ${dirty ? 'on' : ''}`} title={dirty ? '有未保存修改' : '已保存'} />

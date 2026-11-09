@@ -13,7 +13,7 @@ from rdflib import RDF, URIRef
 
 from ontology_plugin_sdk import AdapterBase
 
-NS_BASE = "http://example.org/onto_playground#"
+NS_BASE = "http://ontology.localhost/onto_playground#"
 
 
 def _local(node) -> str:

@@ -288,7 +288,7 @@ mod = importlib.util.module_from_spec(spec)
 sys.modules["outside_domain"] = mod
 spec.loader.exec_module(mod)
 
-engine = sdk.FakeEngine(ns="http://demo.example.org/agent-task-ontology#")
+engine = sdk.FakeEngine(ns="http://ontology.localhost/agent-task#")
 ctx = sdk.PluginContext.for_module(mod, engine)
 adapter = mod.create_adapter_ctx(ctx)
 

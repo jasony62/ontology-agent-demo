@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
-<rdf:RDF xmlns="http://example.org/onto_playground#"
-     xml:base="http://example.org/onto_playground"
+<rdf:RDF xmlns="http://ontology.localhost/onto_playground#"
+     xml:base="http://ontology.localhost/onto_playground"
      xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
      xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
      xmlns:owl="http://www.w3.org/2002/07/owl#"
      xmlns:xsd="http://www.w3.org/2001/XMLSchema#">
 
-  <owl:Ontology rdf:about="http://example.org/onto_playground">
+  <owl:Ontology rdf:about="http://ontology.localhost/onto_playground">
     <rdfs:label>本体平台元模型</rdfs:label>
-    <rdfs:comment>描述 ontology-agent-demo 自身的构件世界：领域包 / 宿主模块 / SDK / 适配器 / 能力 / 落点 / 闸门 / 通道 / 规则。知识源为项目文档与代码，规则只翻译不发明。</rdfs:comment>
+    <rdfs:comment>描述本体平台自身的构件世界：领域包 / 宿主模块 / SDK / 适配器 / 能力 / 落点 / 闸门 / 通道 / 规则。知识源为项目文档与代码，规则只翻译不发明。</rdfs:comment>
   </owl:Ontology>
 
   <!-- ============ 类：PlatformArtifact 顶层 ============ -->

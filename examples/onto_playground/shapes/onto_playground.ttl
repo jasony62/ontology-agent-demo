@@ -1,6 +1,6 @@
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix op: <http://example.org/onto_playground#> .
+@prefix op: <http://ontology.localhost/onto_playground#> .
 
 # 能力必须有落点：契约方法 / 处理器 / 适配器同名方法，三选一
 # 悬空能力在加载期即被 dangling_capabilities 拒载，这里给出声明式口径

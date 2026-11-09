@@ -12,7 +12,7 @@ import type { EditModel } from '../data/editModel';
 /** 取自 onto_playground 的真实形状：用多字中文标签验证主行不被截断。 */
 const MODEL: EditModel = {
   ontologyName: 'onto_playground',
-  namespace: 'http://example.org/onto_playground#',
+  namespace: 'http://ontology.localhost/onto_playground#',
   classes: [
     { id: 'DomainPackage', label: '领域包', parent: null, description: '' },
     { id: 'Capability', label: '能力', parent: null, description: '' },

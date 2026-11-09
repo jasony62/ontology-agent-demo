@@ -304,7 +304,7 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
 ```python
 from ontology_plugin_sdk import FakeEngine, PluginContext
 
-engine = FakeEngine(ns="http://demo.example.org/agent-task-ontology#")
+engine = FakeEngine(ns="http://ontology.localhost/agent-task#")
 ctx = PluginContext.for_module(domain_module, engine)
 adapter = domain_module.create_adapter_ctx(ctx)
 ```

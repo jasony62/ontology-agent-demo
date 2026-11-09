@@ -379,6 +379,7 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 | POST | `/api/types` | `{individual}` | 个体推理后类型 |
 | POST | `/api/property` | `{subject, property}` | 属性取值 |
 | POST | `/api/infer` | — | 重新推理 + 统计 |
+| GET | `/api/ontology/proof` | `?s=&p=&o=` | 单条三元组的结构化推导依据（asserted / derived / unproven） |
 
 示例：
 

@@ -59,7 +59,7 @@ docker compose exec api python -m pytest tests/ -q
 | 01 本体入门 | `domains/agent_task/agent_task_ontology.owl` | 用 Protege 打开 OWL 文件看类层次 |
 | 02 解剖示例本体 | 同上 + `reasoner/engine.py` | 在 Protege 里逐个查看类 / 个体 / 属性 |
 | 03 本体推理原理 | `reasoner/engine.py` + `tests/test_reasoning.py::test_r1_*` | 跑 `docker compose exec api python -m pytest tests/test_reasoning.py -k r1` 验证 R1 能力覆盖规则 |
-| 04 本体与知识图谱 | `frontend/index.html`（图谱渲染） | 访问 Demo 页面看图谱 |
+| 04 本体与知识图谱 | `frontend/app/src`（图谱渲染） | 访问 Demo 页面看图谱 |
 | 05 搭建本体推理服务 | `api/main.py` + `scripts/demo.sh` | `docker compose up -d api` 后用 `bash scripts/demo.sh` 跑一遍接口 |
 | 06 MCP 接入智能体 | `mcp/mcp_server.py` + `domains/agent_task/mcp.py` | `docker compose up -d mcp` 启动后在豆包中添加连接器 |
 | 07 智能体协作实战 | `domains/agent_task/adapter.py`（R4 校验）+ `rules/*.ttl`（R2 规则层） | 用 `POST /api/domains/current/capabilities/apply`（`kind=assign`）分配一次任务并看推导链 |

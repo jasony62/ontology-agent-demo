@@ -9,7 +9,7 @@
 
 ## 0. 为什么需要这份规范
 
-上一轮「可视化编辑」改版引入了设计 token 与 `.btn` / `.field` 原语；#91 把编辑能力融合进图谱右侧 panel 后，`.designer-*` 已删除，改由 `.element-*` 与在线编辑共同消费同一套原语，避免两处编辑器观感割裂。
+`.designer-*` 已不存在：图谱右侧编辑框用 `.element-*`，在线编辑用 `.ef-*`，两者共同消费同一套 token 与 `.btn` / `.field` 原语，避免两处编辑器观感割裂。
 
 本规范把设计语言**提升为项目级单一事实源**：
 
@@ -161,6 +161,10 @@
 - 工具栏 `.editor-toolbar` / `.element-status` 与区块标题同构：标题左、操作右、间距 `--sp-3`；
 - 按钮一律 `.btn` 变体，行内「删」用 `.btn.ghost.danger-text`；
 - 表单字段一律 `.field` / `.field-label`，不引入旧 `.ef-field` 一类散落类；
+- `.ef-nav` / `.ef-nav-item` / `.ef-nav-item.active` / `.ef-nav-count`（分类导航：左侧竖排、< 720px 转顶部横向 Tab；计数胶囊用 `--radius-pill`，选中底用 `--primary-soft`）；
+- `.ef-workspace` / `.ef-workspace-head` / `.ef-workspace-list`（弹性工作区：搜索 + 全部展开/折叠 + 卡片列表，间距一律 `--sp-*`）；
+- `.ef-toolbar-groups` / `.ef-toolbar-group`（工具条按「编辑 / 保存 / 关闭」分组换行，不写死像素）；
+- 分类切换只换工作区内容，**不得重置撤销栈或 dirty 标记**（#89 既定行为，改样式或结构时容易误伤）；
 - `.ef-row`（对象/数据属性/实例卡片）与 `.ef-tree-row`（类层次树）只引用 `--border` / `--radius` / 间距 token，底色 `--panel` / `--panel-2`；
 - 图谱编辑框的断点用 `@container`（容器是 `.graph-side`），不要用 `@media`——它的宽度受分栏拖拽影响；
 - 成功提示 `.notice-banner` 用 `--success-bg` / `--success-border` / `--success`。
@@ -171,7 +175,8 @@
 
 - **间距网格**：4 / 8 / 12 / 16 / 24（面板内统一 12~16）。
 - **字号层级**：12（辅助/标签）/ 13（正文控件）/ 14（区块标题）/ 15（面板标题）/ 16（大标题）/ 18（页面标题）。
-- **栅格**：多列区用 `.editor-grid`（`repeat(auto-fit, minmax(300px,1fr))`）；图谱编辑框在 `.graph-side` 容器内用 `@container (min-width: 340px)` 从单列切双列。
+- **栅格 / 分栏**：在线编辑用 `.ef-nav`（固定宽度分类导航）+ `.ef-workspace`（弹性工作区）两列，不再使用多列平铺栅格；图谱编辑框在 `.graph-side` 容器内用 `@container (min-width: 340px)` 从单列切双列。
+- **断点一律 `@container` 挂编辑面板自身宽度，不用 `@media`**：编辑区宽度受分栏拖拽影响，用视口判断会误判。在线编辑三档：≥ 720px 竖排导航；480–720px 顶部横向 Tab；< 480px 表单单列（实现为 `index.css` 的 `@container (max-width: 719px)` / `@container (max-width: 479px)`）。
 - **空态**：居中图标 + 引导文案 + 快捷按钮（参考 `.pane-placeholder` / `.element-empty-inline`）。
 
 ---

@@ -148,7 +148,7 @@ describe('OntologyEditor（#89 分类导航 + 单一工作区）', () => {
   });
 });
 
-describe('OntologyEditor 覆盖确认（#92）', () => {
+describe('OntologyEditor 写盘文案与覆盖确认（#92 #100）', () => {
   function toolbarButton(text: string): HTMLButtonElement {
     const hit = [...container!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === text);
     if (!hit) throw new Error(`button not found: ${text}`);
@@ -231,5 +231,41 @@ describe('OntologyEditor 覆盖确认（#92）', () => {
     expect(url).toBe('/api/ontology/save');
     expect(JSON.parse(String(init.body))).toMatchObject({ mode: 'overwrite' });
     expect(container!.textContent).toContain('保存失败');
+  });
+
+  it('生成新文件成功后回执用按钮同款文案，不再出现「另存」', async () => {
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (String(url) === '/api/ontology/save') {
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          json: async () => ({
+            status: 'ok',
+            path: '/tmp/agent_task_ontology-edited.owl',
+            filename: 'agent_task_ontology-edited.owl',
+            mode: 'new',
+            stats: { triples_before: 1183, triples_after: 1323, inferred_added: 140, classes: 27, individuals: 29 },
+            materialized: {
+              stats: { triples_asserted: 393, triples_materialized: 1183, inferred_added: 790 },
+              asserted: { nodes: [], edges: [] },
+              inferred: { nodes: [], edges: [] },
+            },
+          }),
+        };
+      }
+      return { ok: true, status: 200, statusText: 'OK', json: async () => ({ filename: 'agent_task_ontology-edited.owl', content: '' }) };
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    render();
+
+    click(toolbarButton('生成新本体文件'));
+    // 覆盖 saveModel → source 两段异步链，等一个宏任务把微任务队列排空
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container!.textContent).toContain('已保存（生成新本体文件）');
+    expect(container!.textContent).not.toContain('另存');
   });
 });

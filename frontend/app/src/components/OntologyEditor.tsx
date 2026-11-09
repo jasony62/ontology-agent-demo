@@ -215,7 +215,7 @@ export default function OntologyEditor() {
         setGraphData(res.materialized.asserted);
       }
       setNotice(
-        `已保存（${mode === 'overwrite' ? '覆盖' : '另存'}）：${res.filename} · 三元组 ${res.stats.triples_before} → ${res.stats.triples_after}（推理新增 ${res.stats.inferred_added}）`,
+        `已保存（${mode === 'overwrite' ? '覆盖当前本体文件' : '生成新本体文件'}）：${res.filename} · 三元组 ${res.stats.triples_before} → ${res.stats.triples_after}（推理新增 ${res.stats.inferred_added}）`,
       );
     } catch (e) {
       setError(`保存失败：${e instanceof Error ? e.message : String(e)}`);
@@ -295,7 +295,7 @@ export default function OntologyEditor() {
               placeholder="保存文件名"
               value={filename}
               onChange={(e) => setFilename(e.target.value)}
-              title="另存文件名（默认 本体名-edited.owl）"
+              title="生成的文件名（默认 本体名-edited.owl）"
             />
             <button className="btn" onClick={() => save('new')} disabled={saving || loading}>
               {saving ? '写入中…' : '生成新本体文件'}

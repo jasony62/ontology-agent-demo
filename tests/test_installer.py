@@ -36,6 +36,19 @@ def make_pkg(parent, name="src_pkg", *, creator=True, extra_init="", files=None,
         ]
     lines.append(extra_init)
     (pkg / "__init__.py").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # 说明文件是契约必填（安装期同样校验），本文件测安装流程本身。
+    (pkg / "guide.json").write_text(json.dumps({
+        "guide_version": "1",
+        "display_name": name,
+        "summary": "安装器测试用最小说明。",
+        "scenarios": [],
+        "covers": ["安装"],
+        "not_covers": [],
+        "capability_notes": {},
+        "constraints": [],
+        "examples": [],
+        "integrations": [],
+    }, ensure_ascii=False), encoding="utf-8")
     for rel, content in (files or {}).items():
         target = pkg / rel
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -101,6 +114,26 @@ def test_install_with_explicit_name(tmp_path):
     result = install(src, root=root, name="finance_ops")
     assert result["name"] == "finance_ops"
     assert (root / "finance_ops" / "__init__.py").is_file()
+
+
+def test_missing_guide_file_rejected(tmp_path):
+    """说明文件是契约必填：安装期就拒绝，不留到启动时才失败。"""
+    src = make_pkg(tmp_path / "examples", "p")
+    (src / "guide.json").unlink()
+
+    with pytest.raises(InstallError, match="guide.json"):
+        install(src, root=tmp_path / "domains")
+    assert not (tmp_path / "domains" / "p").exists()
+
+
+def test_invalid_guide_slot_rejected(tmp_path):
+    src = make_pkg(tmp_path / "examples", "p")
+    data = json.loads((src / "guide.json").read_text(encoding="utf-8"))
+    del data["summary"]
+    (src / "guide.json").write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(InstallError, match="summary"):
+        validate_package(src)
 
 
 # ---------------- 冲突与覆盖 ----------------

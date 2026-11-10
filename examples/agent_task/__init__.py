@@ -26,9 +26,14 @@ from .adapter import (
 # 某个请求进来时变成 AttributeError。
 PLUGIN_API = "1"
 
+# 领域包的使用视角说明（契约必填）：与 ONTO_FILE / SHAPES_FILE 同构，
+# 由加载器按包目录读取并在加载期校验。没有内容的槽位也要显式写成 [] / {}。
+GUIDE_FILE = "guide.json"
+
 __all__ = [
     "NAME",
     "PLUGIN_API",
+    "GUIDE_FILE",
     "DESCRIPTION",
     "ONTO_FILE",
     "EXTENSIONS_DIR",

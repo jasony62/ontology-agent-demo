@@ -10,6 +10,7 @@
 """
 
 import ast
+import json
 import os
 import shutil
 import sys
@@ -36,6 +37,25 @@ def _settings(root) -> DomainConfig:
         watch_interval=0.0,
         sources={},
         servers={},
+    )
+
+
+def _write_guide(pkg):
+    """契约必填的说明文件：这些用例测切换语义，不测说明文件校验。"""
+    guide = {
+        "guide_version": "1",
+        "display_name": pkg.name,
+        "summary": "切换测试用最小说明。",
+        "scenarios": [],
+        "covers": ["切换"],
+        "not_covers": [],
+        "capability_notes": {},
+        "constraints": [],
+        "examples": [],
+        "integrations": [],
+    }
+    (pkg / "guide.json").write_text(
+        json.dumps(guide, ensure_ascii=False), encoding="utf-8"
     )
 
 
@@ -117,6 +137,7 @@ def test_activate_broken_domain_keeps_current(two_domains):
         "    return object()\n",
         encoding="utf-8",
     )
+    _write_guide(pkg)
     with pytest.raises(DomainContractError):
         mgr.activate("broken")
     assert mgr.adapter is before
@@ -133,6 +154,7 @@ def test_missing_ontology_rejected(two_domains):
         "def create_adapter_ctx(ctx):\n    return object()\n",
         encoding="utf-8",
     )
+    _write_guide(pkg)
     mgr = DomainManager(cfg)
     with pytest.raises(DomainContractError, match="未声明本体文件"):
         mgr.activate("nontology")

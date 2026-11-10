@@ -1,0 +1,213 @@
+{
+  "guide_version": "1",
+  "display_name": "智能体任务编排",
+  "summary": "把任务、智能体、能力与约束建成可推理的本体，回答「谁能做这件事」「这么安排会不会违规」。",
+  "scenarios": [
+    "任务分派前查可执行者",
+    "复合任务拆解与排序",
+    "分配前做合规检查",
+    "解释一次查询的推理依据"
+  ],
+  "covers": [
+    "能力匹配",
+    "任务编排",
+    "分配合规",
+    "任务分类",
+    "一致性检查",
+    "推导链解释"
+  ],
+  "not_covers": [
+    "真实排班调度",
+    "替你执行任务",
+    "跨项目知识",
+    "自然语言问答"
+  ],
+  "capability_notes": {
+    "capability_match": "谁能做这个任务：按 can_execute / can_own 返回候选智能体与推导链。",
+    "orchestrate": "复合任务怎么拆、按什么顺序执行，并逐环节匹配执行者。",
+    "assign": "把任务分配给智能体并检查合规冲突；会修改本体，写入请走变更通道。",
+    "classify": "按本领域字段新增任务并分类；会修改本体，当前只经 MCP 暴露。",
+    "consistency": "对全量数据做一致性 / 合规冲突检查。",
+    "explain": "最近一次查询的推导链：结论由哪些前提与规则得来。",
+    "graph_export": "图谱渲染数据：类层次、个体与业务边。",
+    "create": "按实体 schema 新建任务；会修改本体，写入请走实体创建通道。"
+  },
+  "constraints": [
+    "构件齐备闸门 G1–G4：建模范式、一致性、能力冒烟与 SHACL 形状",
+    "访问策略只允许 4 类主体 / 5 个谓词，越界请求会被拦下",
+    "R4：合规任务分配给未持有效认证的智能体会产生合规冲突",
+    "R5 / R6：高风险任务在无人能担责或满足条件时派生人工介入 / 双人复核标记"
+  ],
+  "examples": [
+    {
+      "id": "T2-01",
+      "question": "哪些智能体可以执行「登录模块开发」？",
+      "capability": "capability_match",
+      "params": { "task": "t_login_dev" },
+      "answer_hint": "2 个智能体：dev_agent、junior_dev",
+      "via": "R1 能力匹配"
+    },
+    {
+      "id": "T2-02",
+      "question": "哪些智能体可以执行「登录模块代码审查」？",
+      "capability": "capability_match",
+      "params": { "task": "t_login_review" },
+      "answer_hint": "1 个：dev_agent",
+      "via": "R1 能力匹配"
+    },
+    {
+      "id": "T2-03",
+      "question": "哪些智能体可以执行「生产部署发布」？",
+      "capability": "capability_match",
+      "params": { "task": "t_deploy" },
+      "answer_hint": "1 个：deploy_agent",
+      "via": "R1 能力匹配"
+    },
+    {
+      "id": "T2-04",
+      "question": "哪些智能体可以执行「新功能上线」？",
+      "capability": "capability_match",
+      "params": { "task": "t_feature" },
+      "answer_hint": "空集：没有智能体能整体执行（复合任务能力覆盖不足）",
+      "via": "R1 能力匹配（反例）"
+    },
+    {
+      "id": "T2-05",
+      "question": "「登录模块测试执行」依赖哪些任务？请包含间接依赖。",
+      "capability": "query_sparql",
+      "params": {
+        "sparql": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_login_test> <http://ontology.localhost/agent-task#depends_on>+ ?dep }"
+      },
+      "answer_hint": "t_login_review、t_login_dev、t_req",
+      "via": "R3 依赖传递"
+    },
+    {
+      "id": "T2-06",
+      "question": "「生产部署发布」间接依赖哪些任务？（不含直接依赖）",
+      "capability": "query_sparql",
+      "params": {
+        "sparql": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_deploy> <http://ontology.localhost/agent-task#depends_on>* ?dep . FILTER(?dep != <http://ontology.localhost/agent-task#t_deploy> && ?dep != <http://ontology.localhost/agent-task#t_login_test>) }"
+      },
+      "answer_hint": "t_login_review、t_login_dev、t_req",
+      "via": "R3 依赖传递"
+    },
+    {
+      "id": "T2-07",
+      "question": "「敏感数据报表开发」有什么约束？",
+      "capability": "property_values",
+      "params": { "subject": "t_compliance_dev", "property_name": "requires_constraint" },
+      "answer_hint": "creq_default（合规要求实例）",
+      "via": "R4 约束读取"
+    },
+    {
+      "id": "T2-08",
+      "question": "把「敏感数据报表开发」分配给「初级研发Agent」会怎样？",
+      "capability": "assign",
+      "params": { "task": "t_compliance_dev", "agent": "junior_dev" },
+      "answer_hint": "分配成功，但触发 R4 合规认证冲突",
+      "via": "R4 合规冲突"
+    },
+    {
+      "id": "T2-09",
+      "question": "把「敏感数据报表开发」分配给「研发Agent」会怎样？",
+      "capability": "assign",
+      "params": { "task": "t_compliance_dev", "agent": "dev_agent" },
+      "answer_hint": "分配成功，无冲突（dev_agent 已认证）",
+      "via": "R4 合规边界"
+    },
+    {
+      "id": "T2-10",
+      "question": "哪些智能体可以整体执行「双模块开发」？",
+      "capability": "capability_match",
+      "params": { "task": "t_double_dev" },
+      "answer_hint": "dev_agent、junior_dev",
+      "via": "R2 子任务委派"
+    },
+    {
+      "id": "T2-11",
+      "question": "全系统哪些智能体是「已认证」的（CertifiedAgent）？",
+      "capability": "individuals",
+      "params": { "class_name": "CertifiedAgent" },
+      "answer_hint": "dev_agent、req_agent、test_agent、deploy_agent",
+      "via": "类别推理"
+    },
+    {
+      "id": "T2-12",
+      "question": "初级研发Agent 属于哪些类别？",
+      "capability": "types_of",
+      "params": { "individual": "junior_dev" },
+      "answer_hint": "JuniorDevAgent ⊑ DevAgent ⊑ Agent",
+      "via": "子类链"
+    },
+    {
+      "id": "T2-13",
+      "question": "「敏感数据报表开发」会被归类为合规任务吗？",
+      "capability": "types_of",
+      "params": { "individual": "t_compliance_dev" },
+      "answer_hint": "会：可推出 ComplianceTask",
+      "via": "defined class"
+    },
+    {
+      "id": "T2-14",
+      "question": "哪些智能体可以执行「全栈改造任务」（要求编码与部署双能力）？",
+      "capability": "capability_match",
+      "params": { "task": "t_full_stack" },
+      "answer_hint": "空集：dev_agent 缺部署、deploy_agent 缺编码，多能力必须 AND 全覆盖",
+      "via": "R1 多能力 AND（反例）"
+    },
+    {
+      "id": "T2-15",
+      "question": "「新功能上线」的执行计划是什么顺序？",
+      "capability": "orchestrate",
+      "params": { "task": "t_feature" },
+      "answer_hint": "t_req → t_login_dev → t_login_review → t_login_test → t_deploy",
+      "via": "编排顺序"
+    },
+    {
+      "id": "T2-16",
+      "question": "「新功能上线」需要人工介入吗？",
+      "capability": "property_values",
+      "params": { "subject": "t_feature", "property_name": "needs_manual_review" },
+      "answer_hint": "true：五步无人能担责且风险为 4",
+      "via": "R5 人工介入（正例）"
+    },
+    {
+      "id": "T2-17",
+      "question": "「双模块开发」需要人工介入吗？",
+      "capability": "property_values",
+      "params": { "subject": "t_double_dev", "property_name": "needs_manual_review" },
+      "answer_hint": "空：dev_agent 能担责，不提示人工介入",
+      "via": "R5 人工介入（反例）"
+    },
+    {
+      "id": "T2-18",
+      "question": "「敏感数据报表开发」需要双人复核吗？",
+      "capability": "property_values",
+      "params": { "subject": "t_compliance_dev", "property_name": "needs_second_review" },
+      "answer_hint": "true：SimpleTask 且风险为 5，强制双人复核",
+      "via": "R6 双人复核（正例）"
+    },
+    {
+      "id": "T2-19",
+      "question": "「登录模块开发」需要双人复核吗？",
+      "capability": "property_values",
+      "params": { "subject": "t_login_dev", "property_name": "needs_second_review" },
+      "answer_hint": "空：风险为 2，低于复核阈值",
+      "via": "R6 双人复核（反例）"
+    },
+    {
+      "id": "T2-20",
+      "question": "「敏感数据报表开发」的候选智能体里，谁能担责？",
+      "capability": "capability_match",
+      "params": { "task": "t_compliance_dev" },
+      "answer_hint": "候选 dev_agent、junior_dev；可担责的只有 dev_agent",
+      "via": "R2b 担责"
+    }
+  ],
+  "integrations": [
+    "REST：POST /api/domains/current/capabilities/query 发起只读能力查询；变更走 /apply",
+    "REST：POST /api/domains/current/entities 按 schema 新建实体",
+    "MCP：领域工具随当前包注册，接入地址见 MCP Server 启动说明",
+    "OpenAPI：/api-docs 可查全部端点与参数"
+  ]
+}

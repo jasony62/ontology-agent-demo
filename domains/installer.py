@@ -138,11 +138,30 @@ def validate_package(pkg_dir: Path, *, expect_name: str | None = None) -> dict:
         onto = getattr(module, "ONTO_FILE", None)
         onto_rel = _check_onto_file(pkg_dir, onto, "ONTO_FILE") if onto else None
 
+        # 说明文件与 ONTO_FILE 同级：安装是"复制进运行态"的唯一入口，
+        # 不合格的包不该装进去、等启动时才失败。
+        try:
+            from ontology_plugin_sdk.protocol import (
+                DEFAULT_GUIDE_FILE,
+                DomainGuideError,
+                read_domain_guide,
+            )
+
+            guide = read_domain_guide(
+                pkg_dir, getattr(module, "GUIDE_FILE", DEFAULT_GUIDE_FILE)
+            )
+        except DomainGuideError as exc:
+            raise InstallError(
+                f"领域包 {pkg_dir.name!r} 的说明文件不符合契约：{exc}"
+            ) from exc
+
         return {
             "name": expect_name or declared_name or pkg_dir.name,
             "declared_name": declared_name,
             "description": getattr(module, "DESCRIPTION", "") or "",
             "onto_file": onto_rel,
+            "guide_version": guide["guide_version"],
+            "display_name": guide["display_name"],
             "capabilities": list(getattr(module, "CAPABILITIES", []) or []) or None,
         }
     finally:

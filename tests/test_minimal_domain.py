@@ -43,9 +43,9 @@ def runtime(tmp_path_factory):
 
 
 def test_package_is_self_contained():
-    """零复制：文件就三个，且代码里没有一处引用 agent_task。"""
+    """零复制：文件就四个，且代码里没有一处引用 agent_task。"""
     files = {p.name for p in SRC.iterdir() if p.is_file()}
-    assert files == {"__init__.py", "config.json", "minimal.owl"}
+    assert files == {"__init__.py", "config.json", "minimal.owl", "guide.json"}
 
     tree = ast.parse((SRC / "__init__.py").read_text(encoding="utf-8"))
     imported = set()

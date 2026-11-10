@@ -24,6 +24,7 @@ PLUGIN_API = "1"
 DESCRIPTION = "本体平台元模型：领域包 / 模块 / 能力 / 落点 / 闸门 / 通道的结构与合规推理"
 ONTO_FILE = "onto_playground.owl"
 SHAPES_FILE = os.path.join("shapes", "onto_playground.ttl")
+GUIDE_FILE = "guide.json"
 
 CAPABILITIES = OntoPlaygroundAdapter.CAPABILITIES
 
@@ -40,6 +41,7 @@ __all__ = [
     "DESCRIPTION",
     "ONTO_FILE",
     "SHAPES_FILE",
+    "GUIDE_FILE",
     "CAPABILITIES",
     "QUERY_HANDLERS",
     "OntoPlaygroundAdapter",

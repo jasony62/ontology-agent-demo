@@ -7,6 +7,7 @@
      异构领域不写这两行也能导出图谱。
 """
 
+import json
 import os
 import sys
 
@@ -70,7 +71,23 @@ def _pkg(root, body):
     pkg = root / _PROBE
     pkg.mkdir(parents=True, exist_ok=True)
     (pkg / "__init__.py").write_text(body, encoding="utf-8")
+    # 说明文件是契约必填；本文件测的是适配器契约，用最小合规说明绕开它。
+    (pkg / "guide.json").write_text(json.dumps(_GUIDE, ensure_ascii=False), encoding="utf-8")
     return pkg
+
+
+_GUIDE = {
+    "guide_version": "1",
+    "display_name": "契约探测",
+    "summary": "适配器契约测试用的最小说明。",
+    "scenarios": [],
+    "covers": ["契约"],
+    "not_covers": [],
+    "capability_notes": {},
+    "constraints": [],
+    "examples": [],
+    "integrations": [],
+}
 
 
 ALL_METHODS_BODY = "\n".join(

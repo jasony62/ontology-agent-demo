@@ -1,0 +1,17 @@
+{
+  "guide_version": "1",
+  "display_name": "本体试炼场",
+  "summary": "把本体平台自身的构件建成可推理的领域：领域包、模块、能力、闸门、通道的结构与合规。",
+  "scenarios": [],
+  "covers": [
+    "能力可达",
+    "依赖与顺序",
+    "等价类合规判定",
+    "对逆属性"
+  ],
+  "not_covers": [],
+  "capability_notes": {},
+  "constraints": [],
+  "examples": [],
+  "integrations": []
+}

@@ -8,6 +8,7 @@
         GET  /                 前端 Demo 页面（图谱展示）
         GET  /api/health       健康检查（运维探针，不随领域模式变化）
         GET  /api/domains/current/ontology     本体结构（图谱渲染数据）
+        GET  /api/domains/current/guide        当前领域使用说明（guide.json + 运行态 + 对账）
         GET  /api/domains/current/ontology/graph-groups 领域声明的图谱分组（前端上色 / 图例）
         POST /api/domains/current/capabilities/query 领域能力查询（纯读，不改图、不落盘，可安全重试）
         POST /api/domains/current/capabilities/apply 领域能力变更（改图，persist=true 落盘，不保证幂等）
@@ -46,7 +47,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Path as ApiPath
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from rdflib import RDF, OWL
+from rdflib import RDF, OWL, RDFS, URIRef
 
 
 class LazyStaticFiles(StaticFiles):
@@ -61,9 +62,10 @@ class LazyStaticFiles(StaticFiles):
     async def check_config(self) -> None:
         pass
 
-from reasoner.engine import get_engine, OntologyEngine, SparqlTimeoutError
+from reasoner.engine import get_engine, OntologyEngine, SparqlTimeoutError, local
 from reasoner.proof import build_proof
 from reasoner.protocol import (
+    REQUIRED_METHODS,
     apply_handlers,
     dangling_capabilities,
     entity_schema,
@@ -678,6 +680,231 @@ def _schema_summary(adapter) -> dict | None:
     return {
         "class": schema["class"],
         "fields": [f["name"] for f in schema["fields"]],
+    }
+
+
+# ---------------------------------------------------------------- 当前领域使用说明
+#
+# `GET /api/domains/current/guide` 是"当前这个包提供了什么"的**唯一真源**：
+# 声明（guide.json）、实测（当前领域句柄）、对账（框架算）一次返回。
+# 前端不读包内文件、不拼 `/api/health` 等多个端点、不硬编码领域文案；
+# 换包成功后重拉一次，六问整体跟着换。
+#
+# 只读契约：不写盘、不触发推理、可安全重试。通用模式下同样返回——
+# 说明仍在，能力整组由前端按 `mode` 标为不可用。
+
+
+def _declared_capabilities(adapter) -> list[str]:
+    """领域声明的能力清单；未声明 CAPABILITIES 时视为全量契约方法。"""
+    declared = getattr(adapter, "CAPABILITIES", None)
+    if declared is None:
+        return list(REQUIRED_METHODS)
+    return list(declared)
+
+
+def _individual_iris(engine) -> set:
+    """图里的个体 IRI：显式 NamedIndividual ∪ 以业务类为 rdf:type 的具名主语。
+
+    只认 `owl:NamedIndividual` 会漏掉大量 RDF/XML 本体（个体只写
+    `rdf:type domain:Agent`）；把所有 rdf:type 主语都算进来又会把类 / 属性
+    混进候选值。这里按"类型不在 RDF / RDFS / OWL 元命名空间"判定。
+    """
+    meta = (str(RDF), str(RDFS), str(OWL))
+    found = set()
+    for subject, cls in engine.g.subject_objects(RDF.type):
+        if not isinstance(subject, URIRef) or not isinstance(cls, URIRef):
+            continue
+        if cls == OWL.NamedIndividual or not str(cls).startswith(meta):
+            found.add(subject)
+    return found
+
+
+def _runtime_counts(engine) -> dict:
+    """通用计数：不出现任何领域词汇（agents / tasks 这类统计留在 health）。"""
+    asserted = len(getattr(engine, "raw", engine.g))
+    total = len(engine.g)
+    classes = {
+        s for s in engine.g.subjects(RDF.type, OWL.Class)
+        if isinstance(s, URIRef)
+    } | {
+        s for s in engine.g.subjects(RDF.type, RDFS.Class)
+        if isinstance(s, URIRef)
+    }
+    return {
+        "triples": total,
+        "asserted": asserted,
+        "inferred": max(total - asserted, 0),
+        "classes": len(classes),
+        "individuals": len(_individual_iris(engine)),
+    }
+
+
+def _runtime_individuals(engine) -> list[str]:
+    """当前图里的个体短名（示例题参数下拉的真实候选值）。"""
+    return sorted(local(iri) for iri in _individual_iris(engine))
+
+
+def _rules_summary(report: dict | None) -> dict | None:
+    """规则执行报告的使用视角摘要：不暴露包内绝对路径。"""
+    if not report:
+        return None
+    files = []
+    for item in report.get("files", []) or []:
+        path = item.get("file")
+        files.append({
+            "file": os.path.basename(str(path)) if path else "?",
+            "derived": item.get("derived_new"),
+            "error": item.get("error"),
+        })
+    return {
+        "ok": report.get("ok"),
+        "total_derived": report.get("total_derived"),
+        "exceeded_iterations": report.get("exceeded_iterations"),
+        "elapsed_ms": report.get("elapsed_ms"),
+        "materialize_ms": report.get("materialize_ms"),
+        "files": files,
+        "note": report.get("note"),
+    }
+
+
+def _guide_examples(
+    profile: dict, query_kinds: list[str], apply_kinds: list[str], *,
+    domain_mode: bool,
+) -> list[dict]:
+    """把声明里的示例题加工成可渲染视图，并由框架判定 `safe`。
+
+    `safe` 只由运行态决定，领域包不得自填（guide.json 写了 safe 会被加载期拒绝）：
+      - 通用模式下领域端点整组不可用 → 全部不可试跑；
+      - 能力名在只读能力清单里 → 可页内试跑，endpoint 指向纯读端点；
+      - 只在变更能力清单里 → 不可试跑，reason 说明会改本体；
+      - 两边都没有 → 不可试跑，reason 说明当前不可用。
+    """
+    query = set(query_kinds)
+    apply = set(apply_kinds)
+    out: list[dict] = []
+    for item in profile.get("examples", []):
+        capability = item["capability"]
+        if not domain_mode:
+            safe = False
+            reason = "当前为通用模式，领域能力不可用"
+            endpoint = None
+        elif capability in query:
+            safe, reason, endpoint = True, None, QUERY_ENDPOINT
+        elif capability in apply:
+            safe = False
+            reason = "该能力会修改本体，不提供页内试跑"
+            endpoint = None
+        else:
+            safe = False
+            reason = "该能力当前不可用（不在只读 / 变更能力清单中，可能只经 MCP 暴露）"
+            endpoint = None
+        out.append({
+            "id": item["id"],
+            "question": item["question"],
+            "capability": capability,
+            "params": item["params"],
+            "answer_hint": item["answer_hint"],
+            "via": item["via"],
+            "endpoint": endpoint,
+            "safe": safe,
+            "reason": reason,
+        })
+    return out
+
+
+@app.get(
+    "/api/domains/current/guide",
+    tags=["领域推理"],
+    summary="当前领域使用说明",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "当前领域包的使用视角说明：包声明（guide.json）、运行态实测"
+                "（能力 / 计数 / 规则 / 实体字段 / 图谱分组）、对账结果与示例题"
+                "（含框架判定的 safe）一次返回。只读、可重复调用；通用模式下"
+                "同样返回，领域能力按 mode 标为不可用。"
+            ),
+        },
+    },
+)
+def domain_guide():
+    """当前领域「能替我做什么」的唯一出口（只读）。
+
+    给调用方：`profile` 是领域包声明的人话内容，`runtime` 是框架按当前句柄
+    实时算的事实，`reconcile` 是两者的偏差，`examples[].safe` 由框架判定。
+    前端只认这一份响应；包内文件与第二个说明端点都不该成为真源。
+    """
+    handle = DOMAINS.current()
+    try:
+        guide = handle.guide
+    except DomainContractError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"当前领域 {handle.name!r} 的说明文件无法读取：{exc}",
+        ) from exc
+
+    query_kinds = sorted(k for k in _query_kinds(ADAPTER) if supports(ADAPTER, k))
+    apply_kinds = sorted(k for k in _apply_kinds(ADAPTER) if supports(ADAPTER, k))
+    declared = _declared_capabilities(ADAPTER)
+    domain_mode = DOMAINS.in_domain_mode()
+    examples = _guide_examples(
+        guide, query_kinds, apply_kinds, domain_mode=domain_mode
+    )
+    profile = {k: v for k, v in guide.items() if k != "guide_version"}
+    notes = profile["capability_notes"]
+
+    # 对账由框架算，前端只渲染：说明里写了但能力表没有、能力表有但没写说明、
+    # 以及当前不可试跑的示例题。三者都来自同一份响应。
+    note_keys = set(notes)
+    callable_or_declared = set(declared) | set(query_kinds) | set(apply_kinds)
+    reconcile = {
+        "notes_without_capability": [
+            {"capability": key, "note": notes[key]}
+            for key in sorted(note_keys - callable_or_declared)
+        ],
+        "capabilities_without_note": [
+            cap for cap in declared if cap not in note_keys
+        ],
+        "unavailable_examples": [
+            {"id": ex["id"], "reason": ex["reason"]}
+            for ex in examples if not ex["safe"]
+        ],
+    }
+
+    try:
+        full_schema = validate_entity_schema(entity_schema(ADAPTER))
+    except (TypeError, ValueError):
+        full_schema = None
+
+    return {
+        "domain": handle.name,
+        "mode": "domain" if domain_mode else "generic",
+        "loaded_at": handle.loaded_at,
+        "guide_version": guide["guide_version"],
+        "contract_ok": True,
+        "profile": profile,
+        "runtime": {
+            "query_kinds": query_kinds,
+            "apply_kinds": apply_kinds,
+            "declared_capabilities": declared,
+            "other_capabilities": [
+                cap for cap in declared
+                if cap not in query_kinds and cap not in apply_kinds
+            ],
+            "entity_schema": full_schema,
+            # 当前对外服务的本体文件（通用模式下是上传/保存的那一份）
+            "ontology": os.path.basename(
+                getattr(ENGINE, "onto_path", None) or handle.onto_path
+            ),
+            "counts": _runtime_counts(ENGINE),
+            "rules": _rules_summary(handle.rules_report),
+            "graph_groups": graph_group_members(ADAPTER),
+            # 示例题参数下拉的真实候选值；框架不解释 params 的键，只提供值域。
+            "individuals": _runtime_individuals(ENGINE),
+        },
+        "reconcile": reconcile,
+        "examples": examples,
     }
 
 

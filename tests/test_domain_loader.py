@@ -5,6 +5,7 @@
 包内 `from .sub import X` 抛 ImportError。这里用真实子模块验证包语义。
 """
 
+import json
 import os
 import sys
 
@@ -22,6 +23,19 @@ from domains.registry import (  # noqa: E402
 )
 
 _PROBE_NAMES = ("probe", "good", "bad", "nocreator")
+
+GUIDE = {
+    "guide_version": "1",
+    "display_name": "探测领域",
+    "summary": "加载器测试用的最小说明。",
+    "scenarios": [],
+    "covers": ["加载"],
+    "not_covers": [],
+    "capability_notes": {},
+    "constraints": [],
+    "examples": [],
+    "integrations": [],
+}
 
 
 @pytest.fixture(autouse=True)
@@ -73,6 +87,11 @@ def _make_pkg(root, name, *, with_creator=True, init_extra="", sub_value=None):
         lines.append("from .sub import VALUE")
     lines.append(init_extra)
     (pkg / "__init__.py").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # P1-5 起 guide.json 是契约必填：说明文件缺失会先于适配器校验失败，
+    # 这些用例要测的是加载器本身，所以统一补一份最小合规说明。
+    (pkg / "guide.json").write_text(
+        json.dumps(GUIDE, ensure_ascii=False), encoding="utf-8"
+    )
     return pkg
 
 

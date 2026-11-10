@@ -40,6 +40,7 @@ from domains.registry import (
     _purge,
     get_config,
     load_domain,
+    load_domain_guide,
     load_domain_module,
     package_onto_path,
 )
@@ -92,6 +93,19 @@ class DomainHandle:
     @property
     def description(self) -> str:
         return getattr(self.module, "DESCRIPTION", "") or ""
+
+    @property
+    def guide(self) -> dict:
+        """领域包说明文件（加载期已校验；这里按包目录重新读取，失败即契约错误）。
+
+        不缓存在句柄上：说明文件属于包内容，L2 重载会换模块 / 句柄；按需读取
+        让 `guide` 端点与包内文件始终一致。读取失败不会发生在一个已激活的
+        句柄上——加载期已经拒绝过；若有人运行期删文件，端点会明确报错，
+        而不是显示上一个包的内容。
+        """
+        from domains.registry import load_domain_guide
+
+        return load_domain_guide(self.name, self.module)
 
     @property
     def capabilities(self) -> list[str] | None:
@@ -354,6 +368,10 @@ class DomainManager:
         module = load_domain_module(
             name, settings=self.settings, root=self._root, reload=reload
         )
+        # 说明文件先于建引擎校验：不合格的包不该先花一次物化成本，
+        # 报错也应指向"补 guide.json"，而不是被后面的本体 / 规则错误盖住。
+        # 真正的完整契约校验仍在 load_domain 里（这里只是提前一次）。
+        load_domain_guide(name, module)
         onto_path = _onto_of(module) or package_onto_path(
             name, settings=self.settings, root=self._root
         )

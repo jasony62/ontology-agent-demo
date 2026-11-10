@@ -10,6 +10,7 @@ import 任何 reasoner.*"。
 """
 
 import ast
+import json
 import os
 import sys
 from pathlib import Path
@@ -95,6 +96,21 @@ def _make_pkg(root, name, factory_src, extra=""):
         f"NAME = {name!r}\nDESCRIPTION = 'd'\nCAPABILITIES = ()\n"
         + factory_src + "\n" + extra,
         encoding="utf-8")
+    # 说明文件是契约必填：本文件测的是工厂 / 上下文，不测说明格式。
+    guide = {
+        "guide_version": "1",
+        "display_name": name,
+        "summary": "插件测试用最小说明。",
+        "scenarios": [],
+        "covers": ["插件"],
+        "not_covers": [],
+        "capability_notes": {},
+        "constraints": [],
+        "examples": [],
+        "integrations": [],
+    }
+    (pkg / "guide.json").write_text(
+        json.dumps(guide, ensure_ascii=False), encoding="utf-8")
     return pkg
 
 

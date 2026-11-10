@@ -60,6 +60,7 @@ __all__ = [
     "has_key_consistency_warnings",
     "list_domains",
     "load_domain",
+    "load_domain_guide",
     "load_domain_module",
     "package_onto_path",
     "package_shapes_path",
@@ -260,6 +261,50 @@ def _validate_contract(name: str, module: ModuleType) -> None:
             f"领域包 {name!r} 未提供 create_adapter_ctx(ctx)，"
             f"模块 {getattr(module, '__name__', '?')} 不满足最小契约"
         )
+    # 说明文件是契约的一部分，必须在"构建新包"阶段校验（不是页面渲染时）：
+    # 切换是"先装好再换"，校验挂了也不会触碰原运行态。
+    load_domain_guide(name, module)
+
+
+def load_domain_guide(name: str, module: ModuleType) -> dict:
+    """读取并校验领域包的 `guide.json`，返回规范化后的说明。
+
+    与 `ONTO_FILE` / `SHAPES_FILE` 同构：包在 `__init__.py` 里声明
+    `GUIDE_FILE`，缺省为 `guide.json`。解析结果必须落在包内。
+
+    两类失败刻意分开报：
+      - 格式号不认识 → `guide_version` 的问题，修法是补 / 改说明文件；
+      - 槽位缺失 / 类型不符 → 契约问题，修法是对照 SDK 校验函数补齐。
+    两者都不同于 `PLUGIN_API` 不匹配（那是包代码签名问题）——合并成一句
+    "加载失败"会让维护人先去查签名，白折腾一轮。
+    """
+    from ontology_plugin_sdk.protocol import (
+        DEFAULT_GUIDE_FILE,
+        GUIDE_VERSION,
+        DomainGuideError,
+        DomainGuideVersionError,
+        read_domain_guide,
+    )
+
+    pkg_dir = Path(module.__file__).resolve().parent
+    declared = getattr(module, "GUIDE_FILE", DEFAULT_GUIDE_FILE)
+    shown = declared if isinstance(declared, str) else DEFAULT_GUIDE_FILE
+    try:
+        return read_domain_guide(pkg_dir, declared)
+    except DomainGuideVersionError as exc:
+        raise DomainContractError(
+            f"领域包 {name!r} 的说明文件 {shown!r} 格式号不受支持：{exc}；"
+            f"期望 guide_version={GUIDE_VERSION!r}。"
+            f"修法：把该包的说明文件升级 / 退回与当前 SDK 匹配的格式。"
+            f"注意这与 PLUGIN_API 兼容性无关——PLUGIN_API 管包代码能否运行，"
+            f"guide_version 管说明文件能否被可信展示。"
+        ) from exc
+    except DomainGuideError as exc:
+        raise DomainContractError(
+            f"领域包 {name!r} 的说明文件 {shown!r} 不符合契约：{exc}；"
+            f"修法：在该包内补齐 {shown!r}（没有内容的槽位写 [] / {{}}），"
+            f"格式见 ontology_plugin_sdk.protocol.validate_domain_guide。"
+        ) from exc
 
 
 def load_domain(name: str, engine, config=None, *, settings: DomainConfig | None = None):

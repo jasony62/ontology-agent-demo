@@ -27,6 +27,7 @@ NAME = "minimal"
 PLUGIN_API = "1"        # 按哪一版领域插件 API 编写（不写视为 "1"）
 DESCRIPTION = "最小领域：1 个类 + 3 个个体 + 0 个业务方法（图谱导出用框架默认实现）"
 ONTO_FILE = "minimal.owl"
+GUIDE_FILE = "guide.json"      # 使用视角说明：加载期契约校验，空槽位也要显式写出
 
 # 声明即承诺：只有 graph_export。explain 虽由基类提供，但没声明 → 端点视为未提供
 CAPABILITIES = ("graph_export",)

@@ -8,6 +8,7 @@
 用例 import 过了，`sys.modules` 里有没有它根本说明不了问题。
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -208,6 +209,18 @@ def _probe_package(tmp_path, api_version, *, factory=True):
         ]
     (pkg / "__init__.py").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (pkg / "probe.owl").write_text("<rdf:RDF/>\n", encoding="utf-8")
+    (pkg / "guide.json").write_text(json.dumps({
+        "guide_version": "1",
+        "display_name": "API 探测",
+        "summary": "PLUGIN_API 校验用例的最小说明。",
+        "scenarios": [],
+        "covers": ["兼容性"],
+        "not_covers": [],
+        "capability_notes": {},
+        "constraints": [],
+        "examples": [],
+        "integrations": [],
+    }, ensure_ascii=False), encoding="utf-8")
     return root
 
 

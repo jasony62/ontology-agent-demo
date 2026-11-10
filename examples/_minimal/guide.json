@@ -1,0 +1,18 @@
+{
+  "guide_version": "1",
+  "display_name": "最小领域示例",
+  "summary": "1 个类 + 3 个个体 + 0 个业务方法的起手模板：用来验证新领域最少要写多少东西。",
+  "scenarios": [],
+  "covers": [
+    "图谱导出（框架默认实现）"
+  ],
+  "not_covers": [
+    "任何业务推理能力"
+  ],
+  "capability_notes": {
+    "graph_export": "按 config.json 声明的顶层类与分组导出图谱数据。"
+  },
+  "constraints": [],
+  "examples": [],
+  "integrations": []
+}

@@ -23,7 +23,7 @@
 | ---- | ---- | ---- |
 | **OWL 2 RL 推理引擎** | 加载 OWL 本体并物化推理；SPARQL / 类层次 / 个体 / 属性查询 | `scripts/query.py classes --local` |
 | **业务规则 R1–R4** | 能力匹配、任务聚合、依赖传递、合规冲突检测，输出可解释推导链 | `make demo` |
-| **REST API** | 31 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
+| **REST API** | 32 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
 | **MCP Server** | 31 个工具（领域业务 9 + 建模/质量 7 + 引擎通用 15），智能体（豆包等）一行配置接入 | `make mcp` |
 | **图谱工作台** | React 工作台：三档视图图谱、OWL 源码查看、导入导出、图谱右侧编辑框（草图预览）+ 在线编辑（写盘） | `npm run dev` |
 | **CLI 双通道** | HTTP 优先、失败回退内嵌引擎（`--local` 零依赖） | `python scripts/query.py -h` |
@@ -121,6 +121,7 @@ bash scripts/backup.sh        # 核心 .owl + extensions/ → backups/<时间戳
 `frontend/app/` 是基于 [Microsoft Ontology-Playground](https://github.com/microsoft/Ontology-Playground)（MIT）代码实现的功能完整前端：
 
 - **图谱工作台**：Cytoscape.js 交互图谱，三档视图——只看原始的 / 显示推理全貌（默认）/ 只看新推出的；推理新增边以虚线+独立色标注
+- **当前领域单页**：与图谱工作台平级的正式页面，按六问回答「这个包能替我做什么」——定位 / 覆盖范围 / 明确不做什么 / 能力用途（来自 `guide.json`）+ 运行态实测 + 对账；示例题可直接试跑（只读）或给出写盘请求预览，全部数据来自 `GET /api/domains/current/guide`
 - **OWL 源码**：RDF/XML 源码语法高亮只读查看，可下载原始文件；编辑请用「在线编辑本体定义」
 - **导入 / 导出**：拖拽上传 `.owl`/`.rdf` 解析展示；导出当前模型（RDF/XML）或物化后本体（Turtle / RDF/XML）
 - **图谱右侧编辑框（草图预览）**：点图谱上的类 / 关系 / 个体，右侧同一块 panel 直接改；结构边按父类 / 所属类型字段重算；顶部常驻「仅预览 · 不写入系统、不进查询与推理结果」；画布工具栏可新建类 / 关系，或「添加事实」（先定短名与类型，属性值只写进导出文件）。要写入本体定义请用「在线编辑本体定义」
@@ -186,6 +187,7 @@ npm run build               # 产物 frontend/app/dist
 | GET  | `/api/health`      | 健康检查                                                         |
 | GET  | `/api/domains/current/ontology`    | 本体结构（图谱渲染数据）                                                 |
 | GET  | `/api/domains/current/ontology/graph-groups` | 领域声明的图谱分组 `{groups: [{name, class, label, members}]}`；前端据此上色与出图例，未声明时为空数组 |
+| GET  | `/api/domains/current/guide` | 使用视角说明（`guide.json` 声明 + 运行态实测 + 对账）；当前领域页唯一数据源，含 `examples[].safe` 与 `runtime.mcp` |
 | POST | `/api/domains/current/capabilities/query` | `{type, task, agent, params}`；纯读，不改图、不落盘、可安全重试。内置 `capability_match` / `orchestrate`，领域可通过 `QUERY_HANDLERS` 追加只读能力（参数放 `params`） |
 | POST | `/api/domains/current/capabilities/apply` | `{type, task, agent, persist, params}`；会改图，`persist=true` 落 `extensions/`，不保证幂等。内置 `assign`，领域可通过 `APPLY_HANDLERS` 追加变更能力 |
 | GET  | `/api/domains/current/entities/schema` | 领域自声明的实体字段形状（`ENTITY_SCHEMA`），先看它再 POST `/api/domains/current/entities` |

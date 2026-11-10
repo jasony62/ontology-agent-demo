@@ -9,9 +9,10 @@
 |---|---|---|
 | OWL 2 RL 推理引擎 | REST API / CLI / MCP | [02 推理与查询](02-推理与查询.md) |
 | 业务规则 R1–R4 + 可解释推导链 / 结构化证明 | `/api/domains/current/capabilities/query`、`/api/domains/current/capabilities/apply`、`explain`、MCP | [02 推理与查询](02-推理与查询.md) |
-| REST API（31 个端点） | `http://127.0.0.1:8000/api-docs`（在线文档）/ `/docs`（Swagger UI） | [02 推理与查询](02-推理与查询.md) |
+| REST API（32 个端点） | `http://127.0.0.1:8000/api-docs`（在线文档）/ `/docs`（Swagger UI） | [02 推理与查询](02-推理与查询.md) |
 | CLI 双通道（query.py / ontologyctl） | `scripts/` | [02 推理与查询](02-推理与查询.md) / [04 运维](04-运维与本体管理.md) |
 | 图谱工作台（三档视图 + 右侧编辑框 + 在线编辑） | `http://127.0.0.1:8000`（前端） | [03 前端与 MCP](03-前端与MCP.md) |
+| 当前领域使用视角（六问 + 示例题试跑） | `http://127.0.0.1:8000`（页头「当前领域」） | [03 前端与 MCP](03-前端与MCP.md) |
 | MCP Server（智能体接入） | `http://127.0.0.1:9000/mcp` | [03 前端与 MCP](03-前端与MCP.md) |
 | 管线质量门禁（G1–G4 过闸） | MCP `pipeline_gate` | [03 前端与 MCP](03-前端与MCP.md) / [06 二次开发](06-二次开发指南.md) |
 | Agent 调用护栏（预算/循环/缓存/审计） | MCP `guard_status` + `guard_config.json` | [03 前端与 MCP](03-前端与MCP.md) / [04 运维](04-运维与本体管理.md) |

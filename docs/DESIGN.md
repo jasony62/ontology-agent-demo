@@ -205,6 +205,7 @@ domains/<name>/
 ├── __init__.py            # 纯导出：转发 adapter / mcp 的符号（领域包门面）
 ├── adapter.py             # 业务逻辑：create_adapter_ctx + 适配器类（必暴露 NAME/DESCRIPTION/ONTO_FILE）
 ├── config.json            # 领域语义配置（semantic 块）
+├── guide.json             # 使用视角说明（契约必填：定位 / 覆盖 / 能力用途 / 示例题 / 接入；加载期校验）
 ├── derivation.json        # 推导链配置（templates + derivations 块）
 ├── mcp.py                 # 领域 MCP 工具注册（register_tools(server, adapter)）
 └── <name>_ontology.owl    # 本体定义（Protege 可编辑）
@@ -215,6 +216,10 @@ domains/<name>/
 > 且该包不依赖宿主。宿主侧的 `reasoner/protocol.py` / `semantic.py` / `derivation.py` /
 > `abox.py` / `plugin.py` 只剩 re-export，是兼容层而非事实源。领域包另需声明
 > `PLUGIN_API = "1"`，加载器比对主版本后决定是否加载。
+>
+> `guide.json` 是**契约必填**（`GUIDE_FILE` 缺省即该文件）：加载期与安装期都校验，缺槽位 /
+> 未知字段（含包自填 `safe`）/ `guide_version` 不认识都会整包拒绝。字段表与最小样例见
+> [`docs/guide/08-扩展新领域.md`](guide/08-扩展新领域.md) 的「guide.json 字段表」。
 
 ### 5.2 适配器接口约定（`adapter.py` 必须暴露）
 
@@ -359,6 +364,7 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 | 方法 | 路径 | 请求 | 说明 |
 |---|---|---|---|
 | GET | `/api/domains/current/ontology` | — | 图谱数据（类/个体/边） |
+| GET | `/api/domains/current/guide` | — | 使用视角说明：`profile`（`guide.json` 原样）+ `runtime`（能力 / 实体 / MCP / 计数 / 规则实测）+ `reconcile`（对账）+ `examples`（`safe` 由框架判定） |
 | GET | `/api/domains/current/ontology/graph-groups` | — | 领域声明的图谱分组（`name` / `class` / `label` / `members`），前端据此上色与出图例 |
 | POST | `/api/domains/current/capabilities/query` | `{kind: capability_match\|orchestrate, params: {task}}` | 领域查询（纯读，不改图） |
 | POST | `/api/domains/current/capabilities/apply` | `{kind: assign, params: {task, agent}, persist?}` | 领域变更（改图，`persist` 落盘） |
@@ -368,6 +374,8 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 | POST | `/api/domains/current/consistency` | — | 一致性 / 合规冲突 |
 
 > 能力端点的请求模型顶层只认 `kind` / `params` / `persist`：`task` / `agent` 属于 agent_task 示例本体的形状，已收进 `params`（内置能力同样如此：`capability_match` / `orchestrate` 填 `params.task`，`assign` 填 `params.task` + `params.agent`）。新增能力参数一律进 `params`，不再往框架请求模型加字段。
+
+> `GET /api/domains/current/guide` 是「当前领域」页的唯一数据源，响应刻意分三段：`profile` 是领域包声明（`guide.json` 原样，人话），`runtime` 是框架按当前句柄实时算的事实（能力清单、实体字段、MCP 参数、计数、规则报告、图谱分组），`reconcile` 是声明与实测的偏差（说明多写 / 少写 / 示例题不可试跑）。`examples[].safe` 只能由框架判定，领域包不得自填。
 
 ### 8.2 通用端点（走引擎，与本体无关，任意 .owl 可用）
 
@@ -550,6 +558,7 @@ adapter = create_adapter_ctx(ctx)   # 领域包唯一工厂：create_adapter_ctx
 │       ├── __init__.py             #   纯导出（门面：NAME/DESCRIPTION/ONTO_FILE/适配器符号）
 │       ├── adapter.py              #   适配器（R4 校验 + 5 查询 + 图谱；R2 在规则层）
 │       ├── config.json             #   语义配置（类角色映射）
+│       ├── guide.json              #   使用视角说明（契约必填，加载期校验）
 │       ├── derivation.json         #   推导链配置（文案 + 规则）
 │       ├── mcp.py                  #   领域 MCP 工具注册（16 个：业务 9 + 建模/质量 7）
 │       ├── rules/                  #   SHACL 规则层（R2 委派 / R5 / R6，加载流水线执行）

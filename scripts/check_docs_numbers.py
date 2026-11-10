@@ -125,6 +125,29 @@ def main() -> int:
                 if got != expected:
                     failures.append(f"{rel}: {label} 写 {got}，实际 {expected}")
 
+    # 端点总数：从 OpenAPI 直接算。新增端点后若文档仍写旧数字，
+    # 这里会像本体快照一样红——它同样是可从代码推导的漂移，不该靠人眼。
+    _METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+    spec = client.get("/openapi.json").json()
+    endpoint_count = sum(
+        1 for item in spec["paths"].values()
+        for method in item if method in _METHODS
+    )
+    for rel in (
+        "README.md",
+        "CONTRIBUTING.md",
+        "docs/guide/06-MCP接入智能体.md",
+        "docs/manual/README.md",
+        "docs/manual/02-推理与查询.md",
+    ):
+        for match in re.finditer(r"(\d+) 个端点", read(rel)):
+            checked += 1
+            got = int(match.group(1))
+            if got != endpoint_count:
+                failures.append(
+                    f"{rel}: 端点总数写 {got}，实际 {endpoint_count}"
+                )
+
     if failures:
         print(f"发现 {len(failures)} 处过期数字（共校验 {checked} 处）：")
         for item in failures:

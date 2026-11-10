@@ -55,6 +55,8 @@ P1-1 起契约**强制**：宿主加载器（本仓库里是 `domains.registry.l
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from rdflib import OWL, RDF, RDFS, Literal, URIRef
@@ -74,6 +76,12 @@ __all__ = [
     "QUERY_HANDLERS_ATTR",
     "APPLY_HANDLERS_ATTR",
     "ENTITY_SCHEMA_ATTR",
+    "DEFAULT_GUIDE_FILE",
+    "GUIDE_VERSION",
+    "DomainGuideError",
+    "DomainGuideVersionError",
+    "read_domain_guide",
+    "validate_domain_guide",
     "query_handlers",
     "apply_handlers",
     "conflicting_handlers",
@@ -298,6 +306,211 @@ def supports(adapter: Any, capability: str) -> bool:
     if callable(getattr(adapter, capability, None)):
         return True
     return capability in query_handlers(adapter) or capability in apply_handlers(adapter)
+
+
+# ---------------------------------------------------------------- 领域说明文件
+#
+# `guide.json` 与 `CAPABILITIES`（声明即承诺）、`ENTITY_SCHEMA`（声明即校验）
+# 同级：它不是帮助文档，而是**领域包契约**。框架靠它回答"这个包能替我做什么"，
+# 页面不读包内文件、不拼多个端点、不硬编码任何领域文案。
+#
+# 格式演化单独由 `guide_version` 管，与 SDK 的 `PLUGIN_API` 相互独立：
+# PLUGIN_API 管的是包代码能否运行（签名兼容性），guide_version 管的是说明
+# 文件能否被可信展示。两者都可能拒绝加载，但报错与修法不同。
+DEFAULT_GUIDE_FILE = "guide.json"
+GUIDE_VERSION = "1"
+
+_GUIDE_SLOTS = (
+    "guide_version",
+    "display_name",
+    "summary",
+    "scenarios",
+    "covers",
+    "not_covers",
+    "capability_notes",
+    "constraints",
+    "examples",
+    "integrations",
+)
+_EXAMPLE_SLOTS = (
+    "id",
+    "question",
+    "capability",
+    "params",
+    "answer_hint",
+    "via",
+)
+
+
+class DomainGuideError(ValueError):
+    """领域说明文件不满足契约（缺槽位 / 类型不符 / 内容为空）。"""
+
+
+class DomainGuideVersionError(DomainGuideError):
+    """说明文件的 `guide_version` 不是当前 SDK 认识的格式。
+
+    单独一类是为了让加载器把"说明文件格式不匹配"与"包代码 PLUGIN_API 不兼容"
+    写成两种修法：前者补 / 改 guide.json，后者升级包或退回匹配的 SDK。
+    """
+
+
+def _guide_text(value: Any, slot: str) -> str:
+    if not isinstance(value, str):
+        raise DomainGuideError(f"槽位 {slot} 应为字符串，实际 {type(value).__name__}")
+    if not value.strip():
+        raise DomainGuideError(f"槽位 {slot} 不能为空字符串")
+    return value
+
+
+def _guide_list(value: Any, slot: str, *, min_items: int = 0) -> list[str]:
+    if not isinstance(value, list):
+        raise DomainGuideError(f"槽位 {slot} 应为字符串数组，实际 {type(value).__name__}")
+    if len(value) < min_items:
+        raise DomainGuideError(f"槽位 {slot} 至少需要 {min_items} 条，实际 {len(value)} 条")
+    out: list[str] = []
+    for i, item in enumerate(value):
+        if not isinstance(item, str):
+            raise DomainGuideError(
+                f"槽位 {slot}[{i}] 应为字符串，实际 {type(item).__name__}"
+            )
+        if not item.strip():
+            raise DomainGuideError(f"槽位 {slot}[{i}] 不能为空字符串")
+        out.append(item)
+    return out
+
+
+def validate_domain_guide(raw: Any) -> dict:
+    """校验并规范化 `guide.json`，不合法抛 `DomainGuideError`。
+
+    "空"是合法声明，"漏写"是契约违约——两者必须可区分：`examples: []` 表示
+    "该包未提供示例题"，页面据此显示正式空态；而整个 `examples` 键缺失会被
+    拒绝。因此所有槽位都必须显式出现。
+
+    **不校验能力名是否存在**：题库里可能有框架内置查询工具（如 query_sparql），
+    它们不属于本包 `CAPABILITIES`。声明与实测的偏差交给 `guide` 端点的
+    `reconcile` 显示，不在加载期误杀。
+
+    **也不接受**包自声明"能否页内试跑"：`safe` 只能由框架按运行态只读能力
+    清单判定，写进 guide.json 会被当作未知槽位拒绝。
+    """
+    if not isinstance(raw, dict):
+        raise DomainGuideError(f"guide.json 顶层应为对象，实际 {type(raw).__name__}")
+
+    missing = [slot for slot in _GUIDE_SLOTS if slot not in raw]
+    if missing:
+        raise DomainGuideError(
+            f"缺少必填槽位：{'、'.join(missing)}；"
+            f"没有内容的槽位也要显式写成 [] / {{}}"
+        )
+    unknown = sorted(set(raw) - set(_GUIDE_SLOTS))
+    if unknown:
+        raise DomainGuideError(
+            f"未知槽位：{'、'.join(unknown)}；"
+            f"能否页内试跑（safe）由框架按运行态判定，领域包不得自行填写"
+        )
+
+    version = raw["guide_version"]
+    if not isinstance(version, str) or not version.strip():
+        raise DomainGuideVersionError(
+            f"guide_version 应为非空字符串，实际 {version!r}；当前 SDK 认识 {GUIDE_VERSION!r}"
+        )
+    version = version.strip()
+    if version != GUIDE_VERSION:
+        raise DomainGuideVersionError(
+            f"读到 guide_version={version!r}，当前 SDK 只认识 {GUIDE_VERSION!r}"
+        )
+
+    if not isinstance(raw["examples"], list):
+        raise DomainGuideError(
+            f"槽位 examples 应为对象数组，实际 {type(raw['examples']).__name__}"
+        )
+
+    examples: list[dict] = []
+    seen_ids: set[str] = set()
+    for index, item in enumerate(raw["examples"]):
+        if not isinstance(item, dict):
+            raise DomainGuideError(
+                f"examples[{index}] 应为对象，实际 {type(item).__name__}"
+            )
+        missing_ex = [slot for slot in _EXAMPLE_SLOTS if slot not in item]
+        if missing_ex:
+            raise DomainGuideError(
+                f"examples[{index}] 缺少必填字段：{'、'.join(missing_ex)}"
+            )
+        unknown_ex = sorted(set(item) - set(_EXAMPLE_SLOTS))
+        if unknown_ex:
+            raise DomainGuideError(
+                f"examples[{index}] 含未知字段：{'、'.join(unknown_ex)}；"
+                f"能否页内试跑（safe）由框架判定，领域包不得自行填写"
+            )
+        example_id = _guide_text(item["id"], f"examples[{index}].id")
+        if example_id in seen_ids:
+            raise DomainGuideError(f"examples 里的 id 重复：{example_id}")
+        seen_ids.add(example_id)
+        params = item["params"]
+        if not isinstance(params, dict):
+            raise DomainGuideError(
+                f"examples[{index}].params 应为对象，实际 {type(params).__name__}"
+            )
+        examples.append({
+            "id": example_id,
+            "question": _guide_text(item["question"], f"examples[{index}].question"),
+            "capability": _guide_text(item["capability"], f"examples[{index}].capability"),
+            # params 是**领域参数容器**：框架原样透传，不解析、不校验键名。
+            "params": dict(params),
+            "answer_hint": _guide_text(item["answer_hint"], f"examples[{index}].answer_hint"),
+            "via": _guide_text(item["via"], f"examples[{index}].via"),
+        })
+
+    notes = raw["capability_notes"]
+    if not isinstance(notes, dict):
+        raise DomainGuideError(
+            f"槽位 capability_notes 应为对象，实际 {type(notes).__name__}"
+        )
+    normalized_notes: dict[str, str] = {}
+    for key, value in notes.items():
+        if not isinstance(key, str) or not key.strip():
+            raise DomainGuideError("capability_notes 的键不能为空")
+        normalized_notes[key] = _guide_text(value, f"capability_notes[{key}]")
+
+    return {
+        "guide_version": version,
+        "display_name": _guide_text(raw["display_name"], "display_name"),
+        "summary": _guide_text(raw["summary"], "summary"),
+        "scenarios": _guide_list(raw["scenarios"], "scenarios"),
+        "covers": _guide_list(raw["covers"], "covers", min_items=1),
+        "not_covers": _guide_list(raw["not_covers"], "not_covers"),
+        "capability_notes": normalized_notes,
+        "constraints": _guide_list(raw["constraints"], "constraints"),
+        "examples": examples,
+        "integrations": _guide_list(raw["integrations"], "integrations"),
+    }
+
+
+def read_domain_guide(package_dir: str | Path, declared: Any = None) -> dict:
+    """读取并校验领域包内的说明文件。
+
+    `declared` 是领域包 `__init__.py` 的 `GUIDE_FILE`；缺省为 `guide.json`，
+    与 `ONTO_FILE` / `SHAPES_FILE` 的读取方式同构。解析结果必须落在包内——
+    领域包不该通过声明把包外文件带进"能力说明"。
+    """
+    base = Path(package_dir).resolve()
+    name = DEFAULT_GUIDE_FILE if declared is None else declared
+    if not isinstance(name, str) or not name.strip():
+        raise DomainGuideError(f"GUIDE_FILE 应是非空字符串，实际 {name!r}")
+    rel = name.strip()
+    target = (base / rel).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError as exc:
+        raise DomainGuideError(f"GUIDE_FILE 指向包外：{rel!r} → {target}") from exc
+    if not target.is_file():
+        raise DomainGuideError(f"找不到说明文件 {rel!r}（解析为 {target}）")
+    try:
+        raw = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DomainGuideError(f"说明文件 {rel!r} 无法解析为 JSON：{exc}") from exc
+    return validate_domain_guide(raw)
 
 
 # ------------------------------------------------------- 实体 schema 与通用创建

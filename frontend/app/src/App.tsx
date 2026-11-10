@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from './store/appStore';
 import { api } from './api/client';
-import type { DomainInfo, GraphData } from './api/client';
+import type { DomainGuide, DomainInfo, GraphData } from './api/client';
 import { parseRDF } from './lib/rdf/parser';
 import { sameLegendFocus } from './lib/graphGroups';
 import type { LegendFocus } from './lib/graphGroups';
@@ -17,7 +17,7 @@ import ImportModal from './components/ImportModal';
 import ExportDialog from './components/ExportDialog';
 import CreateElementBar from './components/CreateElementBar';
 import OntologyEditor from './components/OntologyEditor';
-import ServiceGuideModal from './components/ServiceGuideModal';
+import DomainGuidePage from './components/DomainGuidePage';
 import WorkspaceSplit from './components/WorkspaceSplit';
 import type { WorkspaceTab } from './components/WorkspaceSplit';
 import { useEditorStore } from './store/editorStore';
@@ -44,7 +44,14 @@ export default function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
+  // 两个平级页面：图谱工作台 / 当前领域（正式单页，不用弹框）
+  const [page, setPage] = useState<'graph' | 'guide'>(
+    () => (window.location.hash === '#guide' ? 'guide' : 'graph'),
+  );
+  // 当前领域说明的唯一数据源：随 /api/domains 一起在 loadWorkspace 中刷新
+  const [guide, setGuide] = useState<DomainGuide | null>(null);
+  const [guideError, setGuideError] = useState<string | null>(null);
+  const [guideLoading, setGuideLoading] = useState(false);
   // 工作区右侧编辑区：只有一个「在线编辑」Tab，mounted 决定是否已挂载（首次打开才挂载）
   const [rightTab, setRightTab] = useState<WorkspaceTab | null>(null);
   const [editorMounted, setEditorMounted] = useState(false);
@@ -161,6 +168,18 @@ export default function App() {
     } catch {
       setDomainInfo(null);
     }
+    // 当前领域说明：声明 + 实测 + 对账一次拿到。失败时清空而不是拿上一次
+    // 缓存当现状——换包后若接口不可用，页面必须明确说"读不到"。
+    setGuideLoading(true);
+    try {
+      setGuide(await api.guide());
+      setGuideError(null);
+    } catch (e) {
+      setGuide(null);
+      setGuideError(`无法读取当前领域信息：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setGuideLoading(false);
+    }
   }, [setBackendOk, setMaterialized, setSource, setOntology, setGraphData, setGraphGroups, setError, setOntologyMode]);
 
   useEffect(() => {
@@ -214,8 +233,23 @@ export default function App() {
       <header className="app-header">
         <h1>本体图谱工作台</h1>
         <span className="app-sub">OWL 2 RL 推理 API</span>
+        {/* 两个平级入口：内容区整页替换，不弹框、不加遮罩 */}
+        <nav className="app-nav" aria-label="页面切换">
+          <button
+            className={page === 'graph' ? 'active' : ''}
+            onClick={() => { setPage('graph'); window.history.replaceState(null, '', window.location.pathname + window.location.search); }}
+          >
+            图谱工作台
+          </button>
+          <button
+            className={page === 'guide' ? 'active' : ''}
+            onClick={() => { setPage('guide'); window.history.replaceState(null, '', '#guide'); }}
+          >
+            当前领域
+          </button>
+        </nav>
         {/* 领域包切换：后端 L3 原子切换（失败保持旧领域），前端只负责重拉全量数据 */}
-        <div className="domain-switch" title={domainInfo?.description ?? '当前领域包（切换不落盘，重启服务回默认领域）'}>
+        <div className="domain-switch" title={guide?.profile.summary ?? domainInfo?.description ?? '当前领域包（切换不落盘，重启服务回默认领域）'}>
           <span className="domain-label">领域</span>
           <select
             value={domainInfo?.current ?? ''}
@@ -240,6 +274,11 @@ export default function App() {
               <option value="">—</option>
             )}
           </select>
+          {guide && (
+            <span className="domain-display" title={guide.profile.summary}>
+              {guide.profile.display_name} · {guide.profile.summary}
+            </span>
+          )}
           <button
             className="secondary domain-reload"
             disabled={domainBusy || !domainInfo}
@@ -256,7 +295,6 @@ export default function App() {
           <button onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>
           {/* 编辑入口只在工作区：右侧面板 Tab 条 / 40px 图标条 / 窄屏标签页，页头不再重复一份 */}
           <a className="toolbar-link secondary" href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
-          <button className="secondary" onClick={() => setGuideOpen(true)}>服务能力</button>
         </div>
         <span className={`health ${backendOk ? 'ok' : ''}`}>{backendOk ? '后端已连接' : '后端未连接'}</span>
         {ontologyMode === 'generic' && (
@@ -268,61 +306,71 @@ export default function App() {
 
       <main className="app-main">
         {error && <div className="error-banner">{error}</div>}
-        {ontologyMode === 'generic' && (
-          <div className="mode-banner">
-            当前为非默认本体（通用模式）：领域推理（能力匹配 / 任务编排 / 合规冲突检测）不可用；图谱 / 物化 / SPARQL 不受影响。重启服务可恢复默认本体。
-          </div>
-        )}
-        {/* #55：推理提示横幅——Inspector 能给出依据后，才敢说「点任意虚线看依据」 */}
-        <InferenceNotice />
-
-        <WorkspaceSplit
-          graph={(
-            <div className="panel workspace-graph">
-              <div className="graph-row">
-                <div className="graph-col">
-                  <GraphErrorBoundary>
-                    <GraphView
-                      viewMode={viewMode}
-                      asserted={viewMode === 'diff' ? null : graphData}
-                      inferred={materialized.inferred}
-                      groups={graphGroups}
-                      focus={focus}
-                      selectedId={selectedId}
-                      issueLevels={issueLevels}
-                      toolbarLeading={
-                        <>
-                          <ViewModeToggle />
-                          {/* 恢复按钮与切换器并列但在组外：三格是互斥视图，不能混进第四个按钮 */}
-                          <NoticeRestoreButton />
-                          {/* D9：新建入口常驻画布工具栏，不依赖选中态 */}
-                          <CreateElementBar />
-                        </>
-                      }
-                      onSelect={(id) => setSelectedId(id)}
-                    />
-                  </GraphErrorBoundary>
-                </div>
-                <div className="graph-side">
-                  <GraphSidePanel focus={focus} onToggleFocus={toggleFocus} />
-                </div>
+        {page === 'guide' ? (
+          <DomainGuidePage
+            guide={guide}
+            error={guideError}
+            loading={guideLoading}
+            onRetry={() => void loadWorkspace()}
+          />
+        ) : (
+          <>
+            {ontologyMode === 'generic' && (
+              <div className="mode-banner">
+                当前为非默认本体（通用模式）：领域推理（能力匹配 / 任务编排 / 合规冲突检测）不可用；图谱 / 物化 / SPARQL 不受影响。重启服务可恢复默认本体。
               </div>
-            </div>
-          )}
-          activeTab={rightTab}
-          onOpenTab={() => void openEditor()}
-          onCloseTab={closeRightPane}
-          dirty={{ editor: editorDirty }}
-          panes={{
-            // key 跟着本体文件走：切领域 / 重载本体后重建，避免上一个本体的草稿被带过来
-            editor: editorMounted ? <OntologyEditor key={sourceName} /> : null,
-          }}
-        />
+            )}
+            {/* #55：推理提示横幅——Inspector 能给出依据后，才敢说「点任意虚线看依据」 */}
+            <InferenceNotice />
+
+            <WorkspaceSplit
+              graph={(
+                <div className="panel workspace-graph">
+                  <div className="graph-row">
+                    <div className="graph-col">
+                      <GraphErrorBoundary>
+                        <GraphView
+                          viewMode={viewMode}
+                          asserted={viewMode === 'diff' ? null : graphData}
+                          inferred={materialized.inferred}
+                          groups={graphGroups}
+                          focus={focus}
+                          selectedId={selectedId}
+                          issueLevels={issueLevels}
+                          toolbarLeading={
+                            <>
+                              <ViewModeToggle />
+                              {/* 恢复按钮与切换器并列但在组外：三格是互斥视图，不能混进第四个按钮 */}
+                              <NoticeRestoreButton />
+                              {/* D9：新建入口常驻画布工具栏，不依赖选中态 */}
+                              <CreateElementBar />
+                            </>
+                          }
+                          onSelect={(id) => setSelectedId(id)}
+                        />
+                      </GraphErrorBoundary>
+                    </div>
+                    <div className="graph-side">
+                      <GraphSidePanel focus={focus} onToggleFocus={toggleFocus} />
+                    </div>
+                  </div>
+                </div>
+              )}
+              activeTab={rightTab}
+              onOpenTab={() => void openEditor()}
+              onCloseTab={closeRightPane}
+              dirty={{ editor: editorDirty }}
+              panes={{
+                // key 跟着本体文件走：切领域 / 重载本体后重建，避免上一个本体的草稿被带过来
+                editor: editorMounted ? <OntologyEditor key={sourceName} /> : null,
+              }}
+            />
+          </>
+        )}
       </main>
 
       {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
-      {guideOpen && <ServiceGuideModal onClose={() => setGuideOpen(false)} />}
       {sourceOpen && <SourceView onClose={() => setSourceOpen(false)} />}
     </div>
   );

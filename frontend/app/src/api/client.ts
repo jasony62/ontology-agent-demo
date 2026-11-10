@@ -127,6 +127,103 @@ export interface DomainSwitchResult {
   triples: number;
 }
 
+/** guide.json 里的示例题声明（不含框架判定的 safe / endpoint） */
+export interface GuideExampleDeclaration {
+  id: string;
+  question: string;
+  capability: string;
+  /** 领域参数容器：原样透传给能力请求，前端不解释键名 */
+  params: Record<string, unknown>;
+  answer_hint: string;
+  via: string;
+}
+
+/** 示例题视图：声明 + 框架按运行态判定的「能否页内试跑」 */
+export interface GuideExample extends GuideExampleDeclaration {
+  /** safe=true 时指向只读能力查询端点；false 时为 null */
+  endpoint: string | null;
+  safe: boolean;
+  reason: string | null;
+}
+
+export interface GuideEntityField {
+  name: string;
+  property: string;
+  kind: 'literal' | 'node' | string;
+  type: string;
+  many: boolean;
+  required: boolean;
+}
+
+export interface GuideEntitySchema {
+  class: string;
+  id_field: string;
+  label_field: string | null;
+  fields: GuideEntityField[];
+}
+
+export interface GuideRuntime {
+  /** 当前实际可调用的只读能力名（POST capabilities/query） */
+  query_kinds: string[];
+  /** 当前实际可调用的变更能力名（POST capabilities/apply） */
+  apply_kinds: string[];
+  /** 领域 CAPABILITIES 声明的全部能力（含专用端点 / 仅 MCP） */
+  declared_capabilities: string[];
+  /** 声明了但没有注册进读表 / 写表的能力（专用端点或仅 MCP） */
+  other_capabilities: string[];
+  entity_schema: GuideEntitySchema | null;
+  /** 当前对外服务的本体文件名（通用模式下是上传 / 保存的那一份） */
+  ontology: string;
+  counts: {
+    triples: number;
+    asserted: number;
+    inferred: number;
+    classes: number;
+    individuals: number;
+  };
+  rules: {
+    ok: boolean | null;
+    total_derived: number | null;
+    exceeded_iterations: boolean | null;
+    elapsed_ms: number | null;
+    materialize_ms: number | null;
+    files: { file: string; derived: number | null; error: string | null }[];
+    note: string | null;
+  } | null;
+  graph_groups: GraphGroup[];
+  /** 当前图里的个体短名：示例题参数下拉的真实候选值 */
+  individuals: string[];
+}
+
+export interface GuideReconcile {
+  notes_without_capability: { capability: string; note: string }[];
+  capabilities_without_note: string[];
+  unavailable_examples: { id: string; reason: string | null }[];
+}
+
+/** GET /api/domains/current/guide：当前领域「能替我做什么」的唯一真源 */
+export interface DomainGuide {
+  domain: string;
+  mode: 'domain' | 'generic';
+  loaded_at: string;
+  guide_version: string;
+  contract_ok: boolean;
+  profile: {
+    display_name: string;
+    summary: string;
+    scenarios: string[];
+    covers: string[];
+    not_covers: string[];
+    capability_notes: Record<string, string>;
+    constraints: string[];
+    examples: GuideExampleDeclaration[];
+    integrations: string[];
+  };
+  runtime: GuideRuntime;
+  reconcile: GuideReconcile;
+  examples: GuideExample[];
+}
+
 export const api = {
   health: () => request<Record<string, unknown>>('/api/health'),
 
@@ -197,4 +294,18 @@ export const api = {
 
   /** L2 同包重载：重读领域代码（adapter.py）+ 重建引擎，改领域代码后用它 */
   reloadDomain: () => request<DomainSwitchResult>('/api/domains/reload', { method: 'POST' }),
+
+  /**
+   * 当前领域使用说明（唯一出口）：声明 + 运行态实测 + 对账 + 示例题。
+   * 只读；换包成功后重拉一次即可整体替换，不缓存跨包数据。
+   */
+  guide: () => request<DomainGuide>('/api/domains/current/guide'),
+
+  /** 发一次只读能力查询（示例题「用示例问一次」）。永不改图、不落盘。 */
+  queryCapability: (kind: string, params: Record<string, unknown>) =>
+    request<Record<string, unknown>>('/api/domains/current/capabilities/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind, params }),
+    }),
 };

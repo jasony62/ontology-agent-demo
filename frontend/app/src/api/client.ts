@@ -174,6 +174,15 @@ export interface GuideRuntime {
   entity_schema: GuideEntitySchema | null;
   /** 当前对外服务的本体文件名（通用模式下是上传 / 保存的那一份） */
   ontology: string;
+  /** MCP 接入参数（框架级约定；端口来自运行态配置，领域名随当前句柄变化） */
+  mcp: {
+    transport: string;
+    url: string;
+    domain: string;
+    port: number;
+    start_command: string;
+    stdio_command: string;
+  };
   counts: {
     triples: number;
     asserted: number;

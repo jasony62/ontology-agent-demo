@@ -605,6 +605,52 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
             ) : (
               <div className="guide-empty-inline">该包未提供接入说明</div>
             )}
+
+            <h4 className="guide-subhead">MCP 接入（智能体自动发现工具）</h4>
+            <p className="guide-section-hint">
+              MCP Server 自带引擎，不需要先启动 REST API；工具随当前领域注册。
+              MCP 不做领域热切换，换领域请用 <code>--domain</code> 重启。
+            </p>
+            <div className="guide-mcp-grid">
+              <div className="guide-card">
+                <h4>Streamable HTTP（豆包等连接器）</h4>
+                <p className="guide-muted">
+                  连接器传输类型选 HTTP，URL 填 <code>{runtime.mcp.url}</code>。
+                </p>
+                <CopyBlock code={`# 启动 MCP Server\n${runtime.mcp.start_command}`} />
+                <CopyBlock
+                  code={pretty({
+                    mcpServers: {
+                      'ontology-agent-demo': {
+                        type: 'http',
+                        url: runtime.mcp.url,
+                      },
+                    },
+                  })}
+                  note="通用 MCP 客户端配置；字段名以客户端为准（部分客户端用 transport 替代 type）"
+                />
+              </div>
+              <div className="guide-card">
+                <h4>stdio（本地 MCP 客户端）</h4>
+                <CopyBlock code={runtime.mcp.stdio_command} />
+                <CopyBlock
+                  code={pretty({
+                    mcpServers: {
+                      'ontology-agent-demo': {
+                        command: '<项目根目录>/.venv/bin/python',
+                        args: [
+                          '<项目根目录>/mcp/mcp_server.py',
+                          '--domain', runtime.mcp.domain,
+                          '--transport', 'stdio',
+                        ],
+                      },
+                    },
+                  })}
+                  note="把 <项目根目录> 换成仓库在本机的绝对路径"
+                />
+              </div>
+            </div>
+
             <h4 className="guide-subhead">最小 curl</h4>
             <CopyBlock
               code={`curl -s -X POST ${window.location.origin}/api/domains/current/capabilities/query \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(firstSafe ? { kind: firstSafe.capability, params: firstSafe.params } : { kind: '<能力名>', params: {} })}'`}

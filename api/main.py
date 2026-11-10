@@ -877,6 +877,24 @@ def domain_guide():
     except (TypeError, ValueError):
         full_schema = None
 
+    # MCP 接入参数是框架级约定（端口来自运行态配置），不属于领域声明；
+    # 放在 runtime 里让「怎么接进去」页跟当前领域一起换，不在前端写死。
+    mcp_port = DOMAINS.settings.server_port("mcp_port", 9000)
+    mcp = {
+        "transport": "streamable-http",
+        "url": f"http://127.0.0.1:{mcp_port}/mcp",
+        "domain": handle.name,
+        "port": mcp_port,
+        "start_command": (
+            f".venv/bin/python mcp/mcp_server.py --domain {handle.name} "
+            f"--port {mcp_port}"
+        ),
+        "stdio_command": (
+            f".venv/bin/python mcp/mcp_server.py --domain {handle.name} "
+            f"--transport stdio"
+        ),
+    }
+
     return {
         "domain": handle.name,
         "mode": "domain" if domain_mode else "generic",
@@ -897,6 +915,7 @@ def domain_guide():
             "ontology": os.path.basename(
                 getattr(ENGINE, "onto_path", None) or handle.onto_path
             ),
+            "mcp": mcp,
             "counts": _runtime_counts(ENGINE),
             "rules": _rules_summary(handle.rules_report),
             "graph_groups": graph_group_members(ADAPTER),

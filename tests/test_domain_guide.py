@@ -216,6 +216,9 @@ def test_guide_endpoint_returns_one_complete_response():
     assert "assign" in body["runtime"]["apply_kinds"]
     assert "graph_export" in body["runtime"]["declared_capabilities"]
     assert body["runtime"]["ontology"].endswith(".owl")
+    assert body["runtime"]["mcp"]["domain"] == body["domain"]
+    assert body["runtime"]["mcp"]["url"].endswith("/mcp")
+    assert body["runtime"]["mcp"]["port"] > 0
     assert "triples" in body["runtime"]["counts"]
     assert isinstance(body["runtime"]["individuals"], list)
 

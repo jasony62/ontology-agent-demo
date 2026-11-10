@@ -1100,3 +1100,5 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-cap-request summary { font-size: var(--fs-xs); color: var(--link); cursor: pointer; }
 .guide-cap-request .code-block { margin-top: 4px; }
 .guide-cap-no-rest { font-size: var(--fs-xs); color: #9aa7b6; }
+.guide-mcp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+.guide-mcp-grid .guide-card { display: flex; flex-direction: column; gap: 8px; }

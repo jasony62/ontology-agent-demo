@@ -43,6 +43,14 @@ const GUIDE: DomainGuide = {
       fields: [{ name: 'name', property: 'name', kind: 'literal', type: 'str', many: false, required: true }],
     },
     ontology: 'agent_task_ontology.owl',
+    mcp: {
+      transport: 'streamable-http',
+      url: 'http://127.0.0.1:9000/mcp',
+      domain: 'agent_task',
+      port: 9000,
+      start_command: '.venv/bin/python mcp/mcp_server.py --domain agent_task --port 9000',
+      stdio_command: '.venv/bin/python mcp/mcp_server.py --domain agent_task --transport stdio',
+    },
     counts: { triples: 100, asserted: 80, inferred: 20, classes: 12, individuals: 23 },
     rules: {
       ok: true, total_derived: 7, exceeded_iterations: false,
@@ -127,6 +135,10 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(text).toContain('说明与实际不符');
     expect(text).toContain('会写盘');
     expect(text).toContain('照着做 · 请求预览');
+    expect(text).toContain('MCP 接入');
+    expect(text).toContain('http://127.0.0.1:9000/mcp');
+    expect(text).toContain('mcpServers');
+    expect(text).toContain('<项目根目录>/.venv/bin/python');
   });
 
   it('只读示例：下拉候选来自 runtime.individuals，换值后请求体同步变化', async () => {

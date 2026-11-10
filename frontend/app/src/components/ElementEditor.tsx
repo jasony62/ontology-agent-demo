@@ -465,7 +465,7 @@ function InstanceForm({ ontology, instance, issues, nameRef, onCommit, onDeleteI
       <IssueList issues={issues} />
       <p className="element-hint">
         属性名从模型已声明的对象 / 数据属性里选；属性值不画在图上，只写进导出文件。
-        新建的示例事实不参与后端推理。
+        新建的事实不参与后端推理。
       </p>
 
       <div className="element-section">

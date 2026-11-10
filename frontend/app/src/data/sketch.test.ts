@@ -54,15 +54,15 @@ describe('草图的唯一 id 与删除清理', () => {
     expect(next.instances).toEqual([]);
   });
 
-  it('新建示例事实带类型，短名冲突时探测空闲 id', () => {
-    const first = createInstance(ontology(), 'order', 'demo_fact', '新示例事实 1');
+  it('新建事实带类型，短名冲突时探测空闲 id', () => {
+    const first = createInstance(ontology(), 'order', 'demo_fact', '新事实 1');
     expect(first.id).toBe('demo_fact');
     const inst = first.ontology.instances!.find((i) => i.id === first.id)!;
     expect(inst.types).toEqual(['order']);
     expect(inst.entityTypeId).toBe('order');
     expect(inst.assertions).toEqual([]);
 
-    const second = createInstance(first.ontology, 'order', 'demo_fact', '新示例事实 2');
+    const second = createInstance(first.ontology, 'order', 'demo_fact', '新事实 2');
     expect(second.id).toBe('demo_fact2');
     const ids = second.ontology.instances!.map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);

@@ -60,7 +60,7 @@ export function createRelationship(o: Ontology): { ontology: Ontology; id: strin
 }
 
 /**
- * 新建一条「示例事实」（图谱草图里的个体）。
+ * 新建一条「事实」（图谱草图里的个体）。
  *
  * 短名 = 个体 id（之后不可改，改短名等于换 IRI）；类型必填——先选类型再落图，
  * 避免出现没有归类边的空圆点。id 仍然探测空闲值，防止调用方漏做重复检查。

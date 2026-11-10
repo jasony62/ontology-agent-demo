@@ -73,12 +73,12 @@ function setInput(el: HTMLInputElement, value: string) {
   });
 }
 
-describe('画布工具栏 · 添加示例事实（#102）', () => {
+describe('画布工具栏 · 添加事实（#102）', () => {
   it('先定短名和类型，落图后自动选中，可撤销一次', () => {
     const el = render();
-    click(button('＋ 添加示例事实'));
+    click(button('＋ 添加事实'));
 
-    expect(el.textContent).toContain('添加一条示例事实');
+    expect(el.textContent).toContain('添加一条事实');
     expect(el.textContent).toContain('只在图谱预览里，不会被系统保存');
 
     setInput(el.querySelector<HTMLInputElement>('.modal input')!, 'demo_fact_1');
@@ -90,13 +90,13 @@ describe('画布工具栏 · 添加示例事实（#102）', () => {
       id: 'demo_fact_1',
       entityTypeId: 'agent',
       types: ['agent'],
-      label: '新示例事实 1',
+      label: '新事实 1',
     });
     expect(state.selectedId).toBe('demo_fact_1');
     expect(state.editorFocusId).toBe('demo_fact_1');
     expect(state.graphData?.nodes.some((n) => n.id === 'demo_fact_1')).toBe(true);
     expect(state.graphData?.edges.some((e) => e.id === 'demo_fact_1--rdf:type--agent')).toBe(true);
-    expect(el.textContent).not.toContain('添加一条示例事实'); // 成功后关闭
+    expect(el.textContent).not.toContain('添加一条事实'); // 成功后关闭
 
     click(button('撤销新建'));
     expect(useAppStore.getState().ontology?.instances).toEqual([]);
@@ -104,7 +104,7 @@ describe('画布工具栏 · 添加示例事实（#102）', () => {
 
   it('短名为空 / 重复时不落图，并给出可读提示', () => {
     const el = render();
-    click(button('＋ 添加示例事实'));
+    click(button('＋ 添加事实'));
     click(button('添加'));
     expect(el.textContent).toContain('短名不能为空');
     expect(useAppStore.getState().ontology?.instances).toEqual([]);
@@ -126,9 +126,9 @@ describe('画布工具栏 · 添加示例事实（#102）', () => {
   it('仅差异视图只读；没有类时不能添加事实', () => {
     render();
     act(() => useAppStore.setState({ viewMode: 'diff' }));
-    expect(button('＋ 添加示例事实').disabled).toBe(true);
+    expect(button('＋ 添加事实').disabled).toBe(true);
 
     act(() => useAppStore.setState({ viewMode: 'materialized', ontology: { ...baseOntology(), entityTypes: [] } }));
-    expect(button('＋ 添加示例事实').disabled).toBe(true);
+    expect(button('＋ 添加事实').disabled).toBe(true);
   });
 });

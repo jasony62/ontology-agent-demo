@@ -81,7 +81,7 @@ export default function ExportDialog({ onClose }: Props) {
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>② 导出当前编辑模型（生成新文件）</div>
             <div style={{ fontSize: 13, color: '#5a6b7f', marginBottom: 8 }}>
               按另一套规则重新生成，不是原文副本；命名空间会改变，复杂规则<strong>可能不保留</strong>。
-              包含本次在图谱上新建的示例事实；这是新生成的文件，不会改动系统。
+              包含本次在图谱上新建的事实；这是新生成的文件，不会改动系统。
               {blocked && (
                 <div style={{ color: '#b34700', marginTop: 6 }}>
                   当前模型有 {issues.length} 项阻断 / 必改问题，导出会被拦截；请先在图上点红色 ⚠ 节点就地修复。

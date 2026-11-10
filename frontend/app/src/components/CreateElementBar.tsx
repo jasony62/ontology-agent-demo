@@ -12,11 +12,11 @@ type LastCreated =
   | null;
 
 /**
- * 画布工具栏的「新建类 / 新建关系 / 添加示例事实」（#91 D9 / #102）。
+ * 画布工具栏的「新建类 / 新建关系 / 添加事实」（#91 D9 / #102）。
  *
  * 新建不依赖选中态：图上还没有可点对象时也能用。新建后自动选中并把焦点交给右侧
  * 同一张 ElementEditor；提供一次「撤销新建」（只移除刚建的元素，不回滚之后的编辑）。
- * 「添加示例事实」先定短名与所属类型再落图——短名之后不可改，且必须带类型，
+ * 「添加事实」先定短名与所属类型再落图——短名之后不可改，且必须带类型，
  * 避免图上出现没有归类边的空圆点。
  */
 export default function CreateElementBar() {
@@ -86,7 +86,7 @@ export default function CreateElementBar() {
       ontology,
       factClass,
       name,
-      `新示例事实 ${(ontology.instances ?? []).length + 1}`,
+      `新事实 ${(ontology.instances ?? []).length + 1}`,
     );
     commit(next);
     setSelectedId(id);
@@ -149,11 +149,11 @@ export default function CreateElementBar() {
           title={
             viewHint ||
             (noClasses
-              ? '先新建一个类，示例事实必须有归属类型'
+              ? '先新建一个类，事实必须有归属类型'
               : '仅预览，不写入系统，不进查询与推理结果')
           }
         >
-          ＋ 添加示例事实
+          ＋ 添加事实
         </button>
         {last && (
           <button type="button" className="btn ghost" onClick={undo} title="撤销刚才的新建（只移除新建元素）">
@@ -171,7 +171,7 @@ export default function CreateElementBar() {
             aria-labelledby="create-fact-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="create-fact-title">添加一条示例事实</h3>
+            <h3 id="create-fact-title">添加一条事实</h3>
             <p className="element-hint">只在图谱预览里，不会被系统保存。</p>
             <div className={`field${factError && !factName.trim() ? ' has-error' : ''}`}>
               <label>短名<span className="req">*</span></label>

@@ -41,6 +41,7 @@ python scripts/ontologyctl.py domain install --from ./examples/onto_playground
 | 文件 | 必需 | 作用 |
 |---|---|---|
 | `__init__.py` | 是 | 暴露 `NAME` / `DESCRIPTION` / `ONTO_FILE` / `create_adapter_ctx`；建议加 `PLUGIN_API = "1"` |
+| `guide.json` | 是 | 使用视角说明（`GUIDE_FILE` 缺省即该文件）：定位 / 覆盖 / 能力用途 / 示例题 / 接入；空槽位显式写 `[]` / `{}` |
 | `*.owl` | 是 | 本体定义（文件名由 `ONTO_FILE` 指向，或包内唯一的 `.owl`） |
 | `config.json` | 否 | 语义配置（类角色映射、图谱分组） |
 | `derivation.json` | 否 | 推导链展示模板 |

@@ -476,4 +476,31 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     act(() => retry.click());
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
+
+  it('示例题按 group 分组：看一次编排 → 预测一次变化 → 其余，未声明则保持平铺（#114）', () => {
+    const grouped: DomainGuide = {
+      ...GUIDE,
+      examples: [
+        { ...GUIDE.examples[0] },
+        { ...GUIDE.examples[0], id: 'T2-15', question: '「新功能上线」怎么排？', group: '看一次编排' },
+        { ...GUIDE.examples[0], id: 'P1-01', question: '改一处风险会怎样？', group: '预测一次变化' },
+      ],
+    };
+    render(<DomainGuidePage guide={grouped} error={null} loading={false} onRetry={() => {}} />);
+
+    const groups = [...container!.querySelectorAll('.guide-example-group')];
+    expect(groups).toHaveLength(3);
+    const titles = [...container!.querySelectorAll('.guide-group-title')].map((el) => el.textContent ?? '');
+    expect(titles[0]).toContain('看一次编排');
+    expect(titles[1]).toContain('预测一次变化');
+    expect(titles[2]).toContain('其余示例');
+    expect(groups[0].textContent).toContain('T2-15');
+    expect(groups[2].textContent).toContain('T2-01');
+
+    // 一个 group 都没声明：与旧行为一致，不出现空组标题
+    act(() => root!.unmount());
+    root = createRoot(container!);
+    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    expect(container!.querySelector('.guide-group-title')).toBeNull();
+  });
 });

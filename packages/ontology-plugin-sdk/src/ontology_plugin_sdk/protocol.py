@@ -345,7 +345,7 @@ _EXAMPLE_SLOTS = (
 # 因此不放进必填表，也不升 GUIDE_VERSION。出现时必须通过校验——写错键名
 # 静默显示空白比直接拒绝更难排查。
 _GUIDE_OPTIONAL_SLOTS = ("paradigm_map",)
-_EXAMPLE_OPTIONAL_SLOTS = ("predict",)
+_EXAMPLE_OPTIONAL_SLOTS = ("predict", "group")
 _PARADIGM_KEYS = ("element", "in_ontology", "where", "yours")
 _PREDICT_KEYS = ("prompt", "options", "answer", "explain")
 
@@ -529,6 +529,10 @@ def validate_domain_guide(raw: Any) -> dict:
         }
         if "predict" in item:
             example["predict"] = _guide_predict(item["predict"], f"examples[{index}].predict")
+        if "group" in item:
+            # 分组是可选的展示提示：出现时必须非空，避免空组标题；不出现时
+            # 前端把该题归入「其余示例」。
+            example["group"] = _guide_text(item["group"], f"examples[{index}].group")
         examples.append(example)
 
     notes = raw["capability_notes"]

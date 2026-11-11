@@ -142,6 +142,8 @@ export interface GuideExampleDeclaration {
   params: Record<string, unknown>;
   answer_hint: string;
   via: string;
+  /** 可选的展示分组（#114）：出现时按组渲染，缺省归入「其余示例」 */
+  group?: string;
   /** 可选的预测配对题（#111）：先猜后验，answer 在跑之前不展示 */
   predict?: GuidePredict;
 }

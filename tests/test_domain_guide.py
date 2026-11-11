@@ -141,6 +141,24 @@ def test_paradigm_map_is_optional_but_validated():
         validate_domain_guide(not_list)
 
 
+def test_group_is_optional_but_validated():
+    """示例题分组：可选；出现时必须是非空字符串（#114）。"""
+    base = copy.deepcopy(GOOD["examples"][0])
+    base["group"] = "看一次编排"
+    guide = validate_domain_guide({**copy.deepcopy(GOOD), "examples": [base]})
+    assert guide["examples"][0]["group"] == "看一次编排"
+
+    ungrouped = copy.deepcopy(GOOD["examples"][0])
+    assert "group" not in validate_domain_guide(
+        {**copy.deepcopy(GOOD), "examples": [ungrouped]}
+    )["examples"][0]
+
+    empty = copy.deepcopy(base)
+    empty["group"] = "  "
+    with pytest.raises(DomainGuideError, match="group"):
+        validate_domain_guide({**copy.deepcopy(GOOD), "examples": [empty]})
+
+
 def test_predict_is_optional_but_validated():
     """预测配对题：可选；出现时 answer 必须落在 options 内（#111）。"""
     base = copy.deepcopy(GOOD["examples"][0])
@@ -297,6 +315,9 @@ def test_guide_endpoint_returns_one_complete_response():
         predict = examples[example_id]["predict"]
         assert predict["answer"] in predict["options"]
         assert predict["explain"]
+    # #114：北极星入口与预测题分组，供前端置顶
+    assert examples["T2-15"]["group"] == "看一次编排"
+    assert examples["P1-01"]["group"] == "预测一次变化"
     # 框架内置查询工具（query_sparql / property_values / ...）也可页内试跑：
     # 端点指向通用只读端点，题目不再「页内不可跑」（#109）
     assert examples["T2-05"]["safe"] is True

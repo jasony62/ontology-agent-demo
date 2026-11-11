@@ -24,6 +24,6 @@ fi
 
 echo "[4/4] 启动推理 API（http://127.0.0.1:8000）..."
 if command -v open >/dev/null 2>&1; then
-  (sleep 1 && open http://127.0.0.1:8000) >/dev/null 2>&1 &
+  (sleep 1 && open 'http://127.0.0.1:8000/#guide') >/dev/null 2>&1 &
 fi
 exec .venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000

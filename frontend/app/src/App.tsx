@@ -48,6 +48,27 @@ export default function App() {
   const [page, setPage] = useState<'graph' | 'guide'>(
     () => (window.location.hash === '#guide' ? 'guide' : 'graph'),
   );
+  // #114：首次访问的指路条。关掉后记 localStorage，不再打扰；从 start.sh
+  // 直接以 #guide 打开时落在当前领域页，看不到这条横幅。
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try {
+      return window.localStorage.getItem('oa.onboarding.dismissed.v1') !== '1';
+    } catch {
+      return true;
+    }
+  });
+  const gotoGuide = () => {
+    setPage('guide');
+    window.history.replaceState(null, '', '#guide');
+  };
+  const dismissOnboarding = () => {
+    setShowOnboarding(false);
+    try {
+      window.localStorage.setItem('oa.onboarding.dismissed.v1', '1');
+    } catch {
+      // 隐私模式下 localStorage 不可写：本次会话隐藏即可，不阻断页面
+    }
+  };
   // 当前领域说明的唯一数据源：随 /api/domains 一起在 loadWorkspace 中刷新
   const [guide, setGuide] = useState<DomainGuide | null>(null);
   const [guideError, setGuideError] = useState<string | null>(null);
@@ -243,7 +264,7 @@ export default function App() {
           </button>
           <button
             className={page === 'guide' ? 'active' : ''}
-            onClick={() => { setPage('guide'); window.history.replaceState(null, '', '#guide'); }}
+            onClick={gotoGuide}
           >
             当前领域
           </button>
@@ -315,6 +336,21 @@ export default function App() {
           />
         ) : (
           <>
+            {showOnboarding && (
+              <div className="onboarding-banner" role="note">
+                <span>
+                  第一次用？点右上角「当前领域」，从 <code>T2-15</code> 看一次完整编排。
+                </span>
+                <button className="btn secondary" onClick={gotoGuide}>去看当前领域</button>
+                <button
+                  className="onboarding-close"
+                  aria-label="关闭首次使用提示"
+                  onClick={dismissOnboarding}
+                >
+                  ×
+                </button>
+              </div>
+            )}
             {ontologyMode === 'generic' && (
               <div className="mode-banner">
                 当前为非默认本体（通用模式）：领域推理（能力匹配 / 任务编排 / 合规冲突检测）不可用；图谱 / 物化 / SPARQL 不受影响。重启服务可恢复默认本体。

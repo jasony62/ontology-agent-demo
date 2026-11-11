@@ -877,6 +877,7 @@ def _guide_examples(
             "safe": safe,
             "reason": reason,
             **({"predict": item["predict"]} if "predict" in item else {}),
+            **({"group": item["group"]} if "group" in item else {}),
         })
     return out
 

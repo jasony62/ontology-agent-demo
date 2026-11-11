@@ -211,7 +211,8 @@
       "capability": "orchestrate",
       "params": { "task": "t_feature" },
       "answer_hint": "t_req → t_login_dev → t_login_review → t_login_test → t_deploy；第 5 步需双人复核，候选 req_agent / dev_agent / test_agent（不含执行者 deploy_agent）",
-      "via": "编排顺序"
+      "via": "编排顺序",
+      "group": "看一次编排"
     },
     {
       "id": "T2-16",
@@ -260,6 +261,7 @@
       "params": { "subject": "t_deploy", "property": "needs_second_review" },
       "answer_hint": "不需要：R6 只在 SimpleTask 且风险 ≥ 4 时触发；当前基线仍为 true",
       "via": "R6 双人复核（预测配对）",
+      "group": "预测一次变化",
       "predict": {
         "prompt": "改动后「生产部署发布」还需要双人复核吗？",
         "options": ["需要", "不需要"],
@@ -274,6 +276,7 @@
       "params": { "task": "t_login_review" },
       "answer_hint": "候选 1 → 2（多出 junior_dev），能担责 1 → 2（无约束任务 can_own ≡ can_execute）",
       "via": "R1 能力匹配 + R2b 担责（预测配对）",
+      "group": "预测一次变化",
       "predict": {
         "prompt": "改动后候选与能担责者各是几个？",
         "options": ["候选 2，能担责 1", "候选 2，能担责 2", "候选 1，能担责 1"],
@@ -288,6 +291,7 @@
       "params": { "task": "t_full_stack" },
       "answer_hint": "dev_agent + junior_dev（只剩 cap_coding 一项要求）",
       "via": "R1 多能力 AND 全覆盖（预测配对）",
+      "group": "预测一次变化",
       "predict": {
         "prompt": "改动后候选是谁？",
         "options": ["dev_agent + junior_dev", "只有 dev_agent", "仍然为空"],

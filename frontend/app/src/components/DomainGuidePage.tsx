@@ -20,6 +20,27 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number]['id'];
 
+/** #114：示例题分组顺序——北极星入口与预测题置顶，未声明 group 的归入「其余示例」 */
+const GUIDE_GROUP_ORDER = ['看一次编排', '预测一次变化'];
+
+function groupGuideExamples(examples: GuideExample[]) {
+  if (!examples.some((example) => example.group)) return null;
+  const titles: string[] = [];
+  for (const title of GUIDE_GROUP_ORDER) {
+    if (examples.some((example) => example.group === title)) titles.push(title);
+  }
+  for (const example of examples) {
+    if (example.group && !titles.includes(example.group)) titles.push(example.group);
+  }
+  const sections = titles.map((title) => ({
+    title,
+    items: examples.filter((example) => example.group === title),
+  }));
+  const rest = examples.filter((example) => !example.group);
+  if (rest.length > 0) sections.push({ title: '其余示例', items: rest });
+  return sections;
+}
+
 /** 深色代码块 + 复制按钮（与既有「服务能力」弹窗同一视觉语义） */
 function CopyBlock({ code, note }: { code: string; note?: string }) {
   const [copied, setCopied] = useState(false);
@@ -453,6 +474,12 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
     () => guide?.examples.find((example) => example.safe) ?? null,
     [guide],
   );
+  // #114：只声明了部分 group 时，未声明的题归入「其余示例」；一个 group 都没声明
+  // 则返回 null，页面保持原来的平铺（旧领域包不受影响）。
+  const exampleSections = useMemo(
+    () => (guide ? groupGuideExamples(guide.examples) : null),
+    [guide],
+  );
 
   // 内容短到无需滚动时砍掉左栏，不留装饰目录；内容变长（换包 / 展开示例）再回来。
   useEffect(() => {
@@ -670,9 +697,19 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
                 该包未提供示例题。可以看第 03 问的能力清单，或直接按第 05 问的接入说明发请求。
               </div>
             ) : (
-              <div className="guide-example-list">
-                {guide.examples.map((example) => {
-                  const open = openExample === example.id;
+              (exampleSections ?? [{ title: null, items: guide.examples }]).map((section) => (
+                <div
+                  className={section.title ? 'guide-example-group' : ''}
+                  key={section.title ?? '__all'}
+                >
+                  {section.title && (
+                    <h4 className="guide-group-title">
+                      {section.title}<span>{section.items.length} 道</span>
+                    </h4>
+                  )}
+                  <div className="guide-example-list">
+                    {section.items.map((example) => {
+                      const open = openExample === example.id;
                   return (
                     <article
                       id={`guide-example-${example.id}`}
@@ -717,9 +754,11 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
                         />
                       )}
                     </article>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
             )}
           </section>
 

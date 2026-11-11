@@ -36,7 +36,7 @@
     "构件齐备闸门 G1–G4：建模范式、一致性、能力冒烟与 SHACL 形状",
     "访问策略只允许 4 类主体 / 5 个谓词，越界请求会被拦下",
     "R4：合规任务分配给未持有效认证的智能体会产生合规冲突",
-    "R5 / R6：高风险任务在无人能担责或满足条件时派生人工介入 / 双人复核标记"
+    "R5 / R6：高风险任务在无人能担责或满足条件时派生人工介入 / 双人复核标记；R6a 给出复核候选（持有效认证且非执行者）"
   ],
   "paradigm_map": [
     {
@@ -84,7 +84,7 @@
     {
       "element": "规则",
       "in_ontology": "rules/*.ttl（SHACL SPARQLRule）+ 适配器判定",
-      "where": "编排的推导逻辑（R1/R2/R2a/R2b/R5/R6；R4 在 adapter.py）",
+      "where": "编排的推导逻辑（R1/R2/R2a/R2b/R5/R6/R6a；R4 在 adapter.py）",
       "yours": "分派制度、审批制度"
     }
   ],
@@ -210,7 +210,7 @@
       "question": "「新功能上线」的执行计划是什么顺序？",
       "capability": "orchestrate",
       "params": { "task": "t_feature" },
-      "answer_hint": "t_req → t_login_dev → t_login_review → t_login_test → t_deploy",
+      "answer_hint": "t_req → t_login_dev → t_login_review → t_login_test → t_deploy；第 5 步需双人复核，候选 req_agent / dev_agent / test_agent（不含执行者 deploy_agent）",
       "via": "编排顺序"
     },
     {

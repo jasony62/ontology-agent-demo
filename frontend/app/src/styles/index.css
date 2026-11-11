@@ -1108,6 +1108,13 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-plan-constraints li { display: flex; gap: 8px; font-size: var(--fs-xs); line-height: 1.6; color: var(--muted); }
 .guide-plan-constraints li strong { flex: 0 0 auto; color: var(--heading); }
 .guide-plan-constraints li.is-unmet strong { color: var(--warning); }
+.guide-plan-reviewers { display: flex; flex-direction: column; gap: 4px; }
+.guide-plan-reviewers h5 { font-size: var(--fs-sm2); color: var(--heading); }
+.guide-plan-review-note { font-weight: 400; color: var(--muted); }
+.guide-plan-reviewers ul { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.guide-plan-reviewers li { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 2px 8px; }
+.guide-plan-reviewers li code { color: var(--muted); font-size: var(--fs-xs); }
+.guide-plan-review-empty { font-size: var(--fs-xs); color: var(--warning); line-height: 1.6; }
 
 .guide-cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
 .guide-cap-group { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--panel-2); }

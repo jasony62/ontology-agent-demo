@@ -126,6 +126,7 @@ function PlanCard({ plan }: { plan: Record<string, unknown> }) {
           const idx = typeof step.idx === 'number' ? step.idx : i + 1;
           const risk = typeof step.risk_level === 'number' ? step.risk_level : null;
           const constraints = (Array.isArray(step.constraints) ? step.constraints : []).filter(isRecord);
+          const reviewers = (Array.isArray(step.reviewers) ? step.reviewers : []).filter(isRecord);
           const unmet = constraints.filter((c) => c.satisfied === false);
           const active = openStep === i;
           return (
@@ -155,6 +156,25 @@ function PlanCard({ plan }: { plan: Record<string, unknown> }) {
                         </li>
                       ))}
                     </ul>
+                  )}
+                  {step.requires_dual_review === true && (
+                    <div className="guide-plan-reviewers">
+                      <h5>可复核人 <span className="guide-plan-review-note">（持有效认证，不是本步执行者）</span></h5>
+                      {reviewers.length > 0 ? (
+                        <ul>
+                          {reviewers.map((r, k) => (
+                            <li key={k}>
+                              <b>{String(r.agent_label ?? r.agent ?? '')}</b>
+                              <code>{String(r.agent ?? '')}</code>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="guide-plan-review-empty">
+                          暂无其他持有效认证的 Agent，需人工指定复核人。
+                        </p>
+                      )}
+                    </div>
                   )}
                   {Array.isArray(subDerivations[i]) && (subDerivations[i] as unknown[]).length > 0 && (
                     <div className="guide-derivation">

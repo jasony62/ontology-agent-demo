@@ -286,6 +286,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
             { rule: 'R6', label: '双人复核', satisfied: true, detail: '未触发' },
           ],
           requires_confirmation: false, requires_dual_review: false,
+          reviewers: [],
         },
         {
           idx: 2, task: 't_deploy', task_label: '生产部署发布', risk_level: 4,
@@ -296,6 +297,11 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
             { rule: 'R6', label: '双人复核', satisfied: false, detail: '风险等级 4 ≥ 4 的简单任务，需第二名复核人放行' },
           ],
           requires_confirmation: false, requires_dual_review: true,
+          reviewers: [
+            { agent: 'test_agent', agent_label: '测试Agent' },
+            { agent: 'dev_agent', agent_label: '研发Agent' },
+            { agent: 'req_agent', agent_label: '需求分析Agent' },
+          ],
         },
       ],
       warnings: ['第 2 步「生产部署发布」触发 R6 双人复核：风险等级 4 ≥ 4 的简单任务'],
@@ -354,6 +360,14 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     act(() => stepButtons[1].click());
     expect(card.textContent).toContain('风险等级 4 ≥ 4 的简单任务，需第二名复核人放行');
     expect(card.textContent).toContain('部署步骤依据');
+    // #113：展开后列出可复核人，且不含本步执行者 deploy_agent
+    const reviewerBox = card.querySelector('.guide-plan-reviewers')!;
+    expect(reviewerBox).not.toBeNull();
+    expect(reviewerBox.textContent).toContain('可复核人');
+    expect(reviewerBox.textContent).toContain('测试Agent');
+    expect(reviewerBox.textContent).toContain('研发Agent');
+    expect(reviewerBox.textContent).toContain('需求分析Agent');
+    expect(reviewerBox.textContent).not.toContain('部署Agent');
   });
 
   it('范式要素对照表：有则渲染四列表，无则不显示空表（#111）', () => {

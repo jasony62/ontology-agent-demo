@@ -561,7 +561,7 @@ adapter = create_adapter_ctx(ctx)   # 领域包唯一工厂：create_adapter_ctx
 │       ├── guide.json              #   使用视角说明（契约必填，加载期校验）
 │       ├── derivation.json         #   推导链配置（文案 + 规则）
 │       ├── mcp.py                  #   领域 MCP 工具注册（16 个：业务 9 + 建模/质量 7）
-│       ├── rules/                  #   SHACL 规则层（R2 委派 / R5 / R6，加载流水线执行）
+│       ├── rules/                  #   SHACL 规则层（R2 委派 / R5 / R6 / R6a 复核候选，加载流水线执行）
 │       ├── shapes/                 #   SHACL 形状（G4 与 validate_shapes 用）
 │       └── agent_task_ontology.owl #   本体定义
 ├── api/                            # REST API（FastAPI，:8000，领域端点走适配器）

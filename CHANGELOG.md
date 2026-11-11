@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **R6 双人复核给出候选复核人（#113）**：此前 `orchestrate` 只说「需双人复核」，说不出「谁来复核」。新增 `can_review` 派生谓词与规则 `rules/R6a_can_review.ttl`：高风险任务（`needs_second_review`）中，持有有效认证（`cert_valid`）且未被指派为执行者的 Agent 获得复核资格；`orchestrate` 每步新增 `reviewers[]`，输出时再排除本步选中的执行者，方案卡展开列出候选人。复核资格明确区别于执行能力（`can_execute` / `can_own`）与代码审查技能（`cap_code_review`）；风险 2 的任务不产生候选。无候选时方案卡如实提示「需人工指定复核人」，不写死名单。
+
 ## [0.7.2] - 2026-11-11
 
 ### Added

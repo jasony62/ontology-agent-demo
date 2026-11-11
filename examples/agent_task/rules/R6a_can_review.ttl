@@ -1,0 +1,44 @@
+# R6a · 双人复核的承接方：谁有资格复核
+#
+# 业务语义（#113）：R6 只回答「要不要复核」（needs_second_review），本规则
+#   回答「谁来复核」（can_review）。复核资格是治理口径——持有有效认证
+#   （cert_valid，R2a 派生）且不是该任务已指派的执行者；它**不是**执行能力，
+#   也**不是**代码审查能力：
+#     - can_execute / can_own 回答「能不能做 / 能不能担责」；
+#     - cap_code_review（CodeReview 实例）是「会做代码审查」这项技能；
+#     - second review 是高风险关卡的第二人放行，资格看认证，不看 cap_code_review。
+#   三者不得在文案或命名里混用。
+# 为什么用 cert_valid 而不是 can_own：can_own 要求能执行该任务，部署这类
+#   高风险单片任务往往只有执行者本人能担责（t_deploy 只有 deploy_agent），
+#   用它会把复核候选算成空集——而「没有人能复核」是数据缺口，不是规则应
+#   预先写死的结果。复核人不必能执行，但必须持有效认证。
+# 执行者排除：规则层排除「已指派」的 assigned_to；编排是假设性方案，尚未
+#   分配，orchestrate 在输出时再排除本步选中的 executor。两层合起来满足
+#   「复核候选不含该步执行者」。
+# 执行顺序：R6_high_risk_second_review（needs_second_review）→ 本文件
+#   （can_review）。文件名排序 R6_ < R6a_，改名时保持。
+# WHERE 显式声明 ?agent rdf:type demo:Agent：不依赖 sh:targetClass 兜底。
+
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix demo: <http://ontology.localhost/agent-task#> .
+
+demo:CanReviewShape a sh:NodeShape ;
+  sh:targetClass demo:Task ;
+  sh:rule demo:R6a_can_review .
+
+demo:R6a_can_review a sh:SPARQLRule ;
+  rdfs:label "R6a 双人复核候选" ;
+  rdfs:comment "高风险任务持有效认证、且未被指派为执行者的 Agent → can_review" ;
+  sh:construct """
+    PREFIX demo: <http://ontology.localhost/agent-task#>
+    PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    CONSTRUCT { ?agent demo:can_review ?this }
+    WHERE {
+      ?this demo:needs_second_review true .
+      ?agent rdf:type demo:Agent .
+      ?agent demo:cert_valid true .
+      FILTER NOT EXISTS { ?this demo:assigned_to ?agent }
+    }
+  """ .

@@ -68,6 +68,18 @@
   <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">R2b 派生（不断言，#60）：can_execute 且任务约束全部满足（合规 ⇒ 未过期认证覆盖每项所需能力）且全部子任务可担责。R2 整体委派的担责面与 R5「无人可接手」以此为前提。</rdfs:comment>
 </owl:ObjectProperty>
 
+<!-- #113：R6 只回答「要不要双人复核」，can_review 回答「谁有资格复核」。
+     复核资格是治理口径（持有效认证），不是执行能力：cap_code_review 是
+     代码审查能力，与「second review」无关，二者不得混用。
+     由 rules/R6a_can_review.ttl 派生（消费 R6 的 needs_second_review 与
+     R2a 的 cert_valid），不断言。 -->
+<owl:ObjectProperty rdf:about="#can_review">
+  <rdfs:domain rdf:resource="#Agent"/>
+  <rdfs:range rdf:resource="#Task"/>
+  <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">可复核</rdfs:label>
+  <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">R6a 派生（不断言，#113）：任务触发双人复核（needs_second_review）时，持有有效认证（cert_valid）且未被指派为该任务执行者的 Agent。复核资格不等于代码审查能力（cap_code_review），也不等于能执行该任务。</rdfs:comment>
+</owl:ObjectProperty>
+
 <owl:ObjectProperty rdf:about="#assigned_to">
   <rdfs:domain rdf:resource="#Task"/>
   <rdfs:range rdf:resource="#Agent"/>

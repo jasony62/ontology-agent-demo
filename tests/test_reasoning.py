@@ -136,9 +136,53 @@ def test_orchestrate_low_risk_has_no_flags(adapter):
     step = plan["steps"][0]
     assert step["requires_confirmation"] is False
     assert step["requires_dual_review"] is False
+    assert step["reviewers"] == []
     assert plan["requires_confirmation"] is False
     assert plan["requires_dual_review"] is False
     assert plan["warnings"] == []
+
+
+# ---------- R6a 复核候选（#113） ----------
+
+def test_orchestrate_assigns_qualified_reviewers(adapter):
+    """高风险步骤给出复核候选，且不含该步执行者（#113 验收①）。"""
+    plan = adapter.orchestrate(NS.t_feature, with_derivation=False)
+    deploy = next(s for s in plan["steps"] if s["task"] == "t_deploy")
+    assert deploy["requires_dual_review"] is True
+    reviewers = {r["agent"] for r in deploy["reviewers"]}
+    assert reviewers, "风险 4 的部署步骤应给出复核候选"
+    assert deploy["executor"] not in reviewers
+    # 复核资格看认证，不是 cap_code_review：需求 / 测试 Agent 没有代码审查能力，
+    # 但持有效认证，仍应出现在候选里。
+    assert {"req_agent", "test_agent"} <= reviewers
+    assert all(r["agent_label"] for r in deploy["reviewers"])
+
+
+def test_orchestrate_low_risk_has_no_reviewers(adapter):
+    """反例：风险 2 不触发 R6，复核候选必须为空（#113 验收②）。"""
+    plan = adapter.orchestrate(NS.t_login_dev, with_derivation=False)
+    assert plan["steps"][0]["requires_dual_review"] is False
+    assert plan["steps"][0]["reviewers"] == []
+
+
+def test_can_review_edges_only_for_high_risk_tasks(engine):
+    """can_review 只在高风险（needs_second_review）任务上派生。"""
+    assert (NS.dev_agent, NS.can_review, NS.t_deploy) in engine.g
+    assert not list(engine.g.triples((None, NS.can_review, NS.t_login_dev)))
+
+
+def test_can_review_excludes_assigned_executor():
+    """规则层排除已指派的执行者；编排层再排除本步选中的 executor（#113）。"""
+    e = OntologyEngine(ONTO_PATH)
+    module = domain_module()
+    rules_dir = Path(module.__file__).parent / "rules"
+    # 先断言 t_deploy 已分配给 deploy_agent，再跑规则：R6a 不应产出该候选
+    e.g.add((NS.t_deploy, NS.assigned_to, NS.deploy_agent))
+    rep = apply_rules(e, sorted(rules_dir.glob("*.ttl")))
+    assert (NS.dev_agent, NS.can_review, NS.t_deploy) in e.g
+    assert (NS.deploy_agent, NS.can_review, NS.t_deploy) not in e.g
+    assert any("R6a_can_review" in f["file"] for f in rep["files"])
+
 
 
 def test_orchestrate_step_r4_conflict_for_uncertified(adapter):

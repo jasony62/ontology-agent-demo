@@ -460,8 +460,10 @@ def __init__(self, onto_path, ns=None):
       · 每环节 capability_match → 最优执行者
       · expand(derivations["orchestrate"], {steps: […]})
   → 返回 {steps: [{idx, task_label, executor_label, risk_level,
-                    constraints, requires_confirmation, requires_dual_review, reason}, …],
+                    constraints, requires_confirmation, requires_dual_review,
+                    reviewers, reason}, …],
            warnings: […], requires_confirmation, requires_dual_review, derivation: […]}
+  · reviewers 只在 R6 触发时非空：持有效认证、且不是本步执行者的 Agent（R6a）
 豆包回答：按依赖顺序：需求分析 → 登录模块开发 → 测试 → 部署…（每步附执行者与理由）
 ```
 

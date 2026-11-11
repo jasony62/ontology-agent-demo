@@ -250,6 +250,24 @@ class AgentTaskAdapter:
             if t == local(task)
         ]
 
+    def reviewers_for_task(self, task, executor: str | None = None) -> list[dict]:
+        """双人复核的候选复核人（#113）。
+
+        读规则层 `can_review`（R6a 派生：持有效认证且未被指派），并排除
+        `executor`——编排是假设性方案，本步选中的执行者尚未写进图里，只能
+        在输出阶段排除。复核资格看认证，不看 `cap_code_review`（代码审查能力）
+        或 `can_execute`（能不能做这件事）。
+        """
+        rows: list[dict] = []
+        seen: set[str] = set()
+        for agent, reviewed in self.engine.subject_objects(self.c.resolve("can_review")):
+            if reviewed != local(task) or agent == executor or agent in seen:
+                continue
+            seen.add(agent)
+            rows.append({"agent": agent, "agent_label": self.label(agent)})
+        rows.sort(key=lambda row: row["agent_label"])
+        return rows
+
     # ---------------- 业务规则（R4） ----------------
 
     # R2 复合任务委派不在这里：它是真正的"推导出新事实"的规则，落点在
@@ -460,6 +478,10 @@ class AgentTaskAdapter:
                 "constraints": constraints,
                 "requires_confirmation": requires_confirmation,
                 "requires_dual_review": requires_dual_review,
+                # #113：需要复核时给出「谁可以复核」；不需要时为空数组，
+                # 前端据此区分「无此关卡」与「有关卡但暂无合格复核人」。
+                "reviewers": self.reviewers_for_task(sub, executor=agent)
+                             if requires_dual_review else [],
             })
             derivations.append(m["derivation"])
         for i, s in enumerate(steps, 1):

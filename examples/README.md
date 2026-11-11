@@ -28,6 +28,9 @@ python scripts/ontologyctl.py domain install --from ./examples/onto_playground
 适配器 / 能力 / 落点 / 闸门 / 通道 / 规则 / 违规）建成可推理本体：四条 OWL 公理
 （属性链可达、传递依赖、等价类违规、对逆属性）+ 三个领域自有只读能力 +
 `ENTITY_SCHEMA` + 包内 SHACL 形状。安装后无需改任何框架代码即可切换使用。
+它的 `guide.json` 也不是最小空壳：6 道可页内试跑的示例题（含一道补 `provides`
+的预测题）、4 行范式对照表与 6 条能力说明，用来证明 `paradigm_map` / `predict` /
+`group` / `simulate` 这些可选槽位不是 `agent_task` 专属形状。
 
 **更偏的结构仍由测试守。** 匿名等价类（`owl:hasValue` 拆出的 `owl:Restriction`）、
 多级类层次（三级且 `subClassOf` 带传递闭包）这两类结构，由 `tests/test_contract.py`

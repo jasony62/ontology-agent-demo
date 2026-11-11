@@ -475,17 +475,14 @@ def test_guide_changes_whole_response_after_switch(tmp_path, monkeypatch):
         second = client.get("/api/domains/current/guide").json()
         assert second["domain"] == "onto_playground"
         assert second["profile"]["display_name"] == "本体试炼场"
-        assert second["examples"] == []
-        # 可选槽位缺失时直接不出现，不是空表
-        assert "paradigm_map" not in second["profile"]
+        assert len(second["examples"]) == 6 and second["examples"][0]["id"] == "OP-01"
+        # 可选槽位：第二个领域也写了自己的对照表（#116）
+        assert len(second["profile"]["paradigm_map"]) == 4
         assert second["runtime"]["query_kinds"] == [
             "activation_check", "compliance_check", "reachability",
         ]
-        # 空槽位是正式状态：没有说明的能力被如实列出，而不是拿上一个包填充
-        assert set(second["reconcile"]["capabilities_without_note"]) == {
-            "graph_export", "explain", "create", "reachability",
-            "activation_check", "compliance_check",
-        }
+        # 对账按新包内容计算：6 个能力都有说明，不沿用上一个包的结果
+        assert second["reconcile"]["capabilities_without_note"] == []
     finally:
         monkeypatch.setattr(M, "DOMAINS", previous)
         M._sync_runtime(force=True)

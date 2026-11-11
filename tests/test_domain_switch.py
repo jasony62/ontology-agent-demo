@@ -413,3 +413,60 @@ def test_api_health_reasoner_summary_is_domain_declared():
     }
     assert not [x for x in literals if "R2/R4" in x or "R2、R4" in x], \
         "api/main.py 仍写死了领域规则编号 R2/R4"
+
+
+def test_onto_playground_guide_has_runnable_examples(switched_api):
+    """第二个领域的 guide 不是空页面：6 道题可页内试跑，答案与实测一致（#116）。
+
+    也顺带守住 #115 的推演在异构领域可用：补 provides 后 missing 从两项降为一项。
+    """
+    from fastapi.testclient import TestClient
+
+    M, _mgr = switched_api
+    client = TestClient(M.app)
+    assert client.post("/api/domains/onto_playground/activate").status_code == 200
+
+    guide = client.get("/api/domains/current/guide").json()
+    assert guide["contract_ok"] is True
+    assert len(guide["examples"]) == 6
+    assert all(example["safe"] for example in guide["examples"])
+    assert len(guide["profile"]["capability_notes"]) == 6
+    assert len(guide["profile"]["scenarios"]) == 3
+    assert guide["profile"]["paradigm_map"]
+    assert guide["reconcile"]["capabilities_without_note"] == []
+
+    results = {}
+    for example in guide["examples"]:
+        if "predict" in example:
+            continue
+        r = client.post("/api/domains/current/capabilities/query", json={
+            "kind": example["capability"], "params": example["params"],
+        })
+        assert r.status_code == 200, (example["id"], r.text)
+        results[example["id"]] = r.json()
+
+    assert set(results["OP-01"]["channels"]) == {"rest_api_8000", "mcp_server_9000"}
+    assert results["OP-02"]["channels"] == ["rest_api_8000"]
+    assert set(results["OP-02"]["expected_channels"]) == {"rest_api_8000", "mcp_server_9000"}
+    assert results["OP-03"]["ready"] is True
+    assert results["OP-04"]["missing"] == [
+        "provides（适配器）", "declaresCapability（至少一个能力）",
+    ]
+    assert results["OP-05"]["verdict"] == "pass"
+
+    # OP-P1：补 provides 后仍 not_ready，只少 declaresCapability；活图不变
+    op_p1 = next(example for example in guide["examples"] if example["id"] == "OP-P1")
+    sim = client.post("/api/domains/current/simulate", json={
+        "capability": op_p1["capability"],
+        "params": op_p1["params"],
+        "edits": op_p1["simulate"]["edits"],
+    })
+    assert sim.status_code == 200, sim.text
+    body = sim.json()
+    assert len(body["baseline"]["missing"]) == 2
+    assert body["simulated"]["ready"] is False
+    assert body["simulated"]["missing"] == ["declaresCapability（至少一个能力）"]
+    live = client.post("/api/domains/current/capabilities/query", json={
+        "kind": "activation_check", "params": {"package": "wip_bad_package"},
+    }).json()
+    assert len(live["missing"]) == 2

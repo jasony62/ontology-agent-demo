@@ -2,16 +2,128 @@
   "guide_version": "1",
   "display_name": "本体试炼场",
   "summary": "把本体平台自身的构件建成可推理的领域：领域包、模块、能力、闸门、通道的结构与合规。",
-  "scenarios": [],
+  "scenarios": [
+    "装完第二个领域，先问「这个能力从哪几条通道进来」：reachability(capability=orchestrate)",
+    "怀疑某个包缺构件时，问「它能激活吗」：activation_check(package=wip_bad_package)",
+    "上线前做契约体检，问「有违规吗」：compliance_check(package=agent_task)"
+  ],
   "covers": [
     "能力可达",
     "依赖与顺序",
     "等价类合规判定",
     "对逆属性"
   ],
-  "not_covers": [],
-  "capability_notes": {},
-  "constraints": [],
-  "examples": [],
-  "integrations": []
+  "not_covers": [
+    "不做运行时调度，也不判断领域包代码是否真的能跑起来——只看构件与声明是否齐备",
+    "不替代领域包自己的 guide / 测试；本领域只读平台元模型，不改别的包",
+    "不推断未写进本体的通道或能力依赖；没有断言就没有结论"
+  ],
+  "capability_notes": {
+    "reachability": "某能力经 declaredBy ∘ servedOn 可达哪些通道；只算本体里声明过的落点与通道，不判断能力实现是否正确",
+    "activation_check": "领域包构件是否齐备（provides ∧ declaresCapability ∧ dependsOn）；只看声明，不启动包",
+    "compliance_check": "契约违规报告（宿主依赖 / 悬空能力）；通过不等于包能运行",
+    "graph_export": "把平台元模型导出为图谱节点与业务边；只呈现结构，不参与判定",
+    "explain": "最近一次查询的中文推导链；模板填槽，不是公理反查",
+    "create": "按 ENTITY_SCHEMA 新建能力个体；只写本体，不创建代码或领域包"
+  },
+  "constraints": [
+    "可达通道由 R1 属性链 declaredBy ∘ servedOn ⊑ reachableVia 推出，不手工断言可达边",
+    "激活齐备是 AND：provides ∧ declaresCapability ∧ dependsOn 缺一不可",
+    "NonCompliantPackage 由等价类推出（依赖 HostModule），不是人工标记"
+  ],
+  "paradigm_map": [
+    {
+      "element": "能力",
+      "in_ontology": "Capability + declaresCapability / declaredBy",
+      "where": "领域包声明「我提供什么」；R1 可达判定的起点",
+      "yours": "API 能力、CLI 子命令、SDK 方法"
+    },
+    {
+      "element": "落点",
+      "in_ontology": "Landing + hasLanding",
+      "where": "声明即承诺：能力必须有落点，否则按悬空拒载",
+      "yours": "处理器、路由、实现函数"
+    },
+    {
+      "element": "闸门",
+      "in_ontology": "Gate + validates",
+      "where": "G1–G4 校验哪些工件（本体 / 形状 / 规则 / 冒烟）",
+      "yours": "CI 检查、发布门禁"
+    },
+    {
+      "element": "通道",
+      "in_ontology": "Channel + servedOn / reachableVia",
+      "where": "能力从哪条入口可达（REST / MCP / CLI）",
+      "yours": "HTTP 网关、消息队列、CLI"
+    }
+  ],
+  "examples": [
+    {
+      "id": "OP-01",
+      "question": "`orchestrate` 这个能力，哪几条通道能到达？",
+      "capability": "reachability",
+      "params": { "capability": "orchestrate" },
+      "answer_hint": "双通：rest_api_8000、mcp_server_9000（A1 属性链 declaredBy ∘ servedOn ⊑ reachableVia）",
+      "via": "R1 能力可达",
+      "group": "看一次编排"
+    },
+    {
+      "id": "OP-02",
+      "question": "`diagnose` 呢？两条通道都通吗？",
+      "capability": "reachability",
+      "params": { "capability": "diagnose" },
+      "answer_hint": "只通 rest_api_8000；expected_channels 里两条都有，实际少 mcp_server_9000——声明了能力 ≠ 接上了通道",
+      "via": "R1 能力可达（反例）"
+    },
+    {
+      "id": "OP-03",
+      "question": "`agent_task` 这个领域包能激活吗？",
+      "capability": "activation_check",
+      "params": { "package": "agent_task" },
+      "answer_hint": "能，ready=true；provides / declaresCapability / dependsOn 三项齐备",
+      "via": "R2 构件齐备"
+    },
+    {
+      "id": "OP-04",
+      "question": "`wip_bad_package` 呢？",
+      "capability": "activation_check",
+      "params": { "package": "wip_bad_package" },
+      "answer_hint": "不能，not_ready；缺 provides（适配器）与 declaresCapability（至少一个能力）",
+      "via": "R2 构件齐备（反例）"
+    },
+    {
+      "id": "OP-05",
+      "question": "`agent_task` 有契约违规吗？",
+      "capability": "compliance_check",
+      "params": { "package": "agent_task" },
+      "answer_hint": "pass，0 违规；agent_task 未被归入 NonCompliantPackage，声明能力都有落点",
+      "via": "R4 契约合规"
+    },
+    {
+      "id": "OP-P1",
+      "question": "给 `wip_bad_package` 补上一个适配器（provides），它就能激活了吗？",
+      "capability": "activation_check",
+      "params": { "package": "wip_bad_package" },
+      "answer_hint": "不能，仍 not_ready；missing 从两项降为一项：declaresCapability（至少一个能力）",
+      "via": "R2 构件齐备（预测配对）",
+      "group": "预测一次变化",
+      "predict": {
+        "prompt": "补上 provides 后能激活吗？",
+        "options": ["能，三项齐备", "不能，还缺 declaresCapability", "不能，还缺 dependsOn"],
+        "answer": "不能，还缺 declaresCapability",
+        "explain": "齐备是 AND：provides ∧ declaresCapability ∧ dependsOn。补 provides 只补上一项；wip_bad_package 仍未声明任何能力，所以仍 not_ready。页面会在断言图副本上补 provides 并重跑 activation_check，给出改动后的 missing；活图不变。"
+      },
+      "simulate": {
+        "edits": [
+          { "op": "add", "subject": "wip_bad_package", "predicate": "provides", "value": "MinimalAdapter", "kind": "iri" }
+        ]
+      }
+    }
+  ],
+  "integrations": [
+    "REST：POST /api/domains/current/capabilities/query，kind=reachability / activation_check / compliance_check",
+    "REST：POST /api/domains/current/simulate 在断言图副本上验证预测（如补 provides），不改活图",
+    "MCP：三个只读能力随当前领域注册，工具名与 kind 一致",
+    "OpenAPI：/api-docs 可查全部端点与参数"
+  ]
 }

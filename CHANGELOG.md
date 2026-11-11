@@ -7,6 +7,8 @@
 
 ### Added
 
+- **`onto_playground` 的 guide 从「合法但空」补齐为可跑内容（#116）**：第二个随仓库分发的异构领域此前 `contract_ok: true`，但 `scenarios` / `examples` / `capability_notes` / `constraints` / `not_covers` / `integrations` 全空，装完只能看到一句「该包未提供示例题」。现补 6 道可页内试跑示例题（`reachability` × 2、`activation_check` × 2、`compliance_check` × 1，答案均由当前数据现算）、一道预测题 `OP-P1`（补 `provides` 后仍 `not_ready`，只少 `declaresCapability`，并用只读推演验证）、3 条场景、3 条边界、3 条约束、6 条能力说明与 4 行范式对照表（能力 / 落点 / 闸门 / 通道）。`reconcile.capabilities_without_note` 从 6 项降为 0；未新增槽位、未改 `GUIDE_VERSION`、未动框架代码。
+
 - **预测题从「告知答案」升级为「只读推演」（#115）**：`guide.json` 示例题新增可选 `simulate.edits`，显式声明断言改动（`op: set / add / remove`、`subject / predicate / value / kind`）。新增 `POST /api/domains/current/simulate`：从**断言图**复制一份 → 施加改动 → 重新物化 + 跑领域规则 → 跑一次只读能力 → 返回 `baseline` / `simulated` 对比后丢弃副本。不调用 `apply`、不改活图、不落盘、不接受变更能力；并发请求各自独立，失败不留脏状态。P1/P2/P3 的 `explain` 改为「页面会给出改动后的真实返回」，并补 P4-01/P4-02：`t_compliance_dev` 去掉合规约束后候选仍 2、担责 1→2，说明让候选与担责分叉的是约束而不是能力。方案卡/结果区在推演响应下并排展示「改动前（当前模型）」与「改动后（只读推演，不写入系统）」。
 
 - **R6 双人复核给出候选复核人（#113）**：此前 `orchestrate` 只说「需双人复核」，说不出「谁来复核」。新增 `can_review` 派生谓词与规则 `rules/R6a_can_review.ttl`：高风险任务（`needs_second_review`）中，持有有效认证（`cert_valid`）且未被指派为执行者的 Agent 获得复核资格；`orchestrate` 每步新增 `reviewers[]`，输出时再排除本步选中的执行者，方案卡展开列出候选人。复核资格明确区别于执行能力（`can_execute` / `can_own`）与代码审查技能（`cap_code_review`）；风险 2 的任务不产生候选。无候选时方案卡如实提示「需人工指定复核人」，不写死名单。

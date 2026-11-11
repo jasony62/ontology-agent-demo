@@ -459,7 +459,9 @@ def __init__(self, onto_path, ns=None):
       · depends_on 取边（限定子任务范围）→ 边取反 → topological_sort
       · 每环节 capability_match → 最优执行者
       · expand(derivations["orchestrate"], {steps: […]})
-  → 返回 {steps: [{idx, task_label, executor_label, reason}, …], derivation: […]}
+  → 返回 {steps: [{idx, task_label, executor_label, risk_level,
+                    constraints, requires_confirmation, requires_dual_review, reason}, …],
+           warnings: […], requires_confirmation, requires_dual_review, derivation: […]}
 豆包回答：按依赖顺序：需求分析 → 登录模块开发 → 测试 → 部署…（每步附执行者与理由）
 ```
 

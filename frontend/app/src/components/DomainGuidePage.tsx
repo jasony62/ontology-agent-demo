@@ -68,6 +68,112 @@ function capabilityNote(guide: DomainGuide, capability: string): string | null {
   return guide.profile.capability_notes[capability] ?? null;
 }
 
+/** 能力查询端点：请求体要包成 {kind, params}，其余通用端点原样透传。 */
+const CAPABILITY_QUERY_PATH = '/api/domains/current/capabilities/query';
+
+/** 示例题的 endpoint 形如 "POST /api/query"；拆成方法 + 路径。 */
+function parseEndpoint(endpoint: string | null): { method: string; path: string } | null {
+  if (!endpoint) return null;
+  const idx = endpoint.indexOf(' ');
+  if (idx < 0) return { method: 'POST', path: endpoint };
+  return { method: endpoint.slice(0, idx).toUpperCase(), path: endpoint.slice(idx + 1) };
+}
+
+/**
+ * 示例题「系统会发出什么请求」的请求体。
+ * 能力查询端点由框架分发，需要 kind；通用只读端点（/api/query 等）直接吃
+ * 题目 params 的字段，前端不解释键名（字段形状由后端 schema 决定）。
+ */
+function exampleRequestBody(
+  example: GuideExample,
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const target = parseEndpoint(example.endpoint);
+  if (target && target.path !== CAPABILITY_QUERY_PATH) return params;
+  return { kind: example.capability, params };
+}
+
+/** 执行方案卡（#110）：只呈现系统推导出的方案，不提供任何执行 / 调度入口。 */
+function PlanCard({ plan }: { plan: Record<string, unknown> }) {
+  const [openStep, setOpenStep] = useState<number | null>(null);
+  const steps = (Array.isArray(plan.steps) ? plan.steps : []).filter(isRecord);
+  const warnings = (Array.isArray(plan.warnings) ? plan.warnings : []).map(String);
+  const subDerivations = Array.isArray(plan.sub_derivations) ? plan.sub_derivations : [];
+  const executors = new Set(
+    steps.map((s) => s.executor).filter((v): v is string => typeof v === 'string' && v !== ''),
+  );
+  const confirmCount = steps.filter((s) => s.requires_confirmation === true).length;
+  const dualCount = steps.filter((s) => s.requires_dual_review === true).length;
+
+  return (
+    <div className="guide-plan">
+      <div className="guide-plan-head">
+        <h5>执行方案</h5>
+        <div className="guide-plan-summary">
+          共 {steps.length} 步 · {executors.size} 个执行者
+          {confirmCount > 0 && ` · ${confirmCount} 处需人工确认`}
+          {dualCount > 0 && ` · ${dualCount} 处需双人复核`}
+        </div>
+      </div>
+      <p className="guide-plan-note">以下为推理得出的安排建议，不会自动执行，也不做排班调度。</p>
+      {warnings.length > 0 && (
+        <ul className="guide-plan-warnings">
+          {warnings.map((w, i) => <li key={i}>{w}</li>)}
+        </ul>
+      )}
+      <ol className="guide-plan-steps">
+        {steps.map((step, i) => {
+          const idx = typeof step.idx === 'number' ? step.idx : i + 1;
+          const risk = typeof step.risk_level === 'number' ? step.risk_level : null;
+          const constraints = (Array.isArray(step.constraints) ? step.constraints : []).filter(isRecord);
+          const unmet = constraints.filter((c) => c.satisfied === false);
+          const active = openStep === i;
+          return (
+            <li key={i} className={active ? 'is-open' : ''}>
+              <button className="guide-plan-step" onClick={() => setOpenStep(active ? null : i)}>
+                <span className="guide-plan-idx">{idx}</span>
+                <span className="guide-plan-task">{String(step.task_label ?? step.task ?? '')}</span>
+                <span className="guide-plan-exec">{String(step.executor_label ?? '待人工确认')}</span>
+                <span className={`guide-plan-risk risk-${risk ?? 0}`}>风险 {risk ?? '-'}</span>
+                <span className="guide-plan-badges">
+                  {unmet.map((c, j) => (
+                    <span key={j} className={`guide-plan-badge rule-${String(c.rule ?? '').toLowerCase()}`}>
+                      {String(c.rule ?? '')} {String(c.label ?? '')}
+                    </span>
+                  ))}
+                </span>
+              </button>
+              {active && (
+                <div className="guide-plan-detail">
+                  <p>{String(step.reason ?? '')}</p>
+                  {constraints.length > 0 && (
+                    <ul className="guide-plan-constraints">
+                      {constraints.map((c, j) => (
+                        <li key={j} className={c.satisfied === false ? 'is-unmet' : ''}>
+                          <strong>{String(c.rule ?? '')} {String(c.label ?? '')}</strong>
+                          <span>{String(c.detail ?? '')}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {Array.isArray(subDerivations[i]) && (subDerivations[i] as unknown[]).length > 0 && (
+                    <div className="guide-derivation">
+                      <h5>依据链</h5>
+                      <ol>
+                        {(subDerivations[i] as unknown[]).map((d, k) => <li key={k}>{derivationText(d)}</li>)}
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 /** 能力清单分组：只读 / 变更 / 其他已声明（专用端点或仅 MCP） */
 function CapabilityGroup({
   title,
@@ -159,7 +265,8 @@ function ExamplePanel({
   running: boolean;
   onRun: () => void;
 }) {
-  const requestBody = { kind: example.capability, params: draft };
+  const requestBody = exampleRequestBody(example, draft);
+  const target = parseEndpoint(example.endpoint);
   const params = Object.entries(draft);
   return (
     <div className="guide-do-panel">
@@ -169,26 +276,33 @@ function ExamplePanel({
           <div className="guide-empty-inline">这道题不需要参数</div>
         ) : (
           <div className="guide-param-grid">
-            {params.map(([key, value]) => (
-              <label className="field" key={key}>
-                <span className="field-label">{key}</span>
-                {example.safe && typeof value === 'string' && runtime.individuals.length > 0 ? (
-                  <select value={String(value)} onChange={(e) => onParamChange(key, e.target.value)}>
-                    {!runtime.individuals.includes(String(value)) && (
-                      <option value={String(value)}>{String(value)}（示例值）</option>
-                    )}
-                    {runtime.individuals.map((name) => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <code className="guide-param-static">{pretty(value)}</code>
-                )}
-                <span className="field-hint">
-                  {example.safe ? '候选值来自当前本体，可直接换一个再发' : '领域参数原样透传，此处只作预览'}
-                </span>
-              </label>
-            ))}
+            {params.map(([key, value]) => {
+              // 只有「本体里真实存在的个体」才给下拉：类名 / SPARQL 文本这类参数
+              // 换成下拉会给出错误候选，页内只作静态预览。
+              const selectable =
+                example.safe && typeof value === 'string' && runtime.individuals.includes(value);
+              return (
+                <label className="field" key={key}>
+                  <span className="field-label">{key}</span>
+                  {selectable ? (
+                    <select value={String(value)} onChange={(e) => onParamChange(key, e.target.value)}>
+                      {runtime.individuals.map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <code className="guide-param-static">{pretty(value)}</code>
+                  )}
+                  <span className="field-hint">
+                    {selectable
+                      ? '候选值来自当前本体，可直接换一个再发'
+                      : example.safe
+                        ? '该参数不是本体个体，按原值透传'
+                        : '领域参数原样透传，此处只作预览'}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         )}
       </div>
@@ -197,7 +311,7 @@ function ExamplePanel({
         <div className="guide-do-label">2 · 系统会发出什么请求</div>
         <div className="guide-endpoint"><code>{example.endpoint ?? '不提供页内试跑'}</code></div>
         <CopyBlock
-          code={`curl -s -X POST ${window.location.origin}/api/domains/current/capabilities/query \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(requestBody)}'`}
+          code={`curl -s -X ${target?.method ?? 'POST'} ${window.location.origin}${target?.path ?? CAPABILITY_QUERY_PATH} \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(requestBody)}'`}
           note={example.endpoint ? '只读请求：不改图、不落盘，可重复执行' : '仅预览：该题不提供页内试跑'}
         />
       </div>
@@ -215,6 +329,9 @@ function ExamplePanel({
             {result?.error && <div className="guide-error-inline">{result.error}</div>}
             {result?.data !== undefined && (
               <div className="guide-result">
+                {isRecord(result.data) && Array.isArray(result.data.steps) && (
+                  <PlanCard plan={result.data} />
+                )}
                 {isRecord(result.data) && Array.isArray(result.data.derivation) && (
                   <div className="guide-derivation">
                     <h5>依据链</h5>
@@ -307,7 +424,12 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
   const runExample = async (example: GuideExample) => {
     setResults((current) => ({ ...current, [example.id]: { loading: true } }));
     try {
-      const data = await api.queryCapability(example.capability, drafts[example.id] ?? example.params);
+      const params = drafts[example.id] ?? example.params;
+      const target = parseEndpoint(example.endpoint);
+      const data =
+        target && target.path !== CAPABILITY_QUERY_PATH
+          ? await api.postJson(target.path, params)
+          : await api.queryCapability(example.capability, params);
       setResults((current) => ({ ...current, [example.id]: { loading: false, data } }));
       document.getElementById(`guide-example-${example.id}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     } catch (e) {

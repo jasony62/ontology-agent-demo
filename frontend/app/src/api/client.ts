@@ -142,7 +142,7 @@ export interface GuideExampleDeclaration {
 
 /** 示例题视图：声明 + 框架按运行态判定的「能否页内试跑」 */
 export interface GuideExample extends GuideExampleDeclaration {
-  /** safe=true 时指向只读能力查询端点；false 时为 null */
+  /** safe=true 时为 "POST <path>"（能力查询端点或通用只读端点）；false 时为 null */
   endpoint: string | null;
   safe: boolean;
   reason: string | null;
@@ -318,5 +318,16 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind, params }),
+    }),
+
+  /**
+   * 向任意只读端点 POST 一个 JSON 体（示例题的通用端点分支）。
+   * 路径与请求体都由 guide 的 `endpoint` + `params` 决定，前端不解释字段名。
+   */
+  postJson: (path: string, body: Record<string, unknown>) =>
+    request<Record<string, unknown>>(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     }),
 };

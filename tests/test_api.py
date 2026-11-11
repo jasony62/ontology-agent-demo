@@ -63,6 +63,19 @@ def test_query_orchestrate():
     assert plan["steps"][0]["task"] == "t_req"
 
 
+def test_query_orchestrate_exposes_constraint_dimensions():
+    """#110：REST 出口也要带 R4/R5/R6 与方案级 warnings。"""
+    r = client.post("/api/domains/current/capabilities/query",
+                    json={"kind": "orchestrate", "params": {"task": "t_compliance_dev"}})
+    assert r.status_code == 200
+    plan = r.json()
+    step = plan["steps"][0]
+    assert step["requires_dual_review"] is True
+    assert step["requires_confirmation"] is False
+    assert {c["rule"] for c in step["constraints"]} == {"R4", "R5", "R6"}
+    assert plan["warnings"]
+
+
 def test_apply_assign_conflict():
     r = client.post("/api/domains/current/capabilities/apply",
                     json={"kind": "assign", "params": {"task": "t_compliance_dev", "agent": "junior_dev"}})

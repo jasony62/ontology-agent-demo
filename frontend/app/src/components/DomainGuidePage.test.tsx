@@ -221,6 +221,141 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(container!.querySelectorAll('.guide-cap-grid .guide-cap-group.is-disabled')).toHaveLength(3);
   });
 
+  it('通用只读端点示例：按 endpoint 派发，请求体就是题目 params（#109）', async () => {
+    const sparql = 'SELECT ?dep WHERE { ?s ?p ?dep }';
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ rows: [] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const withGeneric: DomainGuide = {
+      ...GUIDE,
+      examples: [
+        ...GUIDE.examples,
+        {
+          id: 'T2-05',
+          question: '「登录测试」的依赖链是什么？',
+          capability: 'query_sparql',
+          params: { sparql },
+          answer_hint: 't_login_dev',
+          via: '传递依赖',
+          endpoint: 'POST /api/query',
+          safe: true,
+          reason: null,
+        },
+      ],
+    };
+    render(<DomainGuidePage guide={withGeneric} error={null} loading={false} onRetry={() => {}} />);
+
+    const card = container!.querySelector('#guide-example-T2-05')!;
+    const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
+    act(() => open.click());
+
+    // SPARQL 文本不是本体个体：不给下拉，静态透传
+    expect(card.querySelector('select')).toBeNull();
+    expect(card.textContent).toContain('该参数不是本体个体，按原值透传');
+    // 请求预览指向真实端点，而不是能力查询端点
+    expect(card.textContent).toContain('/api/query');
+    expect(card.textContent).not.toContain('/api/domains/current/capabilities/query');
+
+    const run = [...card.querySelectorAll('button')].find((b) => b.textContent === '用示例问一次')!;
+    await act(async () => {
+      run.click();
+    });
+
+    const [url, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/query');
+    expect(JSON.parse(String(options.body))).toEqual({ sparql });
+  });
+
+  it('编排结果渲染执行方案卡：步骤 / 执行者 / 约束徽标 / 依据链（#110）', async () => {
+    const plan = {
+      task: 't_feature',
+      task_label: '新功能上线',
+      is_complex: true,
+      steps: [
+        {
+          idx: 1, task: 't_req', task_label: '需求分析任务', risk_level: 1,
+          executor: 'req_agent', executor_label: '需求分析Agent', kind: 'conclusion',
+          reason: '具备能力 需求分析能力',
+          constraints: [
+            { rule: 'R5', label: '人工介入', satisfied: true, detail: '无需人工介入' },
+            { rule: 'R6', label: '双人复核', satisfied: true, detail: '未触发' },
+          ],
+          requires_confirmation: false, requires_dual_review: false,
+        },
+        {
+          idx: 2, task: 't_deploy', task_label: '生产部署发布', risk_level: 4,
+          executor: 'deploy_agent', executor_label: '部署Agent', kind: 'conclusion',
+          reason: '具备能力 部署发布能力',
+          constraints: [
+            { rule: 'R5', label: '人工介入', satisfied: true, detail: '无需人工介入' },
+            { rule: 'R6', label: '双人复核', satisfied: false, detail: '风险等级 4 ≥ 4 的简单任务，需第二名复核人放行' },
+          ],
+          requires_confirmation: false, requires_dual_review: true,
+        },
+      ],
+      warnings: ['第 2 步「生产部署发布」触发 R6 双人复核：风险等级 4 ≥ 4 的简单任务'],
+      requires_confirmation: true,
+      requires_dual_review: true,
+      derivation: ['总方案依据'],
+      sub_derivations: [[], ['部署步骤依据']],
+    };
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => plan,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const withPlan: DomainGuide = {
+      ...GUIDE,
+      examples: [
+        ...GUIDE.examples,
+        {
+          id: 'T2-15',
+          question: '「新功能上线」该怎么排？',
+          capability: 'orchestrate',
+          params: { task: 't_feature' },
+          answer_hint: '5 步',
+          via: '任务编排',
+          endpoint: 'POST /api/domains/current/capabilities/query',
+          safe: true,
+          reason: null,
+        },
+      ],
+    };
+    render(<DomainGuidePage guide={withPlan} error={null} loading={false} onRetry={() => {}} />);
+
+    const card = container!.querySelector('#guide-example-T2-15')!;
+    const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
+    act(() => open.click());
+    const run = [...card.querySelectorAll('button')].find((b) => b.textContent === '用示例问一次')!;
+    await act(async () => {
+      run.click();
+    });
+
+    expect(card.textContent).toContain('执行方案');
+    expect(card.textContent).toContain('共 2 步 · 2 个执行者');
+    expect(card.textContent).toContain('1 处需双人复核');
+    expect(card.textContent).toContain('第 2 步「生产部署发布」触发 R6 双人复核');
+    expect(card.textContent).toContain('R6 双人复核');
+    expect(card.textContent).toContain('风险 4');
+    // 方案只呈现，不提供执行 / 调度按钮
+    const planButtons = [...card.querySelectorAll('.guide-plan button')];
+    expect(planButtons.length).toBe(2);
+    expect(planButtons.every((b) => !/执行|调度|运行中/.test(b.textContent ?? ''))).toBe(true);
+
+    const stepButtons = [...card.querySelectorAll('.guide-plan-step')] as HTMLButtonElement[];
+    act(() => stepButtons[1].click());
+    expect(card.textContent).toContain('风险等级 4 ≥ 4 的简单任务，需第二名复核人放行');
+    expect(card.textContent).toContain('部署步骤依据');
+  });
+
   it('读不到说明时明确失败并可重试，不拿缓存当现状', () => {
     const onRetry = vi.fn();
     render(<DomainGuidePage guide={null} error="无法读取当前领域信息：500" loading={false} onRetry={onRetry} />);

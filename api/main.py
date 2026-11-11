@@ -649,6 +649,18 @@ APPLY_KINDS = {
 QUERY_ENDPOINT = "POST /api/domains/current/capabilities/query"
 APPLY_ENDPOINT = "POST /api/domains/current/capabilities/apply"
 
+# 示例题可以引用的框架级通用只读端点（#109）。它们不属于领域 CAPABILITIES——
+# SDK 的 guide 契约明确允许题库引用 query_sparql 这类内置查询工具；但「引用」
+# 不等于「可页内试跑」，这里登记能力名 → 端点路径，_guide_examples 据此把题目
+# 判为可跑，前端按 endpoint 派发、请求体就是题目的 params 原样
+# （字段形状见 api/schemas.py 的 SparqlRequest / IndividualsRequest 等）。
+GUIDE_GENERIC_ENDPOINTS = {
+    "query_sparql": "/api/query",
+    "individuals": "/api/individuals",
+    "types_of": "/api/types",
+    "property_values": "/api/property",
+}
+
 
 def _query_kinds(adapter) -> dict:
     """当前适配器可用的只读能力表：框架内置 ∪ 领域 `QUERY_HANDLERS`。
@@ -825,6 +837,10 @@ def _guide_examples(
     `safe` 只由运行态决定，领域包不得自填（guide.json 写了 safe 会被加载期拒绝）：
       - 通用模式下领域端点整组不可用 → 全部不可试跑；
       - 能力名在只读能力清单里 → 可页内试跑，endpoint 指向纯读端点；
+      - 能力名是框架级通用只读端点（query_sparql / individuals / types_of /
+        property_values）→ 同样可页内试跑，endpoint 指向通用端点，请求体是
+        题目的 params 原样（#109：这些题此前一律「页内不可跑」，约束类判定
+        全部点不开）；
       - 只在变更能力清单里 → 不可试跑，reason 说明会改本体；
       - 两边都没有 → 不可试跑，reason 说明当前不可用。
     """
@@ -839,6 +855,9 @@ def _guide_examples(
             endpoint = None
         elif capability in query:
             safe, reason, endpoint = True, None, QUERY_ENDPOINT
+        elif capability in GUIDE_GENERIC_ENDPOINTS:
+            safe, reason = True, None
+            endpoint = f"POST {GUIDE_GENERIC_ENDPOINTS[capability]}"
         elif capability in apply:
             safe = False
             reason = "该能力会修改本体，不提供页内试跑"

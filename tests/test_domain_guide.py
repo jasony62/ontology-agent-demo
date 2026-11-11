@@ -227,9 +227,13 @@ def test_guide_endpoint_returns_one_complete_response():
     assert examples["T2-01"]["endpoint"] == "POST /api/domains/current/capabilities/query"
     assert examples["T2-08"]["safe"] is False
     assert "修改本体" in examples["T2-08"]["reason"]
-    # 走 generic 查询工具的题不属于能力端点清单 → 不可试跑，且不删题
-    assert examples["T2-05"]["safe"] is False
-    assert examples["T2-05"]["reason"]
+    # 框架内置查询工具（query_sparql / property_values / ...）也可页内试跑：
+    # 端点指向通用只读端点，题目不再「页内不可跑」（#109）
+    assert examples["T2-05"]["safe"] is True
+    assert examples["T2-05"]["endpoint"] == "POST /api/query"
+    assert examples["T2-07"]["endpoint"] == "POST /api/property"
+    assert examples["T2-11"]["endpoint"] == "POST /api/individuals"
+    assert examples["T2-12"]["endpoint"] == "POST /api/types"
 
     reconcile = body["reconcile"]
     assert isinstance(reconcile["notes_without_capability"], list)
@@ -251,6 +255,62 @@ def test_examples_are_not_safe_in_generic_mode():
     assert out[0]["safe"] is False
     assert out[0]["endpoint"] is None
     assert "通用模式" in out[0]["reason"]
+
+
+def test_every_guide_capability_is_known():
+    """题库里的能力名必须落在领域声明或框架级通用只读端点内（#109）。
+
+    此前 10 道约束 / 类别推理题引用了 property_values / query_sparql /
+    types_of / individuals：既不在 CAPABILITIES，也没有任何端点，页面整组
+    「不提供页内试跑」。这条契约把「声明了却跑不了」挡在测试期。
+    """
+    from fastapi.testclient import TestClient
+
+    body = TestClient(M.app).get("/api/domains/current/guide").json()
+    known = set(body["runtime"]["declared_capabilities"]) | set(M.GUIDE_GENERIC_ENDPOINTS)
+    unknown = sorted({e["capability"] for e in body["examples"]} - known)
+    assert unknown == []
+
+
+def test_safe_examples_are_accepted_by_their_endpoint():
+    """每道 safe 示例按自己的 endpoint + params 原样发一次，必须 200（#109）。
+
+    这条测试覆盖的是「页面点得开」的最后一公里：能力名存在还不够，端点必须
+    真的接受这份参数（能力查询包 {kind, params}，通用端点直接吃 params）。
+    """
+    from fastapi.testclient import TestClient
+
+    client = TestClient(M.app)
+    body = client.get("/api/domains/current/guide").json()
+    checked = 0
+    for example in body["examples"]:
+        if not example["safe"]:
+            continue
+        method, path = example["endpoint"].split(" ", 1)
+        assert method == "POST"
+        payload = example["params"]
+        if path == "/api/domains/current/capabilities/query":
+            payload = {"kind": example["capability"], "params": payload}
+        r = client.post(path, json=payload)
+        assert r.status_code == 200, (example["id"], path, r.text)
+        checked += 1
+    assert checked >= 15
+
+
+def test_unknown_capability_stays_unsafe_with_reason():
+    """反面用例：既不在只读 / 变更清单、也不是通用端点的名字仍不可试跑。"""
+    from api.main import _guide_examples
+
+    out = _guide_examples(
+        {"examples": [{
+            "id": "E-01", "question": "q", "capability": "no_such_capability",
+            "params": {}, "answer_hint": "a", "via": "R1",
+        }]},
+        ["capability_match"], ["assign"], domain_mode=True,
+    )
+    assert out[0]["safe"] is False
+    assert out[0]["endpoint"] is None
+    assert "不可用" in out[0]["reason"]
 
 
 def test_guide_changes_whole_response_after_switch(tmp_path, monkeypatch):

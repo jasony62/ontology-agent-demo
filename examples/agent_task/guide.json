@@ -95,7 +95,7 @@
       "id": "T2-07",
       "question": "「敏感数据报表开发」有什么约束？",
       "capability": "property_values",
-      "params": { "subject": "t_compliance_dev", "property_name": "requires_constraint" },
+      "params": { "subject": "t_compliance_dev", "property": "requires_constraint" },
       "answer_hint": "creq_default（合规要求实例）",
       "via": "R4 约束读取"
     },
@@ -167,7 +167,7 @@
       "id": "T2-16",
       "question": "「新功能上线」需要人工介入吗？",
       "capability": "property_values",
-      "params": { "subject": "t_feature", "property_name": "needs_manual_review" },
+      "params": { "subject": "t_feature", "property": "needs_manual_review" },
       "answer_hint": "true：五步无人能担责且风险为 4",
       "via": "R5 人工介入（正例）"
     },
@@ -175,7 +175,7 @@
       "id": "T2-17",
       "question": "「双模块开发」需要人工介入吗？",
       "capability": "property_values",
-      "params": { "subject": "t_double_dev", "property_name": "needs_manual_review" },
+      "params": { "subject": "t_double_dev", "property": "needs_manual_review" },
       "answer_hint": "空：dev_agent 能担责，不提示人工介入",
       "via": "R5 人工介入（反例）"
     },
@@ -183,7 +183,7 @@
       "id": "T2-18",
       "question": "「敏感数据报表开发」需要双人复核吗？",
       "capability": "property_values",
-      "params": { "subject": "t_compliance_dev", "property_name": "needs_second_review" },
+      "params": { "subject": "t_compliance_dev", "property": "needs_second_review" },
       "answer_hint": "true：SimpleTask 且风险为 5，强制双人复核",
       "via": "R6 双人复核（正例）"
     },
@@ -191,7 +191,7 @@
       "id": "T2-19",
       "question": "「登录模块开发」需要双人复核吗？",
       "capability": "property_values",
-      "params": { "subject": "t_login_dev", "property_name": "needs_second_review" },
+      "params": { "subject": "t_login_dev", "property": "needs_second_review" },
       "answer_hint": "空：风险为 2，低于复核阈值",
       "via": "R6 双人复核（反例）"
     },

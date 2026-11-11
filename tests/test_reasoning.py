@@ -104,6 +104,51 @@ def test_r2_feature_launch_needs_multi_agents(adapter):
     assert all(s["executor"] for s in plan["steps"])
 
 
+# ---------- 执行方案的约束维度（#110） ----------
+
+def test_orchestrate_compliance_step_has_dual_review(adapter):
+    """合规高风险单片：step 必须带 R6 双人复核，且方案级 warnings 非空。"""
+    plan = adapter.orchestrate(NS.t_compliance_dev, with_derivation=False)
+    assert len(plan["steps"]) == 1
+    step = plan["steps"][0]
+    assert step["requires_dual_review"] is True
+    assert step["requires_confirmation"] is False
+    by_rule = {c["rule"]: c for c in step["constraints"]}
+    assert by_rule["R6"]["satisfied"] is False
+    assert by_rule["R4"]["satisfied"] is True
+    assert plan["warnings"]
+    assert any("R6" in w for w in plan["warnings"])
+
+
+def test_orchestrate_high_risk_complex_needs_manual(adapter):
+    """复合高风险任务自身触发 R5：方案级 requires_confirmation 为真。"""
+    plan = adapter.orchestrate(NS.t_feature, with_derivation=False)
+    assert plan["requires_confirmation"] is True
+    assert any("R5" in w for w in plan["warnings"])
+    # 第 5 步部署（风险 4 单片）需要双人复核
+    deploy = next(s for s in plan["steps"] if s["task"] == "t_deploy")
+    assert deploy["requires_dual_review"] is True
+
+
+def test_orchestrate_low_risk_has_no_flags(adapter):
+    """反例：风险 2 的普通任务两项都为 false，不能被写死成 true。"""
+    plan = adapter.orchestrate(NS.t_login_dev, with_derivation=False)
+    step = plan["steps"][0]
+    assert step["requires_confirmation"] is False
+    assert step["requires_dual_review"] is False
+    assert plan["requires_confirmation"] is False
+    assert plan["requires_dual_review"] is False
+    assert plan["warnings"] == []
+
+
+def test_orchestrate_step_r4_conflict_for_uncertified(adapter):
+    """R4 负例：合规任务挂未认证 Agent 时，step 的 R4 判定必须为未满足。"""
+    constraints, _, _ = adapter._step_constraints(NS.t_compliance_dev, "junior_dev")
+    r4 = next(c for c in constraints if c["rule"] == "R4")
+    assert r4["satisfied"] is False
+    assert "未持有有效认证" in r4["detail"]
+
+
 # ---------- R4 合规冲突 ----------
 
 def test_r4_compliance_conflict(adapter):

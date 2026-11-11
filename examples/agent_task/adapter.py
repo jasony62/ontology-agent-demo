@@ -280,6 +280,62 @@ class AgentTaskAdapter:
             }
         return None
 
+    # ---------------- 执行方案的约束维度（#110） ----------------
+
+    def _derived_flag(self, task, prop: str) -> bool:
+        """读规则层派生出的布尔标记（needs_manual_review / needs_second_review）。
+
+        标记由 `rules/R5_*` / `rules/R6_*` 在加载期构造，这里只读取，不重算——
+        orchestrate 的职责是汇总与挂载，不是新增推理。
+        """
+        vals = self.engine.objects_of(local(task), self.c.resolve(prop))
+        return any(str(v).strip().lower() in {"true", "1"} for v in vals)
+
+    def _step_constraints(self, task, agent) -> tuple[list, bool, bool]:
+        """单步的约束判定：R4（合规）/ R5（人工介入）/ R6（双人复核）。
+
+        R4 只在任务确实声明了合规约束时出现（与 `_compliance_conflict` 同源）；
+        R5 / R6 始终列出，`satisfied` 表示「该约束当前不需要额外动作」——
+        触发时 satisfied=false，方案卡据此亮徽标。
+        """
+        constraints: list[dict] = []
+        compliance = self._compliance_constraint_instances()
+        if any(c in compliance for c in self.constraints_of(task)):
+            if agent is None:
+                satisfied, detail = False, "无可执行 Agent，无法判定合规分配"
+            else:
+                conflict = self._compliance_conflict(task, agent)
+                satisfied = conflict is None
+                detail = (
+                    conflict["message"] if conflict
+                    else f"执行者「{self.label(agent)}」持有有效认证，合规约束满足"
+                )
+            constraints.append({
+                "rule": "R4", "label": "合规认证",
+                "satisfied": satisfied, "detail": detail,
+            })
+
+        manual = self._derived_flag(task, "needs_manual_review")
+        constraints.append({
+            "rule": "R5", "label": "人工介入",
+            "satisfied": not manual,
+            "detail": (
+                "高风险任务无人可整体担责（can_own），需人工介入编排与担责"
+                if manual else "已有 Agent 可整体担责，无需人工介入"
+            ),
+        })
+
+        second = self._derived_flag(task, "needs_second_review")
+        constraints.append({
+            "rule": "R6", "label": "双人复核",
+            "satisfied": not second,
+            "detail": (
+                f"风险等级 {self.risk(task)} ≥ 4 的简单任务，需第二名复核人放行"
+                if second else "未触发（风险等级 < 4 或非简单任务）"
+            ),
+        })
+        return constraints, manual, second
+
     # ---------------- 变更记录（框架 AboxStore 的状态，对外保持一致） ----------------
 
     @property
@@ -386,21 +442,45 @@ class AgentTaskAdapter:
         for sub in order:
             m = self.capability_match(sub, with_derivation=False)
             best = m["matches"][0] if m["matches"] else None
+            agent = best["agent"] if best else None
+            constraints, requires_confirmation, requires_dual_review = self._step_constraints(
+                sub, agent,
+            )
             steps.append({
                 "task": local(sub),
                 "task_label": self.label(sub),
                 "risk_level": self.risk(sub),
-                "executor": best["agent"] if best else None,
+                "executor": agent,
                 "executor_label": best["agent_label"] if best else "待人工确认",
                 "kind": "conclusion" if best else "rule",
                 "reason": (f"具备能力 {'、'.join(best['shared_capability_labels'])}"
                            if best and best["shared_capability_labels"]
                            else (f"可执行全部子任务（{m['task_label']}为复合任务）"
                                  if best else "无可执行 Agent")),
+                "constraints": constraints,
+                "requires_confirmation": requires_confirmation,
+                "requires_dual_review": requires_dual_review,
             })
             derivations.append(m["derivation"])
         for i, s in enumerate(steps, 1):
             s["idx"] = i
+
+        warnings = self._plan_warnings(steps)
+        # 整体任务自身的 R5 / R6 也要进方案级摘要：复合任务的父任务标记不挂在
+        # 任何子步骤上（t_feature 自身 needs_manual_review=true），只读 steps
+        # 会漏报。
+        parent_manual = self._derived_flag(task, "needs_manual_review")
+        parent_second = self._derived_flag(task, "needs_second_review")
+        triggered = {
+            (s["task"], c["rule"])
+            for s in steps for c in s["constraints"] if not c["satisfied"]
+        }
+        if parent_manual and (local(task), "R5") not in triggered:
+            warnings.insert(0, f"整体任务「{self.label(task)}」触发 R5 人工介入："
+                               "高风险且无人可整体担责（can_own）")
+        if parent_second and (local(task), "R6") not in triggered:
+            warnings.insert(0, f"整体任务「{self.label(task)}」触发 R6 双人复核："
+                               "高风险任务需第二名复核人放行")
 
         self.last_query_kind = "orchestrate"
         self.last_derivation = self.ctx.expand(
@@ -413,9 +493,38 @@ class AgentTaskAdapter:
             "task_label": self.label(task),
             "is_complex": self.is_complex_task(task),
             "steps": steps,
+            "warnings": warnings,
+            "requires_confirmation": parent_manual or any(
+                s["requires_confirmation"] for s in steps),
+            "requires_dual_review": parent_second or any(
+                s["requires_dual_review"] for s in steps),
             "derivation": self.last_derivation,
             "sub_derivations": derivations,
         }
+
+    def _plan_warnings(self, steps: list) -> list[str]:
+        """方案级提示：把触发中的约束抬到顶层，并标出同一 Agent 多步执行。"""
+        warnings = []
+        for step in steps:
+            for c in step["constraints"]:
+                if not c["satisfied"]:
+                    warnings.append(
+                        f"第 {step['idx']} 步「{step['task_label']}」触发 "
+                        f"{c['rule']} {c['label']}：{c['detail']}"
+                    )
+        by_executor: dict[str, list[int]] = {}
+        for step in steps:
+            if step["executor"]:
+                by_executor.setdefault(step["executor"], []).append(step["idx"])
+        for agent, idxs in by_executor.items():
+            if len(idxs) > 1:
+                label = next(s["executor_label"] for s in steps if s["executor"] == agent)
+                joined = "、".join(str(i) for i in idxs)
+                warnings.append(
+                    f"第 {joined} 步均由「{label}」执行：请确认高风险环节的"
+                    "复核人与执行人分离（R6）"
+                )
+        return warnings
 
     def assign(self, task_iri, agent_iri, with_derivation: bool = True, persist: bool = False) -> dict:
         """分配任务给 Agent，并执行 R4 合规冲突检测。

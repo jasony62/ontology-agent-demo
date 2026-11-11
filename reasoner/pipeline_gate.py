@@ -160,10 +160,21 @@ def _gate_g2(g: Graph, domain: str, degraded: list) -> dict:
             if isinstance(s, URIRef) and s != OWL.Nothing)
         if nothing_individuals:
             conflicts.append(f"个体被推出 rdf:type owl:Nothing（不可满足）：{nothing_individuals}")
-        # 类级：互斥类之间不得有子类关系
-        for x, _p, y in g.triples((None, OWL.disjointWith, None)):
-            if (x, RDFS.subClassOf, y) in g or (y, RDFS.subClassOf, x) in g:
-                conflicts.append(f"{_short(x)} ⊑ {_short(y)} 与 owl:disjointWith 冲突")
+        # 类级：互斥类之间不得有子类关系。用物化图判定——只查断言图会漏掉
+        # 「A ⊑ B、B ⊑ C、A disjointWith C」这类间接冲突（#112）。
+        for x, _p, y in gg.triples((None, OWL.disjointWith, None)):
+            if not isinstance(x, URIRef) or not isinstance(y, URIRef):
+                continue
+            if x == OWL.Nothing or y == OWL.Nothing:
+                continue        # owl:Nothing 与任何类互斥恒真，不是冲突
+            if (x, RDFS.subClassOf, y) in gg:
+                conflicts.append(
+                    f"类 {_short(x)} 与 {_short(y)} 声明互斥（owl:disjointWith），"
+                    f"但 {_short(x)} ⊑ {_short(y)}")
+            elif (y, RDFS.subClassOf, x) in gg:
+                conflicts.append(
+                    f"类 {_short(x)} 与 {_short(y)} 声明互斥（owl:disjointWith），"
+                    f"但 {_short(y)} ⊑ {_short(x)}")
         # 个体级：同一个体不得同时属于互斥对的两边（类型经物化已含子类展开）。
         # OWL 2 RL 规则集没有个体级 disjoint 推理（owlrl 不会为此推出
         # rdf:type owl:Nothing），只查类级的话，"把任务错标成智能体、

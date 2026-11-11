@@ -339,6 +339,14 @@ class SaveStats(BaseModel):
     individuals: int = Field(..., description="保存后具名个体数量。")
 
 
+class DroppedAxiom(BaseModel):
+    """保存时因实体被删除而一并裁掉的公理（#112）。"""
+
+    predicate: str = Field(..., description="被裁掉的公理谓词，目前为 owl:disjointWith。")
+    a: str = Field(..., description="公理主语类短名。")
+    b: str = Field(..., description="公理宾语类短名。")
+
+
 class OntologySaveResponse(BaseModel):
     """保存编辑模型的结果。"""
 
@@ -347,6 +355,10 @@ class OntologySaveResponse(BaseModel):
     filename: str = Field(..., description="写入的文件名（mode=new 时带随机后缀）。")
     mode: str = Field(..., description="保存模式：new=另存到 data/uploads/；overwrite=覆盖当前本体。")
     stats: SaveStats = Field(..., description="保存后按引擎统计的三元组与类/个体数量。")
+    dropped_axioms: list[DroppedAxiom] = Field(
+        default_factory=list,
+        description="因删除类而一并裁掉的具名互斥公理；为空表示没有公理受影响。",
+    )
     materialized: MaterializedResponse = Field(..., description="保存后重新物化的完整 diff。")
 
 

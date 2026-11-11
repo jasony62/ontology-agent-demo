@@ -304,3 +304,67 @@ describe('OntologyEditor 写盘文案与覆盖确认（#92 #100）', () => {  fu
     expect(container!.textContent).not.toContain('另存');
   });
 });
+
+describe('OntologyEditor 互斥公理（#112）', () => {
+  function openClass(id: string) {
+    const summary = [...container!.querySelectorAll<HTMLElement>('.ef-class-summary')]
+      .find((el) => el.textContent?.includes(id))!;
+    click(summary);
+  }
+
+  it('类编辑框展示「与谁互斥」，无声明时给出空态', () => {
+    render();
+    openClass('DomainPackage');
+    expect(container!.textContent).toContain('与谁互斥');
+    expect(container!.querySelector('.ef-disjoint-empty')?.textContent).toContain('未声明互斥');
+  });
+
+  it('可以从下拉添加一条互斥公理', () => {
+    render();
+    openClass('DomainPackage');
+    const select = container!.querySelector<HTMLSelectElement>('.ef-disjoint-add')!;
+    act(() => {
+      select.value = 'Capability';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(useEditorStore.getState().model?.disjoints).toEqual([
+      { a: 'DomainPackage', b: 'Capability' },
+    ]);
+    expect(container!.textContent).toContain('能力');
+  });
+
+  it('移除标签会删掉该对互斥（含反向声明）', () => {
+    useEditorStore.setState({
+      model: {
+        ...MODEL,
+        disjoints: [
+          { a: 'DomainPackage', b: 'Capability' },
+          { a: 'Capability', b: 'DomainPackage' },
+        ],
+      },
+    });
+    render();
+    openClass('DomainPackage');
+    const tags = container!.querySelectorAll('.ef-disjoint-tag');
+    expect(tags).toHaveLength(1);
+    click(container!.querySelector('.ef-disjoint-remove')!);
+    expect(useEditorStore.getState().model?.disjoints).toEqual([]);
+  });
+
+  it('删除类时一并删除以它为端点的互斥公理，并在通知里说明', () => {
+    useEditorStore.setState({
+      model: {
+        ...MODEL,
+        disjoints: [{ a: 'DomainPackage', b: 'Capability' }],
+      },
+    });
+    render();
+    openClass('DomainPackage');
+    click(container!.querySelector('button[aria-label="删除 领域包"]')!);
+
+    const model = useEditorStore.getState().model!;
+    expect(model.classes.map((c) => c.id)).toEqual(['Capability']);
+    expect(model.disjoints).toEqual([]);
+    expect(container!.querySelector('.notice-banner')?.textContent).toContain('1 条');
+  });
+});

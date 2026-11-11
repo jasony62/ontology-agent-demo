@@ -140,6 +140,30 @@ export default function OntologyEditor() {
   const roots = model.classes.filter((c) => !c.parent || !classIds.has(c.parent));
   const childrenOf = (pid: string) => model.classes.filter((c) => c.parent === pid && c.parent !== c.id);
 
+  // #112：互斥公理按「无向对」呈现（本体里可能只声明了一个方向），
+  // 但保存仍逐条保留原方向——去掉一侧会破坏无损往返。
+  const disjoints = model.disjoints ?? [];
+  const disjointCounterparts = (id: string) => {
+    const out: string[] = [];
+    for (const d of disjoints) {
+      if (d.a === id && d.b !== id && !out.includes(d.b)) out.push(d.b);
+      if (d.b === id && d.a !== id && !out.includes(d.a)) out.push(d.a);
+    }
+    return out;
+  };
+  const addDisjoint = (id: string, other: string) => {
+    if (!other || other === id || disjointCounterparts(id).includes(other)) return;
+    commit({ ...model, disjoints: [...disjoints, { a: id, b: other }] });
+  };
+  const removeDisjoint = (id: string, other: string) => {
+    commit({
+      ...model,
+      disjoints: disjoints.filter((d) => !(
+        (d.a === id && d.b === other) || (d.a === other && d.b === id)
+      )),
+    });
+  };
+
   const renderClassNode = (c: { id: string; label: string; parent: string | null; description: string }, depth: number, flat = false) => {
     const open = isClassOpen(c.id);
     return (
@@ -175,12 +199,56 @@ export default function OntologyEditor() {
             <Field label="描述">
               <input value={c.description} onChange={(e) => commit({ ...model, classes: model.classes.map((x) => (x.id === c.id ? { ...x, description: e.target.value } : x)) })} />
             </Field>
+            <Field label="与谁互斥">
+              <div className="ef-disjoints">
+                {disjointCounterparts(c.id).length === 0 && (
+                  <span className="ef-disjoint-empty">未声明互斥（红线）</span>
+                )}
+                {disjointCounterparts(c.id).map((other) => {
+                  const otherLabel = model.classes.find((x) => x.id === other)?.label || other;
+                  return (
+                    <span className="ef-disjoint-tag" key={other} title={`${c.id} owl:disjointWith ${other}`}>
+                      <b>{otherLabel}</b>
+                      <span className="ef-class-id">{other}</span>
+                      <button
+                        type="button"
+                        className="ef-disjoint-remove"
+                        aria-label={`移除 ${c.id} 与 ${other} 的互斥`}
+                        onClick={() => removeDisjoint(c.id, other)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
+                <select
+                  className="ef-disjoint-add"
+                  value=""
+                  aria-label={`为 ${c.id} 添加互斥类`}
+                  onChange={(e) => addDisjoint(c.id, e.target.value)}
+                >
+                  <option value="">＋ 添加互斥类…</option>
+                  {model.classes
+                    .filter((x) => x.id !== c.id && !disjointCounterparts(c.id).includes(x.id))
+                    .map((x) => <option key={x.id} value={x.id}>{x.label || x.id}</option>)}
+                </select>
+              </div>
+              <span className="ef-field-hint">互斥的类不能有共同的子类或实例；保存后由一致性闸门（G2）检查。</span>
+            </Field>
             <button
               className="btn ghost danger-text"
               aria-label={`删除 ${c.label || c.id}`}
               onClick={() => {
-                const next = { ...model, classes: model.classes.filter((x) => x.id !== c.id) };
+                const dropped = disjoints.filter((d) => d.a === c.id || d.b === c.id).length;
+                const next = {
+                  ...model,
+                  classes: model.classes.filter((x) => x.id !== c.id),
+                  disjoints: (model.disjoints ?? []).filter((d) => d.a !== c.id && d.b !== c.id),
+                };
                 commit(next);
+                if (dropped > 0) {
+                  setNotice(`已删除类 ${c.label || c.id}，并一并删除 ${dropped} 条以它为端点的互斥公理。`);
+                }
               }}
             >
               删除
@@ -215,8 +283,10 @@ export default function OntologyEditor() {
         setOntology(null);
         setGraphData(res.materialized.asserted);
       }
+      const dropped = res.dropped_axioms ?? [];
       setNotice(
-        `已保存（${mode === 'overwrite' ? '覆盖当前本体文件' : '生成新本体文件'}）：${res.filename} · 三元组 ${res.stats.triples_before} → ${res.stats.triples_after}（推理新增 ${res.stats.inferred_added}）`,
+        `已保存（${mode === 'overwrite' ? '覆盖当前本体文件' : '生成新本体文件'}）：${res.filename} · 三元组 ${res.stats.triples_before} → ${res.stats.triples_after}（推理新增 ${res.stats.inferred_added}）`
+        + (dropped.length > 0 ? ` · 因删除实体一并裁掉 ${dropped.length} 条互斥公理` : ''),
       );
     } catch (e) {
       setError(`保存失败：${e instanceof Error ? e.message : String(e)}`);

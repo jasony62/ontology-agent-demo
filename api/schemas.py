@@ -256,6 +256,13 @@ class EditModelIndividual(BaseModel):
     )
 
 
+class EditModelDisjoint(BaseModel):
+    """具名互斥公理：a owl:disjointWith b（#112）。"""
+
+    a: str = Field(..., description="互斥一端的类短名。")
+    b: str = Field(..., description="互斥另一端的类短名；两端不能相同。")
+
+
 class EditModel(BaseModel):
     """结构化编辑模型（后端 rdflib 提取 / 重建）。"""
 
@@ -276,6 +283,13 @@ class EditModel(BaseModel):
     individuals: list[EditModelIndividual] = Field(
         default_factory=list,
         description="个体列表（ABox）；包含类型断言与属性断言。",
+    )
+    disjoints: list[EditModelDisjoint] | None = Field(
+        default=None,
+        description=(
+            "具名互斥公理 owl:disjointWith（#112）。null / 省略表示不修改底图里的"
+            "互斥公理；空数组表示显式删除全部具名互斥对。BNode 匿名公理始终原样保留。"
+        ),
     )
 
 

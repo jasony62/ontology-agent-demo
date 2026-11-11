@@ -77,6 +77,8 @@ export interface EditModelPayload {
   objectProps: { id: string; label: string; domain: string | null; range: string | null; characteristics: string[] }[];
   dataProps: { id: string; label: string; domain: string | null; range: string | null }[];
   individuals: { id: string; label: string; types: string[]; assertions: { prop: string; value: string; isObject: boolean }[] }[];
+  /** 具名互斥公理（#112）；省略表示不修改底图，[] 表示显式清空 */
+  disjoints?: { a: string; b: string }[];
 }
 
 export interface SaveModelResponse {
@@ -86,6 +88,8 @@ export interface SaveModelResponse {
   mode: 'new' | 'overwrite';
   /** 写盘前的自动备份路径（backups/<timestamp>/<文件名>）；另存新文件时为 null */
   backup?: string | null;
+  /** 因删除类而一并裁掉的具名互斥公理（#112）；无影响时为空数组 */
+  dropped_axioms?: { predicate: string; a: string; b: string }[];
   stats: { triples_before: number; triples_after: number; inferred_added: number; classes: number; individuals: number };
   materialized: MaterializedResponse;
 }

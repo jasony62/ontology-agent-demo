@@ -38,6 +38,12 @@ export interface EditModelIndividual {
   assertions: EditModelAssertion[];
 }
 
+/** 具名互斥公理 a owl:disjointWith b（#112）。按方向逐条保留，不做对称去重。 */
+export interface EditModelDisjoint {
+  a: string;
+  b: string;
+}
+
 export interface EditModel {
   ontologyName: string;
   namespace: string;
@@ -45,6 +51,8 @@ export interface EditModel {
   objectProps: EditModelObjectProp[];
   dataProps: EditModelDataProp[];
   individuals: EditModelIndividual[];
+  /** 可选：具名互斥公理；undefined 表示不修改底图，[] 表示显式清空 */
+  disjoints?: EditModelDisjoint[];
 }
 
 export const PROPERTY_CHARACTERISTICS = [
@@ -63,7 +71,15 @@ export const XSD_DATATYPES = [
 ];
 
 export function emptyEditModel(name = 'new-ontology', ns = 'http://example.org/new-ontology#'): EditModel {
-  return { ontologyName: name, namespace: ns, classes: [], objectProps: [], dataProps: [], individuals: [] };
+  return {
+    ontologyName: name,
+    namespace: ns,
+    classes: [],
+    objectProps: [],
+    dataProps: [],
+    individuals: [],
+    disjoints: [],
+  };
 }
 
 /** 编辑模型 → 图谱预览数据：类节点 + subClassOf 边；个体节点 + 类型断言边 */

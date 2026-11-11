@@ -10,11 +10,13 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from rdflib.compare import isomorphic
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import api.main as M  # noqa: E402
 import reasoner.engine as E  # noqa: E402
+from reasoner import pipeline_gate  # noqa: E402
 
 client = TestClient(M.app)
 
@@ -456,3 +458,157 @@ def test_backup_retention_keeps_recent(tmp_path, monkeypatch):
                     if p.is_dir() and M._BACKUP_STAMP.match(p.name))
     assert len(stamps) == 3
     assert (tmp_path / "backups" / "domains").is_dir()
+
+
+# ---------- #112：disjointWith 可见 / 可改 / 冲突可视 ----------
+
+BNODE_DISJOINT_TTL = """@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix ex: <http://example.org/bnode#> .
+
+ex:A a owl:Class .
+ex:B a owl:Class ;
+    owl:disjointWith ex:A, [ a owl:Class ] .
+"""
+
+
+def test_edit_model_exposes_named_disjoints():
+    """编辑模型新增 disjoints：只收具名对，按方向逐条保留（#112）。"""
+    d = client.get("/api/ontology/edit-model").json()
+    pairs = {(x["a"], x["b"]) for x in d["disjoints"]}
+    # 本体里 Agent / Capability / Task 是双向声明，必须原样保留两个方向
+    assert ("Agent", "Capability") in pairs
+    assert ("Capability", "Agent") in pairs
+    assert len(d["disjoints"]) == 8, "应由底图的 8 条具名互斥三元组逐条提取"
+
+
+def test_model_to_rdf_disjoints_roundtrip_isomorphic():
+    """不改 disjoints 直接保存：整图与断言图同构（BNode 树一并保留）。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    g2 = E.Graph()
+    g2.parse(data=eng.model_to_rdf(eng.edit_model()), format="xml")
+    assert isomorphic(eng.raw, g2)
+
+
+def test_model_to_rdf_replaces_only_named_disjoint_pairs(tmp_path):
+    """改互斥只覆盖 owl:disjointWith 的具名对；其余公理一条不少（#112 验收）。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    model = eng.edit_model()
+    model["disjoints"] = [
+        p for p in model["disjoints"]
+        if {p["a"], p["b"]} != {"Agent", "Capability"}
+    ]
+    model["disjoints"].append({"a": "DevAgent", "b": "Agent"})
+
+    g2 = E.Graph()
+    g2.parse(data=eng.model_to_rdf(model), format="xml")
+    ns = str(eng.NS)
+    assert (E.URIRef(ns + "DevAgent"), E.OWL.disjointWith, E.URIRef(ns + "Agent")) in g2
+    assert not list(g2.triples((E.URIRef(ns + "Agent"), E.OWL.disjointWith,
+                                E.URIRef(ns + "Capability"))))
+    assert not list(g2.triples((E.URIRef(ns + "Capability"), E.OWL.disjointWith,
+                                E.URIRef(ns + "Agent"))))
+    assert len(list(g2.triples((None, E.OWL.disjointWith, None)))) == 7
+    # 未被本次编辑触及的公理 / 注释保持原样
+    assert len(list(g2.triples((None, E.OWL.inverseOf, None)))) == 2
+    assert len(list(g2.triples((None, E.OWL.equivalentClass, None)))) == 2
+    assert set(g2.triples((None, E.RDFS.comment, None))) == \
+        set(eng.raw.triples((None, E.RDFS.comment, None)))
+
+
+def test_model_to_rdf_preserves_bnode_disjoint_axioms(tmp_path):
+    """BNode 参与的匿名互斥公理不建模，显式清空具名对时也必须保留。"""
+    src = tmp_path / "bnode.owl"
+    seeded = E.Graph()
+    seeded.parse(data=BNODE_DISJOINT_TTL, format="turtle")
+    src.write_text(seeded.serialize(format="xml"), encoding="utf-8")
+    eng = E.OntologyEngine(str(src))
+    model = eng.edit_model()
+    assert model["disjoints"] == [{"a": "B", "b": "A"}]
+
+    model["disjoints"] = []
+    g2 = E.Graph()
+    g2.parse(data=eng.model_to_rdf(model), format="xml")
+    triples = list(g2.triples((None, E.OWL.disjointWith, None)))
+    assert len(triples) == 1, "具名对被清空，匿名互斥公理应保留"
+    assert isinstance(triples[0][2], E.BNode)
+
+
+def test_model_to_rdf_prunes_disjoints_when_class_deleted():
+    """删除类时一并裁掉以它为端点的互斥公理，并留下可提示的痕迹。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    model = eng.edit_model()
+    model["classes"] = [c for c in model["classes"] if c["id"] != "TestAgent"]
+    # 故意保留陈旧 disjoints，模拟客户端没有同步清理
+    assert any({p["a"], p["b"]} == {"DevAgent", "TestAgent"} for p in model["disjoints"])
+
+    g2 = E.Graph()
+    g2.parse(data=eng.model_to_rdf(model), format="xml")
+    ns = str(eng.NS)
+    assert not list(g2.triples((E.URIRef(ns + "TestAgent"), None, None)))
+    assert not list(g2.triples((None, E.OWL.disjointWith, E.URIRef(ns + "TestAgent"))))
+    assert eng.last_dropped_axioms == [
+        {"predicate": "owl:disjointWith", "a": "DevAgent", "b": "TestAgent"},
+    ]
+
+
+def test_model_to_rdf_rejects_self_disjoint():
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    model = eng.edit_model()
+    model["disjoints"].append({"a": "Agent", "b": "Agent"})
+    with pytest.raises(ValueError, match="同一个类"):
+        eng.model_to_rdf(model)
+
+
+def _g2_of(xml: str) -> dict:
+    g = E.Graph()
+    g.parse(data=xml, format="xml")
+    report = pipeline_gate.run_gates(
+        g.serialize(format="turtle"), gates=["G2"], domain="",
+    )
+    return next(t for t in report["gate_trace"] if t["gate"] == "G2_consistency")
+
+
+def test_gate_reports_named_class_conflict_after_adding_disjoint():
+    """加一对互斥 → 保存后 G2 报出具名冲突（含两个类名），删掉后冲突消失。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    model = eng.edit_model()
+    # 用「子类 ⊑ 父类」的互斥对：JuniorDevAgent ⊑ Agent（经物化间接推出）
+    model["disjoints"].append({"a": "JuniorDevAgent", "b": "Agent"})
+
+    g2 = _g2_of(eng.model_to_rdf(model))
+    assert g2["status"] == "fail"
+    conflict = next(c for c in g2["evidence"]["conflicts"] if "disjointWith" in c)
+    assert "JuniorDevAgent" in conflict and "Agent" in conflict
+
+    # 撤回该改动 → 同一个闸门不再报告
+    model["disjoints"] = [p for p in model["disjoints"]
+                          if {p["a"], p["b"]} != {"JuniorDevAgent", "Agent"}]
+    g2_after = _g2_of(eng.model_to_rdf(model))
+    assert g2_after["status"] == "pass", g2_after["evidence"]
+
+
+def test_gate_reports_named_individual_conflict_for_disjoint_pair():
+    """用户视角示例：Agent / Capability 互斥，但 dev_agent 同时是两者。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    model = eng.edit_model()
+    for ind in model["individuals"]:
+        if ind["id"] == "dev_agent":
+            ind["types"].append("Capability")
+
+    g2 = _g2_of(eng.model_to_rdf(model))
+    assert g2["status"] == "fail"
+    conflict = next(c for c in g2["evidence"]["conflicts"] if "dev_agent" in c)
+    assert "Agent" in conflict and "Capability" in conflict
+
+
+def test_save_reports_dropped_axioms(isolated_api):
+    """保存回执带 dropped_axioms：删除类后前端可提示裁掉了几条公理（#112）。"""
+    client = isolated_api.client
+    model = client.get("/api/ontology/edit-model").json()
+    model["classes"] = [c for c in model["classes"] if c["id"] != "TestAgent"]
+
+    r = client.post("/api/ontology/save", json={"model": model, "mode": "overwrite"})
+    assert r.status_code == 200, r.text
+    assert r.json()["dropped_axioms"] == [
+        {"predicate": "owl:disjointWith", "a": "DevAgent", "b": "TestAgent"},
+    ]

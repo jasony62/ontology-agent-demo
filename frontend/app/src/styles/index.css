@@ -704,6 +704,16 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .ef-chars { display: flex; gap: var(--sp-3); flex-wrap: wrap; margin-top: 2px; }
 .ef-chars label { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-xs); color: var(--muted); }
 
+/* #112：类的「与谁互斥」——以无向标签呈现，方向由保存逻辑保留 */
+.ef-disjoints { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ef-disjoint-empty { font-size: var(--fs-xs); color: var(--muted); }
+.ef-disjoint-tag { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 2px 8px; background: var(--panel-2); }
+.ef-disjoint-tag b { font-weight: 600; }
+.ef-disjoint-remove { border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: var(--fs-sm2); line-height: 1; }
+.ef-disjoint-remove:hover { color: var(--danger); }
+.ef-disjoint-add { height: var(--control-h); padding: 0 8px; font-size: var(--fs-sm2); border: 1px dashed var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); }
+.ef-field-hint { display: block; margin-top: 4px; font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
+
 .ef-assertions { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: 2px; min-width: 0; }
 .ef-assertion { display: flex; gap: var(--sp-2); align-items: center; min-width: 0; }
 .ef-assertion select, .ef-assertion input { flex: 1 1 0; min-width: 0; height: var(--control-h); padding: 0 9px; font-size: var(--fs-sm2); border: 1px solid var(--border); border-radius: var(--radius-sm); box-sizing: border-box; }

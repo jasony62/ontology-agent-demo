@@ -47,6 +47,15 @@ export function validateEditModel(m: EditModel): string[] {
     }
   }
 
+  // ---- 互斥公理（#112）：只校验形状，不强制两端已声明（开放世界） ----
+  for (const d of m.disjoints ?? []) {
+    if (!d.a.trim() || !d.b.trim()) {
+      errors.push('互斥公理的两端不能为空');
+    } else if (d.a === d.b) {
+      errors.push(`互斥公理的两端不能是同一个类: ${d.a}`);
+    }
+  }
+
   // ---- 属性 ----
   const propIds = new Set<string>();
   for (const p of [...m.objectProps, ...m.dataProps]) {

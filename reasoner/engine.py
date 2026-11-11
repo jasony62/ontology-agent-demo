@@ -718,6 +718,11 @@ class OntologyEngine:
           objectProps  id / label / domain / range / characteristics（功能性/传递性等）
           dataProps    id / label / domain / range（标量类型短名）
           individuals  id / label / types（类型断言）/ assertions（对象/数据属性取值）
+          disjoints    owl:disjointWith 的具名对 [{a, b}]（#112）
+
+        `disjoints` 只收录「两端都是具名类」的互斥三元组，按方向逐条保留
+        （本体里可能双向声明，去重会破坏无损往返）；BNode 参与的匿名公理
+        不建模，写回时原样保留。
         """
         ns = str(self.NS)
         g = self.raw
@@ -802,6 +807,15 @@ class OntologyEngine:
                 "assertions": assertions,
             })
 
+        disjoints: list[dict] = [
+            {"a": local(a), "b": local(b)}
+            for a, b in sorted(
+                ((a, b) for a, _p, b in g.triples((None, OWL.disjointWith, None))
+                 if isinstance(a, URIRef) and isinstance(b, URIRef)),
+                key=lambda pair: (str(pair[0]), str(pair[1])),
+            )
+        ]
+
         return {
             "ontologyName": os.path.splitext(os.path.basename(self.onto_path))[0],
             "namespace": ns,
@@ -809,6 +823,7 @@ class OntologyEngine:
             "objectProps": object_props,
             "dataProps": data_props,
             "individuals": individuals,
+            "disjoints": disjoints,
         }
 
     @staticmethod
@@ -878,10 +893,12 @@ class OntologyEngine:
         """编辑模型 JSON → RDF/XML 文本（保存写盘用）。
 
         **以当前断言图（self.raw）的拷贝为底图，只覆盖 EditModel 建模到的
-        部分**（#108）：类 / 对象属性 / 数据属性 / 个体自身的声明与断言。
-        未建模的三元组原样保留——公理（owl:disjointWith / owl:inverseOf /
-        定义类）、属性注释、本体头、字面量的显式 datatype——因此「打开后
-        什么都不改直接保存」是无损的，保存副作用不再污染推理结果。
+        部分**（#108）：类 / 对象属性 / 数据属性 / 个体自身的声明与断言；
+        #112 起增加一项可选覆盖：模型带 `disjoints` 时整体替换
+        `owl:disjointWith` 的**具名对**，BNode 匿名公理仍原样保留。其余
+        未建模的三元组原样保留——公理（owl:inverseOf / 定义类）、属性注释、
+        本体头、字面量的显式 datatype——因此「打开后什么都不改直接保存」是
+        无损的，保存副作用不再污染推理结果。
 
         模型覆盖不到的取值（匿名类表达式、owl:Thing 约束、个体的匿名取值）
         也保持不动；只有模型显式建模、且值确实变了的才会被替换。
@@ -891,6 +908,7 @@ class OntologyEngine:
         """
         ns = str(model.get("namespace") or self.NS)
         g = Graph()
+        self.last_dropped_axioms = []
         if ns == str(self.NS):
             for triple in self.raw:
                 g.add(triple)
@@ -920,6 +938,10 @@ class OntologyEngine:
         individual_ids = {iri(i["id"]) for i in model.get("individuals", [])}
 
         # 表单里删掉的实体：从底图移除（否则「删除」在保存后自动复活）
+        removed_class_ids = {
+            s for s in g.subjects(RDF.type, OWL.Class)
+            if isinstance(s, URIRef) and s not in class_ids
+        }
         for node, kept in (
             (OWL.Class, class_ids),
             (OWL.ObjectProperty, object_ids),
@@ -929,6 +951,30 @@ class OntologyEngine:
             for s in list(g.subjects(RDF.type, node)):
                 if isinstance(s, URIRef) and s not in kept:
                     self._drop_entity(g, s)
+
+        # #112：`disjoints` 按「覆盖 owl:disjointWith 的具名对」处理，其余公理
+        # 仍走底图保留。只清具名对——BNode 参与的匿名互斥公理不建模，必须原样保留。
+        # 被删除的类引用的互斥公理一并裁掉，并在 last_dropped_axioms 里留下痕迹，
+        # 供保存回执提示「有 N 条公理引用了你删除的 X，已一并删除」。
+        if model.get("disjoints") is not None:
+            for a, p, b in list(g.triples((None, OWL.disjointWith, None))):
+                if isinstance(a, URIRef) and isinstance(b, URIRef):
+                    g.remove((a, p, b))
+            for pair in model.get("disjoints") or []:
+                a_name = pair.get("a") if isinstance(pair, dict) else None
+                b_name = pair.get("b") if isinstance(pair, dict) else None
+                if (not isinstance(a_name, str) or not a_name.strip()
+                        or not isinstance(b_name, str) or not b_name.strip()):
+                    raise ValueError("disjoints 的 a / b 必须是类短名")
+                if a_name == b_name:
+                    raise ValueError(f"互斥公理的两端不能是同一个类：{a_name}")
+                a_iri, b_iri = iri(a_name), iri(b_name)
+                if a_iri in removed_class_ids or b_iri in removed_class_ids:
+                    self.last_dropped_axioms.append(
+                        {"predicate": "owl:disjointWith", "a": a_name, "b": b_name}
+                    )
+                    continue
+                g.add((a_iri, OWL.disjointWith, b_iri))
 
         for cls in model.get("classes", []):
             node = iri(cls["id"])

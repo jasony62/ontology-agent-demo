@@ -266,7 +266,12 @@
         "prompt": "改动后「生产部署发布」还需要双人复核吗？",
         "options": ["需要", "不需要"],
         "answer": "不需要",
-        "explain": "R6 的判据是 SimpleTask 且 risk_level ≥ 4；改成 3 后不再触发。页面返回的是改动前的基线（true），改动本身请用在线编辑完成。"
+        "explain": "R6 的判据是 SimpleTask 且 risk_level ≥ 4；改成 3 后不再触发。页面会在断言图副本上把 has_risk_level 4→3 并重跑规则，给出改动后的真实返回；活图不变。"
+      },
+      "simulate": {
+        "edits": [
+          { "op": "set", "subject": "t_deploy", "predicate": "has_risk_level", "value": 3, "kind": "literal" }
+        ]
       }
     },
     {
@@ -281,7 +286,12 @@
         "prompt": "改动后候选与能担责者各是几个？",
         "options": ["候选 2，能担责 1", "候选 2，能担责 2", "候选 1，能担责 1"],
         "answer": "候选 2，能担责 2",
-        "explain": "t_login_review 没有约束，R2b 下 can_own ≡ can_execute；能力扩张会同时进入候选与担责集合。页面返回的是改动前的基线（候选 1、可担责 1）。"
+        "explain": "t_login_review 没有约束，R2b 下 can_own ≡ can_execute；能力扩张会同时进入候选与担责集合。页面会在断言图副本上给 junior_dev 加上 cap_code_review，给出改动后的真实返回；活图不变。"
+      },
+      "simulate": {
+        "edits": [
+          { "op": "add", "subject": "junior_dev", "predicate": "has_capability", "value": "cap_code_review", "kind": "iri" }
+        ]
       }
     },
     {
@@ -296,12 +306,53 @@
         "prompt": "改动后候选是谁？",
         "options": ["dev_agent + junior_dev", "只有 dev_agent", "仍然为空"],
         "answer": "dev_agent + junior_dev",
-        "explain": "去掉 cap_deployment 后，t_full_stack 只要求 cap_coding；dev_agent 与 junior_dev 都具备。页面返回的是改动前的基线（空集）。"
+        "explain": "去掉 cap_deployment 后，t_full_stack 只要求 cap_coding；dev_agent 与 junior_dev 都具备。页面会在断言图副本上移除该能力要求并重跑规则，给出改动后的真实返回；活图不变。"
+      },
+      "simulate": {
+        "edits": [
+          { "op": "remove", "subject": "t_full_stack", "predicate": "requires_capability", "value": "cap_deployment", "kind": "iri" }
+        ]
+      }
+    },
+    {
+      "id": "P4-01",
+      "question": "「敏感数据报表开发」有两名候选，谁真正能担责？",
+      "capability": "capability_match",
+      "params": { "task": "t_compliance_dev" },
+      "answer_hint": "候选 dev_agent、junior_dev；能担责的只有 dev_agent（候选 2、担责 1）",
+      "via": "R1 能力匹配 + R2b 担责（预测配对）",
+      "group": "预测一次变化",
+      "predict": {
+        "prompt": "两名候选里，能担责的有几个？",
+        "options": ["1 个（只有 dev_agent）", "2 个（都能担责）", "0 个"],
+        "answer": "1 个（只有 dev_agent）",
+        "explain": "候选按 can_execute 返回 dev_agent、junior_dev；t_compliance_dev 带合规约束，junior_dev 未持有效认证，can_own 只有 dev_agent。候选 2、担责 1。"
+      }
+    },
+    {
+      "id": "P4-02",
+      "question": "去掉「敏感数据报表开发」的合规约束后，能担责的会变成谁？",
+      "capability": "capability_match",
+      "params": { "task": "t_compliance_dev" },
+      "answer_hint": "候选仍 2；能担责 1→2（junior_dev 也进入）",
+      "via": "R1 能力匹配 + R2b 担责（预测配对）",
+      "group": "预测一次变化",
+      "predict": {
+        "prompt": "去掉合规约束后，候选与能担责各是几个？",
+        "options": ["候选 2，能担责 1", "候选 2，能担责 2", "候选 1，能担责 1"],
+        "answer": "候选 2，能担责 2",
+        "explain": "去掉 creq_default 后 t_compliance_dev 无约束，R2b 下 can_own ≡ can_execute；候选仍是 dev_agent、junior_dev，担责从 1 变为 2。让候选与担责分叉的是约束，不是能力。"
+      },
+      "simulate": {
+        "edits": [
+          { "op": "remove", "subject": "t_compliance_dev", "predicate": "requires_constraint", "value": "creq_default", "kind": "iri" }
+        ]
       }
     }
   ],
   "integrations": [
     "REST：POST /api/domains/current/capabilities/query 发起只读能力查询；变更走 /apply",
+    "REST：POST /api/domains/current/simulate 在断言图副本上做只读推演（不改活图、不落盘）",
     "REST：POST /api/domains/current/entities 按 schema 新建实体",
     "MCP：领域工具随当前包注册，接入地址见 MCP Server 启动说明",
     "OpenAPI：/api-docs 可查全部端点与参数"

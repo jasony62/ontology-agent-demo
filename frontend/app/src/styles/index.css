@@ -1083,6 +1083,9 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-run-note { font-size: var(--fs-xs); color: var(--muted); }
 .guide-error-inline { font-size: var(--fs-sm2); color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger-border); border-radius: var(--radius); padding: 8px 10px; }
 .guide-result { display: flex; flex-direction: column; gap: 8px; }
+.guide-simulation { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.guide-sim-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.guide-sim-col .guide-result { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; background: var(--panel-2); }
 .guide-derivation { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .guide-derivation h5 { font-size: var(--fs-sm); color: var(--heading); margin-bottom: 4px; }
 .guide-derivation ol { padding-left: 18px; font-size: var(--fs-sm2); line-height: 1.8; }

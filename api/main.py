@@ -42,6 +42,8 @@ import hashlib
 import os
 import re
 import shutil
+import tempfile
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -49,7 +51,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Path as ApiPath
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from rdflib import RDF, OWL, RDFS, URIRef
+from rdflib import Graph, Literal, RDF, OWL, RDFS, URIRef
 
 
 class LazyStaticFiles(StaticFiles):
@@ -81,7 +83,7 @@ from domains import DomainManager, DomainContractError, DomainNotFoundError
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
-    SaveOntologyRequest, EditModel,
+    SaveOntologyRequest, EditModel, SimulationRequest,
 )
 from .response_schemas import (
     ClassesResponse,
@@ -828,6 +830,86 @@ def _rules_summary(report: dict | None) -> dict | None:
     }
 
 
+def _simulation_node(value, kind: str, ns):
+    """推演改动的取值节点：IRI 短名 / 字面量（尽量沿用原字面量 datatype）。"""
+    if kind == "iri":
+        text = str(value)
+        return URIRef(text if text.startswith(("http://", "https://")) else str(ns) + text)
+    if isinstance(value, bool):
+        return Literal(value)
+    if isinstance(value, int):
+        return Literal(value)
+    if isinstance(value, float):
+        return Literal(value)
+    return Literal(str(value))
+
+
+def _simulation_match(old, value, kind: str, ns) -> bool:
+    """remove 编辑的匹配口径：IRI 按短名 / 全名，字面量按文本（布尔忽略大小写）。"""
+    if kind == "iri":
+        text = str(value)
+        target = text if text.startswith(("http://", "https://")) else str(ns) + text
+        return isinstance(old, URIRef) and str(old) == target
+    return str(old).strip().lower() == str(value).strip().lower()
+
+
+def _apply_simulation_edits(graph, edits: list[dict], ns) -> None:
+    """在断言图**副本**上施加编辑；主体 / 谓词 / 待删三元组不存在即报错。
+
+    失败必须显式：静默 no-op 会让推演给出「看起来合理但错误」的答案。
+    """
+    for edit in edits:
+        if not isinstance(edit["value"], (str, int, float, bool)):
+            raise ValueError(f"推演取值必须是字符串 / 数字 / 布尔：{edit['subject']} {edit['predicate']}")
+        subject = ns[edit["subject"]]
+        predicate = ns[edit["predicate"]]
+        if not any(True for _ in graph.triples((subject, RDF.type, None))):
+            raise ValueError(f"推演主体不存在或不是个体：{edit['subject']}")
+        if not any(True for _ in graph.triples((None, predicate, None))):
+            raise ValueError(f"推演谓词不存在：{edit['predicate']}")
+        existing = list(graph.objects(subject, predicate))
+        op = edit.get("op", "set")
+        if op == "set":
+            for old in existing:
+                graph.remove((subject, predicate, old))
+        if op in ("set", "add"):
+            # set 用原值 datatype（如 xsd:integer）续写，避免 3 变成裸字面量后
+            # SPARQL 数值比较失效——这正是「改动被静默吞掉」的经典来源。
+            node = _simulation_node(edit["value"], edit["kind"], ns)
+            if isinstance(node, Literal) and isinstance(edit["value"], str):
+                for old in existing:
+                    if isinstance(old, Literal) and old.datatype is not None:
+                        node = Literal(str(edit["value"]), datatype=old.datatype)
+                        break
+            graph.add((subject, predicate, node))
+        else:
+            hits = [old for old in existing
+                    if _simulation_match(old, edit["value"], edit["kind"], ns)]
+            if not hits:
+                raise ValueError(
+                    f"要删除的断言不存在：{edit['subject']} {edit['predicate']} "
+                    f"{edit['value']}"
+                )
+            for old in hits:
+                graph.remove((subject, predicate, old))
+
+
+def _run_read_capability(engine, adapter, capability: str, params: dict) -> dict:
+    """在给定引擎 / 适配器上跑一次只读能力（推演基线与副本共用同一口径）。"""
+    if capability == "property_values":
+        subject = str(params.get("subject", "") or "")
+        prop = str(params.get("property", "") or "")
+        if not subject or not prop:
+            raise ValueError("能力 property_values 缺少必填参数：params.subject / params.property")
+        return {"subject": subject, "property": prop,
+                "values": engine.property_values(subject, prop)}
+    table = _query_kinds(adapter)
+    handler = table.get(capability)
+    if handler is None:
+        raise ValueError(f"推演不支持该只读能力：{capability}")
+    return handler(adapter, CapabilityQueryRequest(kind=capability, params=params))
+
+
 def _guide_examples(
     profile: dict, query_kinds: list[str], apply_kinds: list[str], *,
     domain_mode: bool,
@@ -878,6 +960,7 @@ def _guide_examples(
             "reason": reason,
             **({"predict": item["predict"]} if "predict" in item else {}),
             **({"group": item["group"]} if "group" in item else {}),
+            **({"simulate": item["simulate"]} if "simulate" in item else {}),
         })
     return out
 
@@ -1040,6 +1123,97 @@ def capabilities_query(req: CapabilityQueryRequest):
         APPLY_ENDPOINT,
         "变更能力",
     )
+
+
+@app.post(
+    "/api/domains/current/simulate",
+    tags=["领域推理"],
+    summary="只读推演",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "只读推演结果：baseline 为当前模型返回，simulated 为在断言图副本上"
+                "施加 edits 后重新物化 + 跑规则再查询的返回。形状随 capability 而变；"
+                "推演不改活图、不落盘、不新增 apply 能力名。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def simulate_capability(req: SimulationRequest):
+    """只读推演：断言图副本上施加改动 → 重推理 → 跑一次只读能力 → 丢弃副本。
+
+    #115 的三条硬约束：
+      1. 从**断言图**（ENGINE.raw）起，而不是物化图——否则旧派生标记不会撤回；
+      2. 编辑必须落在断言谓词上（如 has_risk_level，不是导出的 risk_level）；
+      3. 不调用 apply：副本与活图完全隔离，失败 / 并发都不留下脏状态。
+    """
+    _require_default_ontology()
+    capability = req.capability
+    if capability in _apply_kinds(ADAPTER):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{capability} 是变更能力，不能用于只读推演；推演只接受只读能力",
+        )
+    allowed = set(_query_kinds(ADAPTER)) | {"property_values"}
+    if capability not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"推演不支持该能力：{capability}；可用："
+                f"{', '.join(sorted(allowed))}"
+            ),
+        )
+
+    edits = []
+    for edit in req.edits:
+        item = edit.model_dump()
+        if item.get("kind") is None:
+            item["kind"] = (
+                "literal" if isinstance(item["value"], (bool, int, float)) else "iri"
+            )
+        edits.append(item)
+    params = dict(req.params)
+    started = time.perf_counter()
+    try:
+        baseline = _run_read_capability(ENGINE, ADAPTER, capability, params)
+
+        # 1) 只复制断言图；BNode / 注释 / 公理 / 本体头全部随图保留。
+        graph = Graph()
+        for triple in ENGINE.raw:
+            graph.add(triple)
+        for prefix, uri in ENGINE.raw.namespaces():
+            graph.bind(prefix, uri)
+        _apply_simulation_edits(graph, edits, ENGINE.NS)
+
+        # 2) 副本落临时目录 → 新引擎（owlrl 物化）→ 跑本领域规则 → 新适配器。
+        #    临时目录退出即删；活图与 extensions/ 一笔不写。
+        handle = DOMAINS.current()
+        with tempfile.TemporaryDirectory(prefix="onto-sim-") as tmp:
+            path = Path(tmp) / "simulation.owl"
+            graph.serialize(destination=str(path), format="xml")
+            sim_engine = OntologyEngine(str(path), extensions_dir=None)
+            rules_dir = Path(handle.module.__file__).parent / "rules"
+            if rules_dir.is_dir():
+                from reasoner.rules import apply_rules
+                apply_rules(sim_engine, sorted(rules_dir.glob("*.ttl")))
+            from ontology_plugin_sdk import PluginContext
+            ctx = PluginContext.for_module(handle.module, sim_engine, None)
+            sim_adapter = handle.module.create_adapter_ctx(ctx)
+            simulated = _run_read_capability(sim_engine, sim_adapter, capability, params)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "capability": capability,
+        "params": params,
+        "edits": edits,
+        "baseline": baseline,
+        "simulated": simulated,
+        "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
+        "readonly": True,
+    }
 
 
 @app.post(

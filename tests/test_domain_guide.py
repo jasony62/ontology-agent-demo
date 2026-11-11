@@ -159,6 +159,42 @@ def test_group_is_optional_but_validated():
         validate_domain_guide({**copy.deepcopy(GOOD), "examples": [empty]})
 
 
+def test_simulate_is_optional_but_validated():
+    """只读推演：可选；出现时 edits 非空，op / kind / 主体谓词都要可审计（#115）。"""
+    base = copy.deepcopy(GOOD["examples"][0])
+    base["simulate"] = {
+        "edits": [{
+            "op": "set", "subject": "t_deploy",
+            "predicate": "has_risk_level", "value": 3, "kind": "literal",
+        }],
+    }
+    guide = validate_domain_guide({**copy.deepcopy(GOOD), "examples": [base]})
+    assert guide["examples"][0]["simulate"]["edits"][0] == {
+        "op": "set", "subject": "t_deploy",
+        "predicate": "has_risk_level", "value": 3, "kind": "literal",
+    }
+
+    unset = copy.deepcopy(GOOD["examples"][0])
+    assert "simulate" not in validate_domain_guide(
+        {**copy.deepcopy(GOOD), "examples": [unset]}
+    )["examples"][0]
+
+    empty = copy.deepcopy(base)
+    empty["simulate"]["edits"] = []
+    with pytest.raises(DomainGuideError, match="非空数组"):
+        validate_domain_guide({**copy.deepcopy(GOOD), "examples": [empty]})
+
+    bad_op = copy.deepcopy(base)
+    bad_op["simulate"]["edits"][0]["op"] = "replace"
+    with pytest.raises(DomainGuideError, match="\\.op"):
+        validate_domain_guide({**copy.deepcopy(GOOD), "examples": [bad_op]})
+
+    missing = copy.deepcopy(base)
+    del missing["simulate"]["edits"][0]["subject"]
+    with pytest.raises(DomainGuideError, match="缺少必填键"):
+        validate_domain_guide({**copy.deepcopy(GOOD), "examples": [missing]})
+
+
 def test_predict_is_optional_but_validated():
     """预测配对题：可选；出现时 answer 必须落在 options 内（#111）。"""
     base = copy.deepcopy(GOOD["examples"][0])
@@ -318,6 +354,13 @@ def test_guide_endpoint_returns_one_complete_response():
     # #114：北极星入口与预测题分组，供前端置顶
     assert examples["T2-15"]["group"] == "看一次编排"
     assert examples["P1-01"]["group"] == "预测一次变化"
+    # #115：预测题带只读推演编辑，显式落在断言谓词上
+    assert examples["P1-01"]["simulate"]["edits"] == [{
+        "op": "set", "subject": "t_deploy",
+        "predicate": "has_risk_level", "value": 3, "kind": "literal",
+    }]
+    assert {"P4-01", "P4-02"} <= set(examples)
+    assert examples["P4-02"]["simulate"]["edits"][0]["predicate"] == "requires_constraint"
     # 框架内置查询工具（query_sparql / property_values / ...）也可页内试跑：
     # 端点指向通用只读端点，题目不再「页内不可跑」（#109）
     assert examples["T2-05"]["safe"] is True

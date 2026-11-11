@@ -263,6 +263,48 @@ class EditModelDisjoint(BaseModel):
     b: str = Field(..., description="互斥另一端的类短名；两端不能相同。")
 
 
+class SimulationEdit(BaseModel):
+    """只读推演的一条断言改动（#115）。
+
+    推演只操作**断言图副本**：`set` 替换该 (subject, predicate) 的全部取值，
+    `add` 追加一条，`remove` 删除匹配的取值；三者都不会触碰活图。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    op: Literal["set", "add", "remove"] = Field(
+        "set",
+        description="set=替换该主体-谓词的全部取值；add=追加；remove=删除匹配取值。",
+    )
+    subject: str = Field(..., description="主体个体短名（必须已在断言图中存在）。")
+    predicate: str = Field(..., description="断言谓词短名，必须指向真实断言（不是派生谓词）。")
+    value: Any = Field(..., description="新取值：IRI 短名或字面量（数字 / 布尔 / 字符串）。")
+    kind: Literal["literal", "iri"] | None = Field(
+        None,
+        description="取值类型；省略时按 Python 类型推断（数字 / 布尔为 literal，字符串为 iri）。",
+    )
+
+
+class SimulationRequest(BaseModel):
+    """只读推演请求：在断言图副本上施加 edits，重推理后跑一次只读能力（#115）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    capability: str = Field(
+        ...,
+        description="只读能力名：领域只读能力（capability_match / orchestrate / QUERY_HANDLERS）或 property_values。",
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="能力参数，与 POST /api/domains/current/capabilities/query 的 params 同形。",
+    )
+    edits: list[SimulationEdit] = Field(
+        ...,
+        min_length=1,
+        description="至少一条断言改动；推演只读，不会写回活图或磁盘。",
+    )
+
+
 class EditModel(BaseModel):
     """结构化编辑模型（后端 rdflib 提取 / 重建）。"""
 

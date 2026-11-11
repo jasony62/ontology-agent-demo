@@ -146,6 +146,8 @@ export interface GuideExampleDeclaration {
   group?: string;
   /** 可选的预测配对题（#111）：先猜后验，answer 在跑之前不展示 */
   predict?: GuidePredict;
+  /** 可选的只读推演（#115）：在断言图副本上施加 edits，展示改动后的真实结果 */
+  simulate?: GuideSimulate;
 }
 
 /** 预测配对题：用户先选一个预测，再跑查询并核对。 */
@@ -154,6 +156,30 @@ export interface GuidePredict {
   options: string[];
   answer: string;
   explain: string;
+}
+
+/** 只读推演的一条断言改动（#115）：只动断言图副本，不写活图。 */
+export interface GuideSimulateEdit {
+  op: 'set' | 'add' | 'remove';
+  subject: string;
+  predicate: string;
+  value: unknown;
+  kind?: 'literal' | 'iri';
+}
+
+export interface GuideSimulate {
+  edits: GuideSimulateEdit[];
+}
+
+/** POST /api/domains/current/simulate 的返回：基线与改动后结果并排。 */
+export interface SimulationResult {
+  capability: string;
+  params: Record<string, unknown>;
+  edits: GuideSimulateEdit[];
+  baseline: unknown;
+  simulated: unknown;
+  elapsed_ms?: number;
+  readonly: boolean;
 }
 
 /** 范式要素对照行（可选槽位，不是所有领域都有）。 */
@@ -344,6 +370,18 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind, params }),
+    }),
+
+  /** 只读推演（#115）：断言图副本上施加改动，返回 baseline / simulated 对比 */
+  simulate: (payload: {
+    capability: string;
+    params: Record<string, unknown>;
+    edits: GuideSimulateEdit[];
+  }) =>
+    request<SimulationResult>('/api/domains/current/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     }),
 
   /**

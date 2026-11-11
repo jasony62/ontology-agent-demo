@@ -91,6 +91,7 @@ function capabilityNote(guide: DomainGuide, capability: string): string | null {
 
 /** 能力查询端点：请求体要包成 {kind, params}，其余通用端点原样透传。 */
 const CAPABILITY_QUERY_PATH = '/api/domains/current/capabilities/query';
+const SIMULATE_PATH = '/api/domains/current/simulate';
 
 /** 示例题的 endpoint 形如 "POST /api/query"；拆成方法 + 路径。 */
 function parseEndpoint(endpoint: string | null): { method: string; path: string } | null {
@@ -101,14 +102,26 @@ function parseEndpoint(endpoint: string | null): { method: string; path: string 
 }
 
 /**
+ * 示例题实际请求的端点：带 `simulate` 的题走只读推演入口，其余按 guide 声明。
+ */
+function exampleTarget(example: GuideExample): { method: string; path: string } | null {
+  if (example.simulate) return { method: 'POST', path: SIMULATE_PATH };
+  return parseEndpoint(example.endpoint);
+}
+
+/**
  * 示例题「系统会发出什么请求」的请求体。
  * 能力查询端点由框架分发，需要 kind；通用只读端点（/api/query 等）直接吃
  * 题目 params 的字段，前端不解释键名（字段形状由后端 schema 决定）。
+ * 推演题把题目声明的 edits 一并交给后端——改动只落在副本上。
  */
 function exampleRequestBody(
   example: GuideExample,
   params: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (example.simulate) {
+    return { capability: example.capability, params, edits: example.simulate.edits };
+  }
   const target = parseEndpoint(example.endpoint);
   if (target && target.path !== CAPABILITY_QUERY_PATH) return params;
   return { kind: example.capability, params };
@@ -289,6 +302,28 @@ function CapabilityGroup({
   );
 }
 
+/** 一次能力返回的统一呈现：方案卡（orchestrate）、依据链、原始 JSON。 */
+function ResultBody({ data }: { data: unknown }) {
+  return (
+    <>
+      {isRecord(data) && Array.isArray(data.steps) && (
+        <PlanCard plan={data} />
+      )}
+      {isRecord(data) && Array.isArray(data.derivation) && (
+        <div className="guide-derivation">
+          <h5>依据链</h5>
+          <ol>
+            {(data.derivation as unknown[]).map((step, i) => (
+              <li key={i}>{derivationText(step)}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+      <CopyBlock code={pretty(data)} />
+    </>
+  );
+}
+
 function ExamplePanel({
   example,
   runtime,
@@ -309,12 +344,18 @@ function ExamplePanel({
   const [guess, setGuess] = useState<string | null>(null);
   const [submittedGuess, setSubmittedGuess] = useState<string | null>(null);
   const requestBody = exampleRequestBody(example, draft);
-  const target = parseEndpoint(example.endpoint);
+  const target = exampleTarget(example);
   const params = Object.entries(draft);
   const predict = example.predict;
   // 结果一到就锁定预测：允许事后改选项会让「先猜」失去意义，预测正确率也不可测
   const predictLocked = predict != null && result?.data !== undefined;
   const predictRevealed = predictLocked && submittedGuess != null;
+  const simulation = result?.data !== undefined
+    && isRecord(result.data)
+    && isRecord(result.data.baseline)
+    && isRecord(result.data.simulated)
+    ? result.data
+    : null;
   const submit = () => {
     if (predict && guess != null) setSubmittedGuess(guess);
     onRun();
@@ -363,7 +404,13 @@ function ExamplePanel({
         <div className="guide-endpoint"><code>{example.endpoint ?? '不提供页内试跑'}</code></div>
         <CopyBlock
           code={`curl -s -X ${target?.method ?? 'POST'} ${window.location.origin}${target?.path ?? CAPABILITY_QUERY_PATH} \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(requestBody)}'`}
-          note={example.endpoint ? '只读请求：不改图、不落盘，可重复执行' : '仅预览：该题不提供页内试跑'}
+          note={
+            example.simulate
+              ? '只读推演：在断言图副本上施加改动并重新推理，不改活图、不落盘'
+              : example.endpoint
+                ? '只读请求：不改图、不落盘，可重复执行'
+                : '仅预览：该题不提供页内试跑'
+          }
         />
       </div>
 
@@ -406,7 +453,9 @@ function ExamplePanel({
             </button>
             <div className="guide-run-note">
               {predict
-                ? '先记录你的预测，再发送只读查询；结果区会给出对错与解释'
+                ? example.simulate
+                  ? '先记录你的预测，再在断言图副本上推演改动；结果区并排给出改动前后与对错'
+                  : '先记录你的预测，再发送只读查询；结果区会给出对错与解释'
                 : '本次真实返回 · 只读请求 · 数据来自当前本体'}
             </div>
             {result?.error && <div className="guide-error-inline">{result.error}</div>}
@@ -418,23 +467,26 @@ function ExamplePanel({
                 <p>{predict.explain}</p>
               </div>
             )}
-            {result?.data !== undefined && (
+            {simulation && (
+              <div className="guide-simulation">
+                <div className="guide-sim-col">
+                  <div className="guide-run-note">改动前（当前模型）</div>
+                  <div className="guide-result">
+                    <ResultBody data={simulation.baseline} />
+                  </div>
+                </div>
+                <div className="guide-sim-col">
+                  <div className="guide-run-note">改动后（只读推演，不写入系统）</div>
+                  <div className="guide-result">
+                    <ResultBody data={simulation.simulated} />
+                  </div>
+                </div>
+              </div>
+            )}
+            {!simulation && result?.data !== undefined && (
               <div className="guide-result">
                 {predict && <div className="guide-run-note">当前模型（改动前）的返回：</div>}
-                {isRecord(result.data) && Array.isArray(result.data.steps) && (
-                  <PlanCard plan={result.data} />
-                )}
-                {isRecord(result.data) && Array.isArray(result.data.derivation) && (
-                  <div className="guide-derivation">
-                    <h5>依据链</h5>
-                    <ol>
-                      {(result.data.derivation as unknown[]).map((step, i) => (
-                        <li key={i}>{derivationText(step)}</li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-                <CopyBlock code={pretty(result.data)} />
+                <ResultBody data={result.data} />
               </div>
             )}
           </>
@@ -523,11 +575,18 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
     setResults((current) => ({ ...current, [example.id]: { loading: true } }));
     try {
       const params = drafts[example.id] ?? example.params;
-      const target = parseEndpoint(example.endpoint);
-      const data =
-        target && target.path !== CAPABILITY_QUERY_PATH
-          ? await api.postJson(target.path, params)
-          : await api.queryCapability(example.capability, params);
+      const data = example.simulate
+        ? await api.simulate({
+            capability: example.capability,
+            params,
+            edits: example.simulate.edits,
+          })
+        : await (async () => {
+            const target = exampleTarget(example);
+            return target && target.path !== CAPABILITY_QUERY_PATH
+              ? api.postJson(target.path, params)
+              : api.queryCapability(example.capability, params);
+          })();
       setResults((current) => ({ ...current, [example.id]: { loading: false, data } }));
       document.getElementById(`guide-example-${example.id}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     } catch (e) {

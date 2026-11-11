@@ -367,6 +367,7 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 | GET | `/api/domains/current/guide` | — | 使用视角说明：`profile`（`guide.json` 原样）+ `runtime`（能力 / 实体 / MCP / 计数 / 规则实测）+ `reconcile`（对账）+ `examples`（`safe` 由框架判定） |
 | GET | `/api/domains/current/ontology/graph-groups` | — | 领域声明的图谱分组（`name` / `class` / `label` / `members`），前端据此上色与出图例 |
 | POST | `/api/domains/current/capabilities/query` | `{kind: capability_match\|orchestrate, params: {task}}` | 领域查询（纯读，不改图） |
+| POST | `/api/domains/current/simulate` | `{capability, params, edits: [{op, subject, predicate, value, kind?}]}` | 只读推演：断言图副本上改一处 → 重推理 → 返回 `baseline` / `simulated`；不改活图、不落盘、不接受变更能力（#115） |
 | POST | `/api/domains/current/capabilities/apply` | `{kind: assign, params: {task, agent}, persist?}` | 领域变更（改图，`persist` 落盘） |
 | POST | `/api/domains/current/entities` | `{payload, persist?}` | 按领域 `ENTITY_SCHEMA` 新建实体 |
 | GET | `/api/domains/current/entities/schema` | — | 当前领域的实体字段声明 |

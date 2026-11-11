@@ -345,9 +345,13 @@ _EXAMPLE_SLOTS = (
 # 因此不放进必填表，也不升 GUIDE_VERSION。出现时必须通过校验——写错键名
 # 静默显示空白比直接拒绝更难排查。
 _GUIDE_OPTIONAL_SLOTS = ("paradigm_map",)
-_EXAMPLE_OPTIONAL_SLOTS = ("predict", "group")
+_EXAMPLE_OPTIONAL_SLOTS = ("predict", "group", "simulate")
 _PARADIGM_KEYS = ("element", "in_ontology", "where", "yours")
 _PREDICT_KEYS = ("prompt", "options", "answer", "explain")
+_SIMULATE_KEYS = ("edits",)
+_SIMULATE_EDIT_KEYS = ("op", "subject", "predicate", "value", "kind")
+_SIMULATE_OPS = ("set", "add", "remove")
+_SIMULATE_KINDS = ("literal", "iri")
 
 
 class DomainGuideError(ValueError):
@@ -445,6 +449,57 @@ def _guide_predict(value: Any, slot: str) -> dict:
     }
 
 
+def _guide_simulate(value: Any, slot: str) -> dict:
+    """校验可选的只读推演配置：至少一条断言改动，op / 取值类型可审计（#115）。"""
+    if not isinstance(value, dict):
+        raise DomainGuideError(f"字段 {slot} 应为对象，实际 {type(value).__name__}")
+    missing = [key for key in _SIMULATE_KEYS if key not in value]
+    if missing:
+        raise DomainGuideError(f"字段 {slot} 缺少必填键：{'、'.join(missing)}")
+    unknown = sorted(set(value) - set(_SIMULATE_KEYS))
+    if unknown:
+        raise DomainGuideError(f"字段 {slot} 含未知键：{'、'.join(unknown)}")
+    raw_edits = value["edits"]
+    if not isinstance(raw_edits, list) or not raw_edits:
+        raise DomainGuideError(f"字段 {slot}.edits 必须是非空数组")
+
+    edits: list[dict] = []
+    for i, item in enumerate(raw_edits):
+        where = f"{slot}.edits[{i}]"
+        if not isinstance(item, dict):
+            raise DomainGuideError(f"{where} 应为对象，实际 {type(item).__name__}")
+        missing = [key for key in ("subject", "predicate", "value") if key not in item]
+        if missing:
+            raise DomainGuideError(f"{where} 缺少必填键：{'、'.join(missing)}")
+        unknown = sorted(set(item) - set(_SIMULATE_EDIT_KEYS))
+        if unknown:
+            raise DomainGuideError(f"{where} 含未知键：{'、'.join(unknown)}")
+        if not isinstance(item["value"], (str, int, float, bool)):
+            raise DomainGuideError(
+                f"{where}.value 必须是字符串 / 数字 / 布尔，实际 {type(item['value']).__name__}"
+            )
+        op = item.get("op", "set")
+        if op not in _SIMULATE_OPS:
+            raise DomainGuideError(
+                f"{where}.op 必须是 {' / '.join(_SIMULATE_OPS)} 之一，实际 {op!r}"
+            )
+        kind = item.get("kind")
+        if kind is None:
+            kind = "literal" if isinstance(item["value"], (bool, int, float)) else "iri"
+        if kind not in _SIMULATE_KINDS:
+            raise DomainGuideError(
+                f"{where}.kind 必须是 {' / '.join(_SIMULATE_KINDS)} 之一，实际 {kind!r}"
+            )
+        edits.append({
+            "op": op,
+            "subject": _guide_text(item["subject"], f"{where}.subject"),
+            "predicate": _guide_text(item["predicate"], f"{where}.predicate"),
+            "value": item["value"],
+            "kind": kind,
+        })
+    return {"edits": edits}
+
+
 def validate_domain_guide(raw: Any) -> dict:
     """校验并规范化 `guide.json`，不合法抛 `DomainGuideError`。
 
@@ -533,6 +588,10 @@ def validate_domain_guide(raw: Any) -> dict:
             # 分组是可选的展示提示：出现时必须非空，避免空组标题；不出现时
             # 前端把该题归入「其余示例」。
             example["group"] = _guide_text(item["group"], f"examples[{index}].group")
+        if "simulate" in item:
+            example["simulate"] = _guide_simulate(
+                item["simulate"], f"examples[{index}].simulate"
+            )
         examples.append(example)
 
     notes = raw["capability_notes"]

@@ -503,4 +503,76 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
     expect(container!.querySelector('.guide-group-title')).toBeNull();
   });
+
+  it('推演题：请求走 /simulate，并排给出改动前后（#115）', async () => {
+    const simulation = {
+      capability: 'property_values',
+      params: { subject: 't_deploy', property: 'needs_second_review' },
+      edits: [{
+        op: 'set', subject: 't_deploy', predicate: 'has_risk_level', value: 3, kind: 'literal',
+      }],
+      baseline: { subject: 't_deploy', property: 'needs_second_review', values: ['true'] },
+      simulated: { subject: 't_deploy', property: 'needs_second_review', values: [] },
+      readonly: true,
+    };
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => simulation,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const withSimulate: DomainGuide = {
+      ...GUIDE,
+      examples: [{
+        ...GUIDE.examples[0],
+        id: 'P1-01',
+        question: '把风险 4 改成 3，还需要双人复核吗？',
+        capability: 'property_values',
+        params: { subject: 't_deploy', property: 'needs_second_review' },
+        via: 'R6 双人复核（预测配对）',
+        endpoint: 'POST /api/property',
+        predict: {
+          prompt: '改动后还需要双人复核吗？',
+          options: ['需要', '不需要'],
+          answer: '不需要',
+          explain: '改成 3 后 R6 不再触发。',
+        },
+        simulate: {
+          edits: [{
+            op: 'set', subject: 't_deploy', predicate: 'has_risk_level', value: 3, kind: 'literal',
+          }],
+        },
+      }],
+    };
+    render(<DomainGuidePage guide={withSimulate} error={null} loading={false} onRetry={() => {}} />);
+
+    const card = container!.querySelector('#guide-example-P1-01')!;
+    act(() => ([...card.querySelectorAll('button')].find((b) => b.textContent === '照着做') as HTMLButtonElement).click());
+
+    // 请求预览指向推演入口，并带上 edits
+    expect(card.textContent).toContain('/api/domains/current/simulate');
+    expect(card.textContent).toContain('has_risk_level');
+
+    const run = [...card.querySelectorAll('button')].find((b) => b.textContent === '先猜后验') as HTMLButtonElement;
+    const option = card.querySelector('input[value="不需要"]') as HTMLInputElement;
+    act(() => option.click());
+    await act(async () => {
+      run.click();
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/domains/current/simulate');
+    const body = JSON.parse(String(init.body));
+    expect(body.capability).toBe('property_values');
+    expect(body.edits[0]).toMatchObject({ predicate: 'has_risk_level', value: 3 });
+
+    expect(card.textContent).toContain('✓ 预测正确');
+    expect(card.textContent).toContain('改动前（当前模型）');
+    expect(card.textContent).toContain('改动后（只读推演，不写入系统）');
+    expect(card.textContent).toContain('true');
+    // 只发一次请求，无额外写操作
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

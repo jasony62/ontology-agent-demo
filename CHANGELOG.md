@@ -69,6 +69,8 @@
 
 ### Fixed
 
+- **在线编辑保存不再损坏本体：无损往返 + 写盘前备份 + 失败从备份恢复（#108）**：`model_to_rdf` 原先是「空图重建」——只按编辑模型模具往里灌，模具装不下的东西全部消失。实测对 `examples/agent_task/agent_task_ontology.owl` 什么都不改直接保存：断言 393 → 332、物化 1156 → 896、`owl:disjointWith` 8 → 0、`owl:inverseOf` 2 → 0（`required_by` 的 8 条推理边随之全灭）、定义类与本体头消失、19 条属性注释归零、133 条显式 `xsd:string` 字面量被降级成裸字面量。现改为**以当前断言图为底图，只覆盖编辑模型建模到的部分**（类 / 对象属性 / 数据属性 / 个体自身的声明与断言）：未建模的公理、属性注释、本体头、字面量 datatype、匿名限制表达式与 `owl:Thing` 约束原样保留；同值字面量连同 datatype 一起保留，只有值确实变了的才替换；表单里删掉的实体会从底图移除（删除不会在保存后复活）。另修两处连带问题：`save(overwrite)` 写盘前把目标文件复制到 `backups/<timestamp>/`（保留最近 10 份，不碰 `backups/domains`），重建失败时从备份恢复原文件，不再 `unlink()` 删掉唯一副本；落盘改为同目录临时文件 + `os.replace`，写一半崩了不会留下半个本体。覆盖确认框文案同步：不再声称「整份替换 / 复杂规则可能不保留 / 没有自动备份」。新增往返测试（agent_task 逐条断言 + 一个非 `agent_task` 的最小本体）与备份 / 恢复 / 保留份数测试。
+
 - **示例与文档字面量卫生收尾**：`examples/onto_playground/` 的命名空间由 `http://example.org/onto_playground#` 统一为 `http://ontology.localhost/onto_playground#`（本体、适配器 `NS_BASE`、SHACL 形状与前端测试夹具同步），说明文字不再引用历史项目名；README / `examples/README.md` 与 `tests/test_sdk.py` 的 `FakeEngine(ns=...)` 示例改为与 `DEFAULT_NS` 一致的 `http://ontology.localhost/agent-task#`；README 首屏截图重拍，页头只显示「本体图谱工作台 / OWL 2 RL 推理 API」。
 
 - **SDK 顶层补转发 `query_handlers`，`__all__` 不再自相矛盾（#74）**：`packages/ontology-plugin-sdk/src/ontology_plugin_sdk/__init__.py` 的 `__all__` 承诺了 `query_handlers`，但 `from .protocol import (...)` 块漏转发（只导了兄弟 `apply_handlers` / `conflicting_handlers`）——按承诺写 `from ontology_plugin_sdk import query_handlers` 或 `import *` 直接 ImportError（`protocol.query_handlers` 本身存在）。一行补转发 + 防回归测试（`__all__` 里每个名字都能顶层 getattr）。项目内代码全走 `ontology_plugin_sdk.protocol` 直导，服务与测试不受影响——这是公共 API 自洽性修复。

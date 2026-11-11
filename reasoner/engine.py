@@ -722,6 +722,16 @@ class OntologyEngine:
         ns = str(self.NS)
         g = self.raw
 
+        def label_of(node) -> str:
+            """编辑模型的 label：只取真实的 rdfs:label。
+
+            不用 self.label()——它在缺 label 时回落到短名，写回就会给原本
+            没有 label 的实体凭空加一条 rdfs:label，破坏「不改就不变」的
+            无损往返（#108）。留空由界面回落到显示 id（见 api/schemas.py）。
+            """
+            value = g.value(node, RDFS.label)
+            return str(value) if value is not None else ""
+
         classes: list[dict] = []
         for cls in sorted(g.subjects(RDF.type, OWL.Class), key=str):
             if isinstance(cls, BNode):
@@ -734,7 +744,7 @@ class OntologyEngine:
             comment = g.value(cls, RDFS.comment)
             classes.append({
                 "id": local(cls),
-                "label": self.label(cls),
+                "label": label_of(cls),
                 "parent": local(parent) if parent is not None else None,
                 "description": str(comment) if comment is not None else "",
             })
@@ -748,7 +758,7 @@ class OntologyEngine:
             chars = [c for c in self.PROPERTY_CHARACTERISTICS if (p, RDF.type, OWL[c]) in g]
             object_props.append({
                 "id": local(p),
-                "label": self.label(p),
+                "label": label_of(p),
                 # owl:Thing 无约束意义，归一为 None
                 "domain": local(domain) if domain is not None and domain != OWL.Thing else None,
                 "range": local(rng) if rng is not None and rng != OWL.Thing else None,
@@ -763,7 +773,7 @@ class OntologyEngine:
             rng = next(iter(g.objects(p, RDFS.range)), None)
             data_props.append({
                 "id": local(p),
-                "label": self.label(p),
+                "label": label_of(p),
                 "domain": local(domain) if domain is not None and domain != OWL.Thing else None,
                 "range": local(rng) if isinstance(rng, URIRef) else (str(rng) if rng is not None else None),
             })
@@ -787,7 +797,7 @@ class OntologyEngine:
                 })
             individuals.append({
                 "id": local(ind),
-                "label": self.label(ind),
+                "label": label_of(ind),
                 "types": types,
                 "assertions": assertions,
             })
@@ -801,15 +811,91 @@ class OntologyEngine:
             "individuals": individuals,
         }
 
+    @staticmethod
+    def _set_literal(g: Graph, node, pred, value) -> None:
+        """把 (node, pred) 的字面量设为 value，同值旧字面量原样保留。
+
+        「原样保留」是 #108 的无损往返要求：底图里的字面量可能带显式
+        datatype（如 rdf:datatype="xsd:string"）或语言标记，重建时若一律
+        写成裸 Literal，三元组会整体「变形」——数量看着没少，逐条比对却
+        对不上。值没变就不动它，值变了才替换。
+        """
+        text = "" if value is None else str(value)
+        existing = [o for o in g.objects(node, pred) if isinstance(o, Literal)]
+        if not text:
+            for old in existing:
+                g.remove((node, pred, old))
+            return
+        keep = next((o for o in existing if str(o) == text), None)
+        for old in existing:
+            if old != keep:
+                g.remove((node, pred, old))
+        if keep is None:
+            g.add((node, pred, Literal(text)))
+
+    @staticmethod
+    def _set_iri_object(g: Graph, node, pred, value, resolve) -> None:
+        """把 (node, pred) 的 IRI 取值设为 value；匿名取值（限制表达式）保留。
+
+        value 为空表示「不限制」：此时删除具名取值，但保留 owl:Thing——
+        编辑模型把 owl:Thing 归一成 None（它本就没有约束意义），删掉它
+        会让无损往返平白少三元组。
+        """
+        wanted = resolve(value) if value else None
+        for o in list(g.objects(node, pred)):
+            if not isinstance(o, URIRef):      # 匿名类表达式不建模，保留
+                continue
+            if o == wanted or (wanted is None and o == OWL.Thing):
+                continue
+            g.remove((node, pred, o))
+        if wanted is not None:
+            g.add((node, pred, wanted))
+
+    @staticmethod
+    def _drop_entity(g: Graph, node) -> None:
+        """删除不再出现在编辑模型里的实体，并顺带清掉它专属的匿名子图。
+
+        只删「以该实体为主语」的三元组（与旧的全量重建行为一致：被引用的
+        IRI 仍留在宾语位置，不会级联删别的实体）。匿名子图只在没有外部
+        引用时才删——否则会误伤仍被其它实体使用的限制表达式。
+        """
+        doomed = list(g.triples((node, None, None)))
+        bnodes = []
+        for triple in doomed:
+            g.remove(triple)
+            if isinstance(triple[2], BNode):
+                bnodes.append(triple[2])
+        while bnodes:
+            b = bnodes.pop()
+            if any(True for _ in g.triples((None, None, b))):
+                continue                        # 仍被保留的三元组引用
+            for triple in list(g.triples((b, None, None))):
+                g.remove(triple)
+                if isinstance(triple[2], BNode):
+                    bnodes.append(triple[2])
+
     def model_to_rdf(self, model: dict, pretty: bool = True) -> str:
         """编辑模型 JSON → RDF/XML 文本（保存写盘用）。
 
-        命名空间取 model.namespace（缺省回退当前引擎 NS）；空前缀绑定保持
-        输出可读（xml 序列化生成 xmlns）。支持：类（含 subClassOf/label/comment）、
-        对象/数据属性（domain/range/特性）、个体（类型断言 + 属性断言）。
+        **以当前断言图（self.raw）的拷贝为底图，只覆盖 EditModel 建模到的
+        部分**（#108）：类 / 对象属性 / 数据属性 / 个体自身的声明与断言。
+        未建模的三元组原样保留——公理（owl:disjointWith / owl:inverseOf /
+        定义类）、属性注释、本体头、字面量的显式 datatype——因此「打开后
+        什么都不改直接保存」是无损的，保存副作用不再污染推理结果。
+
+        模型覆盖不到的取值（匿名类表达式、owl:Thing 约束、个体的匿名取值）
+        也保持不动；只有模型显式建模、且值确实变了的才会被替换。
+
+        namespace 与当前本体不一致时（另存为一份新本体），底图为空：没有
+        可继承的上下文，按模型从零生成。
         """
         ns = str(model.get("namespace") or self.NS)
         g = Graph()
+        if ns == str(self.NS):
+            for triple in self.raw:
+                g.add(triple)
+            for prefix, uri in self.raw.namespaces():
+                g.bind(prefix, uri)
         g.bind("", ns)
         g.bind("owl", OWL)
         g.bind("rdfs", RDFS)
@@ -819,31 +905,58 @@ class OntologyEngine:
                 raise ValueError("实体 id 不能为空")
             return URIRef(ns + name if not str(name).startswith("http") else name)
 
+        from rdflib.namespace import XSD
+
+        def datatype_iri(name: str) -> URIRef:
+            # 标量短名（xsd:string/integer…）→ XSD 命名空间；其余按 IRI。
+            # 不能用 dir(XSD)：rdflib 的 DefinedNamespace 把词条放在
+            # __contains__ / __getattr__ 里，dir() 只给基类属性。
+            return URIRef(str(XSD) + name) if name in XSD else iri(name)
+
+        # 先算全部实体 IRI：空 id 在改动图之前就抛 ValueError（→ HTTP 400）
+        class_ids = {iri(c["id"]) for c in model.get("classes", [])}
+        object_ids = {iri(p["id"]) for p in model.get("objectProps", [])}
+        data_ids = {iri(p["id"]) for p in model.get("dataProps", [])}
+        individual_ids = {iri(i["id"]) for i in model.get("individuals", [])}
+
+        # 表单里删掉的实体：从底图移除（否则「删除」在保存后自动复活）
+        for node, kept in (
+            (OWL.Class, class_ids),
+            (OWL.ObjectProperty, object_ids),
+            (OWL.DatatypeProperty, data_ids),
+            (OWL.NamedIndividual, individual_ids),
+        ):
+            for s in list(g.subjects(RDF.type, node)):
+                if isinstance(s, URIRef) and s not in kept:
+                    self._drop_entity(g, s)
+
         for cls in model.get("classes", []):
             node = iri(cls["id"])
             g.add((node, RDF.type, OWL.Class))
-            label = cls.get("label")
-            if label:
-                g.add((node, RDFS.label, Literal(label)))
-            desc = cls.get("description")
-            if desc:
-                g.add((node, RDFS.comment, Literal(desc)))
+            self._set_literal(g, node, RDFS.label, cls.get("label"))
+            self._set_literal(g, node, RDFS.comment, cls.get("description"))
             parent = cls.get("parent")
             if parent:
-                g.add((node, RDFS.subClassOf, iri(parent)))
+                wanted = iri(parent)
+                for o in list(g.objects(node, RDFS.subClassOf)):
+                    if isinstance(o, URIRef) and o != wanted:
+                        g.remove((node, RDFS.subClassOf, o))
+                g.add((node, RDFS.subClassOf, wanted))
+            else:
+                # 匿名父类（定义类）与 owl:Thing 都不受表单建模，保留
+                for o in list(g.objects(node, RDFS.subClassOf)):
+                    if isinstance(o, URIRef) and o != OWL.Thing:
+                        g.remove((node, RDFS.subClassOf, o))
 
         for p in model.get("objectProps", []):
             node = iri(p["id"])
             g.add((node, RDF.type, OWL.ObjectProperty))
-            label = p.get("label")
-            if label:
-                g.add((node, RDFS.label, Literal(label)))
-            domain = p.get("domain")
-            if domain:
-                g.add((node, RDFS.domain, iri(domain)))
-            rng = p.get("range")
-            if rng:
-                g.add((node, RDFS.range, iri(rng)))
+            self._set_literal(g, node, RDFS.label, p.get("label"))
+            # rdfs:comment 不在编辑模型里 → 不动底图（#108：属性注释必须保留）
+            self._set_iri_object(g, node, RDFS.domain, p.get("domain"), iri)
+            self._set_iri_object(g, node, RDFS.range, p.get("range"), iri)
+            for c in self.PROPERTY_CHARACTERISTICS:
+                g.remove((node, RDF.type, OWL[c]))
             for c in p.get("characteristics", []):
                 if c in self.PROPERTY_CHARACTERISTICS:
                     g.add((node, RDF.type, OWL[c]))
@@ -851,36 +964,56 @@ class OntologyEngine:
         for p in model.get("dataProps", []):
             node = iri(p["id"])
             g.add((node, RDF.type, OWL.DatatypeProperty))
-            label = p.get("label")
-            if label:
-                g.add((node, RDFS.label, Literal(label)))
-            domain = p.get("domain")
-            if domain:
-                g.add((node, RDFS.domain, iri(domain)))
-            rng = p.get("range")
-            if rng:
-                # 标量短名（xsd:string/integer…）→ XSD 命名空间；其余按 IRI
-                from rdflib.namespace import XSD
-                xsd_short = {str(getattr(XSD, a)): a for a in dir(XSD) if not a.startswith("_")}
-                if rng in xsd_short:
-                    g.add((node, RDFS.range, URIRef(str(XSD) + rng)))
-                else:
-                    g.add((node, RDFS.range, iri(rng)))
+            self._set_literal(g, node, RDFS.label, p.get("label"))
+            self._set_iri_object(g, node, RDFS.domain, p.get("domain"), iri)
+            self._set_iri_object(g, node, RDFS.range, p.get("range"), datatype_iri)
 
         for ind in model.get("individuals", []):
             node = iri(ind["id"])
             g.add((node, RDF.type, OWL.NamedIndividual))
-            label = ind.get("label")
-            if label:
-                g.add((node, RDFS.label, Literal(label)))
-            for t in ind.get("types", []):
-                g.add((node, RDF.type, iri(t)))
+            self._set_literal(g, node, RDFS.label, ind.get("label"))
+
+            wanted_types = {iri(t) for t in ind.get("types", [])}
+            for o in list(g.objects(node, RDF.type)):
+                if isinstance(o, BNode):        # 匿名类断言不建模，保留
+                    continue
+                if o == OWL.NamedIndividual or o in wanted_types:
+                    continue
+                g.remove((node, RDF.type, o))
+            for t in wanted_types:
+                g.add((node, RDF.type, t))
+
+            # 断言：模型里有的取值保留原三元组（字面量连同 datatype/语言），
+            # 模型里没有的删除，新出现的按 isObject 补写。
+            wanted_objects: dict = {}
+            wanted_literals: dict = {}
             for a in ind.get("assertions", []):
                 prop = iri(a["prop"])
                 if a.get("isObject"):
-                    g.add((node, prop, iri(a["value"])))
+                    wanted_objects.setdefault(prop, set()).add(iri(a["value"]))
                 else:
-                    g.add((node, prop, Literal(a["value"])))
+                    wanted_literals.setdefault(prop, set()).add(str(a["value"]))
+            for prop, obj in list(g.predicate_objects(node)):
+                if not isinstance(prop, URIRef) or prop == RDF.type:
+                    continue
+                if self._is_meta_predicate(prop):   # 注释 / sameAs 等未建模，保留
+                    continue
+                if isinstance(obj, BNode):          # 匿名取值不建模，保留
+                    continue
+                if isinstance(obj, URIRef):
+                    if obj in wanted_objects.get(prop, ()):
+                        continue
+                elif str(obj) in wanted_literals.get(prop, ()):
+                    continue
+                g.remove((node, prop, obj))
+            for prop, objs in wanted_objects.items():
+                for obj in objs:
+                    g.add((node, prop, obj))
+            for prop, values in wanted_literals.items():
+                existing = {str(o) for o in g.objects(node, prop) if isinstance(o, Literal)}
+                for value in values:
+                    if value not in existing:
+                        g.add((node, prop, Literal(value)))
 
         data = g.serialize(format="xml")
         if isinstance(data, bytes):

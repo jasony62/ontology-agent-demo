@@ -84,6 +84,8 @@ export interface SaveModelResponse {
   path: string;
   filename: string;
   mode: 'new' | 'overwrite';
+  /** 写盘前的自动备份路径（backups/<timestamp>/<文件名>）；另存新文件时为 null */
+  backup?: string | null;
   stats: { triples_before: number; triples_after: number; inferred_added: number; classes: number; individuals: number };
   materialized: MaterializedResponse;
 }

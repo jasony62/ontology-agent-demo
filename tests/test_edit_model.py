@@ -6,6 +6,7 @@ save 另存/覆盖两模式、通用模式守卫、文件名安全、download �
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -236,3 +237,222 @@ def test_status_mode_generic_after_save_new(restore_engine):
     st = client.get("/api/ontology/status")
     assert st.status_code == 200
     assert st.json()["mode"] == "generic"
+
+
+# ---------- #108：无损往返 + 写盘前备份 ----------
+
+@pytest.fixture(autouse=True)
+def _backup_in_tmp(tmp_path, monkeypatch):
+    """本模块的保存用例都别往仓库 backups/ 里堆文件。"""
+    monkeypatch.setattr(M, "BACKUP_DIR", tmp_path / "backups")
+
+
+# issue 的验收对象是随仓库分发的示例本体，不随运行态默认领域变化
+AGENT_TASK_ONTO = (
+    Path(__file__).resolve().parent.parent / "examples" / "agent_task" / "agent_task_ontology.owl"
+)
+
+
+MINI_ONTO = """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+         xml:base="http://mini.local/onto"
+         xmlns="http://mini.local/onto#">
+  <owl:Ontology rdf:about="http://mini.local/onto"/>
+  <owl:Class rdf:about="#A">
+    <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">A 类</rdfs:label>
+  </owl:Class>
+  <owl:Class rdf:about="#B">
+    <rdfs:subClassOf rdf:resource="#A"/>
+    <owl:disjointWith rdf:resource="#C"/>
+  </owl:Class>
+  <owl:Class rdf:about="#C"/>
+  <owl:ObjectProperty rdf:about="#p">
+    <rdfs:domain rdf:resource="#A"/>
+    <rdfs:range rdf:resource="#B"/>
+    <owl:inverseOf rdf:resource="#q"/>
+    <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">p 的注释</rdfs:comment>
+  </owl:ObjectProperty>
+  <owl:ObjectProperty rdf:about="#q"/>
+  <owl:DatatypeProperty rdf:about="#age">
+    <rdfs:domain rdf:resource="#A"/>
+    <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#integer"/>
+  </owl:DatatypeProperty>
+  <owl:NamedIndividual rdf:about="#x">
+    <rdf:type rdf:resource="#B"/>
+    <p rdf:resource="#y"/>
+    <age rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">30</age>
+    <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">个体注释</rdfs:comment>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#y">
+    <rdf:type rdf:resource="#B"/>
+  </owl:NamedIndividual>
+</rdf:RDF>
+"""
+
+
+def test_model_to_rdf_lossless_roundtrip(tmp_path):
+    """#108：打开后什么都不改直接保存，断言 / 公理 / 注释 / 物化统计全部不变。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    xml = eng.model_to_rdf(eng.edit_model())
+    g2 = E.Graph()
+    g2.parse(data=xml, format="xml")
+
+    assert len(g2) == len(eng.raw), "断言三元组数应逐条不变"
+    for name, pred, count in (
+        ("owl:disjointWith", E.OWL.disjointWith, 8),
+        ("owl:inverseOf", E.OWL.inverseOf, 2),
+        ("owl:equivalentClass", E.OWL.equivalentClass, 2),
+    ):
+        assert len(list(eng.raw.triples((None, pred, None)))) == count
+        assert len(list(g2.triples((None, pred, None)))) == count, f"{name} 在往返后丢失"
+
+    # 属性 / 类 / 个体的注释逐条保留（字面量连同 datatype 一起比较）
+    assert set(g2.triples((None, E.RDFS.comment, None))) == \
+        set(eng.raw.triples((None, E.RDFS.comment, None)))
+    # 本体头保留
+    assert len(list(g2.triples((None, E.RDF.type, E.OWL.Ontology)))) == 1
+    # 显式 xsd:string 字面量没有被降级成裸字面量（「变形」会破坏逐条比对）
+    assert any(o.datatype is not None for o in g2.objects(None, E.RDFS.label))
+
+    rt = tmp_path / "roundtrip.owl"
+    rt.write_text(xml, encoding="utf-8")
+    reloaded = E.OntologyEngine(str(rt))
+    assert reloaded.materialized()["stats"] == eng.materialized()["stats"]
+    # 验收 #1：required_by 的推理边仍是 8 条
+    assert len(list(reloaded.g.subject_objects(eng.NS["required_by"]))) == 8
+
+
+def test_model_to_rdf_lossless_on_foreign_ontology(tmp_path):
+    """最小非 agent_task 本体：无匿名节点，可以逐条相等比较（防测试只对当前领域成立）。"""
+    src = tmp_path / "mini.owl"
+    src.write_text(MINI_ONTO, encoding="utf-8")
+    eng = E.OntologyEngine(str(src))
+    xml = eng.model_to_rdf(eng.edit_model())
+    g2 = E.Graph()
+    g2.parse(data=xml, format="xml")
+
+    assert set(g2) == set(eng.raw)
+    ns = "http://mini.local/onto#"
+    assert (E.URIRef(ns + "B"), E.OWL.disjointWith, E.URIRef(ns + "C")) in g2
+    assert (E.URIRef(ns + "p"), E.RDFS.comment,
+            E.Literal("p 的注释", datatype=E.URIRef("http://www.w3.org/2001/XMLSchema#string"))) in g2
+    # 原本没有 label 的实体不会凭空长出 label（编辑模型 label 留空即不写）
+    assert not list(g2.objects(E.URIRef(ns + "C"), E.RDFS.label))
+
+
+def test_model_to_rdf_foreign_namespace_starts_empty():
+    """另存为另一个命名空间的新本体时，不继承当前断言图。"""
+    xml = M.ENGINE.model_to_rdf(EDIT_MODEL_SAMPLE)
+    g = E.Graph()
+    g.parse(data=xml, format="xml")
+    assert not any("agent-task" in str(s) for s, _, _ in g)
+
+
+def test_model_to_rdf_removes_deleted_entities(tmp_path):
+    """表单里删掉的实体不会因为「合并底图」在保存后复活。"""
+    src = tmp_path / "mini.owl"
+    src.write_text(MINI_ONTO, encoding="utf-8")
+    eng = E.OntologyEngine(str(src))
+    model = eng.edit_model()
+    model["classes"] = [c for c in model["classes"] if c["id"] != "C"]
+
+    g = E.Graph()
+    g.parse(data=eng.model_to_rdf(model), format="xml")
+    ns = "http://mini.local/onto#"
+    assert not list(g.triples((E.URIRef(ns + "C"), None, None)))
+    assert (E.URIRef(ns + "B"), E.RDF.type, E.OWL.Class) in g
+
+
+def test_model_to_rdf_applies_edits(tmp_path):
+    """合并底图不等于「只读」：表单里改过的值要真正生效。"""
+    src = tmp_path / "mini.owl"
+    src.write_text(MINI_ONTO, encoding="utf-8")
+    eng = E.OntologyEngine(str(src))
+    model = eng.edit_model()
+    model["classes"] = [
+        dict(c, label="B 类（改）") if c["id"] == "B" else c for c in model["classes"]
+    ]
+    for ind in model["individuals"]:
+        if ind["id"] == "x":
+            ind["assertions"] = [
+                dict(a, value="31") if a["prop"] == "age" else a for a in ind["assertions"]
+            ]
+
+    g = E.Graph()
+    g.parse(data=eng.model_to_rdf(model), format="xml")
+    ns = "http://mini.local/onto#"
+    assert E.Literal("B 类（改）") in set(g.objects(E.URIRef(ns + "B"), E.RDFS.label))
+    values = {str(o) for o in g.objects(E.URIRef(ns + "x"), E.URIRef(ns + "age"))}
+    assert values == {"31"}
+
+
+def test_save_overwrite_unchanged_is_lossless(isolated_api):
+    """验收 #1：领域本体不改直接覆盖保存，重推理结果与保存前完全一致。"""
+    client = isolated_api.client
+    before = isolated_api.manager.current().engine.materialized()["stats"]
+
+    model = client.get("/api/ontology/edit-model").json()
+    r = client.post("/api/ontology/save", json={"model": model, "mode": "overwrite"})
+    assert r.status_code == 200
+    assert r.json()["backup"], "覆盖保存应留下备份路径"
+
+    eng = isolated_api.manager.current().engine
+    assert eng.materialized()["stats"] == before
+    assert len(list(eng.g.subject_objects(eng.NS["required_by"]))) == 8
+
+
+def test_save_overwrite_creates_backup(isolated_api, tmp_path):
+    """写盘前备份：backups/<timestamp>/<原文件名> 与原文件逐字节一致。"""
+    client = isolated_api.client
+    onto_path = Path(isolated_api.manager.current().onto_path)
+    before = onto_path.read_bytes()
+
+    model = client.get("/api/ontology/edit-model").json()
+    model["classes"][0]["label"] = "改过的类名"
+    r = client.post("/api/ontology/save", json={"model": model, "mode": "overwrite"})
+    assert r.status_code == 200
+
+    backups = list((tmp_path / "backups").glob("*/*.owl"))
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == before
+    assert Path(r.json()["backup"]) == backups[0]
+
+
+def test_save_overwrite_restores_backup_on_rebuild_failure(isolated_api, monkeypatch, tmp_path):
+    """重建失败：从备份恢复原文件，而不是删掉唯一副本。"""
+    client = isolated_api.client
+    onto_path = Path(isolated_api.manager.current().onto_path)
+    before = onto_path.read_bytes()
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("重建失败（模拟）")
+
+    monkeypatch.setattr(M, "OntologyEngine", boom)
+    model = client.get("/api/ontology/edit-model").json()
+    model["classes"][0]["label"] = "改坏"
+    r = client.post("/api/ontology/save", json={"model": model, "mode": "overwrite"})
+
+    assert r.status_code == 400
+    assert "从备份恢复" in r.json()["detail"]
+    assert onto_path.read_bytes() == before
+    backups = list((tmp_path / "backups").glob("*/*.owl"))
+    assert len(backups) == 1 and backups[0].read_bytes() == before
+
+
+def test_backup_retention_keeps_recent(tmp_path, monkeypatch):
+    """备份只保留最近 N 份，且不碰 backups/domains 这类非时间戳目录。"""
+    monkeypatch.setattr(M, "BACKUP_KEEP", 3)
+    (tmp_path / "backups" / "domains").mkdir(parents=True)
+    target = tmp_path / "onto.owl"
+    target.write_text("<rdf:RDF/>", encoding="utf-8")
+
+    for _ in range(5):
+        assert M._backup_ontology(target) is not None
+
+    stamps = sorted(p.name for p in (tmp_path / "backups").iterdir()
+                    if p.is_dir() and M._BACKUP_STAMP.match(p.name))
+    assert len(stamps) == 3
+    assert (tmp_path / "backups" / "domains").is_dir()

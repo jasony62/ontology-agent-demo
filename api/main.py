@@ -40,6 +40,8 @@
 
 import hashlib
 import os
+import re
+import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -203,6 +205,53 @@ app = FastAPI(
 APP_DIST = Path(__file__).resolve().parent.parent / "frontend" / "app" / "dist"
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# 本体写盘前备份（#108）：backups/<timestamp>/<原文件名>，只留最近 BACKUP_KEEP 份。
+# backups/ 里还有 domains/（领域包安装备份）等非时间戳目录，清理时只认时间戳。
+BACKUP_DIR = Path(__file__).resolve().parent.parent / "backups"
+BACKUP_KEEP = 10
+_BACKUP_STAMP = re.compile(r"^\d{8}-\d{6}-\d{6}(?:-\d+)?$")
+
+
+def _prune_ontology_backups(keep: int | None = None) -> None:
+    """只保留最近 keep 份时间戳备份目录（名字即时间，字典序=时间序）。"""
+    keep = BACKUP_KEEP if keep is None else keep
+    if keep <= 0 or not BACKUP_DIR.is_dir():
+        return
+    stamps = sorted(
+        p.name for p in BACKUP_DIR.iterdir()
+        if p.is_dir() and _BACKUP_STAMP.match(p.name)
+    )
+    for name in stamps[:-keep]:
+        shutil.rmtree(BACKUP_DIR / name, ignore_errors=True)
+
+
+def _backup_ontology(target: Path) -> Path | None:
+    """写盘前把目标文件复制到 backups/<timestamp>/；文件不存在则无需备份。"""
+    if not target.is_file():
+        return None
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    dest_dir = BACKUP_DIR / stamp
+    suffix = 1
+    while dest_dir.exists():       # 同一微秒内多次保存：加序号，别覆盖上一份
+        suffix += 1
+        dest_dir = BACKUP_DIR / f"{stamp}-{suffix}"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / target.name
+    shutil.copy2(target, dest)
+    _prune_ontology_backups()
+    return dest
+
+
+def _write_ontology_file(target: Path, content: str) -> None:
+    """同目录临时文件 + os.replace 原子落盘：写一半崩了不会留下半个本体。"""
+    tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, target)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _schema_type_label(prop: dict) -> str:
@@ -1539,6 +1588,10 @@ def save_ontology(req: SaveOntologyRequest):
 
     mode=new    另存到 data/uploads/（进入通用模式，领域推理降级）；
     mode=overwrite  覆盖当前已加载本体（默认本体覆盖后领域推理保留）。
+
+    无损往返（#108）：model_to_rdf 以当前断言图为底图，只改编辑模型建模到的
+    部分，未建模的公理 / 注释 / datatype 原样保留。写盘前把目标文件备份到
+    backups/<timestamp>/；重建失败时从备份恢复，不再删除唯一副本。
     """
     try:
         content = ENGINE.model_to_rdf(req.model.model_dump())
@@ -1558,8 +1611,16 @@ def save_ontology(req: SaveOntologyRequest):
         safe_name = f"{stem}-{uuid.uuid4().hex[:8]}.{ext.lower()}"
         target = UPLOAD_DIR / safe_name
 
+    # 写盘前备份（#108）：目标文件已存在时先复制到 backups/<timestamp>/，
+    # 重建失败才能把原文件恢复回去——旧实现失败时 unlink()，等于删掉唯一副本。
+    backup: Path | None = None
     try:
-        target.write_text(content, encoding="utf-8")
+        backup = _backup_ontology(target)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"保存前备份失败（未改动原文件）：{exc}")
+
+    try:
+        _write_ontology_file(target, content)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"保存失败：{exc}")
 
@@ -1567,8 +1628,16 @@ def save_ontology(req: SaveOntologyRequest):
     try:
         new_engine = OntologyEngine(str(target), extensions_dir=None)
     except Exception as exc:
-        target.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=f"保存后加载失败（已回滚文件）：{exc}")
+        if backup is not None:
+            try:
+                shutil.copy2(backup, target)
+                restored = f"已从备份恢复原文件（备份在 {backup}）"
+            except OSError as restore_exc:
+                restored = f"备份恢复失败，原文件备份在 {backup}：{restore_exc}"
+        else:
+            target.unlink(missing_ok=True)
+            restored = "已删除本次新文件"
+        raise HTTPException(status_code=400, detail=f"保存后加载失败（{restored}）：{exc}")
 
     if new_engine.onto_path == DOMAINS.current().onto_path:
         # 覆盖默认本体：重建领域适配器（引擎 + 适配器一起换），领域推理保留
@@ -1583,6 +1652,7 @@ def save_ontology(req: SaveOntologyRequest):
         "path": str(target),
         "filename": Path(target).name,
         "mode": req.mode,
+        "backup": str(backup) if backup is not None else None,
         "stats": {
             "triples_before": materialized["stats"]["triples_asserted"],
             "triples_after": materialized["stats"]["triples_materialized"],

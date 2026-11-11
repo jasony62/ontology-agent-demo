@@ -38,6 +38,56 @@
     "R4：合规任务分配给未持有效认证的智能体会产生合规冲突",
     "R5 / R6：高风险任务在无人能担责或满足条件时派生人工介入 / 双人复核标记"
   ],
+  "paradigm_map": [
+    {
+      "element": "任务",
+      "in_ontology": "Task + composed_of 分解",
+      "where": "编排的对象；复合任务由子任务组成",
+      "yours": "工单、需求、审批流节点"
+    },
+    {
+      "element": "能力",
+      "in_ontology": "Capability（原子执行单元）",
+      "where": "R1 匹配的依据（requires_capability / has_capability）",
+      "yours": "技能、权限、服务接口"
+    },
+    {
+      "element": "执行者",
+      "in_ontology": "Agent + holds_certification",
+      "where": "被派发的对象；can_execute / can_own 的主体",
+      "yours": "员工、机器人、外部服务"
+    },
+    {
+      "element": "工具",
+      "in_ontology": "Tool（uses_tool 挂载）",
+      "where": "能力的实现绑定",
+      "yours": "CLI、API、SaaS"
+    },
+    {
+      "element": "资质",
+      "in_ontology": "Certification + issued_by",
+      "where": "R2a 有效期、R2b 担责的前提",
+      "yours": "执照、培训记录、安全授权"
+    },
+    {
+      "element": "约束",
+      "in_ontology": "Constraint（合规要求、风险阈值）",
+      "where": "R4 合规冲突、R5 人工介入、R6 双人复核的判据",
+      "yours": "红线、双人复核制度、SLA"
+    },
+    {
+      "element": "签发方",
+      "in_ontology": "SecurityTeam（issued_by 值域）",
+      "where": "资质由谁签发",
+      "yours": "安全部门、HR、合规委员会"
+    },
+    {
+      "element": "规则",
+      "in_ontology": "rules/*.ttl（SHACL SPARQLRule）+ 适配器判定",
+      "where": "编排的推导逻辑（R1/R2/R2a/R2b/R5/R6；R4 在 adapter.py）",
+      "yours": "分派制度、审批制度"
+    }
+  ],
   "examples": [
     {
       "id": "T2-01",
@@ -202,6 +252,48 @@
       "params": { "task": "t_compliance_dev" },
       "answer_hint": "候选 dev_agent、junior_dev；可担责的只有 dev_agent",
       "via": "R2b 担责"
+    },
+    {
+      "id": "P1-01",
+      "question": "把 t_deploy 的风险等级从 4 改成 3，「生产部署发布」还需要双人复核吗？",
+      "capability": "property_values",
+      "params": { "subject": "t_deploy", "property": "needs_second_review" },
+      "answer_hint": "不需要：R6 只在 SimpleTask 且风险 ≥ 4 时触发；当前基线仍为 true",
+      "via": "R6 双人复核（预测配对）",
+      "predict": {
+        "prompt": "改动后「生产部署发布」还需要双人复核吗？",
+        "options": ["需要", "不需要"],
+        "answer": "不需要",
+        "explain": "R6 的判据是 SimpleTask 且 risk_level ≥ 4；改成 3 后不再触发。页面返回的是改动前的基线（true），改动本身请用在线编辑完成。"
+      }
+    },
+    {
+      "id": "P2-01",
+      "question": "给 junior_dev 加上 cap_code_review 后，「登录模块代码审查」的候选与能担责者各是几个？",
+      "capability": "capability_match",
+      "params": { "task": "t_login_review" },
+      "answer_hint": "候选 1 → 2（多出 junior_dev），能担责 1 → 2（无约束任务 can_own ≡ can_execute）",
+      "via": "R1 能力匹配 + R2b 担责（预测配对）",
+      "predict": {
+        "prompt": "改动后候选与能担责者各是几个？",
+        "options": ["候选 2，能担责 1", "候选 2，能担责 2", "候选 1，能担责 1"],
+        "answer": "候选 2，能担责 2",
+        "explain": "t_login_review 没有约束，R2b 下 can_own ≡ can_execute；能力扩张会同时进入候选与担责集合。页面返回的是改动前的基线（候选 1、可担责 1）。"
+      }
+    },
+    {
+      "id": "P3-01",
+      "question": "把 t_full_stack 对「部署」的能力要求去掉后，候选会变成谁？",
+      "capability": "capability_match",
+      "params": { "task": "t_full_stack" },
+      "answer_hint": "dev_agent + junior_dev（只剩 cap_coding 一项要求）",
+      "via": "R1 多能力 AND 全覆盖（预测配对）",
+      "predict": {
+        "prompt": "改动后候选是谁？",
+        "options": ["dev_agent + junior_dev", "只有 dev_agent", "仍然为空"],
+        "answer": "dev_agent + junior_dev",
+        "explain": "去掉 cap_deployment 后，t_full_stack 只要求 cap_coding；dev_agent 与 junior_dev 都具备。页面返回的是改动前的基线（空集）。"
+      }
     }
   ],
   "integrations": [

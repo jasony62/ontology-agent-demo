@@ -138,6 +138,24 @@ export interface GuideExampleDeclaration {
   params: Record<string, unknown>;
   answer_hint: string;
   via: string;
+  /** 可选的预测配对题（#111）：先猜后验，answer 在跑之前不展示 */
+  predict?: GuidePredict;
+}
+
+/** 预测配对题：用户先选一个预测，再跑查询并核对。 */
+export interface GuidePredict {
+  prompt: string;
+  options: string[];
+  answer: string;
+  explain: string;
+}
+
+/** 范式要素对照行（可选槽位，不是所有领域都有）。 */
+export interface GuideParadigmRow {
+  element: string;
+  in_ontology: string;
+  where: string;
+  yours: string;
 }
 
 /** 示例题视图：声明 + 框架按运行态判定的「能否页内试跑」 */
@@ -227,6 +245,8 @@ export interface DomainGuide {
     not_covers: string[];
     capability_notes: Record<string, string>;
     constraints: string[];
+    /** 可选的范式要素对照表；缺失时页面不渲染该区块 */
+    paradigm_map?: GuideParadigmRow[];
     examples: GuideExampleDeclaration[];
     integrations: string[];
   };

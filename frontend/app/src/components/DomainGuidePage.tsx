@@ -265,9 +265,19 @@ function ExamplePanel({
   running: boolean;
   onRun: () => void;
 }) {
+  const [guess, setGuess] = useState<string | null>(null);
+  const [submittedGuess, setSubmittedGuess] = useState<string | null>(null);
   const requestBody = exampleRequestBody(example, draft);
   const target = parseEndpoint(example.endpoint);
   const params = Object.entries(draft);
+  const predict = example.predict;
+  // 结果一到就锁定预测：允许事后改选项会让「先猜」失去意义，预测正确率也不可测
+  const predictLocked = predict != null && result?.data !== undefined;
+  const predictRevealed = predictLocked && submittedGuess != null;
+  const submit = () => {
+    if (predict && guess != null) setSubmittedGuess(guess);
+    onRun();
+  };
   return (
     <div className="guide-do-panel">
       <div className="guide-do-step">
@@ -322,13 +332,54 @@ function ExamplePanel({
           <div className="guide-blocked">{example.reason ?? '该题当前不可试跑'}</div>
         ) : (
           <>
-            <button className="btn" onClick={onRun} disabled={running || result?.loading}>
-              {running || result?.loading ? '发送中…' : '用示例问一次'}
+            {predict && (
+              <div className="guide-predict">
+                <div className="guide-predict-q">先猜一下：{predict.prompt}</div>
+                <div className="guide-predict-options">
+                  {predict.options.map((option) => (
+                    <label
+                      key={option}
+                      className={`guide-predict-option ${guess === option ? 'is-selected' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        name={`predict-${example.id}`}
+                        value={option}
+                        checked={guess === option}
+                        disabled={predictLocked}
+                        onChange={() => setGuess(option)}
+                      />
+                      <span>{option}</span>
+                    </label>
+                  ))}
+                </div>
+                {!guess && <div className="guide-run-note">选一个预测后，才能点「先猜后验」。</div>}
+              </div>
+            )}
+            <button
+              className="btn"
+              onClick={submit}
+              disabled={running || result?.loading || (predict != null && (guess == null || predictLocked))}
+            >
+              {running || result?.loading ? '发送中…' : predict ? '先猜后验' : '用示例问一次'}
             </button>
-            <div className="guide-run-note">本次真实返回 · 只读请求 · 数据来自当前本体</div>
+            <div className="guide-run-note">
+              {predict
+                ? '先记录你的预测，再发送只读查询；结果区会给出对错与解释'
+                : '本次真实返回 · 只读请求 · 数据来自当前本体'}
+            </div>
             {result?.error && <div className="guide-error-inline">{result.error}</div>}
+            {predictRevealed && predict && (
+              <div className={`guide-predict-result ${submittedGuess === predict.answer ? 'ok' : 'bad'}`}>
+                <strong>{submittedGuess === predict.answer ? '✓ 预测正确' : '✗ 预测不符'}</strong>
+                <div>你的预测：{submittedGuess}</div>
+                <div>参考答案：{predict.answer}</div>
+                <p>{predict.explain}</p>
+              </div>
+            )}
             {result?.data !== undefined && (
               <div className="guide-result">
+                {predict && <div className="guide-run-note">当前模型（改动前）的返回：</div>}
                 {isRecord(result.data) && Array.isArray(result.data.steps) && (
                   <PlanCard plan={result.data} />
                 )}
@@ -556,6 +607,36 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
                 )}
               </div>
             </div>
+            {profile.paradigm_map && profile.paradigm_map.length > 0 && (
+              <div className="guide-paradigm">
+                <h4>范式要素对照</h4>
+                <p className="guide-section-hint">
+                  把本体的要素映射到你自己的系统；最后一列是「你的系统里通常对应什么」。
+                </p>
+                <div className="guide-table-wrap">
+                  <table className="guide-table">
+                    <thead>
+                      <tr>
+                        <th>要素</th>
+                        <th>本体里叫什么</th>
+                        <th>在系统哪一步起作用</th>
+                        <th>你的系统里通常对应什么</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {profile.paradigm_map.map((row) => (
+                        <tr key={row.element}>
+                          <td>{row.element}</td>
+                          <td><code>{row.in_ontology}</code></td>
+                          <td>{row.where}</td>
+                          <td>{row.yours}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </section>
 
           <section id="guide-examples" className="guide-section">
@@ -592,7 +673,11 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
                         </span>
                       </div>
                       <div className="guide-example-foot">
-                        <span className="guide-answer-hint">期望答案：{example.answer_hint}</span>
+                        <span className="guide-answer-hint">
+                          {example.predict
+                            ? '预测配对题：展开后先选一个预测，再点「先猜后验」'
+                            : `期望答案：${example.answer_hint}`}
+                        </span>
                         <button className="btn secondary" onClick={() => setOpenExample(open ? null : example.id)}>
                           {open ? '收起' : '照着做'}
                         </button>

@@ -341,6 +341,14 @@ _EXAMPLE_SLOTS = (
     "via",
 )
 
+# 可选槽位（#111）：不是所有领域都有「范式要素」或「预测配对题」这套形状，
+# 因此不放进必填表，也不升 GUIDE_VERSION。出现时必须通过校验——写错键名
+# 静默显示空白比直接拒绝更难排查。
+_GUIDE_OPTIONAL_SLOTS = ("paradigm_map",)
+_EXAMPLE_OPTIONAL_SLOTS = ("predict",)
+_PARADIGM_KEYS = ("element", "in_ontology", "where", "yours")
+_PREDICT_KEYS = ("prompt", "options", "answer", "explain")
+
 
 class DomainGuideError(ValueError):
     """领域说明文件不满足契约（缺槽位 / 类型不符 / 内容为空）。"""
@@ -379,6 +387,64 @@ def _guide_list(value: Any, slot: str, *, min_items: int = 0) -> list[str]:
     return out
 
 
+def _guide_paradigm_map(value: Any) -> list[dict]:
+    """校验可选的范式要素对照表：非空数组，每行四列齐全且非空。"""
+    if not isinstance(value, list):
+        raise DomainGuideError(
+            f"槽位 paradigm_map 应为对象数组，实际 {type(value).__name__}；"
+            "不需要该表时请省略这个键"
+        )
+    if not value:
+        raise DomainGuideError(
+            "槽位 paradigm_map 不能是空数组；不需要该表时请省略这个键"
+        )
+    out: list[dict] = []
+    for i, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise DomainGuideError(
+                f"paradigm_map[{i}] 应为对象，实际 {type(item).__name__}"
+            )
+        missing = [key for key in _PARADIGM_KEYS if key not in item]
+        if missing:
+            raise DomainGuideError(
+                f"paradigm_map[{i}] 缺少必填字段：{'、'.join(missing)}"
+            )
+        unknown = sorted(set(item) - set(_PARADIGM_KEYS))
+        if unknown:
+            raise DomainGuideError(
+                f"paradigm_map[{i}] 含未知字段：{'、'.join(unknown)}"
+            )
+        out.append({
+            key: _guide_text(item[key], f"paradigm_map[{i}].{key}")
+            for key in _PARADIGM_KEYS
+        })
+    return out
+
+
+def _guide_predict(value: Any, slot: str) -> dict:
+    """校验可选的预测配对题：四键齐全，answer 必须是 options 之一。"""
+    if not isinstance(value, dict):
+        raise DomainGuideError(f"字段 {slot} 应为对象，实际 {type(value).__name__}")
+    missing = [key for key in _PREDICT_KEYS if key not in value]
+    if missing:
+        raise DomainGuideError(f"字段 {slot} 缺少必填键：{'、'.join(missing)}")
+    unknown = sorted(set(value) - set(_PREDICT_KEYS))
+    if unknown:
+        raise DomainGuideError(f"字段 {slot} 含未知键：{'、'.join(unknown)}")
+    options = _guide_list(value["options"], f"{slot}.options", min_items=2)
+    answer = _guide_text(value["answer"], f"{slot}.answer")
+    if answer not in options:
+        raise DomainGuideError(
+            f"字段 {slot}.answer 必须是 options 之一，实际 {answer!r}"
+        )
+    return {
+        "prompt": _guide_text(value["prompt"], f"{slot}.prompt"),
+        "options": options,
+        "answer": answer,
+        "explain": _guide_text(value["explain"], f"{slot}.explain"),
+    }
+
+
 def validate_domain_guide(raw: Any) -> dict:
     """校验并规范化 `guide.json`，不合法抛 `DomainGuideError`。
 
@@ -402,7 +468,7 @@ def validate_domain_guide(raw: Any) -> dict:
             f"缺少必填槽位：{'、'.join(missing)}；"
             f"没有内容的槽位也要显式写成 [] / {{}}"
         )
-    unknown = sorted(set(raw) - set(_GUIDE_SLOTS))
+    unknown = sorted(set(raw) - set(_GUIDE_SLOTS) - set(_GUIDE_OPTIONAL_SLOTS))
     if unknown:
         raise DomainGuideError(
             f"未知槽位：{'、'.join(unknown)}；"
@@ -437,7 +503,7 @@ def validate_domain_guide(raw: Any) -> dict:
             raise DomainGuideError(
                 f"examples[{index}] 缺少必填字段：{'、'.join(missing_ex)}"
             )
-        unknown_ex = sorted(set(item) - set(_EXAMPLE_SLOTS))
+        unknown_ex = sorted(set(item) - set(_EXAMPLE_SLOTS) - set(_EXAMPLE_OPTIONAL_SLOTS))
         if unknown_ex:
             raise DomainGuideError(
                 f"examples[{index}] 含未知字段：{'、'.join(unknown_ex)}；"
@@ -452,7 +518,7 @@ def validate_domain_guide(raw: Any) -> dict:
             raise DomainGuideError(
                 f"examples[{index}].params 应为对象，实际 {type(params).__name__}"
             )
-        examples.append({
+        example = {
             "id": example_id,
             "question": _guide_text(item["question"], f"examples[{index}].question"),
             "capability": _guide_text(item["capability"], f"examples[{index}].capability"),
@@ -460,7 +526,10 @@ def validate_domain_guide(raw: Any) -> dict:
             "params": dict(params),
             "answer_hint": _guide_text(item["answer_hint"], f"examples[{index}].answer_hint"),
             "via": _guide_text(item["via"], f"examples[{index}].via"),
-        })
+        }
+        if "predict" in item:
+            example["predict"] = _guide_predict(item["predict"], f"examples[{index}].predict")
+        examples.append(example)
 
     notes = raw["capability_notes"]
     if not isinstance(notes, dict):
@@ -473,7 +542,7 @@ def validate_domain_guide(raw: Any) -> dict:
             raise DomainGuideError("capability_notes 的键不能为空")
         normalized_notes[key] = _guide_text(value, f"capability_notes[{key}]")
 
-    return {
+    result = {
         "guide_version": version,
         "display_name": _guide_text(raw["display_name"], "display_name"),
         "summary": _guide_text(raw["summary"], "summary"),
@@ -485,6 +554,9 @@ def validate_domain_guide(raw: Any) -> dict:
         "examples": examples,
         "integrations": _guide_list(raw["integrations"], "integrations"),
     }
+    if "paradigm_map" in raw:
+        result["paradigm_map"] = _guide_paradigm_map(raw["paradigm_map"])
+    return result
 
 
 def read_domain_guide(package_dir: str | Path, declared: Any = None) -> dict:

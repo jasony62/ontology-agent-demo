@@ -356,6 +356,100 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(card.textContent).toContain('部署步骤依据');
   });
 
+  it('范式要素对照表：有则渲染四列表，无则不显示空表（#111）', () => {
+    const withMap: DomainGuide = {
+      ...GUIDE,
+      profile: {
+        ...GUIDE.profile,
+        paradigm_map: [
+          { element: '任务', in_ontology: 'Task', where: '编排的对象', yours: '工单' },
+          { element: '能力', in_ontology: 'Capability', where: 'R1 的依据', yours: '技能' },
+        ],
+      },
+    };
+    render(<DomainGuidePage guide={withMap} error={null} loading={false} onRetry={() => {}} />);
+    const paradigm = container!.querySelector('.guide-paradigm')!;
+    expect(paradigm).not.toBeNull();
+    expect(paradigm.textContent).toContain('范式要素对照');
+    const table = paradigm.querySelector('.guide-table')!;
+    expect(table).not.toBeNull();
+    expect(table.textContent).toContain('本体里叫什么');
+    expect(table.textContent).toContain('你的系统里通常对应什么');
+    expect(table.textContent).toContain('工单');
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(2);
+
+    act(() => root!.unmount());
+    root = createRoot(container!);
+    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    expect(container!.querySelector('.guide-paradigm')).toBeNull();
+  });
+
+  it('预测配对题：先猜 → 再跑 → 对错，猜之前不显示答案（#111）', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ results: [{ o: 'true' }] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const withPredict: DomainGuide = {
+      ...GUIDE,
+      examples: [
+        ...GUIDE.examples,
+        {
+          id: 'P1-01',
+          question: '把 t_deploy 的风险从 4 改成 3，还需要双人复核吗？',
+          capability: 'property_values',
+          params: { subject: 't_deploy', property: 'needs_second_review' },
+          answer_hint: '不需要：R6 只在风险 ≥ 4 时触发',
+          via: 'R6 双人复核（预测配对）',
+          endpoint: 'POST /api/property',
+          safe: true,
+          reason: null,
+          predict: {
+            prompt: '改动后还需要双人复核吗？',
+            options: ['需要', '不需要'],
+            answer: '不需要',
+            explain: 'R6 的判据是 SimpleTask 且 risk_level ≥ 4；改成 3 后不再触发。',
+          },
+        },
+      ],
+    };
+    render(<DomainGuidePage guide={withPredict} error={null} loading={false} onRetry={() => {}} />);
+
+    const card = container!.querySelector('#guide-example-P1-01')!;
+    // 猜之前：题干卡片不展示期望答案
+    expect(card.textContent).not.toContain('期望答案');
+    const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
+    act(() => open.click());
+
+    const run = [...card.querySelectorAll('button')].find((b) => b.textContent === '先猜后验') as HTMLButtonElement;
+    expect(run.disabled).toBe(true);
+    expect(card.textContent).not.toContain('参考答案');
+
+    const option = card.querySelector('input[value="不需要"]') as HTMLInputElement;
+    act(() => option.click());
+    expect(run.disabled).toBe(false);
+
+    await act(async () => {
+      run.click();
+    });
+
+    expect(card.textContent).toContain('✓ 预测正确');
+    expect(card.textContent).toContain('参考答案：不需要');
+    expect(card.textContent).toContain('R6 的判据');
+    expect(card.textContent).toContain('当前模型（改动前）的返回');
+    // 只发一次查询，没有任何埋点 / 上报
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // 结果出来后预测锁定：不能再改选项把「先猜」变成「看完再选」
+    const wrong = card.querySelector('input[value="需要"]') as HTMLInputElement;
+    expect(wrong.disabled).toBe(true);
+    expect(option.disabled).toBe(true);
+    expect(card.textContent).toContain('✓ 预测正确');
+  });
+
   it('读不到说明时明确失败并可重试，不拿缓存当现状', () => {
     const onRetry = vi.fn();
     render(<DomainGuidePage guide={null} error="无法读取当前领域信息：500" loading={false} onRetry={onRetry} />);

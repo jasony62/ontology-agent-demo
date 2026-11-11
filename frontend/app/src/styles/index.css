@@ -1003,6 +1003,23 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
 .guide-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--panel-2); }
 .guide-card h4 { font-size: var(--fs-md); color: var(--heading); margin-bottom: 6px; }
+.guide-paradigm { margin-top: 12px; }
+.guide-paradigm h4 { font-size: var(--fs-md); color: var(--heading); }
+.guide-table-wrap { overflow-x: auto; margin-top: 8px; }
+.guide-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm2); }
+.guide-table th, .guide-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.6; }
+.guide-table th { color: var(--heading); background: var(--panel-2); font-weight: 600; white-space: nowrap; }
+.guide-table td code { color: var(--primary); font-size: var(--fs-xs); }
+.guide-table tbody tr:last-child td { border-bottom: 0; }
+.guide-predict { border: 1px solid #ecd9a9; background: #fdf6e8; border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.guide-predict-q { font-size: var(--fs-sm2); font-weight: 600; color: #7a3b12; line-height: 1.6; }
+.guide-predict-options { display: flex; flex-direction: column; gap: 6px; }
+.guide-predict-option { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm2); color: var(--text); cursor: pointer; }
+.guide-predict-option.is-selected { font-weight: 600; }
+.guide-predict-result { border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm2); line-height: 1.6; }
+.guide-predict-result.ok { color: var(--success); background: var(--success-bg); border: 1px solid var(--success-border); }
+.guide-predict-result.bad { color: var(--danger); background: var(--danger-bg); border: 1px solid var(--danger-border); }
+.guide-predict-result p { color: var(--text); }
 .guide-list { padding-left: 18px; font-size: var(--fs-sm2); line-height: 1.8; }
 .guide-list.muted { color: var(--muted); }
 .guide-empty, .guide-empty-inline {

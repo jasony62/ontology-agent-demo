@@ -111,6 +111,65 @@ def test_unknown_slot_and_safe_are_rejected():
         validate_domain_guide(broken)
 
 
+def test_paradigm_map_is_optional_but_validated():
+    """可选槽位：不写不报错；写了就必须是四列齐全的非空数组（#111）。"""
+    valid = copy.deepcopy(GOOD)
+    valid["paradigm_map"] = [{
+        "element": "任务",
+        "in_ontology": "Task + composed_of",
+        "where": "编排的对象",
+        "yours": "工单、需求",
+    }]
+    guide = validate_domain_guide(valid)
+    assert guide["paradigm_map"][0]["element"] == "任务"
+
+    assert "paradigm_map" not in validate_domain_guide(copy.deepcopy(GOOD))
+
+    missing = copy.deepcopy(GOOD)
+    missing["paradigm_map"] = [{"element": "任务"}]
+    with pytest.raises(DomainGuideError, match="缺少必填字段"):
+        validate_domain_guide(missing)
+
+    empty = copy.deepcopy(GOOD)
+    empty["paradigm_map"] = []
+    with pytest.raises(DomainGuideError, match="空数组"):
+        validate_domain_guide(empty)
+
+    not_list = copy.deepcopy(GOOD)
+    not_list["paradigm_map"] = {}
+    with pytest.raises(DomainGuideError, match="对象数组"):
+        validate_domain_guide(not_list)
+
+
+def test_predict_is_optional_but_validated():
+    """预测配对题：可选；出现时 answer 必须落在 options 内（#111）。"""
+    base = copy.deepcopy(GOOD["examples"][0])
+    base["predict"] = {
+        "prompt": "改动后还需要双人复核吗？",
+        "options": ["需要", "不需要"],
+        "answer": "不需要",
+        "explain": "R6 只在风险 ≥ 4 时触发。",
+    }
+    guide = validate_domain_guide({**copy.deepcopy(GOOD), "examples": [base]})
+    assert guide["examples"][0]["predict"]["answer"] == "不需要"
+
+    bad_answer = copy.deepcopy(base)
+    bad_answer["predict"]["answer"] = "不确定"
+    with pytest.raises(DomainGuideError, match="必须是 options"):
+        validate_domain_guide({**copy.deepcopy(GOOD), "examples": [bad_answer]})
+
+    missing_key = copy.deepcopy(base)
+    del missing_key["predict"]["explain"]
+    with pytest.raises(DomainGuideError, match="缺少必填键"):
+        validate_domain_guide({**copy.deepcopy(GOOD), "examples": [missing_key]})
+
+    one_option = copy.deepcopy(base)
+    one_option["predict"]["options"] = ["不需要"]
+    one_option["predict"]["answer"] = "不需要"
+    with pytest.raises(DomainGuideError, match="至少需要 2 条"):
+        validate_domain_guide({**copy.deepcopy(GOOD), "examples": [one_option]})
+
+
 def test_unknown_guide_version_is_a_distinct_error():
     with pytest.raises(DomainGuideVersionError) as exc:
         validate_domain_guide({**GOOD, "guide_version": "2"})
@@ -211,6 +270,11 @@ def test_guide_endpoint_returns_one_complete_response():
     assert body["contract_ok"] is True
     assert body["profile"]["display_name"]
     assert body["profile"]["summary"]
+    # #111：范式要素对照表随 profile 全量透传，四列齐全
+    assert len(body["profile"]["paradigm_map"]) == 8
+    assert set(body["profile"]["paradigm_map"][0]) == {
+        "element", "in_ontology", "where", "yours",
+    }
 
     assert "capability_match" in body["runtime"]["query_kinds"]
     assert "assign" in body["runtime"]["apply_kinds"]
@@ -227,6 +291,12 @@ def test_guide_endpoint_returns_one_complete_response():
     assert examples["T2-01"]["endpoint"] == "POST /api/domains/current/capabilities/query"
     assert examples["T2-08"]["safe"] is False
     assert "修改本体" in examples["T2-08"]["reason"]
+    # #111：预测配对题三组，answer 必须落在 options 内
+    assert {"P1-01", "P2-01", "P3-01"} <= set(examples)
+    for example_id in ("P1-01", "P2-01", "P3-01"):
+        predict = examples[example_id]["predict"]
+        assert predict["answer"] in predict["options"]
+        assert predict["explain"]
     # 框架内置查询工具（query_sparql / property_values / ...）也可页内试跑：
     # 端点指向通用只读端点，题目不再「页内不可跑」（#109）
     assert examples["T2-05"]["safe"] is True
@@ -342,6 +412,8 @@ def test_guide_changes_whole_response_after_switch(tmp_path, monkeypatch):
         assert second["domain"] == "onto_playground"
         assert second["profile"]["display_name"] == "本体试炼场"
         assert second["examples"] == []
+        # 可选槽位缺失时直接不出现，不是空表
+        assert "paradigm_map" not in second["profile"]
         assert second["runtime"]["query_kinds"] == [
             "activation_check", "compliance_check", "reachability",
         ]

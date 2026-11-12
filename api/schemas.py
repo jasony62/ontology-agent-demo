@@ -185,6 +185,23 @@ class PropertyRequest(BaseModel):
     property: str = Field(..., description="属性短名，例如 has_capability；不存在时返回空列表。")
 
 
+class CqLocateRequest(BaseModel):
+    """CQ 依据定位（#124）：题干 → 本体里承载它的条目。"""
+
+    cq: str = Field(
+        ...,
+        min_length=1,
+        description="CQ 题干文本（不解析 CQ 文件、不落库；空白串返回 400）。",
+    )
+    conclusion_fields: list[str] | None = Field(
+        None,
+        description=(
+            "可选：覆盖默认的结论性字段白名单（属性短名，按语义分类，"
+            "与命名空间无关）。不传时用框架默认值。"
+        ),
+    )
+
+
 # ---------------- 在线编辑（v1.4.0：编辑模型 / 保存写回） ----------------
 
 class EditModelClass(BaseModel):

@@ -23,6 +23,7 @@ import time
 from datetime import date
 
 from rdflib import Graph, Namespace, URIRef, Literal, BNode, RDF, RDFS, OWL
+from rdflib.collection import Collection
 import owlrl
 
 # 两个纯函数来自领域插件 SDK：领域包的 AboxStore 也要用它们，而 SDK 不能
@@ -710,6 +711,58 @@ class OntologyEngine:
         "SymmetricProperty", "AsymmetricProperty", "ReflexiveProperty", "IrreflexiveProperty",
     )
 
+    @staticmethod
+    def _defined_template(g: Graph, expr) -> dict | None:
+        """解析 X ≡ A ⊓ ∃p.C 这一种定义类模板；不匹配返回 None。
+
+        只认固定形状（#117 阶段 3）：交集两项、第一项是具名基类、第二项是
+        owl:Restriction（owl:onProperty / owl:someValuesFrom 都指向具名 IRI）。
+        自由表达式不建模，保持原样。
+        """
+        if not isinstance(expr, BNode):
+            return None
+        list_node = g.value(expr, OWL.intersectionOf)
+        if list_node is None:
+            return None
+        try:
+            items = list(Collection(g, list_node))
+        except Exception:      # noqa: BLE001 —— 坏 list 不阻断编辑模型
+            return None
+        if len(items) != 2:
+            return None
+        base, restriction = items
+        if not isinstance(base, URIRef) or not isinstance(restriction, BNode):
+            return None
+        if g.value(restriction, RDF.type) != OWL.Restriction:
+            return None
+        prop = g.value(restriction, OWL.onProperty)
+        value = g.value(restriction, OWL.someValuesFrom)
+        if not isinstance(prop, URIRef) or not isinstance(value, URIRef):
+            return None
+        return {
+            "baseClass": local(base),
+            "property": local(prop),
+            "valueClass": local(value),
+        }
+
+    @staticmethod
+    def _extract_defined_classes(g: Graph) -> list[dict]:
+        """从断言图提取模板定义类（只读；不碰物化图里的 32 条自反等价）。"""
+        out: list[dict] = []
+        seen: set[str] = set()
+        for cls, expr in sorted(g.subject_objects(OWL.equivalentClass), key=lambda x: str(x[0])):
+            if not isinstance(cls, URIRef):
+                continue
+            name = local(cls)
+            if name in seen:
+                continue
+            template = OntologyEngine._defined_template(g, expr)
+            if template is None:
+                continue
+            seen.add(name)
+            out.append({"name": name, **template})
+        return out
+
     def edit_model(self) -> dict:
         """从当前本体（原始断言图）提取结构化编辑模型 JSON。
 
@@ -719,10 +772,13 @@ class OntologyEngine:
           dataProps    id / label / domain / range（标量类型短名）
           individuals  id / label / types（类型断言）/ assertions（对象/数据属性取值）
           disjoints    owl:disjointWith 的具名对 [{a, b}]（#112）
+          definedClasses  模板定义类 [{name, baseClass, property, valueClass}]（#117）
 
         `disjoints` 只收录「两端都是具名类」的互斥三元组，按方向逐条保留
         （本体里可能双向声明，去重会破坏无损往返）；BNode 参与的匿名公理
-        不建模，写回时原样保留。
+        不建模，写回时原样保留。`definedClasses` 只提取
+        `X ≡ A ⊓ ∃p.C` 这一种模板，且从断言图（self.raw）读——物化图里
+        owlrl 会把每个类展开成自反等价，从那里读会看到 32 条假公理。
         """
         ns = str(self.NS)
         g = self.raw
@@ -761,6 +817,16 @@ class OntologyEngine:
             domain = next((o for o in g.objects(p, RDFS.domain) if isinstance(o, URIRef)), None)
             rng = next((o for o in g.objects(p, RDFS.range) if isinstance(o, URIRef)), None)
             chars = [c for c in self.PROPERTY_CHARACTERISTICS if (p, RDF.type, OWL[c]) in g]
+            # #117：逆属性按「一条逻辑公理」提取——两向声明的同一对只出现一次；
+            # 多逆属性时取排序后的第一个（现有数据至多一条）。
+            inverses = {
+                o for o in g.objects(p, OWL.inverseOf)
+                if isinstance(o, URIRef) and o != p
+            } | {
+                s for s in g.subjects(OWL.inverseOf, p)
+                if isinstance(s, URIRef) and s != p
+            }
+            inverse = sorted(inverses, key=str)[0] if inverses else None
             object_props.append({
                 "id": local(p),
                 "label": label_of(p),
@@ -768,6 +834,7 @@ class OntologyEngine:
                 "domain": local(domain) if domain is not None and domain != OWL.Thing else None,
                 "range": local(rng) if rng is not None and rng != OWL.Thing else None,
                 "characteristics": chars,
+                "inverseOf": local(inverse) if inverse is not None else None,
             })
 
         data_props: list[dict] = []
@@ -824,6 +891,7 @@ class OntologyEngine:
             "dataProps": data_props,
             "individuals": individuals,
             "disjoints": disjoints,
+            "definedClasses": self._extract_defined_classes(g),
         }
 
     @staticmethod
@@ -867,6 +935,31 @@ class OntologyEngine:
             g.add((node, pred, wanted))
 
     @staticmethod
+    def _drop_bnode_tree(g: Graph, node) -> None:
+        """回收一个不再被引用的 BNode 子树（定义类 / 互斥表达式用）。"""
+        if any(True for _ in g.triples((None, None, node))):
+            return
+        for triple in list(g.triples((node, None, None))):
+            g.remove(triple)
+            if isinstance(triple[2], BNode):
+                OntologyEngine._drop_bnode_tree(g, triple[2])
+
+    @staticmethod
+    def _add_defined_class(g: Graph, cls, base, prop, value) -> None:
+        """按固定模板生成 X ≡ A ⊓ ∃p.C 的 BNode 子树（#117 阶段 3）。"""
+        root, first, second, restriction = BNode(), BNode(), BNode(), BNode()
+        g.add((cls, OWL.equivalentClass, root))
+        g.add((root, RDF.type, OWL.Class))
+        g.add((root, OWL.intersectionOf, first))
+        g.add((first, RDF.first, base))
+        g.add((first, RDF.rest, second))
+        g.add((second, RDF.first, restriction))
+        g.add((second, RDF.rest, RDF.nil))
+        g.add((restriction, RDF.type, OWL.Restriction))
+        g.add((restriction, OWL.onProperty, prop))
+        g.add((restriction, OWL.someValuesFrom, value))
+
+    @staticmethod
     def _drop_entity(g: Graph, node) -> None:
         """删除不再出现在编辑模型里的实体，并顺带清掉它专属的匿名子图。
 
@@ -895,10 +988,12 @@ class OntologyEngine:
         **以当前断言图（self.raw）的拷贝为底图，只覆盖 EditModel 建模到的
         部分**（#108）：类 / 对象属性 / 数据属性 / 个体自身的声明与断言；
         #112 起增加一项可选覆盖：模型带 `disjoints` 时整体替换
-        `owl:disjointWith` 的**具名对**，BNode 匿名公理仍原样保留。其余
-        未建模的三元组原样保留——公理（owl:inverseOf / 定义类）、属性注释、
+        `owl:disjointWith` 的**具名对**，BNode 匿名公理仍原样保留。
+        #117 起再增加两项：`inverseOf` 按无序对覆盖（写回单方向），
+        `definedClasses` 按 `X ≡ A ⊓ ∃p.C` 模板重建（非模板等价公理保留）。
+        其余未建模的三元组原样保留——公理（其他等价类 / 属性链）、属性注释、
         本体头、字面量的显式 datatype——因此「打开后什么都不改直接保存」是
-        无损的，保存副作用不再污染推理结果。
+        无语义损失的（双写逆属性会规约成单写）。
 
         模型覆盖不到的取值（匿名类表达式、owl:Thing 约束、个体的匿名取值）
         也保持不动；只有模型显式建模、且值确实变了的才会被替换。
@@ -909,6 +1004,7 @@ class OntologyEngine:
         ns = str(model.get("namespace") or self.NS)
         g = Graph()
         self.last_dropped_axioms = []
+        self.last_inverse_impact = {"removed_pairs": [], "inferred_triples": 0}
         if ns == str(self.NS):
             for triple in self.raw:
                 g.add(triple)
@@ -936,6 +1032,39 @@ class OntologyEngine:
         object_ids = {iri(p["id"]) for p in model.get("objectProps", [])}
         data_ids = {iri(p["id"]) for p in model.get("dataProps", [])}
         individual_ids = {iri(i["id"]) for i in model.get("individuals", [])}
+
+        # #117：逆属性按无序对管理。旧对从断言图取（兼容存量双向声明），
+        # 新对从表单取；写回时每对只留一个方向，避免幽灵逆属性。
+        old_inverse_pairs = {
+            frozenset((s, o))
+            for s, o in (self.raw.subject_objects(OWL.inverseOf) if ns == str(self.NS) else [])
+            if isinstance(s, URIRef) and isinstance(o, URIRef) and s != o
+        }
+        # 保留存量方向：不改逆属性时原样写回（无损）；双写则取排序后的一个方向。
+        old_inverse_direction: dict[frozenset, tuple] = {}
+        if ns == str(self.NS):
+            for s, o in sorted(
+                self.raw.subject_objects(OWL.inverseOf),
+                key=lambda x: (str(x[0]), str(x[1])),
+            ):
+                if isinstance(s, URIRef) and isinstance(o, URIRef) and s != o:
+                    old_inverse_direction.setdefault(frozenset((s, o)), (s, o))
+        new_inverse_pairs: set[frozenset] = set()
+        model_inverse_direction: dict[frozenset, tuple] = {}
+        for p in model.get("objectProps", []):
+            inverse_name = p.get("inverseOf")
+            if not inverse_name:
+                continue
+            p_node, q_node = iri(p["id"]), iri(inverse_name)
+            if p_node == q_node:
+                raise ValueError(f"属性不能以自身为逆属性：{p['id']}")
+            if q_node not in object_ids:
+                raise ValueError(
+                    f"逆属性必须是已声明的对象属性：{p['id']} → {inverse_name}"
+                )
+            pair = frozenset((p_node, q_node))
+            new_inverse_pairs.add(pair)
+            model_inverse_direction.setdefault(pair, (p_node, q_node))
 
         # 表单里删掉的实体：从底图移除（否则「删除」在保存后自动复活）
         removed_class_ids = {
@@ -976,6 +1105,24 @@ class OntologyEngine:
                     continue
                 g.add((a_iri, OWL.disjointWith, b_iri))
 
+        # #117：覆盖具名逆属性对——改前删净两向，写回每对只留一个方向。
+        # 先算影响面（删除的旧对会让多少条既有推理结论消失），再改图。
+        removed_inverse_pairs = old_inverse_pairs - new_inverse_pairs
+        from reasoner.pipeline_gate import inverse_axiom_impact
+        self.last_inverse_impact = inverse_axiom_impact(
+            self.g, self.raw, removed_inverse_pairs,
+        )
+        for s, p, o in list(g.triples((None, OWL.inverseOf, None))):
+            if isinstance(s, URIRef) and isinstance(o, URIRef):
+                g.remove((s, p, o))
+        directions = {
+            pair: old_inverse_direction.get(pair) or model_inverse_direction[pair]
+            for pair in new_inverse_pairs
+        }
+        for pair in sorted(directions, key=lambda pr: tuple(sorted(map(str, pr)))):
+            a, b = directions[pair]
+            g.add((a, OWL.inverseOf, b))
+
         for cls in model.get("classes", []):
             node = iri(cls["id"])
             g.add((node, RDF.type, OWL.Class))
@@ -993,6 +1140,37 @@ class OntologyEngine:
                 for o in list(g.objects(node, RDFS.subClassOf)):
                     if isinstance(o, URIRef) and o != OWL.Thing:
                         g.remove((node, RDFS.subClassOf, o))
+
+        # #117 阶段 3：模板定义类。只回收模板形状的 equivalentClass 树，
+        # 其它等价公理（具名等价、非模板表达式）原样保留。
+        if model.get("definedClasses") is not None:
+            for cls, expr in list(g.subject_objects(OWL.equivalentClass)):
+                if not isinstance(cls, URIRef) or not isinstance(expr, BNode):
+                    continue
+                if self._defined_template(g, expr) is None:
+                    continue
+                g.remove((cls, OWL.equivalentClass, expr))
+                self._drop_bnode_tree(g, expr)
+            seen_defined: set[str] = set()
+            for item in model.get("definedClasses") or []:
+                name = item.get("name") if isinstance(item, dict) else None
+                base = item.get("baseClass") if isinstance(item, dict) else None
+                prop = item.get("property") if isinstance(item, dict) else None
+                value = item.get("valueClass") if isinstance(item, dict) else None
+                if not all(isinstance(x, str) and x.strip() for x in (name, base, prop, value)):
+                    raise ValueError("definedClasses 的 name / baseClass / property / valueClass 不能为空")
+                if name in seen_defined:
+                    raise ValueError(f"定义类重复：{name}")
+                seen_defined.add(name)
+                cls_iri, base_iri = iri(name), iri(base)
+                prop_iri, value_iri = iri(prop), iri(value)
+                if cls_iri not in class_ids:
+                    raise ValueError(f"定义类的类必须先出现在 classes 中：{name}")
+                if base_iri not in class_ids or value_iri not in class_ids:
+                    raise ValueError(f"定义类的基础类 / 值类不存在：{name}")
+                if prop_iri not in object_ids:
+                    raise ValueError(f"定义类的属性必须是对象属性：{prop}")
+                self._add_defined_class(g, cls_iri, base_iri, prop_iri, value_iri)
 
         for p in model.get("objectProps", []):
             node = iri(p["id"])

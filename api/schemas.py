@@ -200,7 +200,7 @@ class EditModelClass(BaseModel):
 
 
 class EditModelObjectProp(BaseModel):
-    """对象属性：id / label / domain / range / characteristics。"""
+    """对象属性：id / label / domain / range / characteristics / inverseOf。"""
 
     id: str = Field(..., description="对象属性短名（IRI 的 local name）。")
     label: str = Field("", description="rdfs:label；留空时显示 id。")
@@ -213,6 +213,22 @@ class EditModelObjectProp(BaseModel):
             "symmetric / asymmetric / reflexive / irreflexive。"
         ),
     )
+    inverseOf: str | None = Field(
+        None,
+        description=(
+            "逆属性短名（#117）。改前会删净两向声明，写回时一对属性只保留一个方向；"
+            "null 表示不声明逆属性。目标必须是另一个已声明的对象属性。"
+        ),
+    )
+
+
+class EditModelDefinedClass(BaseModel):
+    """模板定义类：X ≡ baseClass ⊓ ∃property.valueClass（#117 阶段 3）。"""
+
+    name: str = Field(..., description="定义类短名（必须出现在 classes 中）。")
+    baseClass: str = Field(..., description="交集第一项的具名基类短名。")
+    property: str = Field(..., description="存在量词的对象属性短名。")
+    valueClass: str = Field(..., description="存在量词的值类短名。")
 
 
 class EditModelDataProp(BaseModel):
@@ -331,6 +347,13 @@ class EditModel(BaseModel):
         description=(
             "具名互斥公理 owl:disjointWith（#112）。null / 省略表示不修改底图里的"
             "互斥公理；空数组表示显式删除全部具名互斥对。BNode 匿名公理始终原样保留。"
+        ),
+    )
+    definedClasses: list[EditModelDefinedClass] | None = Field(
+        default=None,
+        description=(
+            "模板定义类 X ≡ A ⊓ ∃p.C（#117 阶段 3）。null / 省略表示不修改底图；"
+            "空数组表示显式删除全部模板定义；非模板等价公理始终原样保留。"
         ),
     )
 

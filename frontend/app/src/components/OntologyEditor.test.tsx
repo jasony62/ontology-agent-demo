@@ -368,3 +368,75 @@ describe('OntologyEditor 互斥公理（#112）', () => {
     expect(container!.querySelector('.notice-banner')?.textContent).toContain('1 条');
   });
 });
+
+describe('OntologyEditor 逆属性（#117 阶段 2）', () => {
+  it('设置逆属性会同步另一侧，并清掉冲突的旧对', () => {
+    useEditorStore.setState({
+      model: {
+        ...MODEL,
+        objectProps: [
+          { id: 'declaresCapability', label: '由某包声明', domain: 'DomainPackage', range: 'Capability', characteristics: [], inverseOf: null },
+          { id: 'providedBy', label: '提供者', domain: 'Capability', range: 'DomainPackage', characteristics: [], inverseOf: 'declaresCapability' },
+          { id: 'otherRelation', label: '其它关系', domain: 'Capability', range: 'DomainPackage', characteristics: [], inverseOf: null },
+        ],
+      },
+    });
+    render();
+    click(tabs()[1]);
+    click(container!.querySelectorAll('.ef-row-toggle')[0]);
+
+    const select = container!.querySelector<HTMLSelectElement>('select[aria-label="declaresCapability 逆属性"]')!;
+    act(() => {
+      select.value = 'providedBy';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    const props = useEditorStore.getState().model!.objectProps;
+    const byId = Object.fromEntries(props.map((p) => [p.id, p]));
+    expect(byId.declaresCapability.inverseOf).toBe('providedBy');
+    expect(byId.providedBy.inverseOf).toBe('declaresCapability');
+    expect(byId.otherRelation.inverseOf).toBeNull();
+  });
+});
+
+describe('OntologyEditor 定义类模板（#117 阶段 3）', () => {
+  it('展示定义类并支持删除定义（类本身保留）', () => {
+    useEditorStore.setState({
+      model: {
+        ...MODEL,
+        classes: [...MODEL.classes, { id: 'DerivedPackage', label: '派生包', parent: null, description: '' }],
+        definedClasses: [{
+          name: 'DerivedPackage', baseClass: 'DomainPackage',
+          property: 'declaresCapability', valueClass: 'Capability',
+        }],
+      },
+    });
+    render();
+
+    expect(container!.textContent).toContain('定义类');
+    expect(container!.textContent).toContain('DerivedPackage ≡ DomainPackage ⊓ ∃declaresCapability.Capability');
+    click(container!.querySelector('button[aria-label="删除定义 DerivedPackage"]')!);
+    expect(useEditorStore.getState().model?.definedClasses).toEqual([]);
+    expect(useEditorStore.getState().model?.classes.map((c) => c.id)).toContain('DerivedPackage');
+  });
+
+  it('新建定义类会补上类声明与模板三元组', () => {
+    render();
+    click([...container!.querySelectorAll('button')].find((b) => b.textContent?.includes('新建定义类'))!);
+
+    const name = container!.querySelector<HTMLInputElement>('input[placeholder="如 SeniorAgent"]')!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    act(() => {
+      setter.call(name, 'SeniorPackage');
+      name.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    click([...container!.querySelectorAll('button')].find((b) => b.textContent === '保存定义')!);
+
+    const model = useEditorStore.getState().model!;
+    expect(model.classes.map((c) => c.id)).toContain('SeniorPackage');
+    expect(model.definedClasses).toEqual([{
+      name: 'SeniorPackage', baseClass: 'DomainPackage',
+      property: 'declaresCapability', valueClass: 'DomainPackage',
+    }]);
+  });
+});

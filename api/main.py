@@ -1791,6 +1791,9 @@ def save_ontology(req: SaveOntologyRequest):
     try:
         content = ENGINE.model_to_rdf(req.model.model_dump())
         dropped_axioms = list(getattr(ENGINE, "last_dropped_axioms", []) or [])
+        inverse_impact = getattr(ENGINE, "last_inverse_impact", None) or {
+            "removed_pairs": [], "inferred_triples": 0,
+        }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"编辑模型非法：{exc}")
 
@@ -1850,6 +1853,7 @@ def save_ontology(req: SaveOntologyRequest):
         "mode": req.mode,
         "backup": str(backup) if backup is not None else None,
         "dropped_axioms": dropped_axioms,
+        "inverse_impact": inverse_impact,
         "stats": {
             "triples_before": materialized["stats"]["triples_asserted"],
             "triples_after": materialized["stats"]["triples_materialized"],

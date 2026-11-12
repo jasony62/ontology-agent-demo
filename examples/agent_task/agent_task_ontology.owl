@@ -26,7 +26,6 @@
 <owl:ObjectProperty rdf:about="#required_by">
   <rdfs:domain rdf:resource="#Capability"/>
   <rdfs:range rdf:resource="#Task"/>
-  <owl:inverseOf rdf:resource="#requires_capability"/>
   <rdfs:label rdf:datatype="http://www.w3.org/2001/XMLSchema#string">能力被任务需要</rdfs:label>
   <rdfs:comment rdf:datatype="http://www.w3.org/2001/XMLSchema#string">requires_capability 的显式逆属性（owl:inverseOf）：按「能力 → 任务」方向检索用；由 owlrl 物化产出，G3 冒烟断言其存在。</rdfs:comment>
 </owl:ObjectProperty>

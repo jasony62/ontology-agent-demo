@@ -142,10 +142,9 @@ owlrl.DeductiveClosure(owlrl.OWLRL_Semantics).expand(self.g)
 <owl:ObjectProperty rdf:about="#required_by">
   <rdfs:domain rdf:resource="#Capability"/>
   <rdfs:range rdf:resource="#Task"/>
-  <owl:inverseOf rdf:resource="#requires_capability"/>
 </owl:ObjectProperty>
 
-<!-- requires_capability：任务 → 能力 -->
+<!-- requires_capability：任务 → 能力；逆属性只声明一次（#117 单写规约） -->
 <owl:ObjectProperty rdf:about="#requires_capability">
   <rdfs:domain rdf:resource="#Task"/>
   <rdfs:range rdf:resource="#Capability"/>

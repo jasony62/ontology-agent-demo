@@ -74,11 +74,13 @@ export interface EditModelPayload {
   ontologyName: string;
   namespace: string;
   classes: { id: string; label: string; parent: string | null; description: string }[];
-  objectProps: { id: string; label: string; domain: string | null; range: string | null; characteristics: string[] }[];
+  objectProps: { id: string; label: string; domain: string | null; range: string | null; characteristics: string[]; inverseOf?: string | null }[];
   dataProps: { id: string; label: string; domain: string | null; range: string | null }[];
   individuals: { id: string; label: string; types: string[]; assertions: { prop: string; value: string; isObject: boolean }[] }[];
   /** 具名互斥公理（#112）；省略表示不修改底图，[] 表示显式清空 */
   disjoints?: { a: string; b: string }[];
+  /** 模板定义类（#117）；省略表示不修改底图，[] 表示显式清空 */
+  definedClasses?: { name: string; baseClass: string; property: string; valueClass: string }[];
 }
 
 export interface SaveModelResponse {
@@ -90,6 +92,11 @@ export interface SaveModelResponse {
   backup?: string | null;
   /** 因删除类而一并裁掉的具名互斥公理（#112）；无影响时为空数组 */
   dropped_axioms?: { predicate: string; a: string; b: string }[];
+  /** 删除逆属性对影响的既有推理结论（#117）；未改逆属性时 inferred_triples=0 */
+  inverse_impact?: {
+    removed_pairs: { a: string; b: string }[];
+    inferred_triples: number;
+  };
   stats: { triples_before: number; triples_after: number; inferred_added: number; classes: number; individuals: number };
   materialized: MaterializedResponse;
 }

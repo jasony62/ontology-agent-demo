@@ -318,3 +318,25 @@ def test_g4_skips_honestly_when_domain_has_no_shapes():
     g4 = next(t for t in r["gate_trace"] if t["gate"] == "G4_shacl_tests")
     assert g4["status"] == "skipped"
     assert "如实跳过" in g4["evidence"]["reason"]
+
+
+def test_inverse_axiom_impact_counts_only_inferred_edges():
+    """删除逆属性对 → 只统计会消失的推理边，不把断言边算进去（#117）。"""
+    from rdflib import Graph, URIRef
+
+    p = URIRef("http://example.org/o#requires")
+    q = URIRef("http://example.org/o#required_by")
+    a = URIRef("http://example.org/o#t1")
+    b = URIRef("http://example.org/o#t2")
+    asserted = Graph()
+    asserted.add((a, p, b))
+    materialized = Graph()
+    materialized += asserted
+    materialized.add((b, q, a))       # owlrl 由 inverseOf 派生
+    materialized.add((a, p, b))       # 重复断言（不应重复计数）
+
+    impact = pipeline_gate.inverse_axiom_impact(
+        materialized, asserted, {frozenset((p, q))},
+    )
+    assert impact["inferred_triples"] == 1
+    assert impact["removed_pairs"] == [{"a": "required_by", "b": "requires"}]

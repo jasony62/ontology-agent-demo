@@ -14,6 +14,8 @@ export interface EditModelObjectProp {
   range: string | null;
   /** FunctionalProperty / InverseFunctionalProperty / TransitiveProperty / SymmetricProperty / AsymmetricProperty / ReflexiveProperty / IrreflexiveProperty */
   characteristics: string[];
+  /** 逆属性短名（#117）；null / undefined 表示不声明 */
+  inverseOf?: string | null;
 }
 
 export interface EditModelDataProp {
@@ -38,6 +40,14 @@ export interface EditModelIndividual {
   assertions: EditModelAssertion[];
 }
 
+/** 模板定义类 X ≡ A ⊓ ∃p.C（#117 阶段 3）。 */
+export interface EditModelDefinedClass {
+  name: string;
+  baseClass: string;
+  property: string;
+  valueClass: string;
+}
+
 /** 具名互斥公理 a owl:disjointWith b（#112）。按方向逐条保留，不做对称去重。 */
 export interface EditModelDisjoint {
   a: string;
@@ -53,6 +63,8 @@ export interface EditModel {
   individuals: EditModelIndividual[];
   /** 可选：具名互斥公理；undefined 表示不修改底图，[] 表示显式清空 */
   disjoints?: EditModelDisjoint[];
+  /** 可选：模板定义类；undefined 表示不修改底图，[] 表示显式清空模板定义 */
+  definedClasses?: EditModelDefinedClass[];
 }
 
 export const PROPERTY_CHARACTERISTICS = [
@@ -79,6 +91,7 @@ export function emptyEditModel(name = 'new-ontology', ns = 'http://example.org/n
     dataProps: [],
     individuals: [],
     disjoints: [],
+    definedClasses: [],
   };
 }
 

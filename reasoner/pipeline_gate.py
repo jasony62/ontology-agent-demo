@@ -72,6 +72,29 @@ def _short(iri) -> str:
     return s.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
 
 
+def inverse_axiom_impact(materialized: Graph, asserted: Graph,
+                         removed_pairs: set[frozenset]) -> dict:
+    """删除逆属性对会让多少条**既有推理结论**消失（#117 阶段 2）。
+
+    只比较物化图与断言图：断言边不会因为删公理消失，只有 owlrl 由逆属性
+    派生出来的边会。返回值用于保存回执的「本次改动影响 N 条既有推理结论」，
+    数字来自运行图，不是写死。非模板 / 未命名的逆属性不参与。
+    """
+    predicates = {p for pair in removed_pairs for p in pair}
+    affected = {
+        triple for triple in materialized
+        if triple[1] in predicates and triple not in asserted
+    }
+    pairs = [
+        {"a": _short(a), "b": _short(b)}
+        for a, b in sorted(
+            (tuple(sorted(pair, key=str)) for pair in removed_pairs),
+            key=lambda pr: (str(pr[0]), str(pr[1])),
+        )
+    ]
+    return {"removed_pairs": pairs, "inferred_triples": len(affected)}
+
+
 def _load_gates() -> dict:
     """加载 pipeline/gates.json（缺省/损坏 → 默认全开：闸门宁多跑不静默跳）。"""
     try:

@@ -305,7 +305,7 @@ def test_model_to_rdf_lossless_roundtrip(tmp_path):
     assert len(g2) == len(eng.raw), "断言三元组数应逐条不变"
     for name, pred, count in (
         ("owl:disjointWith", E.OWL.disjointWith, 8),
-        ("owl:inverseOf", E.OWL.inverseOf, 2),
+        ("owl:inverseOf", E.OWL.inverseOf, 1),
         ("owl:equivalentClass", E.OWL.equivalentClass, 2),
     ):
         assert len(list(eng.raw.triples((None, pred, None)))) == count
@@ -509,7 +509,7 @@ def test_model_to_rdf_replaces_only_named_disjoint_pairs(tmp_path):
                                 E.URIRef(ns + "Agent"))))
     assert len(list(g2.triples((None, E.OWL.disjointWith, None)))) == 7
     # 未被本次编辑触及的公理 / 注释保持原样
-    assert len(list(g2.triples((None, E.OWL.inverseOf, None)))) == 2
+    assert len(list(g2.triples((None, E.OWL.inverseOf, None)))) == 1
     assert len(list(g2.triples((None, E.OWL.equivalentClass, None)))) == 2
     assert set(g2.triples((None, E.RDFS.comment, None))) == \
         set(eng.raw.triples((None, E.RDFS.comment, None)))
@@ -612,3 +612,202 @@ def test_save_reports_dropped_axioms(isolated_api):
     assert r.json()["dropped_axioms"] == [
         {"predicate": "owl:disjointWith", "a": "DevAgent", "b": "TestAgent"},
     ]
+
+
+# ---------- #117 阶段 2：inverseOf 可编辑 ----------
+
+def test_edit_model_reports_logical_inverse_pairs():
+    """两向声明合并成一条逻辑公理：两个属性彼此指向，不重复成两条。"""
+    d = client.get("/api/ontology/edit-model").json()
+    props = {p["id"]: p for p in d["objectProps"]}
+    assert props["requires_capability"]["inverseOf"] == "required_by"
+    assert props["required_by"]["inverseOf"] == "requires_capability"
+    # 只有一对逻�辑逆属性（不是两条独立声明）
+    pairs = {
+        frozenset((p["id"], p["inverseOf"]))
+        for p in d["objectProps"] if p.get("inverseOf")
+    }
+    assert pairs == {frozenset(("requires_capability", "required_by"))}
+
+
+def test_model_to_rdf_canonicalizes_double_inverse_to_one_direction():
+    """存量双写 → 写回单写；required_by 的 8 条推理边不变。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    ns = eng.NS
+    eng.raw.add((ns["required_by"], E.OWL.inverseOf, ns["requires_capability"]))
+    assert len(list(eng.raw.triples((None, E.OWL.inverseOf, None)))) == 2
+
+    xml = eng.model_to_rdf(eng.edit_model())
+    g2 = E.Graph()
+    g2.parse(data=xml, format="xml")
+    assert len(list(g2.triples((None, E.OWL.inverseOf, None)))) == 1
+    reloaded = E.OntologyEngine(str(_write_xml(g2)))
+    assert len(list(reloaded.g.subject_objects(ns["required_by"]))) == 8
+
+
+def test_model_to_rdf_removes_inverse_and_reports_impact():
+    """删逆属性 → 回执报影响的推理结论数；撤回后 required_by 回到 8。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    ns = eng.NS
+    model = eng.edit_model()
+    for p in model["objectProps"]:
+        p["inverseOf"] = None
+
+    xml = eng.model_to_rdf(model)
+    assert eng.last_inverse_impact["removed_pairs"] == [
+        {"a": "required_by", "b": "requires_capability"},
+    ]
+    assert eng.last_inverse_impact["inferred_triples"] == 8
+    g2 = E.Graph()
+    g2.parse(data=xml, format="xml")
+    assert not list(g2.triples((None, E.OWL.inverseOf, None)))
+    removed = E.OntologyEngine(str(_write_xml(g2)))
+    assert len(list(removed.g.subject_objects(ns["required_by"]))) == 0
+
+    # 撤回：重新挂上逆属性，推理边回到 8
+    model2 = removed.edit_model()
+    for p in model2["objectProps"]:
+        if p["id"] == "requires_capability":
+            p["inverseOf"] = "required_by"
+        elif p["id"] == "required_by":
+            p["inverseOf"] = "requires_capability"
+    g3 = E.Graph()
+    g3.parse(data=removed.model_to_rdf(model2), format="xml")
+    restored = E.OntologyEngine(str(_write_xml(g3)))
+    assert len(list(restored.g.subject_objects(ns["required_by"]))) == 8
+
+
+INVERSE_MINI = """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xml:base="http://mini.local/inverse">
+  <owl:Class rdf:about="#Person"/>
+  <owl:ObjectProperty rdf:about="#mentor"/>
+  <owl:ObjectProperty rdf:about="#mentee"/>
+  <owl:NamedIndividual rdf:about="#alice">
+    <rdf:type rdf:resource="#Person"/>
+    <mentor rdf:resource="#bob"/>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="#bob">
+    <rdf:type rdf:resource="#Person"/>
+  </owl:NamedIndividual>
+</rdf:RDF>
+"""
+
+
+def test_model_to_rdf_adds_new_inverse_and_materializes_reverse_edge(tmp_path):
+    """新增逆属性 → 物化后反向边出现。"""
+    src = tmp_path / "inverse.owl"
+    src.write_text(INVERSE_MINI, encoding="utf-8")
+    eng = E.OntologyEngine(str(src))
+    model = eng.edit_model()
+    by_id = {p["id"]: p for p in model["objectProps"]}
+    by_id["mentor"]["inverseOf"] = "mentee"
+    by_id["mentee"]["inverseOf"] = "mentor"
+
+    g2 = E.Graph()
+    g2.parse(data=eng.model_to_rdf(model), format="xml")
+    reloaded = E.OntologyEngine(str(_write_xml(g2)))
+    ns = reloaded.NS
+    assert (ns["alice"], ns["mentor"], ns["bob"]) in reloaded.g
+    assert (ns["bob"], ns["mentee"], ns["alice"]) in reloaded.g
+
+
+def _write_xml(g) -> Path:
+    """测试用：把图写进临时文件，供 OntologyEngine 重新加载。"""
+    import tempfile
+    fd, name = tempfile.mkstemp(suffix=".owl")
+    os.close(fd)
+    path = Path(name)
+    g.serialize(destination=str(path), format="xml")
+    return path
+
+
+# ---------- #117 阶段 3：模板定义类 ----------
+
+def test_edit_model_extracts_template_defined_classes():
+    """只提取 X ≡ A ⊓ ∃p.C 这一种模板，且从断言图读（不是物化后的自反等价）。"""
+    d = client.get("/api/ontology/edit-model").json()
+    by_name = {x["name"]: x for x in d["definedClasses"]}
+    assert by_name["CertifiedAgent"] == {
+        "name": "CertifiedAgent", "baseClass": "Agent",
+        "property": "holds_certification", "valueClass": "Certification",
+    }
+    assert by_name["ComplianceTask"] == {
+        "name": "ComplianceTask", "baseClass": "Task",
+        "property": "requires_constraint", "valueClass": "ComplianceRequirement",
+    }
+    assert len(d["definedClasses"]) == 2, "物化图里的自反等价不应混进来"
+
+
+def test_defined_class_template_create_classifies_individuals(tmp_path):
+    """新建 SeniorAgent ≡ Agent ⊓ ∃holds_certification.Certification → 持证个体归入。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    model = eng.edit_model()
+    model["classes"].append({
+        "id": "SeniorAgent", "label": "资深智能体", "parent": "Agent", "description": "",
+    })
+    model["definedClasses"].append({
+        "name": "SeniorAgent", "baseClass": "Agent",
+        "property": "holds_certification", "valueClass": "Certification",
+    })
+
+    g2 = E.Graph()
+    g2.parse(data=eng.model_to_rdf(model), format="xml")
+    reloaded = E.OntologyEngine(str(_write_xml(g2)))
+    ns = reloaded.NS
+    assert (ns["dev_agent"], E.RDF.type, ns["SeniorAgent"]) in reloaded.g
+    assert (ns["junior_dev"], E.RDF.type, ns["SeniorAgent"]) not in reloaded.g
+
+
+def test_defined_class_template_delete_reclaims_bnode_tree(tmp_path):
+    """删除定义只回收等价公理与 BNode 子树，类保留、个体不再归入。"""
+    eng = E.OntologyEngine(str(AGENT_TASK_ONTO))
+    model = eng.edit_model()
+    model["definedClasses"] = [
+        d for d in model["definedClasses"] if d["name"] != "CertifiedAgent"
+    ]
+
+    g2 = E.Graph()
+    g2.parse(data=eng.model_to_rdf(model), format="xml")
+    ns = str(eng.NS)
+    # 只剩 ComplianceTask 一条模板等价公理
+    assert len(list(g2.triples((None, E.OWL.equivalentClass, None)))) == 1
+    reloaded = E.OntologyEngine(str(_write_xml(g2)))
+    assert (reloaded.NS["dev_agent"], E.RDF.type, reloaded.NS["CertifiedAgent"]) not in reloaded.g
+    assert (reloaded.NS["CertifiedAgent"], E.RDF.type, E.OWL.Class) in reloaded.g
+    # 定义树里不再有 holds_certification 的 someValuesFrom 残留
+    assert not any(
+        str(o).endswith("#Certification")
+        for o in g2.objects(None, E.OWL.someValuesFrom)
+    )
+
+
+def test_save_reports_inverse_impact_and_restore(isolated_api):
+    """API 保存回执报影响面；撤回逆属性后 required_by 回到 8（#117 验收 1/2）。"""
+    client = isolated_api.client
+    model = client.get("/api/ontology/edit-model").json()
+    for p in model["objectProps"]:
+        p["inverseOf"] = None
+
+    r = client.post("/api/ontology/save", json={"model": model, "mode": "overwrite"})
+    assert r.status_code == 200, r.text
+    impact = r.json()["inverse_impact"]
+    assert impact["inferred_triples"] == 8
+    assert impact["removed_pairs"] == [{"a": "required_by", "b": "requires_capability"}]
+    engine = isolated_api.manager.current().engine
+    ns = engine.NS
+    assert len(list(engine.g.subject_objects(ns["required_by"]))) == 0
+
+    # 撤回：重新挂上逆属性
+    model2 = client.get("/api/ontology/edit-model").json()
+    for p in model2["objectProps"]:
+        if p["id"] == "requires_capability":
+            p["inverseOf"] = "required_by"
+        elif p["id"] == "required_by":
+            p["inverseOf"] = "requires_capability"
+    r2 = client.post("/api/ontology/save", json={"model": model2, "mode": "overwrite"})
+    assert r2.status_code == 200, r2.text
+    engine2 = isolated_api.manager.current().engine
+    assert len(list(engine2.g.subject_objects(ns["required_by"]))) == 8

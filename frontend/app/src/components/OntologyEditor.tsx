@@ -99,6 +99,10 @@ export default function OntologyEditor() {
   // 分类导航：同一时刻只渲染一个工作区（#89）
   const [activeCategory, setActiveCategory] = useState<Category>('class');
   const [search, setSearch] = useState('');
+  // #117 阶段 3：定义类模板表单（只支持 X ≡ A ⊓ ∃p.C）
+  const [definedDraft, setDefinedDraft] = useState<{
+    name: string; baseClass: string; property: string; valueClass: string;
+  } | null>(null);
   // #26：类层次折叠（按 id）——与属性/实例卡片一样支持「全部展开/折叠」
   const [openClasses, setOpenClasses] = useState<Record<string, boolean>>({});
   const isClassOpen = (id: string) => !!openClasses[id];
@@ -162,6 +166,48 @@ export default function OntologyEditor() {
         (d.a === id && d.b === other) || (d.a === other && d.b === id)
       )),
     });
+  };
+
+  /** #117：逆属性是成对的。设置 p→q 时同步 q→p，并清掉其它指向 p/q 的旧对。 */
+  const setInverse = (id: string, target: string) => {
+    const next = model.objectProps.map((x) => {
+      if (x.id === id) return { ...x, inverseOf: target || null };
+      if (target && x.id === target) return { ...x, inverseOf: id };
+      if (x.inverseOf === id || (target && x.inverseOf === target)) {
+        return { ...x, inverseOf: null };
+      }
+      return x;
+    });
+    commit({ ...model, objectProps: next });
+  };
+
+  // #117 阶段 3：模板定义类（只支持 X ≡ A ⊓ ∃p.C，不做自由表达式）
+  const definedClasses = model.definedClasses ?? [];
+  const startDefined = () => setDefinedDraft({
+    name: '',
+    baseClass: model.classes[0]?.id ?? '',
+    property: model.objectProps[0]?.id ?? '',
+    valueClass: model.classes[0]?.id ?? '',
+  });
+  const createDefined = () => {
+    if (!definedDraft) return;
+    const name = definedDraft.name.trim();
+    if (!name || !definedDraft.baseClass || !definedDraft.property || !definedDraft.valueClass) return;
+    const classes = model.classes.some((c) => c.id === name)
+      ? model.classes
+      : [...model.classes, { id: name, label: '', parent: null, description: '' }];
+    commit({
+      ...model,
+      classes,
+      definedClasses: [
+        ...definedClasses.filter((d) => d.name !== name),
+        { name, baseClass: definedDraft.baseClass, property: definedDraft.property, valueClass: definedDraft.valueClass },
+      ],
+    });
+    setDefinedDraft(null);
+  };
+  const removeDefined = (name: string) => {
+    commit({ ...model, definedClasses: definedClasses.filter((d) => d.name !== name) });
   };
 
   const renderClassNode = (c: { id: string; label: string; parent: string | null; description: string }, depth: number, flat = false) => {
@@ -240,14 +286,21 @@ export default function OntologyEditor() {
               aria-label={`删除 ${c.label || c.id}`}
               onClick={() => {
                 const dropped = disjoints.filter((d) => d.a === c.id || d.b === c.id).length;
+                const droppedDefs = (model.definedClasses ?? [])
+                  .filter((d) => d.name === c.id || d.baseClass === c.id || d.valueClass === c.id).length;
                 const next = {
                   ...model,
                   classes: model.classes.filter((x) => x.id !== c.id),
                   disjoints: (model.disjoints ?? []).filter((d) => d.a !== c.id && d.b !== c.id),
+                  definedClasses: (model.definedClasses ?? []).filter(
+                    (d) => d.name !== c.id && d.baseClass !== c.id && d.valueClass !== c.id,
+                  ),
                 };
                 commit(next);
-                if (dropped > 0) {
-                  setNotice(`已删除类 ${c.label || c.id}，并一并删除 ${dropped} 条以它为端点的互斥公理。`);
+                if (dropped > 0 || droppedDefs > 0) {
+                  setNotice(
+                    `已删除类 ${c.label || c.id}，并一并删除 ${dropped} 条互斥公理、${droppedDefs} 条定义类。`,
+                  );
                 }
               }}
             >
@@ -284,9 +337,11 @@ export default function OntologyEditor() {
         setGraphData(res.materialized.asserted);
       }
       const dropped = res.dropped_axioms ?? [];
+      const inverseImpact = res.inverse_impact?.inferred_triples ?? 0;
       setNotice(
         `已保存（${mode === 'overwrite' ? '覆盖当前本体文件' : '生成新本体文件'}）：${res.filename} · 三元组 ${res.stats.triples_before} → ${res.stats.triples_after}（推理新增 ${res.stats.inferred_added}）`
-        + (dropped.length > 0 ? ` · 因删除实体一并裁掉 ${dropped.length} 条互斥公理` : ''),
+        + (dropped.length > 0 ? ` · 因删除实体一并裁掉 ${dropped.length} 条互斥公理` : '')
+        + (inverseImpact > 0 ? ` · 本次改动影响 ${inverseImpact} 条既有推理结论` : ''),
       );
     } catch (e) {
       setError(`保存失败：${e instanceof Error ? e.message : String(e)}`);
@@ -431,17 +486,94 @@ export default function OntologyEditor() {
 
           <div className="ef-workspace-list">
             {activeCategory === 'class' && (
-              model.classes.length === 0 ? (
-                <div className="ef-empty">还没有类</div>
-              ) : classMatches.length === 0 ? (
-                <div className="ef-empty">没有匹配的类</div>
-              ) : q ? (
-                classMatches.map((c) => renderClassNode(c, 0, true))
-              ) : roots.length === 0 ? (
-                model.classes.map((c) => renderClassNode(c, 0))
-              ) : (
-                roots.map((c) => renderClassNode(c, 0))
-              )
+              <>
+                <div className="ef-defined">
+                  <div className="ef-defined-head">
+                    <h4>定义类 <span>{definedClasses.length}</span></h4>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={startDefined}
+                      disabled={model.classes.length === 0 || model.objectProps.length === 0}
+                    >
+                      ＋ 新建定义类
+                    </button>
+                  </div>
+                  <p className="ef-field-hint">
+                    只支持模板 X ≡ A ⊓ ∃p.C（不做自由表达式）。删除定义只回收这条等价公理，类本身保留。
+                  </p>
+                  {definedClasses.length === 0 ? (
+                    <div className="ef-empty">还没有定义类</div>
+                  ) : (
+                    <ul className="ef-defined-list">
+                      {definedClasses.map((d) => (
+                        <li key={d.name}>
+                          <b>{model.classes.find((c) => c.id === d.name)?.label || d.name}</b>
+                          <code>{d.name} ≡ {d.baseClass} ⊓ ∃{d.property}.{d.valueClass}</code>
+                          <button
+                            type="button"
+                            className="btn ghost danger-text"
+                            aria-label={`删除定义 ${d.name}`}
+                            onClick={() => removeDefined(d.name)}
+                          >
+                            删除定义
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {definedDraft && (
+                    <div className="ef-defined-form">
+                      <Field label="新类名">
+                        <input
+                          value={definedDraft.name}
+                          placeholder="如 SeniorAgent"
+                          onChange={(e) => setDefinedDraft({ ...definedDraft, name: e.target.value })}
+                        />
+                      </Field>
+                      <Field label="基础类">
+                        <select
+                          value={definedDraft.baseClass}
+                          onChange={(e) => setDefinedDraft({ ...definedDraft, baseClass: e.target.value })}
+                        >
+                          {model.classes.map((c) => <option key={c.id} value={c.id}>{c.label || c.id}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="对象属性">
+                        <select
+                          value={definedDraft.property}
+                          onChange={(e) => setDefinedDraft({ ...definedDraft, property: e.target.value })}
+                        >
+                          {model.objectProps.map((p) => <option key={p.id} value={p.id}>{p.label || p.id}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="值类">
+                        <select
+                          value={definedDraft.valueClass}
+                          onChange={(e) => setDefinedDraft({ ...definedDraft, valueClass: e.target.value })}
+                        >
+                          {model.classes.map((c) => <option key={c.id} value={c.id}>{c.label || c.id}</option>)}
+                        </select>
+                      </Field>
+                      <div className="ef-defined-actions">
+                        <button type="button" className="btn" onClick={createDefined}>保存定义</button>
+                        <button type="button" className="btn ghost" onClick={() => setDefinedDraft(null)}>取消</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {model.classes.length === 0 ? (
+                  <div className="ef-empty">还没有类</div>
+                ) : classMatches.length === 0 ? (
+                  <div className="ef-empty">没有匹配的类</div>
+                ) : q ? (
+                  classMatches.map((c) => renderClassNode(c, 0, true))
+                ) : roots.length === 0 ? (
+                  model.classes.map((c) => renderClassNode(c, 0))
+                ) : (
+                  roots.map((c) => renderClassNode(c, 0))
+                )}
+              </>
             )}
 
             {activeCategory === 'obj' && (
@@ -457,7 +589,14 @@ export default function OntologyEditor() {
                   label={p.label}
                   id={p.id}
                   meta={[p.domain, p.range].filter(Boolean).join(' → ') || undefined}
-                  onDelete={() => commit({ ...model, objectProps: model.objectProps.filter((x) => x.id !== p.id) })}
+                  onDelete={() => {
+                    const nextProps = model.objectProps
+                      .filter((x) => x.id !== p.id)
+                      .map((x) => (x.inverseOf === p.id ? { ...x, inverseOf: null } : x));
+                    const nextDefined = (model.definedClasses ?? [])
+                      .filter((d) => d.property !== p.id);
+                    commit({ ...model, objectProps: nextProps, definedClasses: nextDefined });
+                  }}
                 >
                   <div className="ef-row-sub">
                     <Field label="id">
@@ -480,7 +619,22 @@ export default function OntologyEditor() {
                         {model.classes.map((c) => <option key={c.id} value={c.id}>{c.label || c.id}</option>)}
                       </select>
                     </Field>
+                    <Field label="逆属性">
+                      <select
+                        aria-label={`${p.id} 逆属性`}
+                        value={p.inverseOf ?? ''}
+                        onChange={(e) => setInverse(p.id, e.target.value)}
+                      >
+                        <option value="">（无）</option>
+                        {model.objectProps
+                          .filter((x) => x.id !== p.id)
+                          .map((x) => <option key={x.id} value={x.id}>{x.label || x.id}</option>)}
+                      </select>
+                    </Field>
                   </div>
+                  <span className="ef-field-hint">
+                    逆属性成对生效；保存会删净旧的两向声明、只写一个方向，并在回执里报出会消失多少条既有推理结论。
+                  </span>
                   <div className="ef-chars">
                     {PROPERTY_CHARACTERISTICS.map((c) => (
                       <label key={c}>

@@ -7,6 +7,8 @@
 
 ### Added
 
+- **公理可干预阶段 2/3：`inverseOf` 可编辑 + 模板定义类（#117）**：阶段 2 在对象属性表单新增「逆属性」下拉，提取时把存量双向声明合并成一条逻辑公理，写回时删净两向、每对只保留一个方向（存量双写随之规约成单写）；逆属性校验目标必须是另一个对象属性且不能指向自身。保存前对比物化图与断言图，回执新增 `inverse_impact`，明确报出「本次改动影响 N 条既有推理结论」（删 `requires_capability`/`required_by` 时为 8，撤回后恢复）。阶段 3 新增只读 `definedClasses` 段与 `X ≡ A ⊓ ∃p.C` 模板：类编辑区以人话列出定义类，三选表单可新建/删除（自动补类声明、按 `intersectionOf` + `Restriction` 生成/回收 BNode 子树）；新建 `SeniorAgent` 后持证个体自动归入，删除定义后个体回归且无 BNode 残留。未做自由表达式、`subPropertyChainOf` 或通用 OWL 编辑器。
+
 - **`onto_playground` 的 guide 从「合法但空」补齐为可跑内容（#116）**：第二个随仓库分发的异构领域此前 `contract_ok: true`，但 `scenarios` / `examples` / `capability_notes` / `constraints` / `not_covers` / `integrations` 全空，装完只能看到一句「该包未提供示例题」。现补 6 道可页内试跑示例题（`reachability` × 2、`activation_check` × 2、`compliance_check` × 1，答案均由当前数据现算）、一道预测题 `OP-P1`（补 `provides` 后仍 `not_ready`，只少 `declaresCapability`，并用只读推演验证）、3 条场景、3 条边界、3 条约束、6 条能力说明与 4 行范式对照表（能力 / 落点 / 闸门 / 通道）。`reconcile.capabilities_without_note` 从 6 项降为 0；未新增槽位、未改 `GUIDE_VERSION`、未动框架代码。
 
 - **预测题从「告知答案」升级为「只读推演」（#115）**：`guide.json` 示例题新增可选 `simulate.edits`，显式声明断言改动（`op: set / add / remove`、`subject / predicate / value / kind`）。新增 `POST /api/domains/current/simulate`：从**断言图**复制一份 → 施加改动 → 重新物化 + 跑领域规则 → 跑一次只读能力 → 返回 `baseline` / `simulated` 对比后丢弃副本。不调用 `apply`、不改活图、不落盘、不接受变更能力；并发请求各自独立，失败不留脏状态。P1/P2/P3 的 `explain` 改为「页面会给出改动后的真实返回」，并补 P4-01/P4-02：`t_compliance_dev` 去掉合规约束后候选仍 2、担责 1→2，说明让候选与担责分叉的是约束而不是能力。方案卡/结果区在推演响应下并排展示「改动前（当前模型）」与「改动后（只读推演，不写入系统）」。

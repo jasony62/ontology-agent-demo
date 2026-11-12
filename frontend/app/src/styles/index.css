@@ -720,6 +720,21 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .ef-disjoint-add { height: var(--control-h); padding: 0 8px; font-size: var(--fs-sm2); border: 1px dashed var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--muted); }
 .ef-field-hint { display: block; margin-top: 4px; font-size: var(--fs-xs); color: var(--muted); line-height: 1.5; }
 
+/* #117 阶段 3：模板定义类的只读列表 + 三选表单 */
+.ef-defined { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-3); background: var(--panel-2); }
+.ef-defined-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ef-defined-head h4 { font-size: var(--fs-md); color: var(--heading); }
+.ef-defined-head h4 span { font-size: var(--fs-xs); color: var(--muted); font-weight: 400; }
+.ef-defined-list { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.ef-defined-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--fs-sm2); }
+.ef-defined-list code { color: var(--primary); font-size: var(--fs-xs); }
+.ef-defined-list .btn { margin-left: auto; }
+.ef-defined-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 8px; }
+.ef-defined-form .field { min-width: 0; }
+.ef-defined-form input, .ef-defined-form select { width: 100%; height: var(--control-h); padding: 0 9px; font-size: var(--fs-sm2); border: 1px solid var(--border); border-radius: var(--radius-sm); box-sizing: border-box; }
+.ef-defined-actions { display: flex; gap: 6px; align-items: end; }
+
+
 .ef-assertions { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: 2px; min-width: 0; }
 .ef-assertion { display: flex; gap: var(--sp-2); align-items: center; min-width: 0; }
 .ef-assertion select, .ef-assertion input { flex: 1 1 0; min-width: 0; height: var(--control-h); padding: 0 9px; font-size: var(--fs-sm2); border: 1px solid var(--border); border-radius: var(--radius-sm); box-sizing: border-box; }

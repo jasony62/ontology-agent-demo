@@ -347,6 +347,24 @@ class DroppedAxiom(BaseModel):
     b: str = Field(..., description="公理宾语类短名。")
 
 
+class InverseImpactPair(BaseModel):
+    """被删除的逆属性对。"""
+
+    a: str = Field(..., description="逆属性一端的对象属性短名。")
+    b: str = Field(..., description="逆属性另一端的对象属性短名。")
+
+
+class InverseImpact(BaseModel):
+    """删除逆属性对后影响的既有推理结论（#117 阶段 2）。"""
+
+    removed_pairs: list[InverseImpactPair] = Field(
+        default_factory=list, description="本次删除的逆属性对；未改逆属性时为空。",
+    )
+    inferred_triples: int = Field(
+        0, description="随这些公理消失的既有推理结论条数（物化图 − 断言图，实测）。",
+    )
+
+
 class OntologySaveResponse(BaseModel):
     """保存编辑模型的结果。"""
 
@@ -358,6 +376,10 @@ class OntologySaveResponse(BaseModel):
     dropped_axioms: list[DroppedAxiom] = Field(
         default_factory=list,
         description="因删除类而一并裁掉的具名互斥公理；为空表示没有公理受影响。",
+    )
+    inverse_impact: InverseImpact = Field(
+        default_factory=InverseImpact,
+        description="删除逆属性对影响的既有推理结论；未改逆属性时 inferred_triples=0。",
     )
     materialized: MaterializedResponse = Field(..., description="保存后重新物化的完整 diff。")
 

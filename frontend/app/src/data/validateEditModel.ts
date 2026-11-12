@@ -77,6 +77,15 @@ export function validateEditModel(m: EditModel): string[] {
       }
     }
   }
+  const objectPropIds = new Set(m.objectProps.map((p) => p.id));
+  for (const p of m.objectProps) {
+    if (!p.inverseOf) continue;
+    if (p.inverseOf === p.id) {
+      errors.push(`属性 "${p.id}" 不能以自身为逆属性`);
+    } else if (!objectPropIds.has(p.inverseOf)) {
+      errors.push(`属性 "${p.id}" 的逆属性必须是已声明的对象属性: ${p.inverseOf}`);
+    }
+  }
   for (const p of m.dataProps) {
     if (p.domain && !classIds.has(p.domain)) {
       errors.push(`属性 "${p.id}" 的 domain 类不存在: ${p.domain}`);
@@ -103,6 +112,21 @@ export function validateEditModel(m: EditModel): string[] {
         errors.push(`个体 "${i.id}" 数据断言 ${a.prop} 缺少取值`);
       }
     }
+  }
+
+  // ---- 模板定义类（#117）：只校验固定形状的引用 ----
+  const definedNames = new Set<string>();
+  for (const d of m.definedClasses ?? []) {
+    if (!d.name.trim() || !d.baseClass.trim() || !d.property.trim() || !d.valueClass.trim()) {
+      errors.push('定义类的 name / baseClass / property / valueClass 不能为空');
+      continue;
+    }
+    if (definedNames.has(d.name)) errors.push(`定义类重复: ${d.name}`);
+    definedNames.add(d.name);
+    if (!classIds.has(d.name)) errors.push(`定义类的类不存在: ${d.name}`);
+    if (!classIds.has(d.baseClass)) errors.push(`定义类 "${d.name}" 的基础类不存在: ${d.baseClass}`);
+    if (!classIds.has(d.valueClass)) errors.push(`定义类 "${d.name}" 的值类不存在: ${d.valueClass}`);
+    if (!objectPropIds.has(d.property)) errors.push(`定义类 "${d.name}" 的属性必须是对象属性: ${d.property}`);
   }
 
   return errors;

@@ -1,4 +1,4 @@
-"""本体管理扩展（v1.3.0）测试：物化 diff / 源码 / 导出 / 本体加载（通用模式）。"""
+"""本体管理扩展（v1.3.0）测试：物化 diff / 源码 / 导出 / 本体加载（导入的本体）。"""
 
 import os
 import sys
@@ -91,7 +91,7 @@ def test_export_bad_format():
     assert r.status_code == 400
 
 
-# ---------- 本体加载（通用模式） ----------
+# ---------- 本体加载（导入的本体） ----------
 
 def test_load_rejects_non_owl(tmp_path):
     bad = tmp_path / "notes.txt"
@@ -101,7 +101,8 @@ def test_load_rejects_non_owl(tmp_path):
     assert r.status_code == 400
 
 
-def test_load_switches_to_generic_mode(tmp_path, restore_engine):
+def test_load_activates_imported_domain(tmp_path, restore_engine):
+    """#119：导入后当前领域是「导入的本体」，不再是上一个包 + 通用模式。"""
     owl = tmp_path / "mini.owl"
     owl.write_text(MINI_OWL, encoding="utf-8")
     with owl.open("rb") as f:
@@ -110,13 +111,14 @@ def test_load_switches_to_generic_mode(tmp_path, restore_engine):
     d = r.json()
     assert d["status"] == "ok"
     assert d["triples_before"] > 0
+    assert d["display_name"] == "导入的本体"
 
-    # 通用模式：物化可用
+    # 物化仍然可用（通用层端点）
     m = client.get("/api/ontology/materialized")
     assert m.status_code == 200
     assert m.json()["stats"]["triples_materialized"] >= m.json()["stats"]["triples_asserted"]
 
-    # 领域端点降级（守卫）
+    # 领域专属端点（图谱导出）确实不提供：400 未声明能力，而不是旧包的数据
     ont = client.get("/api/domains/current/ontology")
     assert ont.status_code == 400
-    assert "通用模式" in ont.json()["detail"]
+    assert "未声明能力" in ont.json()["detail"]

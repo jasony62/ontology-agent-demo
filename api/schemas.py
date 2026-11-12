@@ -359,7 +359,7 @@ class EditModel(BaseModel):
 
 
 class SaveOntologyRequest(BaseModel):
-    """保存编辑结果：mode=new 另存（data/uploads/，通用模式）；mode=overwrite 覆盖当前本体。"""
+    """保存编辑结果：mode=new 另存（data/uploads/ → 「导入的本体」只读领域）；mode=overwrite 覆盖当前本体。"""
 
     model: EditModel = Field(
         ...,
@@ -374,5 +374,5 @@ class SaveOntologyRequest(BaseModel):
     )
     mode: Literal["new", "overwrite"] = Field(
         "new",
-        description="new=另存到 data/uploads/ 并进入通用模式；overwrite=覆盖当前已加载本体。",
+        description="new=另存到 data/uploads/ 并切换为「导入的本体」只读领域；overwrite=覆盖当前已加载本体。",
     )

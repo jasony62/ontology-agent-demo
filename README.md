@@ -126,14 +126,14 @@ bash scripts/backup.sh        # 核心 .owl + extensions/ → backups/<时间戳
 `frontend/app/` 是基于 [Microsoft Ontology-Playground](https://github.com/microsoft/Ontology-Playground)（MIT）代码实现的功能完整前端：
 
 - **图谱工作台**：Cytoscape.js 交互图谱，三档视图——只看原始的 / 显示推理全貌（默认）/ 只看新推出的；推理新增边以虚线+独立色标注
-- **当前领域单页**：与图谱工作台平级的正式页面，按六问回答「这个包能替我做什么」——定位 / 覆盖范围 / 明确不做什么 / 能力用途（来自 `guide.json`）+ 运行态实测 + 对账；示例题可直接试跑（只读）或给出写盘请求预览，全部数据来自 `GET /api/domains/current/guide`
+- **当前领域单页**：与图谱工作台平级的正式页面，按六问回答「这个包能替我做什么」——定位 / 覆盖范围 / 明确不做什么 / 能力用途（来自 `guide.json`）+ 运行态实测 + 对账；示例题可直接试跑（只读）或给出写盘请求预览，全部数据来自 `GET /api/domains/current/guide`；导入自定义本体后本页整体切成「导入的本体」的只读说明
 - **OWL 源码**：RDF/XML 源码语法高亮只读查看，可下载原始文件；编辑请用「在线编辑本体定义」
-- **导入 / 导出**：拖拽上传 `.owl`/`.rdf` 解析展示；导出当前模型（RDF/XML）或物化后本体（Turtle / RDF/XML）
+- **导入 / 导出**：拖拽上传 `.owl`/`.rdf` 解析展示，导入即切换为「导入的本体」只读领域（说明 / 能力 / 示例题 / 页头一起换）；导出当前模型（RDF/XML）或物化后本体（Turtle / RDF/XML）
 - **图谱右侧编辑框（草图预览）**：点图谱上的类 / 关系 / 个体，右侧同一块 panel 直接改；结构边按父类 / 所属类型字段重算；顶部常驻「仅预览 · 不写入系统、不进查询与推理结果」；画布工具栏可新建类 / 关系，或「添加事实」（先定短名与类型，属性值只写进导出文件）。要写入本体定义请用「在线编辑本体定义」
-- **在线编辑本体定义**：任意 OWL 本体的在线编辑——左侧分类导航（类层次 / 对象属性 / 数据属性 / 实例，带计数）+ 单一工作区（搜索、全部展开 / 折叠、新增吸底、删除收进「⋯」菜单），编辑模型由后端 rdflib 全量提取（不受前端 parser 子集限制，默认本体也可编辑）；撤销 / 重做 / 脏标记 / 实时校验；保存由后端序列化 OWL 并重建引擎自动重推理，图谱视图与右侧概览联动刷新；支持**生成新本体文件**（写入 `data/uploads/` 并进入通用模式）或**覆盖当前本体文件**（默认本体覆盖后领域推理保留，弹结构化确认框逐条说明影响），保存后可直接**下载 OWL 文件**
+- **在线编辑本体定义**：任意 OWL 本体的在线编辑——左侧分类导航（类层次 / 对象属性 / 数据属性 / 实例，带计数）+ 单一工作区（搜索、全部展开 / 折叠、新增吸底、删除收进「⋯」菜单），编辑模型由后端 rdflib 全量提取（不受前端 parser 子集限制，默认本体也可编辑）；撤销 / 重做 / 脏标记 / 实时校验；保存由后端序列化 OWL 并重建引擎自动重推理，图谱视图与右侧概览联动刷新；支持**生成新本体文件**（写入 `data/uploads/` 并切换为「导入的本体」只读领域）或**覆盖当前本体文件**（默认本体覆盖后领域推理保留，弹结构化确认框逐条说明影响），保存后可直接**下载 OWL 文件**
 - **物化展示**：调用推理引擎物化 diff（原始断言 ∪ 推理新增），右侧「图谱概览」在未选中元素时显示「文件里声明的 / 推理后的全部 / 推出来的」三项统计
 
-> **在线编辑边界**：编辑模型 = 类 / 属性 / 个体子集（复杂公理如 restriction、属性链不进入表单）；但保存**不再重建整份文件**——后端以当前文件为底图，只覆盖表单建模到的部分，未建模的公理、属性注释与字面量 datatype 原样保留，不改直接保存是无损的。写盘前自动备份到 `backups/<时间戳>/`（保留最近 10 份），重建失败从备份恢复原文件（「生成新本体文件」写到 `data/uploads/` 并进入通用模式）。校验规则刻意宽松（开放世界假设）：id 仅要求非空且无 IRI 危险字符，中文短名 / 下划线短名合法；对象断言可指向未声明实体。
+> **在线编辑边界**：编辑模型 = 类 / 属性 / 个体子集（复杂公理如 restriction、属性链不进入表单）；但保存**不再重建整份文件**——后端以当前文件为底图，只覆盖表单建模到的部分，未建模的公理、属性注释与字面量 datatype 原样保留，不改直接保存是无损的。写盘前自动备份到 `backups/<时间戳>/`（保留最近 10 份），重建失败从备份恢复原文件（「生成新本体文件」写到 `data/uploads/` 并切换为「导入的本体」只读领域）。校验规则刻意宽松（开放世界假设）：id 仅要求非空且无 IRI 危险字符，中文短名 / 下划线短名合法；对象断言可指向未声明实体。
 
 ```bash
 # 开发（先启动后端 :8000）
@@ -145,7 +145,7 @@ npm run dev                 # http://localhost:5173（/api 自动代理到 :8000
 npm run build               # 产物 frontend/app/dist
 ```
 
-> 说明：导入自定义本体后点击「同步到推理引擎」进入通用模式——图谱 / 物化 / SPARQL 等通用能力可用，领域推理（R1 / R2 / R2a / R2b / R5 / R6）仅默认本体可用（接口返回明确提示）。
+> 说明：导入自定义本体后点击「同步到推理引擎」即切换为框架内置的「导入的本体」只读领域——页头固定显示「导入的本体」，说明 / 示例题 / 计数一起换成这份本体；图谱 / 物化 / SPARQL / 查依据等通用只读能力可用，领域专属推理（R1 / R2 / R2a / R2b / R5 / R6）仅默认本体可用（接口返回明确提示）。V1 只读，不提供在导入本体上的新建 / 修改 / 删除；重启服务回到默认领域。
 
 > **安全边界**：`/api/upload` 是单机演示功能，接收任意 `.owl` 写入 `data/uploads/`，无鉴权、无输入隔离——请勿把服务直接暴露到公网；如需公网部署，请自行加鉴权与上传校验。
 
@@ -192,7 +192,7 @@ npm run build               # 产物 frontend/app/dist
 | GET  | `/api/health`      | 健康检查                                                         |
 | GET  | `/api/domains/current/ontology`    | 本体结构（图谱渲染数据）                                                 |
 | GET  | `/api/domains/current/ontology/graph-groups` | 领域声明的图谱分组 `{groups: [{name, class, label, members}]}`；前端据此上色与出图例，未声明时为空数组 |
-| GET  | `/api/domains/current/guide` | 使用视角说明（`guide.json` 声明 + 运行态实测 + 对账）；当前领域页唯一数据源，含 `examples[].safe` 与 `runtime.mcp` |
+| GET  | `/api/domains/current/guide` | 使用视角说明（`guide.json` 声明 + 运行态实测 + 对账）；当前领域页唯一数据源，含 `display_name` / `imported`、`examples[].safe` 与 `runtime.mcp` |
 | POST | `/api/domains/current/capabilities/query` | `{type, task, agent, params}`；纯读，不改图、不落盘、可安全重试。内置 `capability_match` / `orchestrate`，领域可通过 `QUERY_HANDLERS` 追加只读能力（参数放 `params`） |
 | POST | `/api/domains/current/capabilities/apply` | `{type, task, agent, persist, params}`；会改图，`persist=true` 落 `extensions/`，不保证幂等。内置 `assign`，领域可通过 `APPLY_HANDLERS` 追加变更能力 |
 | GET  | `/api/domains/current/entities/schema` | 领域自声明的实体字段形状（`ENTITY_SCHEMA`），先看它再 POST `/api/domains/current/entities` |
@@ -205,7 +205,7 @@ npm run build               # 产物 frontend/app/dist
 | 方法   | 路径                 | 功能                                                           |
 | ---- | ------------------ | ------------------------------------------------------------ |
 | POST | `/api/ontology/reload` | 热重载本体（新引擎构造+推理全部成功才原子替换，失败返回 400 旧状态可用） |
-| GET  | `/api/ontology/status` | 本体状态（baseline_file_hash / dirty / pending_changes / changelog / last_commit / counts；v1.5.0 起含 `mode`：default=默认本体 / generic=通用模式） |
+| GET  | `/api/ontology/status` | 本体状态（baseline_file_hash / dirty / pending_changes / changelog / last_commit / counts；v1.5.0 起含 `mode`：default=默认本体 / imported=导入的本体 / generic=旧版通用模式） |
 | DELETE | `/api/domains/current/ontology/individual/{name}` | 删除个体 `?persist&cascade`（被引用时保护，cascade 连带清理反向引用） |
 | POST | `/api/domains/current/ontology/revoke` | 撤销任务分配 `{task, agent, persist}` |
 | POST | `/api/domains/current/ontology/import` | 批量导入任务个体（事务：任一校验失败整体拒绝）`{individuals, persist}` |
@@ -214,7 +214,7 @@ npm run build               # 产物 frontend/app/dist
 
 | 方法   | 路径                 | 功能                                                           |
 | ---- | ------------------ | ------------------------------------------------------------ |
-| GET  | `/api/domains`     | 已安装领域 + 当前领域（name / description / onto_path / capabilities / triples / mode） |
+| GET  | `/api/domains`     | 已安装领域 + 当前领域（name / display_name / imported / description / onto_path / capabilities / triples / mode） |
 | POST | `/api/domains/reload` | **L2 同包重载**：重读领域代码 `adapter.py` / `config.json` 并重建引擎；失败返回 400 且旧领域可用 |
 | POST | `/api/domains/{name}/activate` | **L3 跨包切换**：切到另一个已安装领域；失败一律 400 且旧领域继续服务 |
 
@@ -223,7 +223,7 @@ npm run build               # 产物 frontend/app/dist
 | 方法   | 路径                 | 功能                                                           |
 | ---- | ------------------ | ------------------------------------------------------------ |
 | GET  | `/api/ontology/edit-model` | 当前本体 → 结构化编辑模型 JSON（classes/objectProps/dataProps/individuals） |
-| POST | `/api/ontology/save` | 保存编辑模型 `{model, filename, mode: "new"\|"overwrite"}`；`new` 写入 `data/uploads/` 进入通用模式，`overwrite` 覆盖当前本体（默认本体重建领域推理）；返回 `{status, path, filename, mode, stats, materialized}` |
+| POST | `/api/ontology/save` | 保存编辑模型 `{model, filename, mode: "new"\|"overwrite"}`；`new` 写入 `data/uploads/` 并切换为「导入的本体」只读领域，`overwrite` 覆盖当前本体（默认本体重建领域推理）；返回 `{status, path, filename, mode, stats, materialized}` |
 | GET  | `/api/ontology/download?name=` | 下载已保存的 OWL 文件（basename 白名单 + `data/uploads/` 限定，防路径穿越） |
 
 通用查询接口（v1.1.0 起，**与本体定义无关**，任意 `.owl` 加载后均可使用）：
@@ -236,7 +236,7 @@ npm run build               # 产物 frontend/app/dist
 | POST | `/api/types`       | 个体推理后的全部类型 `{individual}`                                   |
 | POST | `/api/property`    | 主体-属性取值列表 `{subject, property}`                              |
 | POST | `/api/infer`       | 重新执行推理，返回三元组/个体统计                                          |
-| POST | `/api/ontology/load` | 加载指定 OWL 到当前引擎（自定义本体 → 通用模式入口）                        |
+| POST | `/api/ontology/load` | 加载指定 OWL 到当前引擎（自定义本体 → 「导入的本体」只读领域）                 |
 | GET  | `/api/ontology/materialized` | 物化后的本体（raw ∪ 推理新增）                                  |
 | GET  | `/api/ontology/source` | 当前本体的 OWL/RDF 源码                                              |
 | GET  | `/api/ontology/export` | 导出当前模型或物化后本体（Turtle / RDF/XML）                           |
@@ -298,8 +298,10 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
   构造期任何异常都不会动到旧领域。
 - **热切换三级**：L1 本体内容重载（`/api/ontology/reload`）· L2 同包代码重载（`/api/domains/reload`）·
   L3 跨包切换（`/api/domains/{name}/activate`）。**改了领域 Python 代码必须用 L2**，L1 不会重读包代码。
-- **通用模式 vs 领域模式**：判据是"对外服务的引擎是否就是当前领域绑定的那个"（`in_domain_mode()`）；
-  加载自定义本体后进入 generic 模式，领域推理不可用时接口会明确提示。
+- **预置领域 / 导入的本体 / 旧版通用模式**：判据是"对外服务的引擎是否就是当前领域绑定的那个"（`in_domain_mode()`）。
+  导入自定义本体后激活框架内置的 `imported` 领域（展示名「导入的本体」），说明由 `domains/imported.build_guide()`
+  按运行态生成并走同一份 guide 契约校验；领域专属推理不可用时接口会明确提示。`generic` 仅作兼容保留（引擎被绕过
+  manager 替换时才会出现），HTTP 入口不再进入该模式。
 - **领域自带的东西由领域自己声明**：能力处理器 `QUERY_HANDLERS`（只读）/ `APPLY_HANDLERS`（变更）、
   实体字段形状 `ENTITY_SCHEMA`、图谱分组 `graph_group_members` 都交给领域包声明，框架不再写死进契约。
   声明一个框架没预见的只读能力（例如 `diagnose`）只要给出 `QUERY_HANDLERS` 落点即可被接纳，

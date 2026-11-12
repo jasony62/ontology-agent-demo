@@ -28,7 +28,7 @@
         POST /api/property     主体-属性取值
         POST /api/infer        重新执行推理并返回统计
     本体管理（v1.3.0 起，通用层扩展）：
-        POST /api/ontology/load         上传 .owl/.rdf 并加载到推理引擎（通用模式）
+        POST /api/ontology/load         上传 .owl/.rdf 并切换为「导入的本体」只读领域
         GET  /api/ontology/materialized 物化 diff：原始断言 / 推理新增 / 统计
         GET  /api/ontology/source       当前本体原始 RDF/XML 文本
         GET  /api/ontology/export       导出物化后完整本体（turtle / rdfxml / n3）
@@ -142,7 +142,7 @@ def _sync_runtime(force: bool = False) -> None:
 # 分组按使用场景而非 HTTP 方法划分——调用方找的是「我要做什么」。
 OPENAPI_TAGS = [
     {"name": "系统", "description": "健康检查与运行状态。"},
-    {"name": "领域推理", "description": "当前领域包的查询（capabilities/query）与变更（capabilities/apply）能力；通用模式下返回 400。"},
+    {"name": "领域推理", "description": "当前领域包的查询（capabilities/query）与变更（capabilities/apply）能力；导入的本体只声明通用只读能力、旧版通用模式下整体不可用，均返回 400。"},
     {"name": "通用查询", "description": "任意 OWL 本体可用的 SPARQL、类、个体与属性查询。"},
     {"name": "本体管理", "description": "本体加载、编辑、保存、导出、重载与物化。"},
     {"name": "领域管理", "description": "已安装领域清单、L2 重载与 L3 原子切换。"},
@@ -661,6 +661,12 @@ GUIDE_GENERIC_ENDPOINTS = {
     "individuals": "/api/individuals",
     "types_of": "/api/types",
     "property_values": "/api/property",
+    # #119 §7.6：此前漏登记「类层次」与「重新推理」，导入的本体生成的
+    # 看结构 / 看推理题因此没有可派发端点。
+    "classes": "/api/classes",
+    "infer": "/api/infer",
+    # 查依据是 GET + 查询串；值里带方法，_guide_examples 原样使用。
+    "proof": "GET /api/ontology/proof",
 }
 
 
@@ -939,7 +945,10 @@ def _guide_examples(
             safe, reason, endpoint = True, None, QUERY_ENDPOINT
         elif capability in GUIDE_GENERIC_ENDPOINTS:
             safe, reason = True, None
-            endpoint = f"POST {GUIDE_GENERIC_ENDPOINTS[capability]}"
+            spec = GUIDE_GENERIC_ENDPOINTS[capability]
+            # 映射值可以只写路径（默认 POST），也可以写成 "GET /path"
+            # （推导依据这类查询串端点）。前端按 endpoint 的第一个词派发。
+            endpoint = spec if " " in spec else f"POST {spec}"
         elif capability in apply:
             safe = False
             reason = "该能力会修改本体，不提供页内试跑"
@@ -1033,23 +1042,38 @@ def domain_guide():
     # MCP 接入参数是框架级约定（端口来自运行态配置），不属于领域声明；
     # 放在 runtime 里让「怎么接进去」页跟当前领域一起换，不在前端写死。
     mcp_port = DOMAINS.settings.server_port("mcp_port", 9000)
+    # MCP 工具在启动时按领域注册；「导入的本体」没有领域适配器，不能把
+    # --domain imported 当成可运行的启动参数。这里退回配置里的默认领域，
+    # 并显式说明原因（宁可少一段炫技，也不给一条跑不通的命令）。
+    mcp_domain = (
+        DOMAINS.settings.effective_default() or handle.name
+        if handle.is_imported
+        else handle.name
+    )
     mcp = {
         "transport": "streamable-http",
         "url": f"http://127.0.0.1:{mcp_port}/mcp",
-        "domain": handle.name,
+        "domain": mcp_domain,
         "port": mcp_port,
         "start_command": (
-            f".venv/bin/python mcp/mcp_server.py --domain {handle.name} "
+            f".venv/bin/python mcp/mcp_server.py --domain {mcp_domain} "
             f"--port {mcp_port}"
         ),
         "stdio_command": (
-            f".venv/bin/python mcp/mcp_server.py --domain {handle.name} "
+            f".venv/bin/python mcp/mcp_server.py --domain {mcp_domain} "
             f"--transport stdio"
         ),
     }
+    if handle.is_imported:
+        mcp["note"] = (
+            "MCP 工具在启动时按领域注册；导入的本体没有领域适配器，"
+            "上面的命令启动的是默认领域的工具，通用查询能力仍可用。"
+        )
 
     return {
         "domain": handle.name,
+        "display_name": handle.display_name,
+        "imported": handle.is_imported,
         "mode": "domain" if domain_mode else "generic",
         "loaded_at": handle.loaded_at,
         "guide_version": guide["guide_version"],
@@ -1608,23 +1632,34 @@ def infer():
         **ERROR_400,
     },
 )
-async def load_ontology(file: UploadFile = File(..., description="要加载的本体文件，仅支持 .owl / .rdf / .xml；加载后进入通用模式。")):
-    """上传 .owl/.rdf 并加载到推理引擎（进入通用模式，领域推理降级）。"""
+async def load_ontology(file: UploadFile = File(..., description="要加载的本体文件，仅支持 .owl / .rdf / .xml；加载后切换为「导入的本体」只读领域。")):
+    """上传 .owl/.rdf 并加载到推理引擎（切换为「导入的本体」只读领域）。"""
     filename = (file.filename or "").lower()
     if not filename.endswith((".owl", ".rdf", ".xml")):
         raise HTTPException(status_code=400, detail="仅支持 .owl / .rdf / .xml 文件")
-    dest = UPLOAD_DIR / f"{uuid.uuid4().hex}.owl"
+    # 保留用户文件名（basename + 安全字符）并加短 uuid 防重名：说明页要显示
+    # 「导入的是哪一份」，纯 uuid 文件名对用户没有意义。路径分隔符已由
+    # basename + 白名单挡掉，不能借文件名写到 uploads/ 之外。
+    original = os.path.basename(file.filename or "") or "ontology.owl"
+    safe_name = re.sub(r"[^\w.-]+", "_", original).strip("._") or "ontology.owl"
+    dest = UPLOAD_DIR / f"{uuid.uuid4().hex[:8]}-{safe_name}"
     try:
         dest.write_bytes(await file.read())
-        engine = get_engine(str(dest))
-        # 领域不换，只换对外服务的引擎 → 进入通用模式（领域端点自动 400）
-        DOMAINS.use_engine(engine)
+        # 直接构造而不是 get_engine()：失败时不能把 reasoner.engine 的单例
+        # 留在新引擎上（那会违反「运行态未被触碰」）。成功后才由 manager
+        # 的 _commit 同步单例。
+        engine = OntologyEngine(str(dest), extensions_dir=None)
+        # #119：导入即激活「导入的本体」领域——说明 / 能力 / 示例题与页头
+        # 一起换成这份本体，不再保留上一个包的句柄。构建失败时旧领域原样服务。
+        handle = DOMAINS.activate_imported(engine, filename=dest.name)
     except Exception as exc:
         dest.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=f"本体加载失败：{exc}")
     return {
         "status": "ok",
         "path": str(dest),
+        "domain": handle.name,
+        "display_name": handle.display_name,
         "triples_before": len(engine.raw),
         "classes": len(engine.classes()),
         "individuals": len(set(engine.g.subjects(RDF.type, OWL.NamedIndividual))),
@@ -1696,7 +1731,7 @@ def ontology_proof(
 def ontology_source():
     """当前本体原始 RDF/XML 文本。
 
-    本体文件缺失（如通用模式下文件被清理）时返回 404 + 结构化中文提示，
+    本体文件缺失（如导入的本体文件被清理）时返回 404 + 结构化中文提示，
     避免前端误判"后端未启动"。
     """
     try:
@@ -1781,7 +1816,7 @@ def edit_model():
 def save_ontology(req: SaveOntologyRequest):
     """保存编辑结果：编辑模型 → RDF/XML 写盘 → 重建引擎 + 重推理。
 
-    mode=new    另存到 data/uploads/（进入通用模式，领域推理降级）；
+    mode=new    另存到 data/uploads/（切换为「导入的本体」只读领域）；
     mode=overwrite  覆盖当前已加载本体（默认本体覆盖后领域推理保留）。
 
     无损往返（#108）：model_to_rdf 以当前断言图为底图，只改编辑模型建模到的
@@ -1823,9 +1858,18 @@ def save_ontology(req: SaveOntologyRequest):
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"保存失败：{exc}")
 
-    # 重建引擎（绕过单例缓存：直接构造新实例）并重绑定模块级引用
+    # 重建引擎（绕过单例缓存：直接构造新实例）并重绑定运行态。
+    # 构造与激活都放在同一个失败恢复块里：另存/覆盖要么整体生效，要么
+    # 回到保存前的文件与领域，不能留下「文件写了、领域没换」的半套状态。
     try:
         new_engine = OntologyEngine(str(target), extensions_dir=None)
+        if new_engine.onto_path == DOMAINS.current().onto_path:
+            # 覆盖当前本体：预置包重建适配器；导入的本体重建说明 + 示例题。
+            DOMAINS.rebind(new_engine)
+        else:
+            # 另存到 uploads/：与导入同一条路径——激活「导入的本体」领域，
+            # 说明 / 能力 / 页头一起换（#119），不再停在旧包的通用模式。
+            DOMAINS.activate_imported(new_engine, filename=target.name)
     except Exception as exc:
         if backup is not None:
             try:
@@ -1837,13 +1881,6 @@ def save_ontology(req: SaveOntologyRequest):
             target.unlink(missing_ok=True)
             restored = "已删除本次新文件"
         raise HTTPException(status_code=400, detail=f"保存后加载失败（{restored}）：{exc}")
-
-    if new_engine.onto_path == DOMAINS.current().onto_path:
-        # 覆盖默认本体：重建领域适配器（引擎 + 适配器一起换），领域推理保留
-        DOMAINS.rebind(new_engine)
-    else:
-        # 另存到 uploads/：只换服务引擎，领域端点降级为通用模式
-        DOMAINS.use_engine(new_engine)
 
     materialized = new_engine.materialized()
     return {
@@ -2027,9 +2064,14 @@ def ontology_status():
     同一份基线哈希 + 相同 dirty/pending_changes 即两端一致
     （MCP 端由只读 status 工具 / CLI 探测，见批次二文档）。
     """
+    imported = DOMAINS.current().is_imported
     return {
         "ontology": os.path.basename(ENGINE.onto_path),
-        "mode": "default" if DOMAINS.in_domain_mode() else "generic",
+        "mode": (
+            "imported" if imported and DOMAINS.in_domain_mode()
+            else "default" if DOMAINS.in_domain_mode()
+            else "generic"
+        ),
         "extensions_dir": ENGINE.extensions_dir,
         "baseline_file_hash": _baseline_hash(),
         "dirty": ADAPTER.change_count > 0,

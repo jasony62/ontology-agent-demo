@@ -283,9 +283,13 @@ export default function App() {
           >
             {domainInfo ? (
               <>
-                {/* 当前领域不在 installed 里（异常状态）也要能显式显示，避免下拉空白 */}
+                {/* 当前领域不在 installed 里（「导入的本体」/ 异常状态）也要能
+                    显式显示：展示名用后端给的 display_name，不把 imported 这种
+                    内部标识挂到页头。 */}
                 {!domainInfo.installed.includes(domainInfo.current) && (
-                  <option value={domainInfo.current}>{domainInfo.current}</option>
+                  <option value={domainInfo.current}>
+                    {domainInfo.display_name || domainInfo.current}
+                  </option>
                 )}
                 {domainInfo.installed.map((n) => (
                   <option key={n} value={n}>{n}</option>
@@ -318,9 +322,9 @@ export default function App() {
           <a className="toolbar-link secondary" href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
         </div>
         <span className={`health ${backendOk ? 'ok' : ''}`}>{backendOk ? '后端已连接' : '后端未连接'}</span>
-        {ontologyMode === 'generic' && (
-          <span className="mode-badge" title="当前加载的是非默认本体">
-            通用模式
+        {(ontologyMode === 'generic' || ontologyMode === 'imported') && (
+          <span className="mode-badge" title="当前对外服务的是导入的本体；重启服务回到默认领域">
+            {ontologyMode === 'imported' ? '导入的本体' : '通用模式'}
           </span>
         )}
       </header>
@@ -405,7 +409,12 @@ export default function App() {
         )}
       </main>
 
-      {importOpen && <ImportModal onClose={() => setImportOpen(false)} />}
+      {importOpen && (
+        <ImportModal
+          onClose={() => setImportOpen(false)}
+          onSynced={loadWorkspace}
+        />
+      )}
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
       {sourceOpen && <SourceView onClose={() => setSourceOpen(false)} />}
     </div>

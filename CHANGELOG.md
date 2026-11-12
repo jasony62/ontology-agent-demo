@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **导入任意 OWL 即得到一致的「导入的本体」只读领域（#119）**：导入 / 生成新本体后不再停在旧包的「通用模式」——框架内置 `imported` 领域接管运行态，页头与说明页固定显示「导入的本体」（`display_name`，不拿文件名当领域名），说明、能力清单、示例题与页头一起换，上一个包的题干 / 能力名 / 计数不再残留。说明的第二类来源由 `domains/imported.build_guide()` 按运行态生成，与包内静态 `guide.json` 走同一份 `validate_domain_guide`：生成失败即整包拒绝，切换失败旧领域继续服务、运行态不被触碰。示例题按「看结构 / 看推理 / 直接问 / 查依据」分组，全部从真实类 / 个体 / 边生成（答案提示现算），点开返回真实数据；`GUIDE_GENERIC_ENDPOINTS` 补上此前漏登记的「类层次」`/api/classes` 与「重新推理」`/api/infer`，并新增带方法的 `proof` → `GET /api/ontology/proof`，前端按 endpoint 方法派发、GET 题生成 `curl -s <url>?<query>` 预览。V1 只读：不提供新建 / 修改 / 删除 / 覆盖本体，领域专属推理明确不可用且端点不提供（未声明能力返回 400 而非 500）。`GET /api/domains` 与 `GET /api/domains/current/guide` 新增 `display_name` / `imported`，`/api/ontology/status` 的 `mode` 新增 `imported`，前端据此显示只读徽标与横幅；`imported` 进入 `RESERVED_DOMAIN_NAMES` 且不出现在 `installed()`。导入文件保留原始 basename 并加 8 位 uuid 前缀，说明页可显示真实文件名；MCP 接入说明在导入态退回默认领域的启动命令并注明原因。重启服务仍回配置里的默认领域。
+
 ## [0.7.3] - 2026-11-12
 
 ### Added

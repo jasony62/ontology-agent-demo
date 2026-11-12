@@ -169,7 +169,13 @@ class OntologyStatusResponse(BaseModel):
     )
 
     ontology: str = Field(..., description="当前本体文件名。")
-    mode: str = Field(..., description="运行模式：default=领域模式；generic=已加载自定义本体的通用模式。")
+    mode: str = Field(
+        ...,
+        description=(
+            "运行模式：default=预置领域；imported=当前服务的是导入的本体"
+            "（框架内置只读领域）；generic=旧版通用模式（保留兼容）。"
+        ),
+    )
     extensions_dir: str | None = Field(None, description="extensions/ 增量目录；领域未配置时为 null。")
     baseline_file_hash: str = Field(
         ...,
@@ -268,6 +274,8 @@ class OntologyLoadResponse(BaseModel):
 
     status: str = Field(..., description="固定为 ok；失败时不会返回 200。")
     path: str = Field(..., description="上传文件在 data/uploads/ 下的保存路径。")
+    domain: str | None = Field(None, description="导入后激活的领域标识；当前固定为 imported。")
+    display_name: str | None = Field(None, description="导入后激活领域的展示名；当前为「导入的本体」。")
     triples_before: int = Field(..., description="加载后原始断言图的三元组数（物化前）。")
     classes: int = Field(..., description="加载后识别到的类数量。")
     individuals: int = Field(..., description="加载后识别到的具名个体数量。")

@@ -105,7 +105,7 @@ def restore_engine():
     这两个端点必须真的改变运行态（否则测的就不是它们），代价是用完要还。
     还原点是 `DOMAINS`（唯一真相源）而不是模块级 `ENGINE`：
     P2 起"是否处于领域模式"由 `DOMAINS.in_domain_mode()` 判定，只重置
-    `reasoner.engine._engine` 是不够的——服务会一直停在通用模式，
+    `reasoner.engine._engine` 是不够的——句柄可能还停在导入的文件或旧引擎上，
     后续所有领域端点用例集体 400（本地已踩过）。
 
     只复位运行态，不碰磁盘：需要"真写盘"的用例（save overwrite）一律用
@@ -117,7 +117,14 @@ def restore_engine():
 
     yield
     E._engine = None
-    M.DOMAINS.reload_ontology()
+    # #119：导入本体后会激活内置「导入的本体」领域。只 reload_ontology()
+    # 会把导入的文件再重载一遍，测试之间就一直停在 imported 上；必须显式
+    # 切回配置里的默认领域，才是真正的「运行态还原」。
+    default = M.DOMAINS.settings.effective_default()
+    if default:
+        M.DOMAINS.activate(default)
+    else:
+        M.DOMAINS.reload_ontology()
     M._sync_runtime(force=True)
 
 

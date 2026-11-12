@@ -86,6 +86,14 @@ describe('推理提示横幅（#55）', () => {
     expect(text).not.toContain('谁能做这个任务');
   });
 
+  it('imported 模式按自定义本体处理：不出现领域能力字样（#119）', () => {
+    useAppStore.setState({ ontologyMode: 'imported' });
+    render();
+    const text = bannerText();
+    expect(text).toBeTruthy();
+    expect(text).not.toContain('谁能做这个任务');
+  });
+
   it('error 非空 → 横幅不渲染（错误横幅优先，不叠加）', () => {
     useAppStore.setState({ error: '服务未启动' });
     render();

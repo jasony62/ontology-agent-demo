@@ -152,10 +152,10 @@ def test_bad_watch_values_raise(tmp_path):
 @pytest.mark.parametrize(
     "bad",
     ["", "  ", ".", "..", "../etc", "a/b", "a\\b", ".hidden", "my-domain",
-     "9lives", "current"],
+     "9lives", "current", "imported"],
 )
 def test_check_domain_name_rejects(bad):
-    """`current` 是保留名：/api/domains/current/... 已占用该路径段。"""
+    """`current` 是 API 路径段；`imported` 是框架内置「导入的本体」标识（#119）。"""
     with pytest.raises(ConfigError):
         check_domain_name(bad)
 
@@ -179,6 +179,7 @@ def test_installed_lists_only_real_packages(tmp_path):
     _make_domain(root, "beta")
     _make_domain(root, "_private")
     _make_domain(root, "current")           # 保留名：与 API 单例路径争义，忽略
+    _make_domain(root, "imported")          # 保留名：内置「导入的本体」不可被磁盘包顶替
     (root / "not_a_pkg").mkdir()            # 无 __init__.py，不算安装
     (root / "README.md").write_text("x", encoding="utf-8")
 

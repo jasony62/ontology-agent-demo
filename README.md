@@ -27,7 +27,7 @@
 | ---- | ---- | ---- |
 | **OWL 2 RL 推理引擎** | 加载 OWL 本体并物化推理；SPARQL / 类层次 / 个体 / 属性查询 | `scripts/query.py classes --local` |
 | **业务规则 R1 / R2 / R2a / R2b / R5 / R6** | 能力匹配、任务委派、认证有效期、担责判定、人工介入、双人复核与复核候选；R4 合规冲突由适配器在分配时校验。规则层可审查、可改口径，输出可解释推导链 | `make demo` |
-| **REST API** | 33 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
+| **REST API** | 34 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / CQ 依据定位 / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
 | **MCP Server** | 31 个工具（领域业务 9 + 建模/质量 7 + 引擎通用 15），智能体（豆包等）一行配置接入 | `make mcp` |
 | **当前领域单页** | 六问导航：定位 / 能问什么 / 能做什么 / 凭什么可信 / 怎么接入 / 现在跑的是哪一份；示例题按「看一次编排 / 预测一次变化 / 其余示例」分组，预测题在断言图副本上做只读推演、并排展示改动前后 | 页头「当前领域」 |
 | **图谱工作台** | React 工作台：三档视图图谱、OWL 源码查看、导入导出、图谱右侧编辑框（草图预览）+ 在线编辑（写盘） | `npm run dev` |
@@ -235,13 +235,16 @@ npm run build               # 产物 frontend/app/dist
 | POST | `/api/classes`     | 全部类层次（name/label/parent）                                    |
 | POST | `/api/types`       | 个体推理后的全部类型 `{individual}`                                   |
 | POST | `/api/property`    | 主体-属性取值列表 `{subject, property}`                              |
-| POST | `/api/infer`       | 重新执行推理，返回三元组/个体统计                                          |
+| POST | `/api/infer`       | 重新执行推理，返回三元组/个体统计与 `breakdown`（自反 / 元层 / 业务）       |
+| POST | `/api/domains/current/cq/locate` | CQ 题干 → 本体里承载它的条目（锚点 / 覆盖形态 / 证据 / 计数；只读，不调模型） |
 | POST | `/api/ontology/load` | 加载指定 OWL 到当前引擎（自定义本体 → 「导入的本体」只读领域）                 |
 | GET  | `/api/ontology/materialized` | 物化后的本体（raw ∪ 推理新增）                                  |
 | GET  | `/api/ontology/source` | 当前本体的 OWL/RDF 源码                                              |
 | GET  | `/api/ontology/export` | 导出当前模型或物化后本体（Turtle / RDF/XML）                           |
 
 > **短名解析与个体口径**（#120 / #121）：`/api/types`、`/api/property`、`/api/individuals` 的短名按「完整 IRI → 主命名空间 → 全图唯一后缀」三级解析，IRI 带语义子目录（`/dept/x`、`/capability/x`）也能查对；三级都不中或短名有歧义时返回 **400** 并给出候选完整 IRI，不再把「名称拼错」伪装成空集。个体口径只有一份：显式 `owl:NamedIndividual` ∪ 以业务类为 `rdf:type` 的具名主语，`/api/infer`、加载/重载回执与说明页报同一个数；`/api/infer` 的 `breakdown` 把推理新增拆成自反 / 元层 / 业务，业务为 0 时会明确说明推不出新结论。
+
+> **CQ 依据定位**（#124）：`/api/domains/current/cq/locate` 用「本体术语字典 + 最长匹配 + 固定 SPARQL 模板」把一条 CQ 题干映射到承载条目，**不生成查询、不调模型、不落库**；`coverage` 只会是 `no_anchors` / `gap` / `scattered` / `has_candidates`，`hint` 只报事实，不判「可答 / 不可答」。导入自定义本体后同样可用，不需要领域适配器。
 
 ### SPARQL 支持边界（兼容度声明）
 

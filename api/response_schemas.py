@@ -270,6 +270,54 @@ class PropertyValuesResponse(BaseModel):
     )
 
 
+class CqEvidenceItem(BaseModel):
+    """CQ 定位到的一条本体证据。"""
+
+    item: str = Field(..., description="承载条目的短名。")
+    label: str = Field(..., description="条目的 rdfs:label；没有时回落到短名。")
+    field: str = Field(..., description="命中的属性短名（如 statement / comment）。")
+    kind: str = Field(
+        ...,
+        description="字段语义分类：conclusion=结论性（白名单），description=描述性。",
+    )
+    text: str = Field(..., description="命中的字面量全文。")
+    matched: str = Field(..., description="本条证据命中的最长锚点。")
+
+
+class CqLocateCounts(BaseModel):
+    """证据条数与语义分类计数。"""
+
+    total: int = Field(..., description="证据总条数。")
+    conclusion: int = Field(..., description="结论性字段命中条数。")
+    description: int = Field(..., description="描述性字段命中条数。")
+
+
+class CqLocateResponse(BaseModel):
+    """CQ 依据定位结果（只读，不落库）。"""
+
+    anchors: list[str] = Field(
+        default_factory=list,
+        description="题干里命中的本体术语（最长匹配后，长的在前）。空列表表示未匹配到术语。",
+    )
+    coverage: str = Field(
+        ...,
+        description=(
+            "机器可判形态：no_anchors=未匹配到术语（不是缺口）；gap=有锚点但 0 条证据；"
+            "scattered=命中 >5 条且无结论性字段（有实无名）；"
+            "has_candidates=其余情况，证据由人判断。"
+        ),
+    )
+    evidence: list[CqEvidenceItem] = Field(
+        default_factory=list,
+        description="命中的字面量证据；同一 (item, field, text) 只出现一次。",
+    )
+    counts: CqLocateCounts = Field(..., description="证据计数。")
+    hint: str = Field(
+        ...,
+        description="只报事实（命中多少条 / 几条结论性字段），不判「可答 / 不可答」。",
+    )
+
+
 # ---------------- 本体加载 / 保存 / 导出 ----------------
 
 class OntologyLoadResponse(BaseModel):

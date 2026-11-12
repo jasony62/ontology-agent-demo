@@ -72,6 +72,7 @@ from reasoner.engine import (
     SparqlTimeoutError,
     get_engine,
 )
+from reasoner.cq_locate import locate_cq
 from reasoner.proof import build_proof
 from reasoner.protocol import (
     REQUIRED_METHODS,
@@ -88,10 +89,11 @@ from domains import DomainManager, DomainContractError, DomainNotFoundError
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
-    SaveOntologyRequest, EditModel, SimulationRequest,
+    SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
 )
 from .response_schemas import (
     ClassesResponse,
+    CqLocateResponse,
     DomainActivateResponse,
     DomainReloadResponse,
     ErrorResponse,
@@ -1629,6 +1631,50 @@ def infer():
     结果不一定幂等。
     """
     return ENGINE.infer()
+
+
+@app.post(
+    "/api/domains/current/cq/locate",
+    tags=["通用查询"],
+    summary="CQ 依据定位",
+    responses={
+        200: {
+            "model": CqLocateResponse,
+            "description": (
+                "题干在本体里命中的条目：anchors / coverage / evidence / counts / hint。"
+                "只读、不落库；hint 只报事实，不判「可答 / 不可答」。"
+            ),
+        },
+        **ERROR_400,
+        **ERROR_408,
+    },
+)
+def cq_locate(req: CqLocateRequest):
+    """把一条 CQ 题干定位到当前本体里承载它的条目（#124）。
+
+    机制是字典匹配 + 模板填空：词表来自当前图的 `rdfs:label` 与枚举值，
+    锚点做最长匹配后作为**字符串常量**填入固定查询，不生成查询语句、不调
+    模型。每次调用只读当前 `ENGINE`，所以导入自定义本体后同样可用，不需要
+    领域适配器，也不受领域模式守卫限制。
+
+    三条边界：不判「可答 / 不可答」；结论性字段按语义白名单（可覆盖）；
+    不解析 / 不落库 CQ 文件。
+    """
+    try:
+        return locate_cq(ENGINE, req.cq, conclusion_fields=req.conclusion_fields)
+    except SparqlTimeoutError as exc:
+        raise HTTPException(
+            status_code=408,
+            detail={
+                "error": "query_timeout",
+                "kind": exc.kind,
+                "limit_ms": exc.limit_ms,
+                "message": str(exc),
+                "hint": "请缩短题干（减少锚点）或调整 SPARQL 两段超时环境变量",
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # ---------------- 本体管理（v1.3.0：加载 / 物化 / 源码 / 导出） ----------------

@@ -9,6 +9,8 @@
 
 - **导入任意 OWL 即得到一致的「导入的本体」只读领域（#119）**：导入 / 生成新本体后不再停在旧包的「通用模式」——框架内置 `imported` 领域接管运行态，页头与说明页固定显示「导入的本体」（`display_name`，不拿文件名当领域名），说明、能力清单、示例题与页头一起换，上一个包的题干 / 能力名 / 计数不再残留。说明的第二类来源由 `domains/imported.build_guide()` 按运行态生成，与包内静态 `guide.json` 走同一份 `validate_domain_guide`：生成失败即整包拒绝，切换失败旧领域继续服务、运行态不被触碰。示例题按「看结构 / 看推理 / 直接问 / 查依据」分组，全部从真实类 / 个体 / 边生成（答案提示现算），点开返回真实数据；`GUIDE_GENERIC_ENDPOINTS` 补上此前漏登记的「类层次」`/api/classes` 与「重新推理」`/api/infer`，并新增带方法的 `proof` → `GET /api/ontology/proof`，前端按 endpoint 方法派发、GET 题生成 `curl -s <url>?<query>` 预览。V1 只读：不提供新建 / 修改 / 删除 / 覆盖本体，领域专属推理明确不可用且端点不提供（未声明能力返回 400 而非 500）。`GET /api/domains` 与 `GET /api/domains/current/guide` 新增 `display_name` / `imported`，`/api/ontology/status` 的 `mode` 新增 `imported`，前端据此显示只读徽标与横幅；`imported` 进入 `RESERVED_DOMAIN_NAMES` 且不出现在 `installed()`。导入文件保留原始 basename 并加 8 位 uuid 前缀，说明页可显示真实文件名；MCP 接入说明在导入态退回默认领域的启动命令并注明原因。重启服务仍回配置里的默认领域。
 
+- **CQ 依据定位端点（#124）**：新增只读 `POST /api/domains/current/cq/locate`，把「翻文件找依据」变成一次检索。词表来自当前图的 `rdfs:label` 与枚举值（按 `,，、;；` 切分、不切 `/`），锚点做最长匹配（短词被更长命中覆盖时丢弃），再作为字符串常量填进固定 SPARQL 模板——不生成查询、不调模型、不落库 CQ 文件。结果按 `no_anchors`（未匹配到术语，不是缺口）/ `gap`（0 条）/ `scattered`（>5 条且无结论性字段，有实无名）/ `has_candidates` 归类，`hint` 只报事实，不判「可答 / 不可答」。结论性字段按属性短名的语义白名单（`statement` / `enumValues` 等，可被请求的 `conclusion_fields` 覆盖），不按命名空间硬编码；过滤 `owl:sameAs` 与空短名条目，避免自反物化与本体自身 label 虚增证据。导入自定义本体后同样可用，不需要领域适配器。
+
 ### Fixed
 
 - **短名解析不再丢失 IRI 子路径（#120）**：引擎新增三级解析「完整 IRI → 主命名空间 → 全图唯一后缀」，`/dept/deptA`、`/capability/x` 这类带语义目录的 IRI 用短名也能查对；`types_of` / `objects_of` / `individuals_of` / `proof` 主体解析与说明页示例题统一走这一层。`/api/types`、`/api/property`、`/api/individuals` 在名称解析不到或短名命中多个 IRI 时返回 **400**（歧义时列出候选完整 IRI），不再静默返回空集；名称存在但确实没有类型/取值时仍是空列表，两者可区分。完整 IRI 原样使用，不因图里缺席被误判为解析失败。

@@ -54,21 +54,19 @@ CAPABILITIES = (
 )
 
 
-def _individual_iris(engine) -> list[str]:
-    """图里的个体 IRI（与 api.main._runtime_individuals 同一判据）。
+def _has_tbox_axioms(engine) -> bool:
+    """断言图里是否有可验证的 TBox 公理（#121）。
 
-    只认 `owl:NamedIndividual` 会漏掉大量 RDF/XML 本体（个体只写
-    `rdf:type domain:Agent`）；把所有 rdf:type 主语都算进来又会把类 / 属性
-    混进候选值。按「类型不在 RDF / RDFS / OWL 元命名空间」判定。
+    只看 `engine.raw`：物化后的 `owl:Thing ⊑ owl:Thing` 这类自反结论不是
+    用户写的公理，拿它判断会让每份本体都「有公理」。空公理集的本体推理
+    不会产生新的业务结论，说明页必须如实说出来。
     """
-    meta = (str(RDF), str(RDFS), str(OWL))
-    found = set()
-    for subject, cls in engine.g.subject_objects(RDF.type):
-        if not isinstance(subject, URIRef) or not isinstance(cls, URIRef):
-            continue
-        if cls == OWL.NamedIndividual or not str(cls).startswith(meta):
-            found.add(subject)
-    return sorted((str(iri) for iri in found))
+    raw = getattr(engine, "raw", engine.g)
+    for predicate in (RDFS.subClassOf, OWL.equivalentClass, OWL.disjointWith,
+                      OWL.inverseOf):
+        for _ in raw.subject_objects(predicate):
+            return True
+    return any(True for _ in raw.subjects(RDF.type, OWL.Restriction))
 
 
 class ImportedOntologyAdapter(AdapterBase):
@@ -120,8 +118,15 @@ class ImportedOntologyAdapter(AdapterBase):
 
 
 def _first_class_with_individuals(engine, classes: list[dict]) -> tuple[str, list[str]] | None:
+    from reasoner.engine import NameResolutionError
+
     for item in classes:
-        members = engine.individuals_of(item["name"])
+        try:
+            members = engine.individuals_of(item["name"])
+        except NameResolutionError:
+            # 两个类共用短名（不同命名空间）时无法替用户挑一个：跳过这道题，
+            # 不让整份说明生成失败（#120 的歧义报错留给显式查询）。
+            continue
         if members:
             return item["name"], members
     return None
@@ -133,7 +138,8 @@ def _business_edge(engine, subject: str) -> tuple[str, str] | None:
     只认可读短名的主体 / 属性 / 宾语，且属性落在默认命名空间内；RDF/RDFS/OWL
     元谓词（type / label / subClassOf）不算业务属性。
     """
-    iri = engine.NS[subject]
+    # #120：个体 IRI 可能带语义子目录（/instance/x），不能拿主命名空间回拼。
+    iri = engine.resolve(subject)
     ns = str(engine.NS)
     for graph in (engine.raw, engine.g):
         for predicate, obj in graph.predicate_objects(iri):
@@ -192,12 +198,19 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
     """
     filename = filename or os.path.basename(getattr(engine, "onto_path", "") or "") or "（未命名）"
     classes = engine.classes()
-    class_names = [item["name"] for item in classes]
-    individual_iris = _individual_iris(engine)
-    individuals = [local(iri) for iri in individual_iris]
+    # owl:Thing 是前端类树的根节点（classes() 保留它），不是用户写的业务类：
+    # 直接铺进「有哪些类」的答案会让人以为自己建了 Thing（#121 R3）。
+    business_classes = [item for item in classes if item["name"] != "Thing"]
+    class_names = [item["name"] for item in business_classes]
+    # #121：个体口径只有一份（引擎），不再在这里另写一套宽松判据。
+    individuals = engine.individual_names()
+    individual_count = len(individuals)
+    has_individuals = individual_count > 0
+    has_tbox = _has_tbox_axioms(engine)
     total = len(engine.g)
     asserted = len(getattr(engine, "raw", engine.g))
-    inferred = max(total - asserted, 0)
+    breakdown = engine.inference_breakdown()
+    inferred = breakdown["total"]
 
     examples: list[dict] = []
     class_hint = (
@@ -216,7 +229,7 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
         "看结构",
     ))
 
-    focus_class = _first_class_with_individuals(engine, classes)
+    focus_class = _first_class_with_individuals(engine, business_classes)
     if focus_class is not None:
         class_name, members = focus_class
         examples.append(_example(
@@ -230,34 +243,58 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
         ))
 
     focus_individual = individuals[0] if individuals else None
+    from reasoner.engine import NameResolutionError
+
+    focus_types: list[str] = []
     if focus_individual is not None:
-        types = engine.types_of(focus_individual)
-        examples.append(_example(
-            "IMP-03",
-            f"「{focus_individual}」推理后属于哪些类型？",
-            "types_of",
-            {"individual": focus_individual},
-            f"{len(types)} 个：{'、'.join(types[:8])}" if types else "空集：这个个体没有可读类型",
-            "个体推理类型（断言 ∪ 推理结论）",
-            "看推理",
-        ))
+        try:
+            focus_types = engine.types_of(focus_individual)
+        except NameResolutionError:
+            focus_types = []
+        else:
+            examples.append(_example(
+                "IMP-03",
+                f"「{focus_individual}」推理后属于哪些类型？",
+                "types_of",
+                {"individual": focus_individual},
+                f"{len(focus_types)} 个：{'、'.join(focus_types[:8])}"
+                if focus_types else "空集：这个个体没有可读类型",
+                "个体推理类型（断言 ∪ 推理结论）",
+                "看推理",
+            ))
 
     examples.append(_example(
         "IMP-04",
         "重新推理一次，新增多少条？",
         "infer",
         {},
-        f"重复调用通常新增 0 条；当前断言 {asserted} 条、物化后 {total} 条（推理新增 {inferred} 条）",
-        "OWL 2 RL 物化统计",
+        (
+            f"重复调用通常新增 0 条；当前断言 {asserted} 条、物化后 {total} 条"
+            f"（推理新增 {inferred} 条：自反 {breakdown['reflexive']} / "
+            f"元层 {breakdown['meta']} / 业务 {breakdown['business']}）"
+        ),
+        "OWL 2 RL 物化统计（自反 / 元层 / 业务）",
         "看推理",
     ))
 
-    query = "SELECT ?s ?type WHERE { ?s a ?type } LIMIT 20"
+    # #121：`?s a ?type` 会把类声明、owl:Class 自身也当成「个体」。这里只留
+    # 类型不在 RDF/RDFS/OWL 元命名空间的具名主语——与引擎的个体口径一致。
+    query = (
+        "SELECT ?s ?type WHERE {\n"
+        "  ?s a ?type .\n"
+        '  FILTER(!STRSTARTS(STR(?type), "http://www.w3.org/1999/02/22-rdf-syntax-ns#")\n'
+        '         && !STRSTARTS(STR(?type), "http://www.w3.org/2000/01/rdf-schema#")\n'
+        '         && !STRSTARTS(STR(?type), "http://www.w3.org/2002/07/owl#"))\n'
+        "} LIMIT 20"
+    )
     try:
         rows = engine.query_sparql(query)
-        sparql_hint = f"{len(rows)} 行结果（最多 20 行）"
+        sparql_hint = (
+            f"{len(rows)} 行个体及其类型（最多 20 行）"
+            if rows else "0 行：本体内没有业务个体（类声明不在此题范围内）"
+        )
     except Exception:  # noqa: BLE001 —— 说明生成不因查询失败而整体失败
-        sparql_hint = "返回个体及其类型（最多 20 行）"
+        sparql_hint = "返回业务个体及其类型（最多 20 行）"
     examples.append(_example(
         "IMP-05",
         "用 SPARQL 列出个体及其类型（最多 20 行）",
@@ -269,7 +306,10 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
     ))
 
     if focus_individual is not None:
-        edge = _business_edge(engine, focus_individual)
+        try:
+            edge = _business_edge(engine, focus_individual)
+        except NameResolutionError:
+            edge = None
         if edge is not None:
             predicate, obj = edge
             values = engine.property_values(focus_individual, predicate)
@@ -284,8 +324,7 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
             ))
 
     if focus_individual is not None:
-        types = engine.types_of(focus_individual)
-        proof_type = types[0] if types else None
+        proof_type = focus_types[0] if focus_types else None
         if proof_type is not None:
             examples.append(_example(
                 "IMP-07",
@@ -297,43 +336,88 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
                 "查依据",
             ))
 
+    # #121：0 个体 / 0 公理的本体是正常的术语层文件，不是错误。说明页把
+    # 「验不了」写成明确结论，而不是让用户对着一道注定空集的题猜。
+    if not has_individuals:
+        who = "0 个业务个体（术语层本体）"
+    else:
+        who = f"{individual_count} 个个体"
+    if inferred == 0:
+        inference_text = "断言与推理后一致，没有新增三元组"
+    elif breakdown["business"] == 0:
+        inference_text = (
+            f"推理新增 {inferred} 条，但业务派生 0 条"
+            f"（自反 {breakdown['reflexive']} / 元层 {breakdown['meta']}）；"
+            f"这份本体没有可验证的业务推理结论"
+        )
+    else:
+        inference_text = (
+            f"推理新增 {inferred} 条（自反 {breakdown['reflexive']} / "
+            f"元层 {breakdown['meta']} / 业务 {breakdown['business']}）"
+        )
+
+    scenarios = ["确认导入的本体里有哪些类、多少个个体"]
+    if has_individuals:
+        scenarios.append("点一道示例题，直接查询当前本体")
+        if has_tbox and breakdown["business"] > 0:
+            scenarios.append("验证推理是否生效、业务派生有多少条")
+        scenarios.append("查一条结论凭什么成立")
+    else:
+        scenarios.append("确认这份本体只有术语层：没有业务个体可验证")
+
+    not_covers = [
+        "领域专属推理（能力匹配 / 任务编排 / 合规冲突）：导入的本体没有领域适配器，当前不提供",
+        "写操作：V1 只在导入的本体上做只读体验，不新建 / 修改 / 删除个体，也不覆盖原文件",
+        "图谱分组：不假设本体的类角色，工作台按类 / 个体上色",
+    ]
+    capability_notes = {
+        "classes": "类层次：全部类及直接父类（POST /api/classes）。",
+        "individuals": "类个体列表：指定类（含子类）的个体（POST /api/individuals）。",
+        "types_of": "个体推理类型：断言类型 ∪ 推理结论（POST /api/types）。",
+        "property_values": "属性取值：主体在某属性上的值（POST /api/property）。",
+        "query_sparql": "直接写 SPARQL SELECT 查询当前本体（POST /api/query）。",
+        "infer": "重新推理统计：前后三元组数与新增（POST /api/infer）。",
+        "proof": "推导依据：单条三元组是断言、由哪条规则推出、前提是什么（GET /api/ontology/proof）。",
+    }
+    if not has_individuals:
+        not_covers.append(
+            "看推理 / 查依据的示例题：本体内没有业务个体，当前不生成；"
+            "补一个示例个体后才能验证推理是否生效"
+        )
+        for capability in ("individuals", "types_of", "property_values", "proof"):
+            capability_notes[capability] += " 当前本体没有业务个体，本组不生成示例题。"
+    elif not has_tbox:
+        not_covers.append(
+            "TBox 推理：本体没有 subClassOf / equivalentClass / inverseOf / "
+            "disjointWith 等公理，推理只会产生自反与元层三元组，推不出新的业务结论"
+        )
+    elif inferred and breakdown["business"] == 0:
+        not_covers.append(
+            "业务推理：已有的公理与个体没有形成可派生的组合，"
+            "本次推理新增里业务结论为 0"
+        )
+
     guide = {
         "guide_version": "1",
         "display_name": DISPLAY_NAME,
         "summary": (
             f"当前对外服务的是导入的本体「{filename}」：{len(class_names)} 个类、"
-            f"{len(individuals)} 个个体，推理比断言多 {inferred} 条。"
-            f"以下是任何 OWL 本体都能用的只读能力。"
+            f"{who}，{inference_text}。以下是任何 OWL 本体都能用的只读能力。"
         ),
-        "scenarios": [
-            "确认导入的本体里有哪些类、多少个个体",
-            "验证推理是否生效、比断言多出多少条",
-            "点一道示例题，直接查询当前本体",
-            "查一条结论凭什么成立",
-        ],
+        "scenarios": scenarios,
         "covers": [
             "看结构：类层次、类下个体",
-            "看推理：个体推理类型、重新推理统计",
+            "看推理：个体推理类型、重新推理统计（自反 / 元层 / 业务）",
             "直接问：SPARQL、主体—属性取值",
             "查依据：单条三元组的断言 / 推理依据",
         ],
-        "not_covers": [
-            "领域专属推理（能力匹配 / 任务编排 / 合规冲突）：导入的本体没有领域适配器，当前不提供",
-            "写操作：V1 只在导入的本体上做只读体验，不新建 / 修改 / 删除个体，也不覆盖原文件",
-            "图谱分组：不假设本体的类角色，工作台按类 / 个体上色",
-        ],
-        "capability_notes": {
-            "classes": "类层次：全部类及直接父类（POST /api/classes）。",
-            "individuals": "类个体列表：指定类（含子类）的个体（POST /api/individuals）。",
-            "types_of": "个体推理类型：断言类型 ∪ 推理结论（POST /api/types）。",
-            "property_values": "属性取值：主体在某属性上的值（POST /api/property）。",
-            "query_sparql": "直接写 SPARQL SELECT 查询当前本体（POST /api/query）。",
-            "infer": "重新推理统计：前后三元组数与新增（POST /api/infer）。",
-            "proof": "推导依据：单条三元组是断言、由哪条规则推出、前提是什么（GET /api/ontology/proof）。",
-        },
+        "not_covers": not_covers,
+        "capability_notes": capability_notes,
         "constraints": [
             "只读：不在导入的本体上新建 / 修改 / 删除个体，也不覆盖原文件",
-            "推理口径：OWL 2 RL 物化；重新推理只补新增结论，重复调用通常新增为 0",
+            "个体口径：显式 owl:NamedIndividual ∪ 以业务类为 rdf:type 的具名主语，与 /api/infer 一致",
+            "推理口径：OWL 2 RL 物化；新增拆成自反 / 元层 / 业务，重新推理只补新增结论",
+            "正文统计为导入时刻快照；运行态数字以第 06 问为准（重新推理可能补 1 条惰性断言）",
             "重启服务回到配置里的默认领域；导入文件仍在 data/uploads/，可重新导入",
         ],
         "examples": examples,

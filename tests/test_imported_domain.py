@@ -221,6 +221,91 @@ def test_domain_specific_capabilities_are_really_unavailable(restore_engine):
     assert client.post("/api/domains/current/consistency").status_code == 400
 
 
+# ---------------------------------------------------------------- 呈现口径（#121）
+
+ONLY_CLASSES_OWL = """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Ontology rdf:about="http://example.org/glossary#"/>
+  <owl:Class rdf:about="http://example.org/glossary#Term"/>
+  <owl:Class rdf:about="http://example.org/glossary#Concept"/>
+</rdf:RDF>
+"""
+
+
+NO_TBOX_OWL = """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Ontology rdf:about="http://example.org/flat#"/>
+  <owl:Class rdf:about="http://example.org/flat#Person"/>
+  <owl:NamedIndividual rdf:about="http://example.org/flat#alice">
+    <rdf:type rdf:resource="http://example.org/flat#Person"/>
+  </owl:NamedIndividual>
+</rdf:RDF>
+"""
+
+
+def test_individual_count_matches_infer_and_breakdown(restore_engine):
+    """说明页与 /api/infer 的个体数一致；推理新增拆成三层且可相加。"""
+    assert _upload(NO_TBOX_OWL, "counts.owl").status_code == 200
+
+    guide = client.get("/api/domains/current/guide").json()
+    infer = client.post("/api/infer").json()
+    assert guide["runtime"]["counts"]["individuals"] == infer["individuals"] == 1
+
+    inference = guide["runtime"]["inference"]
+    assert inference["total"] == guide["runtime"]["counts"]["inferred"]
+    assert (inference["reflexive"] + inference["meta"] + inference["business"]
+            == inference["total"])
+    # 这份本体没有 TBox 公理：业务派生理应为 0，说明页要如实说出来
+    assert inference["business"] == 0
+    assert infer["breakdown"] == inference
+    assert "业务派生 0 条" in guide["profile"]["summary"]
+    assert any("TBox 推理" in item for item in guide["profile"]["not_covers"])
+
+
+def test_sparql_example_lists_individuals_not_class_declarations(restore_engine):
+    """IMP-05 只列业务个体：类声明 / owl:Class 自身不算「个体」。"""
+    assert _upload(OWL_A, "sparql.owl").status_code == 200
+    guide = client.get("/api/domains/current/guide").json()
+    example = {e["capability"]: e for e in guide["examples"]}["query_sparql"]
+
+    result = _run_example(example).json()["results"]
+    assert result, result
+    types = {row["type"] for row in result}
+    assert types <= {"Department", "Employee", "Person"}
+    assert "Class" not in types and "Ontology" not in types
+
+
+def test_zero_individual_ontology_is_explained_not_hidden(restore_engine):
+    """纯术语表：不生成注定空集的题，并把「为什么」写在说明里。"""
+    r = _upload(ONLY_CLASSES_OWL, "glossary.owl")
+    assert r.status_code == 200, r.text
+
+    guide = client.get("/api/domains/current/guide").json()
+    assert guide["contract_ok"] is True
+    assert guide["runtime"]["counts"]["individuals"] == 0
+    assert "术语层本体" in guide["profile"]["summary"]
+
+    by_capability = {e["capability"]: e for e in guide["examples"]}
+    assert set(by_capability) == {"classes", "infer", "query_sparql"}
+    assert all(e["answer_hint"] for e in guide["examples"])
+
+    # #121 R3：owl:Thing 是类树根，不是用户写的业务类，不进答案提示
+    hint = by_capability["classes"]["answer_hint"]
+    assert "Thing" not in hint
+    assert "Term" in hint and "Concept" in hint
+    # #121 R4：正文是导入时刻快照，运行态以第 06 问为准
+    assert any("快照" in item for item in guide["profile"]["constraints"])
+
+    # 「查依据」整组消失必须给出原因，而不是静默少题
+    assert any("没有业务个体" in item for item in guide["profile"]["not_covers"])
+    assert "没有业务个体" in guide["profile"]["capability_notes"]["proof"]
+    # 每个保留的示例题都能真跑，不因 0 个体而崩
+    for example in guide["examples"]:
+        assert _run_example(example).status_code == 200, example["id"]
+
+
 def test_switch_back_to_preset_restores_guide_and_graph(restore_engine):
     default_name = M.DOMAINS.settings.effective_default()
     assert default_name, "测试运行态必须有默认领域"

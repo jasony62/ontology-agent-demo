@@ -222,7 +222,10 @@ class IndividualsResponse(BaseModel):
     )
     individuals: list[str] = Field(
         default_factory=list,
-        description="该类（含子类展开）的全部个体短名；类不存在时为空列表。",
+        description=(
+            "该类（含子类展开）的全部个体短名；类存在但没有个体时为空列表，"
+            "名称解析不到 / 有歧义返回 400（#120）。"
+        ),
     )
 
 
@@ -278,7 +281,13 @@ class OntologyLoadResponse(BaseModel):
     display_name: str | None = Field(None, description="导入后激活领域的展示名；当前为「导入的本体」。")
     triples_before: int = Field(..., description="加载后原始断言图的三元组数（物化前）。")
     classes: int = Field(..., description="加载后识别到的类数量。")
-    individuals: int = Field(..., description="加载后识别到的具名个体数量。")
+    individuals: int = Field(
+        ...,
+        description=(
+            "加载后识别到的业务个体数量：显式 NamedIndividual ∪ 以业务类为 "
+            "rdf:type 的具名主语（与 /api/infer、说明页同一口径，#121）。"
+        ),
+    )
 
 
 class OntologySourceResponse(BaseModel):
@@ -344,7 +353,9 @@ class SaveStats(BaseModel):
     triples_after: int = Field(..., description="保存后物化三元组数。")
     inferred_added: int = Field(..., description="推理新增三元组数。")
     classes: int = Field(..., description="保存后类数量。")
-    individuals: int = Field(..., description="保存后具名个体数量。")
+    individuals: int = Field(
+        ..., description="保存后业务个体数量（口径同 /api/infer 与说明页）。"
+    )
 
 
 class DroppedAxiom(BaseModel):
@@ -398,7 +409,9 @@ class OntologyReloadResponse(BaseModel):
     status: str = Field(..., description="固定为 ok；失败时不会返回 200。")
     loaded: str = Field(..., description="重新加载的本体文件名。")
     triples: int = Field(..., description="重载后完整图三元组数（含推理结论）。")
-    individuals: int = Field(..., description="重载后具名个体数量。")
+    individuals: int = Field(
+        ..., description="重载后业务个体数量（口径同 /api/infer 与说明页）。"
+    )
     elapsed_ms: float = Field(..., description="本次重载 + 推理耗时（毫秒）。")
 
 

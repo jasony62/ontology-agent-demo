@@ -52,6 +52,7 @@ const GUIDE: DomainGuide = {
       stdio_command: '.venv/bin/python mcp/mcp_server.py --domain agent_task --transport stdio',
     },
     counts: { triples: 100, asserted: 80, inferred: 20, classes: 12, individuals: 23 },
+    inference: { total: 20, reflexive: 12, meta: 5, business: 3 },
     rules: {
       ok: true, total_derived: 7, exceeded_iterations: false,
       elapsed_ms: 12, materialize_ms: 30,
@@ -135,6 +136,8 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(text).toContain('说明与实际不符');
     expect(text).toContain('会写盘');
     expect(text).toContain('照着做 · 请求预览');
+    // #121：推理新增拆成自反 / 元层 / 业务，不再只给一个总数
+    expect(text).toContain('推理新增构成：自反 12 · 元层 5 · 业务 3');
     expect(text).toContain('MCP 接入');
     expect(text).toContain('http://127.0.0.1:9000/mcp');
     expect(text).toContain('mcpServers');
@@ -236,6 +239,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
           ...GUIDE.runtime.mcp,
           note: 'MCP 工具在启动时按领域注册；导入的本体没有领域适配器。',
         },
+        inference: { total: 20, reflexive: 12, meta: 8, business: 0 },
       },
       reconcile: { notes_without_capability: [], capabilities_without_note: [], unavailable_examples: [] },
     };
@@ -254,6 +258,8 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(text).toContain('重启服务会回到默认领域');
     // MCP 启动命令退回默认领域时，页面要讲清原因
     expect(text).toContain('MCP 工具在启动时按领域注册');
+    // 业务派生为 0 是一句明确结论，不是让用户自己猜
+    expect(text).toContain('业务派生为 0：这份本体推不出新的业务结论');
   });
 
   it('只读 GET 示例：请求走查询串，curl 预览不带 -X / -d（#119）', async () => {

@@ -47,6 +47,24 @@ except ModuleNotFoundError as exc:
         "    pip install -e ./packages/ontology-plugin-sdk\n"
     ) from exc
 
+
+class NameResolutionError(ValueError):
+    """短名无法唯一解析为图里的 IRI（#120）。
+
+    「解析不到」与「查询结果为空」是两件事：把它当成空集会诱导用户以为
+    自己的本体写错了。REST 层把本异常统一转成 400（见 api.main 的
+    exception handler），领域内部调用则用 `_resolve_loose` 保持旧行为。
+    """
+
+
+class NameNotFound(NameResolutionError):
+    """三种解析路径都没有命中。"""
+
+
+class NameAmbiguous(NameResolutionError):
+    """后缀匹配到多个 IRI，必须由调用方给出完整 IRI。"""
+
+
 _LEGACY_ONTO_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "domains", "agent_task", "agent_task_ontology.owl")
 )
@@ -269,15 +287,145 @@ class OntologyEngine:
         return {
             "status": "ok",
             "triples": len(self.g),
-            "individuals": len(set(self.g.subjects(RDF.type, OWL.NamedIndividual))),
+            "individuals": self.individual_count(),
+        }
+
+    # ---------------- 短名解析（#120） ----------------
+
+    @staticmethod
+    def _meta_namespaces() -> tuple[str, str, str]:
+        """RDF / RDFS / OWL 元命名空间：出现在这里的类型不是业务实例。"""
+        return (str(RDF), str(RDFS), str(OWL))
+
+    def _iri_present(self, iri: URIRef) -> bool:
+        """IRI 是否在图中出现过（主语 / 谓词 / 宾语任一位置）。"""
+        g = self.g
+        for _ in g.predicate_objects(iri):
+            return True
+        for _ in g.subject_predicates(iri):
+            return True
+        for _ in g.subject_objects(iri):
+            return True
+        return False
+
+    def _suffix_matches(self, short_name: str) -> list[URIRef]:
+        """全图中短名（最后一个 # 或 / 之后）相同的 IRI，按字符串排序。"""
+        found: set[URIRef] = set()
+        for s, p, o in self.g:
+            for term in (s, p, o):
+                if isinstance(term, URIRef) and local(term) == short_name:
+                    found.add(term)
+        return sorted(found, key=str)
+
+    def resolve(self, name) -> URIRef:
+        """把完整 IRI 或短名解析为图中的 URIRef（#120）。
+
+        顺序：**完整 IRI 原样** → 主命名空间 → 全图唯一后缀。完整 IRI 不在
+        图里也原样返回：它本身无歧义，查不到就是空集。短名走完三级仍不中，
+        或后缀命中多个，抛 `NameResolutionError`——绝不静默返回空集，让
+        「本体里没有」与「名称拼错 / 需要完整 IRI」可区分。
+
+        典型场景：IRI 在最后一段之前还有语义目录（`/capability/x`、
+        `/instance/y`），主命名空间回拼必然错位；后缀唯一匹配把它救回来。
+        """
+        if isinstance(name, URIRef):
+            return name
+        short = str(name or "").strip()
+        if not short:
+            raise NameNotFound("名称为空：请传完整 IRI 或本体里的短名。")
+        if short.startswith(("http://", "https://", "urn:")):
+            return URIRef(short)
+        primary = self.NS[short]
+        if self._iri_present(primary):
+            return primary
+        matches = self._suffix_matches(short)
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            listed = "、".join(f"<{m}>" for m in matches[:8])
+            more = f"（共 {len(matches)} 个）" if len(matches) > 8 else ""
+            raise NameAmbiguous(
+                f"名称「{short}」匹配到多个 IRI：{listed}{more}；"
+                f"请传完整 IRI 指定其中一个。"
+            )
+        raise NameNotFound(
+            f"解析不到名称「{short}」：本体里没有主命名空间或唯一后缀匹配的 IRI。"
+            f"请检查拼写，或传完整 IRI。"
+        )
+
+    def _resolve_loose(self, name) -> URIRef:
+        """内部原语用：命中三级解析就纠正，解析不到则退回旧的主命名空间。
+
+        领域适配器大量用「图里已知的短名」调用这些原语，解析不到通常意味着
+        该个体/属性确实不存在；保持返回空集是既有契约。歧义仍然抛出——那
+        不是「不存在」，静默挑一个会给出错误答案。
+        """
+        try:
+            return self.resolve(name)
+        except NameNotFound:
+            return self.NS[str(name)]
+
+    # ---------------- 个体口径（#121） ----------------
+
+    def individual_iris(self) -> set[URIRef]:
+        """业务个体 IRI：显式 NamedIndividual ∪ 以业务类为 rdf:type 的具名主语。
+
+        只认 `owl:NamedIndividual` 会漏掉大量 RDF/XML 本体（个体只写
+        `rdf:type domain:Agent`）；把所有 rdf:type 主语都算进来又会把类 /
+        属性 / 本体自身混进候选值。这里按「类型不在 RDF / RDFS / OWL 元命名
+        空间」判定。`infer()`、说明页计数与示例题共用这一份口径——同一张图
+        不能同时报出两个个体数（#121）。
+        """
+        meta = self._meta_namespaces()
+        found: set[URIRef] = set()
+        for subject, cls in self.g.subject_objects(RDF.type):
+            if not isinstance(subject, URIRef) or not isinstance(cls, URIRef):
+                continue
+            if cls == OWL.NamedIndividual or not str(cls).startswith(meta):
+                found.add(subject)
+        return found
+
+    def individual_names(self) -> list[str]:
+        """业务个体短名（排序；示例题参数下拉与说明页共用）。"""
+        return sorted(local(iri) for iri in self.individual_iris())
+
+    def individual_count(self) -> int:
+        return len(self.individual_iris())
+
+    def inference_breakdown(self) -> dict:
+        """推理新增三元组的构成：自反 / 元层 / 业务（#121）。
+
+        - **自反**：主语与宾语相同（`X sameAs X` / `X ⊑ X` / `p ≡ p`），
+          owlrl 物化的噪声，用户零感知；
+        - **元层**：谓词在 rdf/rdfs/owl 命名空间（domain / range / type /
+          subClassOf 等），描述的是词汇表本身；
+        - **业务**：其余谓词上的新增结论，才是「推理是否生效」的可验证部分。
+
+        三层互斥且相加等于推理新增总数。
+        """
+        added = set(self.g) - set(self.raw)
+        meta = self._meta_namespaces()
+        reflexive = meta_layer = business = 0
+        for subject, predicate, obj in added:
+            if subject == obj:
+                reflexive += 1
+            elif isinstance(predicate, URIRef) and str(predicate).startswith(meta):
+                meta_layer += 1
+            else:
+                business += 1
+        return {
+            "total": len(added),
+            "reflexive": reflexive,
+            "meta": meta_layer,
+            "business": business,
         }
 
     # ---------------- 通用原语（供领域适配器组合） ----------------
 
     def label(self, iri) -> str:
         """取 rdfs:label 中文名；无 label 时回退短名。同时接受 URIRef 与短名。"""
-        if isinstance(iri, str) and not iri.startswith("http"):
-            iri = self.NS[iri]
+        if isinstance(iri, str) and not iri.startswith(("http://", "https://", "urn:")):
+            iri = self._resolve_loose(iri)
         v = self.g.value(iri, RDFS.label)
         return str(v) if v is not None else local(iri)
 
@@ -295,7 +443,7 @@ class OntologyEngine:
 
     def individuals_of(self, class_name: str) -> list[str]:
         """指定类（短名）及其全部子类的个体短名列表。"""
-        cls = self.NS[class_name]
+        cls = self._resolve_loose(class_name)
         inds = set()
         for t in self._subclass_of(cls):
             inds |= set(self.g.subjects(RDF.type, t))
@@ -303,7 +451,9 @@ class OntologyEngine:
 
     def objects_of(self, subject: str, property_name: str) -> list[str]:
         """主体-属性 的全部取值（IRI 值转短名，字面值取 str）。"""
-        vals = self.g.objects(self.NS[subject], self.NS[property_name])
+        vals = self.g.objects(
+            self._resolve_loose(subject), self._resolve_loose(property_name)
+        )
         return sorted(
             (local(v) if isinstance(v, URIRef) else str(v)) for v in vals
         )
@@ -312,7 +462,7 @@ class OntologyEngine:
         """属性的全部 (主语, 宾语) 短名对。"""
         return sorted(
             (local(s), local(o))
-            for s, o in self.g.subject_objects(self.NS[property_name])
+            for s, o in self.g.subject_objects(self._resolve_loose(property_name))
         )
 
     # ---------------- 时序 ABox（主体级 validFrom/validTo，查询层过滤） ----------------
@@ -514,7 +664,9 @@ class OntologyEngine:
 
     def types_of(self, individual: str) -> list[str]:
         """个体推理后的全部类型短名（含推理出的等价类/子类结论）。"""
-        return sorted({local(t) for t in self.g.objects(self.NS[individual], RDF.type)})
+        return sorted({
+            local(t) for t in self.g.objects(self._resolve_loose(individual), RDF.type)
+        })
 
     def property_values(self, subject: str, property_name: str) -> list[str]:
         """主体-属性 取值列表（IRI 值转短名）。"""
@@ -529,7 +681,8 @@ class OntologyEngine:
             "triples_after": len(self.g),
             "added": len(self.g) - before,
             "classes": len(self.classes()),
-            "individuals": len(set(self.g.subjects(RDF.type, OWL.NamedIndividual))),
+            "individuals": self.individual_count(),
+            "breakdown": self.inference_breakdown(),
         }
 
     # ---------------- 物化（Materialization）与图谱导出（通用，与领域语义无关） ----------------

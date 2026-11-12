@@ -49,7 +49,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Path as ApiPath
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from rdflib import Graph, Literal, RDF, OWL, RDFS, URIRef
 
@@ -66,7 +66,12 @@ class LazyStaticFiles(StaticFiles):
     async def check_config(self) -> None:
         pass
 
-from reasoner.engine import get_engine, OntologyEngine, SparqlTimeoutError, local
+from reasoner.engine import (
+    NameResolutionError,
+    OntologyEngine,
+    SparqlTimeoutError,
+    get_engine,
+)
 from reasoner.proof import build_proof
 from reasoner.protocol import (
     REQUIRED_METHODS,
@@ -203,6 +208,13 @@ app = FastAPI(
         "displayRequestDuration": True,
     },
 )
+
+
+@app.exception_handler(NameResolutionError)
+async def _name_resolution_error(request, exc: NameResolutionError):
+    """短名解析失败统一转 400（#120）：不能与「查询结果为空」混为一谈。"""
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
 
 APP_DIST = Path(__file__).resolve().parent.parent / "frontend" / "app" / "dist"
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
@@ -771,23 +783,6 @@ def _declared_capabilities(adapter) -> list[str]:
     return list(declared)
 
 
-def _individual_iris(engine) -> set:
-    """图里的个体 IRI：显式 NamedIndividual ∪ 以业务类为 rdf:type 的具名主语。
-
-    只认 `owl:NamedIndividual` 会漏掉大量 RDF/XML 本体（个体只写
-    `rdf:type domain:Agent`）；把所有 rdf:type 主语都算进来又会把类 / 属性
-    混进候选值。这里按"类型不在 RDF / RDFS / OWL 元命名空间"判定。
-    """
-    meta = (str(RDF), str(RDFS), str(OWL))
-    found = set()
-    for subject, cls in engine.g.subject_objects(RDF.type):
-        if not isinstance(subject, URIRef) or not isinstance(cls, URIRef):
-            continue
-        if cls == OWL.NamedIndividual or not str(cls).startswith(meta):
-            found.add(subject)
-    return found
-
-
 def _runtime_counts(engine) -> dict:
     """通用计数：不出现任何领域词汇（agents / tasks 这类统计留在 health）。"""
     asserted = len(getattr(engine, "raw", engine.g))
@@ -804,13 +799,14 @@ def _runtime_counts(engine) -> dict:
         "asserted": asserted,
         "inferred": max(total - asserted, 0),
         "classes": len(classes),
-        "individuals": len(_individual_iris(engine)),
+        # #121：口径只有一份（引擎），/api/infer、说明页与示例题报同一个数。
+        "individuals": engine.individual_count(),
     }
 
 
 def _runtime_individuals(engine) -> list[str]:
     """当前图里的个体短名（示例题参数下拉的真实候选值）。"""
-    return sorted(local(iri) for iri in _individual_iris(engine))
+    return engine.individual_names()
 
 
 def _rules_summary(report: dict | None) -> dict | None:
@@ -1094,6 +1090,9 @@ def domain_guide():
             ),
             "mcp": mcp,
             "counts": _runtime_counts(ENGINE),
+            # #121：推理新增拆成自反 / 元层 / 业务；单给总数会把 1000 条
+            # 「A 等于 A」当成卖点。三层互斥且相加等于 counts.inferred。
+            "inference": ENGINE.inference_breakdown(),
             "rules": _rules_summary(handle.rules_report),
             "graph_groups": graph_group_members(ADAPTER),
             # 示例题参数下拉的真实候选值；框架不解释 params 的键，只提供值域。
@@ -1523,15 +1522,19 @@ def sparql_query(req: SparqlRequest):
     responses={
         200: {
             "model": IndividualsResponse,
-            "description": "指定类（含子类）的个体短名列表；类不存在时为空列表。",
+            "description": "指定类（含子类）的个体短名列表；类存在但没有个体时为空列表。",
         },
+        **ERROR_400,
     },
 )
 def individuals(req: IndividualsRequest):
     """指定类（含子类）的个体短名列表。
 
-    给调用方：`class_name` 传类短名；不存在的类返回空列表而不是 404。
+    给调用方：`class_name` 传类短名或完整 IRI。名称解析不到、或短名命中
+    多个 IRI 时返回 400 并给出候选完整 IRI（#120），与「类存在但没有个体」
+    的空列表区分开。
     """
+    ENGINE.resolve(req.class_name)
     return {"class": req.class_name, "individuals": ENGINE.individuals(req.class_name)}
 
 
@@ -1562,16 +1565,20 @@ def classes():
     responses={
         200: {
             "model": TypesResponse,
-            "description": "个体推理后的全部类型短名（断言类型 ∪ 推理结论，已排序）。",
+            "description": "个体推理后的全部类型短名（断言类型 ∪ 推理结论，已排序）；个体存在但没有类型时为空列表。",
         },
+        **ERROR_400,
     },
 )
 def types(req: TypesRequest):
     """个体推理后的全部类型。
 
     给调用方：返回断言类型与推理结论的并集（短名，已排序），不只是
-    rdf:type 显式声明的类型。
+    rdf:type 显式声明的类型。个体名先做三级解析（完整 IRI → 主命名空间 →
+    全图唯一后缀），解析不到或短名有歧义返回 400——不能把「名称拼错」
+    伪装成「这个个体没有类型」（#120）。
     """
+    ENGINE.resolve(req.individual)
     return {"individual": req.individual, "types": ENGINE.types_of(req.individual)}
 
 
@@ -1582,15 +1589,19 @@ def types(req: TypesRequest):
     responses={
         200: {
             "model": PropertyValuesResponse,
-            "description": "主体-属性取值列表；对象属性值转成个体短名，属性不存在时为空列表。",
+            "description": "主体-属性取值列表；对象属性值转成个体短名；主体/属性存在但没有取值时为空列表。",
         },
+        **ERROR_400,
     },
 )
 def property_values(req: PropertyRequest):
     """主体-属性取值列表。
 
-    给调用方：属性不存在时返回空列表，不会 404；对象属性值会转成个体短名。
+    给调用方：主体与属性都先做三级解析，解析不到或有歧义返回 400（#120）；
+    两者都存在但没有取值时才是空列表。对象属性值会转成个体短名。
     """
+    ENGINE.resolve(req.subject)
+    ENGINE.resolve(req.property)
     return {"subject": req.subject, "property": req.property,
             "values": ENGINE.property_values(req.subject, req.property)}
 
@@ -1603,8 +1614,9 @@ def property_values(req: PropertyRequest):
         200: {
             "model": OpenEnvelope,
             "description": (
-                "重新推理后的统计；形状由引擎决定"
-                "（triples_before / triples_after / added / classes / individuals）。"
+                "重新推理后的统计；形状由引擎决定（triples_before / triples_after /"
+                " added / classes / individuals / breakdown）。breakdown 把新增拆成"
+                "自反 / 元层 / 业务三项（#121）。"
             ),
         },
     },
@@ -1612,8 +1624,11 @@ def property_values(req: PropertyRequest):
 def infer():
     """重新执行 OWL 2 RL 物化推理并返回统计。
 
-    给调用方：返回本次推理前后的三元组数、新增数与类/个体统计。重复
-    调用通常新增为 0；若图在两次调用之间被修改，结果不一定幂等。
+    给调用方：返回本次推理前后的三元组数、新增数与类/个体统计；`breakdown`
+    把新增拆成自反 / 元层 / 业务，业务派生为 0 说明这份本体没有可验证的
+    推理结论（#121）。个体口径与说明页一致：显式 NamedIndividual ∪ 以业务类
+    为 rdf:type 的具名主语。重复调用通常新增为 0；若图在两次调用之间被修改，
+    结果不一定幂等。
     """
     return ENGINE.infer()
 
@@ -1662,7 +1677,7 @@ async def load_ontology(file: UploadFile = File(..., description="要加载的�
         "display_name": handle.display_name,
         "triples_before": len(engine.raw),
         "classes": len(engine.classes()),
-        "individuals": len(set(engine.g.subjects(RDF.type, OWL.NamedIndividual))),
+        "individuals": engine.individual_count(),
     }
 
 
@@ -1896,7 +1911,7 @@ def save_ontology(req: SaveOntologyRequest):
             "triples_after": materialized["stats"]["triples_materialized"],
             "inferred_added": materialized["stats"]["inferred_added"],
             "classes": len(new_engine.classes()),
-            "individuals": len(set(new_engine.g.subjects(RDF.type, OWL.NamedIndividual))),
+            "individuals": new_engine.individual_count(),
         },
         "materialized": materialized,
     }
@@ -1965,7 +1980,7 @@ def reload_ontology():
         "status": "ok",
         "loaded": os.path.basename(new_engine.onto_path),
         "triples": len(new_engine.g),
-        "individuals": len(set(new_engine.g.subjects(RDF.type, OWL.NamedIndividual))),
+        "individuals": new_engine.individual_count(),
         "elapsed_ms": elapsed,
     }
 

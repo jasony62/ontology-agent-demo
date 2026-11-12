@@ -255,6 +255,13 @@ export interface GuideRuntime {
     classes: number;
     individuals: number;
   };
+  /** 推理新增构成（#121）：三层互斥，相加等于 counts.inferred */
+  inference?: {
+    total: number;
+    reflexive: number;
+    meta: number;
+    business: number;
+  };
   rules: {
     ok: boolean | null;
     total_derived: number | null;

@@ -34,6 +34,8 @@ from rdflib import BNode, Graph, OWL, RDF, RDFS, URIRef
 from ontology_plugin_sdk import chain_properties as _chain_properties
 from ontology_plugin_sdk import find_chain_path as _find_chain_path
 
+from reasoner.engine import NameNotFound
+
 __all__ = ["build_proof", "diff_materialized"]
 
 
@@ -66,15 +68,24 @@ _STD_SHORT = {
 
 
 def _uri(engine, name):
-    """把短名或完整 IRI 解析为 URIRef（RDF/RDFS/OWL 基础词映射到标准词汇）。"""
+    """把短名或完整 IRI 解析为 URIRef（RDF/RDFS/OWL 基础词映射到标准词汇）。
+
+    #120：业务短名交给引擎的三级解析（完整 IRI → 主命名空间 → 全图唯一
+    后缀），IRI 带语义子目录（`/capability/x`）也能查对。解析不到时退回
+    旧的 `NS[name]`（证明对不存在的三元组仍返回 unproven）；歧义向上抛，
+    由 REST 层转 400。
+    """
     if isinstance(name, URIRef):
         return name
     s = str(name)
-    if s.startswith("http"):
+    if s.startswith(("http://", "https://", "urn:")):
         return URIRef(s)
     if s in _STD_SHORT:
         return _STD_SHORT[s]
-    return engine.NS[s]
+    try:
+        return engine.resolve(s)
+    except NameNotFound:
+        return engine.NS[s]
 
 
 def _premise_src(engine, s, p, o) -> str:

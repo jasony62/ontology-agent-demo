@@ -943,6 +943,13 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
               <div><b>{runtime.counts.classes}</b><span>类</span></div>
               <div><b>{runtime.counts.individuals}</b><span>个体</span></div>
             </div>
+            {runtime.inference && (
+              <div className="guide-muted">
+                推理新增构成：自反 {runtime.inference.reflexive} · 元层 {runtime.inference.meta} ·
+                业务 {runtime.inference.business}
+                {runtime.inference.business === 0 && '（业务派生为 0：这份本体推不出新的业务结论）'}
+              </div>
+            )}
           </section>
 
           <section id="guide-integrations" className="guide-section">

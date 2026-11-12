@@ -241,6 +241,8 @@ npm run build               # 产物 frontend/app/dist
 | GET  | `/api/ontology/source` | 当前本体的 OWL/RDF 源码                                              |
 | GET  | `/api/ontology/export` | 导出当前模型或物化后本体（Turtle / RDF/XML）                           |
 
+> **短名解析与个体口径**（#120 / #121）：`/api/types`、`/api/property`、`/api/individuals` 的短名按「完整 IRI → 主命名空间 → 全图唯一后缀」三级解析，IRI 带语义子目录（`/dept/x`、`/capability/x`）也能查对；三级都不中或短名有歧义时返回 **400** 并给出候选完整 IRI，不再把「名称拼错」伪装成空集。个体口径只有一份：显式 `owl:NamedIndividual` ∪ 以业务类为 `rdf:type` 的具名主语，`/api/infer`、加载/重载回执与说明页报同一个数；`/api/infer` 的 `breakdown` 把推理新增拆成自反 / 元层 / 业务，业务为 0 时会明确说明推不出新结论。
+
 ### SPARQL 支持边界（兼容度声明）
 
 把边界写在明处：拿标准语法来测试前，先看这张表再判定是 Bug 还是边界。`/api/query` 与 MCP `query_sparql` 由 rdflib 实现，**只支持 SELECT**——下表每一条都经实际查询验证（验证环境：默认 agent_task 本体 + rdflib 7.x，随版本演进维护）：

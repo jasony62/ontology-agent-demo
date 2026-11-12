@@ -18,7 +18,8 @@ export default function InferenceNotice() {
 
   // 错误横幅优先，不叠加；已被用户关闭也不再出现（跨视图一个全局开关）
   if (error || dismissed) return null;
-  const notice = buildInferenceNotice(materialized, viewMode, ontologyMode === 'generic');
+  const customOntology = ontologyMode === 'generic' || ontologyMode === 'imported';
+  const notice = buildInferenceNotice(materialized, viewMode, customOntology);
   if (!notice) return null;
 
   return (

@@ -6,9 +6,11 @@ import { api } from '../api/client';
 
 interface Props {
   onClose: () => void;
+  /** 同步成功后整体重拉工作区：说明页 / 页头 / 能力清单不能留上一个包的内容 */
+  onSynced?: () => void | Promise<void>;
 }
 
-export default function ImportModal({ onClose }: Props) {
+export default function ImportModal({ onClose, onSynced }: Props) {
   const setOntology = useAppStore((s) => s.setOntology);
   const setSource = useAppStore((s) => s.setSource);
   const setGraphData = useAppStore((s) => s.setGraphData);
@@ -16,8 +18,6 @@ export default function ImportModal({ onClose }: Props) {
   const setSynced = useAppStore((s) => s.setSynced);
   const setError = useAppStore((s) => s.setError);
   const setViewMode = useAppStore((s) => s.setViewMode);
-  const setOntologyMode = useAppStore((s) => s.setOntologyMode);
-
   const [dragging, setDragging] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'done' | 'failed'>('idle');
@@ -57,13 +57,15 @@ export default function ImportModal({ onClose }: Props) {
     try {
       const res = await api.loadOntology(fileRef.current);
       setSynced(true);
-      setOntologyMode('generic'); // #20：同步后立即刷新通用模式横幅/徽标
       const mat = await api.materialized();
       setMaterialized(mat);
       const src = await api.source();
       setSource(src.content, src.filename);
+      // #119：导入即激活「导入的本体」领域，说明页 / 页头 / 能力清单整体重拉；
+      // 不在这里手写 mode，避免前端猜的状态与后端运行态各说各话。
+      await onSynced?.();
       setSyncState('done');
-      setError(`已加载到推理引擎（通用模式）：${res.path.split('/').pop()} · 原始三元组 ${res.triples_before}`);
+      setError(`已加载到推理引擎（${res.display_name ?? '导入的本体'}）：${res.path.split('/').pop()} · 原始三元组 ${res.triples_before}`);
     } catch (e) {
       setSyncState('failed');
       setLocalError(`同步失败：${e instanceof Error ? e.message : String(e)}`);
@@ -75,7 +77,8 @@ export default function ImportModal({ onClose }: Props) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>导入 OWL 知识</h3>
         <div className="import-hint">
-          导入自定义本体后将进入<b>通用模式</b>：领域推理（能力匹配 / 编排 / 合规检测）不可用，图谱 / 物化 / SPARQL 不受影响；重启服务可恢复默认本体。
+          导入后页头会切换为<b>「导入的本体」</b>：结构 / 推理 / 查询 / 依据等通用只读能力可用，
+          领域专属推理（能力匹配 / 编排 / 合规检测）不可用；重启服务可回到默认领域。
         </div>
         <div
           className={`drop-zone ${dragging ? 'dragging' : ''}`}

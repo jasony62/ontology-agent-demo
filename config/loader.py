@@ -76,7 +76,9 @@ class ConfigError(RuntimeError):
 # 保留领域名：`current` 是 API 的单例路径段（/api/domains/current/...）。
 # 若允许同名领域包，`/api/domains/current/...` 会同时像「当前领域」和
 # 「名为 current 的领域」，同一 URL 指向两个东西。安装期与加载期都拒绝。
-RESERVED_DOMAIN_NAMES = frozenset({"current"})
+# current：API 用 /api/domains/current/... 表示当前运行态领域
+# imported：框架内置「导入的本体」领域的内部标识（#119），不能由磁盘包顶替
+RESERVED_DOMAIN_NAMES = frozenset({"current", "imported"})
 
 
 def check_domain_name(name: Any) -> str:

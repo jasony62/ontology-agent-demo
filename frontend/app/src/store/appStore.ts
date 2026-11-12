@@ -32,8 +32,8 @@ interface AppState {
   selectedId: string | null;
   // 新建元素后需要聚焦的编辑框（ElementEditor 消费一次）
   editorFocusId: string | null;
-  // 本体模式（#20：default=默认本体，generic=通用模式；null=未知）
-  ontologyMode: 'default' | 'generic' | null;
+  // 本体模式（default=预置领域，imported=导入的本体，generic=旧版通用模式；null=未知）
+  ontologyMode: 'default' | 'imported' | 'generic' | null;
   // #55：推理提示横幅的关闭标记。一个全局开关（不按视图分别记忆）——三个文案
   // 是同一件事的三个角度，关掉一个说明已经明白。初始值来自 sessionStorage，
   // 本次会话内有效；读写入口在 lib/inferenceBanner，store 只做跨组件的响应式镜像。
@@ -50,7 +50,7 @@ interface AppState {
   setError: (e: string | null) => void;
   setSelectedId: (id: string | null) => void;
   setEditorFocusId: (id: string | null) => void;
-  setOntologyMode: (m: 'default' | 'generic' | null) => void;
+  setOntologyMode: (m: 'default' | 'imported' | 'generic' | null) => void;
   setNoticeDismissed: (v: boolean) => void;
 }
 

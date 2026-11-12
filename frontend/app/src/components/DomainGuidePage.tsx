@@ -345,6 +345,18 @@ function ExamplePanel({
   const [submittedGuess, setSubmittedGuess] = useState<string | null>(null);
   const requestBody = exampleRequestBody(example, draft);
   const target = exampleTarget(example);
+  const getQuery = target?.method === 'GET'
+    ? new URLSearchParams(
+      Object.entries(requestBody)
+        .filter(([, value]) => value !== undefined && value !== null)
+        .map(([key, value]) => [key, String(value)]),
+    ).toString()
+    : '';
+  const curlTarget = `${window.location.origin}${target?.path ?? CAPABILITY_QUERY_PATH}`
+    + (getQuery ? `?${getQuery}` : '');
+  const curlCode = target?.method === 'GET'
+    ? `curl -s ${curlTarget}`
+    : `curl -s -X ${target?.method ?? 'POST'} ${curlTarget} \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(requestBody)}'`;
   const params = Object.entries(draft);
   const predict = example.predict;
   // 结果一到就锁定预测：允许事后改选项会让「先猜」失去意义，预测正确率也不可测
@@ -403,7 +415,7 @@ function ExamplePanel({
         <div className="guide-do-label">2 · 系统会发出什么请求</div>
         <div className="guide-endpoint"><code>{example.endpoint ?? '不提供页内试跑'}</code></div>
         <CopyBlock
-          code={`curl -s -X ${target?.method ?? 'POST'} ${window.location.origin}${target?.path ?? CAPABILITY_QUERY_PATH} \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(requestBody)}'`}
+          code={curlCode}
           note={
             example.simulate
               ? '只读推演：在断言图副本上施加改动并重新推理，不改活图、不落盘'
@@ -583,9 +595,12 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
           })
         : await (async () => {
             const target = exampleTarget(example);
-            return target && target.path !== CAPABILITY_QUERY_PATH
-              ? api.postJson(target.path, params)
-              : api.queryCapability(example.capability, params);
+            if (!target || target.path === CAPABILITY_QUERY_PATH) {
+              return api.queryCapability(example.capability, params);
+            }
+            return target.method === 'GET'
+              ? api.getJson(target.path, params)
+              : api.postJson(target.path, params);
           })();
       setResults((current) => ({ ...current, [example.id]: { loading: false, data } }));
       document.getElementById(`guide-example-${example.id}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
@@ -632,6 +647,7 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
 
   const { profile, runtime, reconcile } = guide;
   const generic = guide.mode === 'generic';
+  const imported = guide.imported === true;
   const otherCapabilities = runtime.other_capabilities;
 
   return (
@@ -642,7 +658,7 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
           <p>{profile.summary}</p>
         </div>
         <div className="guide-head-meta">
-          <span className="guide-pill">{guide.domain}</span>
+          <span className="guide-pill">{guide.display_name || guide.domain}</span>
           <span className={`guide-pill ${generic ? 'warn' : 'ok'}`}>
             {generic ? '通用模式' : '领域模式'}
           </span>
@@ -662,6 +678,12 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
       {generic && (
         <div className="mode-banner">
           当前加载的是自定义本体（通用模式）：以下领域能力整组不可用；图谱 / 物化 / SPARQL 等通用能力不受影响。
+        </div>
+      )}
+      {imported && (
+        <div className="mode-banner">
+          当前对外服务的是导入的本体：结构 / 推理 / 查询 / 依据等通用只读能力可用；领域专属推理不可用。
+          重启服务会回到默认领域，导入文件仍保留在 data/uploads/。
         </div>
       )}
 
@@ -936,6 +958,7 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
               MCP Server 自带引擎，不需要先启动 REST API；工具随当前领域注册。
               MCP 不做领域热切换，换领域请用 <code>--domain</code> 重启。
             </p>
+            {runtime.mcp.note && <p className="guide-muted">{runtime.mcp.note}</p>}
             <div className="guide-mcp-grid">
               <div className="guide-card">
                 <h4>Streamable HTTP（豆包等连接器）</h4>
@@ -1008,9 +1031,9 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
           <section id="guide-runtime" className="guide-section">
             <div className="guide-section-head"><span>06</span><h3>现在跑的是哪一份</h3></div>
             <div className="guide-runtime-grid">
-              <div className="guide-kv"><span>领域</span><b>{guide.domain}</b></div>
+              <div className="guide-kv"><span>领域</span><b>{guide.display_name || guide.domain}</b></div>
               <div className="guide-kv"><span>已加载本体</span><b>{runtime.ontology}</b></div>
-              <div className="guide-kv"><span>模式</span><b>{generic ? '通用（自定义本体）' : '领域'}</b></div>
+              <div className="guide-kv"><span>模式</span><b>{imported ? '导入的本体（只读）' : generic ? '通用（自定义本体）' : '领域'}</b></div>
               <div className="guide-kv"><span>加载时刻</span><b>{guide.loaded_at}</b></div>
               <div className="guide-kv"><span>说明文件</span><b>guide_version {guide.guide_version} · 契约通过</b></div>
               <div className="guide-kv"><span>三元组</span><b>{runtime.counts.triples}（推理新增 {runtime.counts.inferred}）</b></div>

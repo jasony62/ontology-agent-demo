@@ -221,6 +221,91 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(container!.querySelectorAll('.guide-cap-grid .guide-cap-group.is-disabled')).toHaveLength(3);
   });
 
+  it('导入的本体：页头 / 运行态显示展示名，横幅讲清只读边界（#119）', () => {
+    const imported: DomainGuide = {
+      ...GUIDE,
+      domain: 'imported',
+      display_name: '导入的本体',
+      imported: true,
+      examples: [],
+      runtime: {
+        ...GUIDE.runtime,
+        ontology: '3f2a1b9c-people.owl',
+        individuals: [],
+        mcp: {
+          ...GUIDE.runtime.mcp,
+          note: 'MCP 工具在启动时按领域注册；导入的本体没有领域适配器。',
+        },
+      },
+      reconcile: { notes_without_capability: [], capabilities_without_note: [], unavailable_examples: [] },
+    };
+    render(<DomainGuidePage guide={imported} error={null} loading={false} onRetry={() => {}} />);
+
+    const text = container!.textContent ?? '';
+    // 内部标识 imported 不上页面，展示名固定是「导入的本体」
+    expect(text).not.toContain('imported');
+    expect(container!.querySelector('.guide-pill')!.textContent).toBe('导入的本体');
+    expect(text).toContain('当前对外服务的是导入的本体');
+    expect(text).toContain('导入的本体（只读）');
+    // 真实文件名出现在运行态，而不是拿来当领域名
+    expect(text).toContain('3f2a1b9c-people.owl');
+    // 领域专属推理不可用，且说明重启后的去向（而不是暗示导入是持久的）
+    expect(text).toContain('领域专属推理不可用');
+    expect(text).toContain('重启服务会回到默认领域');
+    // MCP 启动命令退回默认领域时，页面要讲清原因
+    expect(text).toContain('MCP 工具在启动时按领域注册');
+  });
+
+  it('只读 GET 示例：请求走查询串，curl 预览不带 -X / -d（#119）', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ mode: 'asserted', rule: null, premises: [] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const imported: DomainGuide = {
+      ...GUIDE,
+      domain: 'imported',
+      display_name: '导入的本体',
+      imported: true,
+      examples: [{
+        id: 'IMP-07',
+        question: '「alice」是「Person」这条结论凭什么成立？',
+        capability: 'proof',
+        params: { s: 'alice', p: 'type', o: 'Person' },
+        answer_hint: '断言：这条结论直接写在导入的本体里，没有推理前提',
+        via: '推导依据（断言 / 推理 / 推不出）',
+        group: '查依据',
+        endpoint: 'GET /api/ontology/proof',
+        safe: true,
+        reason: null,
+      }],
+    };
+    render(<DomainGuidePage guide={imported} error={null} loading={false} onRetry={() => {}} />);
+
+    const card = container!.querySelector('#guide-example-IMP-07')!;
+    const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
+    act(() => open.click());
+
+    const expectedUrl = '/api/ontology/proof?s=alice&p=type&o=Person';
+    expect(card.textContent).toContain(`${window.location.origin}${expectedUrl}`);
+    // GET 请求不该出现 JSON 体或 -X，否则照着 curl 会发成 POST
+    expect(card.textContent).toContain('curl -s ');
+    expect(card.textContent).not.toContain('-d \'');
+
+    const run = [...card.querySelectorAll('button')].find((b) => b.textContent === '用示例问一次')!;
+    await act(async () => {
+      run.click();
+    });
+
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(expectedUrl);
+    expect(card.textContent).toContain('本次真实返回');
+    expect(card.textContent).toContain('asserted');
+  });
+
   it('通用只读端点示例：按 endpoint 派发，请求体就是题目 params（#109）', async () => {
     const sparql = 'SELECT ?dep WHERE { ?s ?p ?dep }';
     const fetchMock = vi.fn(async () => ({

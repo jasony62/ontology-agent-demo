@@ -1,7 +1,7 @@
 """在线编辑本体定义（v1.4.0）测试：编辑模型提取 / 保存写回 / 下载。
 
 覆盖：edit-model 提取（类/属性/个体断言）、model_to_rdf round-trip、
-save 另存/覆盖两模式、通用模式守卫、文件名安全、download 防路径穿越。
+save 另存/覆盖两模式、「导入的本体」激活、文件名安全、download 防路径穿越。
 """
 
 import os
@@ -130,14 +130,17 @@ def test_save_new_mode(restore_engine):
     assert m2["ontologyName"] != "agent_task_ontology"
 
 
-def test_save_new_enters_generic_mode(restore_engine):
-    """另存后进入通用模式：领域端点返回 400 并提示。"""
+def test_save_new_activates_imported_domain(restore_engine):
+    """另存后激活「导入的本体」：领域专属端点不提供，通用查询照常。"""
     model = client.get("/api/ontology/edit-model").json()
     r = client.post("/api/ontology/save", json={"model": model, "mode": "new"})
     assert r.status_code == 200
+    assert client.get("/api/domains").json()["current"] == "imported"
     ont = client.get("/api/domains/current/ontology")
     assert ont.status_code == 400
-    assert "通用模式" in ont.json()["detail"]
+    assert "未声明能力" in ont.json()["detail"]
+    # 通用查询层仍指向新保存的本体
+    assert client.get("/api/ontology/materialized").status_code == 200
 
 
 def test_save_overwrite_keeps_domain(isolated_api):
@@ -231,14 +234,14 @@ def test_status_mode_default():
     assert r.json()["mode"] == "default"
 
 
-def test_status_mode_generic_after_save_new(restore_engine):
-    """#20：另存新本体后 status.mode = generic（领域推理不可用），前端据此提示。"""
+def test_status_mode_imported_after_save_new(restore_engine):
+    """#119：另存新本体后 status.mode = imported，前端据此显示「导入的本体」。"""
     model = client.get("/api/ontology/edit-model").json()
     r = client.post("/api/ontology/save", json={"model": model, "mode": "new"})
     assert r.status_code == 200
     st = client.get("/api/ontology/status")
     assert st.status_code == 200
-    assert st.json()["mode"] == "generic"
+    assert st.json()["mode"] == "imported"
 
 
 # ---------- #108：无损往返 + 写盘前备份 ----------

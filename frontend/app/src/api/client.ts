@@ -119,6 +119,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 /** 领域包状态（GET /api/domains）：当前领域 + 已安装清单 */
 export interface DomainInfo {
   current: string;
+  /** 对外展示名；「导入的本体」用它替代内部标识 imported（#119） */
+  display_name?: string;
+  /** 当前领域是否框架内置的「导入的本体」 */
+  imported?: boolean;
   root: string;
   installed: string[];
   /** domain=引擎属于领域；generic=加载了自定义本体，领域推理由此不可用 */
@@ -241,6 +245,8 @@ export interface GuideRuntime {
     port: number;
     start_command: string;
     stdio_command: string;
+    /** 导入的本体没有领域适配器：说明为什么命令指向默认领域（#119） */
+    note?: string;
   };
   counts: {
     triples: number;
@@ -272,6 +278,10 @@ export interface GuideReconcile {
 /** GET /api/domains/current/guide：当前领域「能替我做什么」的唯一真源 */
 export interface DomainGuide {
   domain: string;
+  /** 页头 / 说明页展示名；「导入的本体」固定用它（#119） */
+  display_name?: string;
+  /** 当前是否框架内置的「导入的本体」领域 */
+  imported?: boolean;
   mode: 'domain' | 'generic';
   loaded_at: string;
   guide_version: string;
@@ -297,8 +307,8 @@ export interface DomainGuide {
 export const api = {
   health: () => request<Record<string, unknown>>('/api/health'),
 
-  /** 本体状态（含 mode: default | generic，供前端判断领域推理可用性） */
-  status: () => request<{ mode: 'default' | 'generic'; ontology: string; dirty: boolean; pending_changes: number }>('/api/ontology/status'),
+  /** 本体状态（mode: default | imported | generic，供前端判断领域推理可用性） */
+  status: () => request<{ mode: 'default' | 'imported' | 'generic'; ontology: string; dirty: boolean; pending_changes: number }>('/api/ontology/status'),
 
   /** 领域图数据（图谱渲染） */
   ontology: () => request<GraphData>('/api/domains/current/ontology'),
@@ -322,7 +332,10 @@ export const api = {
   loadOntology: (file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return request<{ status: string; path: string; triples_before: number; classes: number; individuals: number }>(
+    return request<{
+      status: string; path: string; domain?: string; display_name?: string;
+      triples_before: number; classes: number; individuals: number;
+    }>(
       '/api/ontology/load',
       { method: 'POST', body: form },
     );
@@ -401,4 +414,15 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
+
+  /** 只读 GET 端点：题目 params 原样变成查询串（如推导依据 /api/ontology/proof）。 */
+  getJson: (path: string, params: Record<string, unknown>) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null) continue;
+      query.set(key, String(value));
+    }
+    const suffix = query.toString();
+    return request<Record<string, unknown>>(`${path}${suffix ? `?${suffix}` : ''}`);
+  },
 };

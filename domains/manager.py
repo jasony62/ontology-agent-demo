@@ -45,7 +45,11 @@ from domains.registry import (
     package_onto_path,
 )
 
-__all__ = ["DomainHandle", "DomainManager"]
+__all__ = ["DomainHandle", "DomainManager", "IMPORTED_DOMAIN_NAME"]
+
+# 框架内置「导入的本体」领域的内部标识。它不是磁盘上的包，`installed()`
+# 不会列出它；对外的展示名来自 domains.imported.DISPLAY_NAME。
+IMPORTED_DOMAIN_NAME = "imported"
 
 
 def _now() -> str:
@@ -88,11 +92,28 @@ class DomainHandle:
     # 无规则文件的领域为 None。规则失败不阻断激活（带诊断地降级），
     # 哪个文件、什么错、是否触顶都从这里对外（/api/health、领域 info）暴露。
     rules_report: dict | None = None
+    # 第二类合法说明来源（#119 §7.1）：框架按运行态生成的说明。
+    # 静态包走包内 guide.json；「导入的本体」没有包文件，生成结果缓存在句柄上。
+    # 两者都在**构建期**校验过，前端只认同一份响应形状。
+    guide_override: dict | None = None
     loaded_at: str = field(default_factory=_now)
 
     @property
     def description(self) -> str:
         return getattr(self.module, "DESCRIPTION", "") or ""
+
+    @property
+    def is_imported(self) -> bool:
+        """是否框架内置的「导入的本体」领域（说明由运行态生成）。"""
+        return self.guide_override is not None
+
+    @property
+    def display_name(self) -> str:
+        """对外展示名；预置包没有声明时回落到内部标识。"""
+        if self.guide_override is not None:
+            return str(self.guide_override.get("display_name") or self.name)
+        declared = getattr(self.module, "DISPLAY_NAME", None)
+        return declared if isinstance(declared, str) and declared.strip() else self.name
 
     @property
     def guide(self) -> dict:
@@ -102,7 +123,12 @@ class DomainHandle:
         让 `guide` 端点与包内文件始终一致。读取失败不会发生在一个已激活的
         句柄上——加载期已经拒绝过；若有人运行期删文件，端点会明确报错，
         而不是显示上一个包的内容。
+
+        「导入的本体」没有包内文件，说明在构建期由框架生成并校验，存在
+        `guide_override` 上；这条分支让两类来源对出口完全同构。
         """
+        if self.guide_override is not None:
+            return self.guide_override
         from domains.registry import load_domain_guide
 
         return load_domain_guide(self.name, self.module)
@@ -116,6 +142,8 @@ class DomainHandle:
         """可序列化的领域描述（端点返回用，不含模块/引擎对象）。"""
         out = {
             "name": self.name,
+            "display_name": self.display_name,
+            "imported": self.is_imported,
             "description": self.description,
             "onto_path": self.onto_path,
             "loaded_at": self.loaded_at,
@@ -250,8 +278,45 @@ class DomainManager:
         self._commit(handle)
         return handle
 
+    def activate_imported(self, engine, *, filename: str | None = None) -> DomainHandle:
+        """把「导入的本体」激活为当前领域，并绑定已有的引擎（#119）。
+
+        与 `activate(name)` 的关键差别：不按包目录建引擎，也不重新物化。
+        导入端点已经构造并推理过这份引擎，这里若再建一遍，导入时做的推理
+        就白做了（大本体上是分钟级浪费）。
+
+        原子性：适配器构造 / 说明生成 / 契约校验全部在 `_commit` 之前完成。
+        任何一步失败，`self._current` 与 `_engine` 一字不动，旧领域继续服务。
+        """
+        from domains import imported as imported_mod
+
+        adapter = imported_mod.ImportedOntologyAdapter(engine)
+        # 与静态包同一条契约校验：能力必须有落点，schema / 读写表不得冲突。
+        from domains.registry import _validate_adapter
+
+        _validate_adapter(imported_mod.NAME, adapter)
+        # 生成期校验（失败即整包拒绝）；不降级成半个说明页。
+        guide = imported_mod.build_guide(engine, filename=filename)
+        handle = DomainHandle(
+            name=imported_mod.NAME,
+            module=imported_mod,
+            engine=engine,
+            adapter=adapter,
+            onto_path=getattr(engine, "onto_path", "") or "",
+            guide_override=guide,
+        )
+        self._commit(handle)
+        return handle
+
     def reload(self) -> DomainHandle:
-        """L2：同包重载——重新执行领域代码并重建引擎（adapter.py 改了用它）。"""
+        """L2：同包重载——重新执行领域代码并重建引擎（adapter.py 改了用它）。
+
+        「导入的本体」没有包代码可重读；对它来说 L2 的等价语义是「重读当前
+        导入文件并重新推理」，所以复用 L1 的实现，仍然保持原子替换。
+        """
+        cur = self.current()
+        if cur.is_imported:
+            return self.reload_ontology()
         handle = self._build(self.current().name, reload=True)
         self._commit(handle, purge_old=False)
         return handle
@@ -269,6 +334,11 @@ class DomainManager:
             )
         except Exception as exc:
             raise DomainContractError(f"重载失败（旧状态保持可用）：{exc}") from exc
+        if cur.is_imported:
+            # 说明也随运行态重建：文件被编辑后类 / 个体 / 示例题一起换。
+            return self.activate_imported(
+                new_engine, filename=Path(cur.onto_path).name
+            )
         # 物化耗时（owlrl 展开占大头）由这里测：report 的 materialize_ms
         # 反映的是"本次引擎重建"的成本，而不是 0。
         return self.rebind(
@@ -284,6 +354,12 @@ class DomainManager:
         行为对比之前"适配器自己补规则"反而开倒车。
         """
         cur = self.current()
+        if cur.is_imported:
+            # 覆盖写回的是当前导入文件：说明也必须按新内容重建，
+            # 否则页头 / 示例题还停在上一次导入的类与个体上。
+            return self.activate_imported(
+                engine, filename=Path(engine.onto_path).name
+            )
         rules_report = self._run_domain_rules(cur.name, engine, materialize_ms)
         handle = DomainHandle(
             name=cur.name,
@@ -297,7 +373,12 @@ class DomainManager:
         return handle
 
     def use_engine(self, engine) -> None:
-        """进入通用模式：换掉对外服务的引擎，但不换领域（适配器仍属旧引擎）。"""
+        """只换对外服务的引擎，不换领域（适配器仍属旧引擎）。
+
+        这是 #119 之前的「通用模式」入口：导入本体后当前领域仍是上一个预置包，
+        说明页因此会出现混血响应。HTTP 端点已改用 `activate_imported()`；
+        保留本方法只为进程内兼容 / 测试，不应再从用户动作里调用。
+        """
         self._engine = engine
         self._sync_engine_singleton(engine)
         self._version += 1
@@ -305,6 +386,7 @@ class DomainManager:
     def restore_domain_engine(self) -> None:
         """退出通用模式：把对外引擎指回当前领域绑定的那个。"""
         self._engine = self.current().engine
+        self._version += 1
 
     # ------------------------------------------------------------ 内部
 

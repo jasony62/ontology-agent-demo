@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-11-12
+
 ### Added
 
 - **公理可干预阶段 2/3：`inverseOf` 可编辑 + 模板定义类（#117）**：阶段 2 在对象属性表单新增「逆属性」下拉，提取时把存量双向声明合并成一条逻辑公理，写回时删净两向、每对只保留一个方向（存量双写随之规约成单写）；逆属性校验目标必须是另一个对象属性且不能指向自身。保存前对比物化图与断言图，回执新增 `inverse_impact`，明确报出「本次改动影响 N 条既有推理结论」（删 `requires_capability`/`required_by` 时为 8，撤回后恢复）。阶段 3 新增只读 `definedClasses` 段与 `X ≡ A ⊓ ∃p.C` 模板：类编辑区以人话列出定义类，三选表单可新建/删除（自动补类声明、按 `intersectionOf` + `Restriction` 生成/回收 BNode 子树）；新建 `SeniorAgent` 后持证个体自动归入，删除定义后个体回归且无 BNode 残留。未做自由表达式、`subPropertyChainOf` 或通用 OWL 编辑器。

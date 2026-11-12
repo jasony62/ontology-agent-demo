@@ -13,7 +13,7 @@
 
 - **短名解析不再丢失 IRI 子路径（#120）**：引擎新增三级解析「完整 IRI → 主命名空间 → 全图唯一后缀」，`/dept/deptA`、`/capability/x` 这类带语义目录的 IRI 用短名也能查对；`types_of` / `objects_of` / `individuals_of` / `proof` 主体解析与说明页示例题统一走这一层。`/api/types`、`/api/property`、`/api/individuals` 在名称解析不到或短名命中多个 IRI 时返回 **400**（歧义时列出候选完整 IRI），不再静默返回空集；名称存在但确实没有类型/取值时仍是空列表，两者可区分。完整 IRI 原样使用，不因图里缺席被误判为解析失败。
 
-- **导入态的个体口径与推理呈现统一（#121）**：个体数此前说明页按「业务类为 rdf:type」数、`/api/infer` 只数 `owl:NamedIndividual`，同一张图会同时报 55 和 0。现口径收敛到 `OntologyEngine.individual_iris()`（显式 NamedIndividual ∪ 以业务类为 rdf:type 的具名主语），`/api/infer`、加载 / 保存 / 重载回执、说明页计数与示例题共用一份；说明页 `runtime.inference` 与 `/api/infer.breakdown` 把推理新增拆成自反 / 元层 / 业务三层，业务为 0 时明确写「推不出新的业务结论」。SPARQL 示例题不再把类声明 / `owl:Class` 自身当成个体；0 个体或 0 TBox 公理的本体不再静默少题——说明页在 `not_covers` 与能力说明里写清「看推理 / 查依据」为何不可用，补个体或公理后可验证。
+- **导入态的个体口径与推理呈现统一（#121）**：个体数此前说明页按「业务类为 rdf:type」数、`/api/infer` 只数 `owl:NamedIndividual`，同一张图会同时报 55 和 0。现口径收敛到 `OntologyEngine.individual_iris()`（显式 NamedIndividual ∪ 以业务类为 rdf:type 的具名主语），`/api/infer`、加载 / 保存 / 重载回执、说明页计数与示例题共用一份；说明页 `runtime.inference` 与 `/api/infer.breakdown` 把推理新增拆成自反 / 元层 / 业务三层，业务为 0 时明确写「推不出新的业务结论」。`runtime.counts.inferred` 与拆分总数改为同源（BNode 被重新标识时不再相差几十条），类计数复用 `/api/classes` 口径（排除 `owl:Nothing`）；IMP-01 的答案提示不再把 `owl:Thing` 算成用户写的类。SPARQL 示例题不再把类声明 / `owl:Class` 自身当成个体；0 个体或 0 TBox 公理的本体不再静默少题——说明页在 `not_covers` 与能力说明里写清「看推理 / 查依据」为何不可用，补个体或公理后可验证，并注明正文统计是导入时刻快照。
 
 ## [0.7.3] - 2026-11-12
 

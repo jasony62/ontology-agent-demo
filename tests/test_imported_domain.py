@@ -287,9 +287,16 @@ def test_zero_individual_ontology_is_explained_not_hidden(restore_engine):
     assert guide["runtime"]["counts"]["individuals"] == 0
     assert "术语层本体" in guide["profile"]["summary"]
 
-    by_capability = {e["capability"] for e in guide["examples"]}
-    assert by_capability == {"classes", "infer", "query_sparql"}
+    by_capability = {e["capability"]: e for e in guide["examples"]}
+    assert set(by_capability) == {"classes", "infer", "query_sparql"}
     assert all(e["answer_hint"] for e in guide["examples"])
+
+    # #121 R3：owl:Thing 是类树根，不是用户写的业务类，不进答案提示
+    hint = by_capability["classes"]["answer_hint"]
+    assert "Thing" not in hint
+    assert "Term" in hint and "Concept" in hint
+    # #121 R4：正文是导入时刻快照，运行态以第 06 问为准
+    assert any("快照" in item for item in guide["profile"]["constraints"])
 
     # 「查依据」整组消失必须给出原因，而不是静默少题
     assert any("没有业务个体" in item for item in guide["profile"]["not_covers"])

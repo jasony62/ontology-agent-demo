@@ -340,6 +340,16 @@ def test_guide_endpoint_returns_one_complete_response():
     assert "triples" in body["runtime"]["counts"]
     assert isinstance(body["runtime"]["individuals"], list)
 
+    # #121 R1/R2：同一响应里推理新增只有一个口径；类计数与 /api/classes 一致
+    counts = body["runtime"]["counts"]
+    inference = body["runtime"]["inference"]
+    assert counts["inferred"] == inference["total"]
+    assert (inference["reflexive"] + inference["meta"] + inference["business"]
+            == inference["total"])
+    assert counts["classes"] == len(
+        TestClient(M.app).post("/api/classes").json()["classes"]
+    )
+
     examples = {e["id"]: e for e in body["examples"]}
     assert examples["T2-01"]["safe"] is True
     assert examples["T2-01"]["endpoint"] == "POST /api/domains/current/capabilities/query"

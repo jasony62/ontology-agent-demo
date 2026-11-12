@@ -784,21 +784,19 @@ def _declared_capabilities(adapter) -> list[str]:
 
 
 def _runtime_counts(engine) -> dict:
-    """通用计数：不出现任何领域词汇（agents / tasks 这类统计留在 health）。"""
-    asserted = len(getattr(engine, "raw", engine.g))
-    total = len(engine.g)
-    classes = {
-        s for s in engine.g.subjects(RDF.type, OWL.Class)
-        if isinstance(s, URIRef)
-    } | {
-        s for s in engine.g.subjects(RDF.type, RDFS.Class)
-        if isinstance(s, URIRef)
-    }
+    """通用计数：不出现任何领域词汇（agents / tasks 这类统计留在 health）。
+
+    #121 R1：推理新增必须与 `runtime.inference.total` 同源。此前这里用
+    `len(g) - len(raw)`（减法），而 breakdown 用 `set(g) - set(raw)`（差集）；
+    BNode 被重新标识时 raw 不是 g 的子集，两个数会差出几十条，同屏自相矛盾。
+    #121 R2：类计数复用 `classes()` 的口径（排除 owl:Nothing），否则会
+    比 `/api/classes` 多 1。
+    """
     return {
-        "triples": total,
-        "asserted": asserted,
-        "inferred": max(total - asserted, 0),
-        "classes": len(classes),
+        "triples": len(engine.g),
+        "asserted": len(getattr(engine, "raw", engine.g)),
+        "inferred": engine.inference_breakdown()["total"],
+        "classes": len(engine.classes()),
         # #121：口径只有一份（引擎），/api/infer、说明页与示例题报同一个数。
         "individuals": engine.individual_count(),
     }

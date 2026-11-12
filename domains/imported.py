@@ -198,7 +198,10 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
     """
     filename = filename or os.path.basename(getattr(engine, "onto_path", "") or "") or "（未命名）"
     classes = engine.classes()
-    class_names = [item["name"] for item in classes]
+    # owl:Thing 是前端类树的根节点（classes() 保留它），不是用户写的业务类：
+    # 直接铺进「有哪些类」的答案会让人以为自己建了 Thing（#121 R3）。
+    business_classes = [item for item in classes if item["name"] != "Thing"]
+    class_names = [item["name"] for item in business_classes]
     # #121：个体口径只有一份（引擎），不再在这里另写一套宽松判据。
     individuals = engine.individual_names()
     individual_count = len(individuals)
@@ -226,7 +229,7 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
         "看结构",
     ))
 
-    focus_class = _first_class_with_individuals(engine, classes)
+    focus_class = _first_class_with_individuals(engine, business_classes)
     if focus_class is not None:
         class_name, members = focus_class
         examples.append(_example(
@@ -414,6 +417,7 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
             "只读：不在导入的本体上新建 / 修改 / 删除个体，也不覆盖原文件",
             "个体口径：显式 owl:NamedIndividual ∪ 以业务类为 rdf:type 的具名主语，与 /api/infer 一致",
             "推理口径：OWL 2 RL 物化；新增拆成自反 / 元层 / 业务，重新推理只补新增结论",
+            "正文统计为导入时刻快照；运行态数字以第 06 问为准（重新推理可能补 1 条惰性断言）",
             "重启服务回到配置里的默认领域；导入文件仍在 data/uploads/，可重新导入",
         ],
         "examples": examples,

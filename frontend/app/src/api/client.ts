@@ -279,6 +279,8 @@ export interface GuideRuntime {
     asserted: number;
     inferred: number;
     classes: number;
+    /** 不含 owl:Thing 的业务类（#130）；旧后端不发时前端按总数显示 */
+    business_classes?: number;
     individuals: number;
   };
   /** 推理新增构成（#121）：三层互斥，相加等于 counts.inferred */

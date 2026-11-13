@@ -538,6 +538,14 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
     () => guide?.examples.find((example) => example.safe) ?? null,
     [guide],
   );
+  // #130 R3：类计数含 owl:Thing 兜底根，示例题 IMP-01 的「共 N 个类」不含它。
+  // 只在导入的本体上标注（默认领域没有类示例题，多一个「业务类」反而多一个问题）。
+  const counts = guide?.runtime.counts;
+  const classLabel =
+    guide?.imported && counts && counts.business_classes !== undefined
+    && counts.business_classes !== counts.classes
+      ? `类（业务类 ${counts.business_classes}）`
+      : '类';
   // #114：只声明了部分 group 时，未声明的题归入「其余示例」；一个 group 都没声明
   // 则返回 null，页面保持原来的平铺（旧领域包不受影响）。
   const exampleSections = useMemo(
@@ -961,7 +969,7 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
               <div><b>{runtime.counts.triples}</b><span>推理后三元组</span></div>
               <div><b>{runtime.counts.asserted}</b><span>文件里声明的</span></div>
               <div><b>{runtime.counts.inferred}</b><span>推出来的</span></div>
-              <div><b>{runtime.counts.classes}</b><span>类</span></div>
+              <div><b>{runtime.counts.classes}</b><span>{classLabel}</span></div>
               <div><b>{runtime.counts.individuals}</b><span>个体</span></div>
             </div>
             {runtime.inference && (

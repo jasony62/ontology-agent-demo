@@ -794,12 +794,17 @@ def _runtime_counts(engine) -> dict:
     BNode 被重新标识时 raw 不是 g 的子集，两个数会差出几十条，同屏自相矛盾。
     #121 R2：类计数复用 `classes()` 的口径（排除 owl:Nothing），否则会
     比 `/api/classes` 多 1。
+    #130 R3：owl:Thing 是类树的兜底根，不是用户写的业务类。`classes()` 保留
+    它（前端类树需要根），而示例题 IMP-01 的「共 N 个类」不含它；统计卡若只
+    给总数，同一页会出现 4 与 3 两个都对却互相矛盾的数字。业务类单列。
     """
+    classes = engine.classes()
     return {
         "triples": len(engine.g),
         "asserted": len(getattr(engine, "raw", engine.g)),
         "inferred": engine.inference_breakdown()["total"],
-        "classes": len(engine.classes()),
+        "classes": len(classes),
+        "business_classes": sum(1 for item in classes if item["name"] != "Thing"),
         # #121：口径只有一份（引擎），/api/infer、说明页与示例题报同一个数。
         "individuals": engine.individual_count(),
     }

@@ -166,6 +166,19 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(text).toContain('下一步：切到「只看推理新增」看结论');
   });
 
+  it('#130 类计数含 owl:Thing 时标注业务类，与示例题「共 N 个类」对得上', () => {
+    const guide: DomainGuide = {
+      ...GUIDE,
+      imported: true,
+      runtime: {
+        ...GUIDE.runtime,
+        counts: { ...GUIDE.runtime.counts, classes: 4, business_classes: 3 },
+      },
+    };
+    render(<DomainGuidePage guide={guide} error={null} loading={false} onRetry={() => {}} />);
+    expect(container!.textContent).toContain('类（业务类 3）');
+  });
+
   it('只读示例：下拉候选来自 runtime.individuals，换值后请求体同步变化', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

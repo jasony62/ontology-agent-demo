@@ -295,6 +295,11 @@ def test_zero_individual_ontology_is_explained_not_hidden(restore_engine):
     hint = by_capability["classes"]["answer_hint"]
     assert "Thing" not in hint
     assert "Term" in hint and "Concept" in hint
+    # #130 R3：统计卡与 IMP-01 答案对得上——类总数含 owl:Thing 兜底根，
+    # 业务类单列，同一页不再出现「4 个类」与「共 2 个类」并存。
+    counts = guide["runtime"]["counts"]
+    assert counts["business_classes"] == 2
+    assert counts["classes"] == counts["business_classes"] + 1
     # #121 R4：正文是导入时刻快照，运行态以第 06 问为准
     assert any("快照" in item for item in guide["profile"]["constraints"])
 

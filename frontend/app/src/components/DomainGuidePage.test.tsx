@@ -105,7 +105,40 @@ const GUIDE: DomainGuide = {
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
+/**
+ * 测试夹具补齐 #139 的 `capability_slots`：槽位来自能力说明 ∪ 题目里的能力名，
+ * 状态直接沿用框架已判定的 `safe / reason`（测试不重造后端判定）。
+ */
+function withGuide(guide: DomainGuide): DomainGuide {
+  if (guide.capability_slots) return guide;
+  const capabilities = [
+    ...new Set([
+      ...Object.keys(guide.profile.capability_notes),
+      ...guide.examples.map((example) => example.capability),
+    ]),
+  ];
+  return {
+    ...guide,
+    capability_slots: capabilities.map((capability) => {
+      const examples = guide.examples.filter((item) => item.capability === capability);
+      const runnable = examples.some((item) => item.safe);
+      const state = examples.length === 0 ? 'no_example' : runnable ? 'runnable' : 'write_only';
+      return {
+        capability,
+        note: guide.profile.capability_notes[capability] ?? null,
+        state,
+        reason: state === 'runnable' ? null : (examples[0]?.reason ?? '当前不可试跑'),
+        next_steps: state === 'runnable'
+          ? []
+          : [{ action: 'open_endpoint', label: '看请求参数与示例（第 05 问）' }],
+        examples,
+      };
+    }),
+  };
+}
+
 beforeEach(() => {
+  window.localStorage.clear();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -131,7 +164,7 @@ function buttons(text?: string): HTMLButtonElement[] {
 
 describe('DomainGuidePage（#103 当前领域单页）', () => {
   it('渲染六问目录、覆盖 / 不覆盖与示例题，safe 由响应决定', () => {
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
 
     const text = container!.textContent ?? '';
     for (const title of ['这个包是干什么的', '能问它什么', '能让它做什么', '凭什么可信', '怎么接进去', '现在跑的是哪一份']) {
@@ -158,7 +191,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
   it('#135 切题后把新展开的卡片滚到内容区顶部，而不是 section 顶部', () => {
     // 全局 scrollIntoView 在文件顶部被打成空实现：这里换成 spy，断言真的定位到卡片。
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
 
     const cardOf = (id: string) => container!.querySelector(`#guide-example-${id}`)!;
     const openOf = (id: string) =>
@@ -189,7 +222,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     vi.stubGlobal('fetch', fetchMock);
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
 
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
     const card = container!.querySelector('#guide-example-T2-01')!;
     act(() => ([...card.querySelectorAll('button')].find((b) => b.textContent === '照着做') as HTMLButtonElement).click());
     expect(scroll).toHaveBeenCalledTimes(1);
@@ -205,7 +238,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
   });
 
   it('#135 发送入口放在参数之后、请求预览之前，展开首屏可见', () => {
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
     const card = container!.querySelector('#guide-example-T2-01')!;
     act(() => ([...card.querySelectorAll('button')].find((b) => b.textContent === '照着做') as HTMLButtonElement).click());
 
@@ -222,7 +255,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
   });
 
   it('#135 换包后不残留展开项与滚动位置', () => {
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
     const card = container!.querySelector('#guide-example-T2-01')!;
     act(() => ([...card.querySelectorAll('button')].find((b) => b.textContent === '照着做') as HTMLButtonElement).click());
     expect(container!.querySelector('.guide-example.open')).not.toBeNull();
@@ -230,13 +263,13 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     const content = container!.querySelector('.guide-content') as HTMLDivElement;
     content.scrollTop = 620;
 
-    render(<DomainGuidePage guide={{ ...GUIDE, domain: 'other_domain' }} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide({ ...GUIDE, domain: 'other_domain' })} error={null} loading={false} onRetry={() => {}} />);
     expect(container!.querySelector('.guide-example.open')).toBeNull();
     expect(content.scrollTop).toBe(0);
   });
 
   it('#129 本体体检：分型、预期与下一步同屏给出', () => {
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
     const text = container!.textContent ?? '';
 
     expect(text).toContain('本体体检');
@@ -256,7 +289,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
         counts: { ...GUIDE.runtime.counts, classes: 4, business_classes: 3 },
       },
     };
-    render(<DomainGuidePage guide={guide} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(guide)} error={null} loading={false} onRetry={() => {}} />);
     expect(container!.textContent).toContain('类（业务类 3）');
   });
 
@@ -269,7 +302,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
 
     const card = container!.querySelector('#guide-example-T2-01')!;
     const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
@@ -301,7 +334,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
   });
 
   it('变更能力示例只给请求预览与原因，不出现试跑按钮', () => {
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
 
     const card = container!.querySelector('#guide-example-T2-08')!;
     const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
@@ -312,7 +345,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(card.textContent).toContain('仅预览');
   });
 
-  it('空槽位是正式状态：明确说「该包未提供」，不显示空表也不拿别的包填充', () => {
+  it('空槽位是正式状态：明确说「未声明任何能力槽位」，不显示空表也不拿别的包填充', () => {
     const empty: DomainGuide = {
       ...GUIDE,
       profile: { ...GUIDE.profile, examples: [], capability_notes: {} },
@@ -323,20 +356,20 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
         unavailable_examples: [],
       },
     };
-    render(<DomainGuidePage guide={empty} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(empty)} error={null} loading={false} onRetry={() => {}} />);
 
     const text = container!.textContent ?? '';
-    expect(text).toContain('该包未提供示例题');
+    expect(text).toContain('该包未声明任何能力槽位');
     expect(text).toContain('该包暂未提供用途说明');
     expect(container!.querySelectorAll('.guide-example')).toHaveLength(0);
   });
 
   it('通用模式下领域能力整组置灰并给出原因', () => {
     const generic: DomainGuide = { ...GUIDE, mode: 'generic' };
-    render(<DomainGuidePage guide={generic} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(generic)} error={null} loading={false} onRetry={() => {}} />);
 
     const text = container!.textContent ?? '';
-    expect(text).toContain('当前加载的是自定义本体（通用模式）');
+    expect(text).toContain('领域能力整组不可用');
     expect(container!.querySelectorAll('.guide-cap-grid .guide-cap-group.is-disabled')).toHaveLength(3);
   });
 
@@ -347,6 +380,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
       display_name: '导入的本体',
       imported: true,
       examples: [],
+      profile: { ...GUIDE.profile, display_name: '导入的本体' },
       runtime: {
         ...GUIDE.runtime,
         ontology: '3f2a1b9c-people.owl',
@@ -359,13 +393,15 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
       },
       reconcile: { notes_without_capability: [], capabilities_without_note: [], unavailable_examples: [] },
     };
-    render(<DomainGuidePage guide={imported} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(imported)} error={null} loading={false} onRetry={() => {}} />);
 
     const text = container!.textContent ?? '';
-    // 内部标识 imported 不上页面，展示名固定是「导入的本体」
+    // 内部标识 imported 不上页面；展示名只在 06 问的「领域」里保留一处
     expect(text).not.toContain('imported');
-    expect(container!.querySelector('.guide-pill')!.textContent).toBe('导入的本体');
-    expect(text).toContain('当前对外服务的是导入的本体');
+    const domainRow = [...container!.querySelectorAll('.guide-kv')]
+      .find((row) => row.textContent?.startsWith('领域'));
+    expect(domainRow?.textContent).toContain('导入的本体');
+    expect(text).toContain('只读：领域专属推理不可用');
     expect(text).toContain('导入的本体（只读）');
     // 真实文件名出现在运行态，而不是拿来当领域名
     expect(text).toContain('3f2a1b9c-people.owl');
@@ -405,7 +441,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
         reason: null,
       }],
     };
-    render(<DomainGuidePage guide={imported} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(imported)} error={null} loading={false} onRetry={() => {}} />);
 
     const card = container!.querySelector('#guide-example-IMP-07')!;
     const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
@@ -455,7 +491,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
         },
       ],
     };
-    render(<DomainGuidePage guide={withGeneric} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(withGeneric)} error={null} loading={false} onRetry={() => {}} />);
 
     const card = container!.querySelector('#guide-example-T2-05')!;
     const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
@@ -542,7 +578,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
         },
       ],
     };
-    render(<DomainGuidePage guide={withPlan} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(withPlan)} error={null} loading={false} onRetry={() => {}} />);
 
     const card = container!.querySelector('#guide-example-T2-15')!;
     const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
@@ -588,7 +624,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
         ],
       },
     };
-    render(<DomainGuidePage guide={withMap} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(withMap)} error={null} loading={false} onRetry={() => {}} />);
     const paradigm = container!.querySelector('.guide-paradigm')!;
     expect(paradigm).not.toBeNull();
     expect(paradigm.textContent).toContain('范式要素对照');
@@ -601,7 +637,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
 
     act(() => root!.unmount());
     root = createRoot(container!);
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
     expect(container!.querySelector('.guide-paradigm')).toBeNull();
   });
 
@@ -637,7 +673,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
         },
       ],
     };
-    render(<DomainGuidePage guide={withPredict} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(withPredict)} error={null} loading={false} onRetry={() => {}} />);
 
     const card = container!.querySelector('#guide-example-P1-01')!;
     // 猜之前：题干卡片不展示期望答案
@@ -671,6 +707,103 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(card.textContent).toContain('✓ 预测正确');
   });
 
+  it('#137 首屏只留现状卡：文件名 + 数字，摘要全页只渲染一次、三步条已删除', () => {
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
+    const text = container!.textContent ?? '';
+
+    expect(container!.querySelector('.guide-status-name')?.textContent).toBe('agent_task_ontology.owl');
+    expect(container!.querySelector('.guide-status-facts')?.textContent).toContain('个体');
+    // profile.summary 只在 01 区出现一次
+    expect(text.split(GUIDE.profile.summary).length - 1).toBe(1);
+    // 常驻三步条与首屏状态 pill 都已移除
+    expect(container!.querySelector('.guide-steps')).toBeNull();
+    expect(container!.querySelector('.guide-pill')).toBeNull();
+  });
+
+  it('#137 首次进来点「带我试一题」会真发一次只读请求，跑过即消失', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ matches: ['dev_agent'] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
+
+    const start = buttons('带我试一题')[0];
+    expect(start).toBeTruthy();
+    await act(async () => { start.click(); });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(container!.textContent).toContain('本次真实返回');
+    expect(buttons('带我试一题')).toHaveLength(0);
+    expect(window.localStorage.getItem('oa.onboarding.dismissed.v1')).toBe('1');
+  });
+
+  it('#137 01 区 scenarios 是可点入口，点击后确有页面变化', () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
+
+    const scenario = [...container!.querySelectorAll<HTMLButtonElement>('.guide-tag-action')][0];
+    act(() => scenario.click());
+    expect(scroll).toHaveBeenCalled();
+    expect(scenario.className).toContain('guide-tag-action');
+  });
+
+  it('#139 不可执行的槽位未展开就给出原因与可点的下一步', () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const withSlots: DomainGuide = {
+      ...GUIDE,
+      profile: {
+        ...GUIDE.profile,
+        capability_notes: { capability_match: '谁能做这个任务', assign: '分配任务' },
+      },
+      examples: [GUIDE.examples[1]],
+    };
+    render(<DomainGuidePage guide={withGuide(withSlots)} error={null} loading={false} onRetry={() => {}} />);
+
+    const slots = [...container!.querySelectorAll('.guide-slot')];
+    expect(slots).toHaveLength(2);
+    const blocked = slots.find((slot) => slot.textContent?.includes('仅预览请求'))!;
+    expect(blocked.textContent).toContain('为什么：');
+    expect(blocked.textContent).toContain('怎么才能用：');
+    expect(blocked.textContent).toContain('该能力会修改本体');
+
+    const step = [...blocked.querySelectorAll<HTMLButtonElement>('button.guide-step')][0];
+    act(() => step.click());
+    expect(scroll.mock.contexts).toContain(document.getElementById('guide-integrations'));
+  });
+
+  it('#142 04 区只答「可信 / 被拦」，约束声明移到 06 问，规则层为空不再渲染死卡片', () => {
+    const trustGuide: DomainGuide = {
+      ...GUIDE,
+      profile: { ...GUIDE.profile, constraints: ['只读：不覆盖原文件'] },
+      runtime: { ...GUIDE.runtime, rules: null },
+      examples: [],
+    };
+    render(<DomainGuidePage guide={withGuide(trustGuide)} error={null} loading={false} onRetry={() => {}} />);
+
+    const trust = container!.querySelector('#guide-trust')!;
+    expect(trust.textContent).toContain('凭什么可信');
+    expect(trust.textContent).toContain('什么会被拦');
+    expect(trust.textContent).toContain('真实闸门在能力层');
+    expect(trust.textContent).toContain('当前领域没有加载规则层');
+    expect(trust.textContent).not.toContain('约束摘要');
+    expect(trust.textContent).not.toContain('该包没有规则执行报告');
+    // 作者声明的口径归到 06 问排障
+    expect(container!.querySelector('#guide-runtime')!.textContent).toContain('只读：不覆盖原文件');
+  });
+
+  it('#138 术语提示可整体关闭，关闭后不渲染任何标记', () => {
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
+    expect(container!.querySelectorAll('.term-mark').length).toBeGreaterThan(0);
+
+    const toggle = container!.querySelector('.guide-glossary-toggle input') as HTMLInputElement;
+    act(() => toggle.click());
+    expect(container!.querySelectorAll('.term-mark')).toHaveLength(0);
+    expect(window.localStorage.getItem('oa.glossary.off.v1')).toBe('1');
+  });
+
   it('读不到说明时明确失败并可重试，不拿缓存当现状', () => {
     const onRetry = vi.fn();
     render(<DomainGuidePage guide={null} error="无法读取当前领域信息：500" loading={false} onRetry={onRetry} />);
@@ -684,7 +817,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it('示例题按 group 分组：看一次编排 → 预测一次变化 → 其余，未声明则保持平铺（#114）', () => {
+  it('题目分组退为槽位内次级信息：group 标签随题显示，不再单独决定区块（#114/#139）', () => {
     const grouped: DomainGuide = {
       ...GUIDE,
       examples: [
@@ -693,21 +826,15 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
         { ...GUIDE.examples[0], id: 'P1-01', question: '改一处风险会怎样？', group: '预测一次变化' },
       ],
     };
-    render(<DomainGuidePage guide={grouped} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(grouped)} error={null} loading={false} onRetry={() => {}} />);
 
-    const groups = [...container!.querySelectorAll('.guide-example-group')];
-    expect(groups).toHaveLength(3);
-    const titles = [...container!.querySelectorAll('.guide-group-title')].map((el) => el.textContent ?? '');
-    expect(titles[0]).toContain('看一次编排');
-    expect(titles[1]).toContain('预测一次变化');
-    expect(titles[2]).toContain('其余示例');
-    expect(groups[0].textContent).toContain('T2-15');
-    expect(groups[2].textContent).toContain('T2-01');
-
-    // 一个 group 都没声明：与旧行为一致，不出现空组标题
-    act(() => root!.unmount());
-    root = createRoot(container!);
-    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    // 题目都挂在能力槽位下；分组只作为题卡上的标签
+    const slotWithExamples = [...container!.querySelectorAll('.guide-slot')]
+      .find((slot) => slot.querySelectorAll('.guide-example').length > 0)!;
+    expect(slotWithExamples.querySelectorAll('.guide-example')).toHaveLength(3);
+    const tags = [...slotWithExamples.querySelectorAll('.guide-example-group-tag')].map((el) => el.textContent);
+    expect(tags).toContain('看一次编排');
+    expect(tags).toContain('预测一次变化');
     expect(container!.querySelector('.guide-group-title')).toBeNull();
   });
 
@@ -753,7 +880,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
         },
       }],
     };
-    render(<DomainGuidePage guide={withSimulate} error={null} loading={false} onRetry={() => {}} />);
+    render(<DomainGuidePage guide={withGuide(withSimulate)} error={null} loading={false} onRetry={() => {}} />);
 
     const card = container!.querySelector('#guide-example-P1-01')!;
     act(() => ([...card.querySelectorAll('button')].find((b) => b.textContent === '照着做') as HTMLButtonElement).click());

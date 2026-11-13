@@ -1002,6 +1002,101 @@ def _run_read_capability(engine, adapter, capability: str, params: dict) -> dict
     return handler(adapter, CapabilityQueryRequest(kind=capability, params=params))
 
 
+# 能力槽位的五态（#139）。状态由框架按运行态判定，领域包不得自填：
+#   runnable        当前可页内试跑（只读能力或框架通用只读端点）
+#   no_example      能力可用，但当前本体内容造不出示例题
+#   blocked_generic 通用模式下领域能力整组不可用
+#   write_only      变更能力：会改本体，不提供页内试跑
+#   mcp_only        不在只读 / 变更清单中，可能只经 MCP 暴露
+CAPABILITY_SLOT_STATES = (
+    "runnable", "no_example", "blocked_generic", "write_only", "mcp_only",
+)
+
+
+def _slot_step(action: str, label: str, target: str | None = None) -> dict:
+    """槽位的下一步：前端按 `action` 渲染，不硬编码端点路径或切包步骤。"""
+    step = {"action": action, "label": label}
+    if target:
+        step["target"] = target
+    return step
+
+
+def _no_example_reason(counts: dict) -> str:
+    """能力可用但没有示例题时，指向当前本体的具体事实（#139 §6）。"""
+    if counts.get("individuals", 0) == 0:
+        return "这是一份术语层本体，没有业务个体可验证；返回空集是正常结论"
+    return (
+        "当前本体有个体，但缺少这类问题需要的内容"
+        "（业务类下没有个体，或焦点个体没有属性关系）"
+    )
+
+
+def _capability_slots(
+    notes: dict, declared: list[str], examples: list[dict],
+    query_kinds: list[str], apply_kinds: list[str], *,
+    domain_mode: bool, counts: dict,
+) -> list[dict]:
+    """把「领域声明的能力」补成固定槽位视图（#139 R1/R2）。
+
+    槽位全集 = `capability_notes` 的键 ∪ `runtime.declared_capabilities`，
+    与示例题解耦：题目按本体内容生成，可以是 0 道；槽位始终在。状态、原因与
+    下一步同样由框架按运行态算，换任意领域 / 本体都成立。
+    """
+    query = set(query_kinds)
+    apply = set(apply_kinds)
+    by_capability: dict[str, list[dict]] = {}
+    for example in examples:
+        by_capability.setdefault(example["capability"], []).append(example)
+
+    order = list(notes)
+    order += [cap for cap in declared if cap not in notes]
+    # 示例题可能引用框架级通用只读能力（例如 query_sparql / property_values），
+    # 这些不在领域声明里，但既然有题就必须有落点，否则题目会从 02 区消失。
+    order += [cap for cap in by_capability if cap not in order]
+
+    slots: list[dict] = []
+    for capability in order:
+        items = by_capability.get(capability, [])
+        if not domain_mode:
+            state = "blocked_generic"
+            reason = "当前为通用模式，领域能力整组不可用"
+            steps = [
+                _slot_step("reload_domain", "重载领域，回到领域包"),
+                _slot_step("open_endpoint", "先看可用端点（第 05 问）"),
+            ]
+        elif capability in query or capability in GUIDE_GENERIC_ENDPOINTS:
+            if items:
+                state, reason, steps = "runnable", None, []
+            else:
+                state = "no_example"
+                reason = _no_example_reason(counts)
+                steps = [
+                    _slot_step("open_endpoint", "直接调用通用只读端点（第 05 问）"),
+                    _slot_step("import_ontology", "导入含业务个体的本体"),
+                ]
+        elif capability in apply:
+            state = "write_only"
+            reason = "该能力会修改本体，不提供页内试跑"
+            steps = [
+                _slot_step("open_write_flow", "看写入确认流程（第 03 问）"),
+                _slot_step("open_endpoint", "看请求参数与示例（第 05 问）"),
+            ]
+        else:
+            state = "mcp_only"
+            reason = "该能力不在只读 / 变更能力清单中，可能只经 MCP 暴露"
+            steps = [_slot_step("open_endpoint", "看 MCP 接入与工具说明（第 05 问）")]
+
+        slots.append({
+            "capability": capability,
+            "note": notes.get(capability),
+            "state": state,
+            "reason": reason,
+            "next_steps": steps,
+            "examples": items,
+        })
+    return slots
+
+
 def _guide_examples(
     profile: dict, query_kinds: list[str], apply_kinds: list[str], *,
     domain_mode: bool,
@@ -1101,6 +1196,13 @@ def domain_guide():
     )
     profile = {k: v for k, v in guide.items() if k != "guide_version"}
     notes = profile["capability_notes"]
+    counts = _runtime_counts(ENGINE)
+    # #139：槽位来自领域声明（能力说明 ∪ 已声明能力），与示例题解耦；
+    # 原因 / 下一步由框架按运行态判定，包不自填。
+    capability_slots = _capability_slots(
+        notes, declared, examples, query_kinds, apply_kinds,
+        domain_mode=domain_mode, counts=counts,
+    )
 
     # 对账由框架算，前端只渲染：说明里写了但能力表没有、能力表有但没写说明、
     # 以及当前不可试跑的示例题。三者都来自同一份响应。
@@ -1180,7 +1282,7 @@ def domain_guide():
             # 完整落盘名保留在 ontology 里，供排查与下载对账。
             "ontology_display": display_filename(_ontology_basename(ENGINE, handle)),
             "mcp": mcp,
-            "counts": _runtime_counts(ENGINE),
+            "counts": counts,
             # #121：推理新增拆成自反 / 元层 / 业务；单给总数会把 1000 条
             # 「A 等于 A」当成卖点。三层互斥且相加等于 counts.inferred。
             "inference": ENGINE.inference_breakdown(),
@@ -1193,6 +1295,8 @@ def domain_guide():
             "individuals": _runtime_individuals(ENGINE),
         },
         "reconcile": reconcile,
+        # #139：固定槽位视图——02 区按它渲染，题目挂在槽位下，可为空。
+        "capability_slots": capability_slots,
         "examples": examples,
     }
 

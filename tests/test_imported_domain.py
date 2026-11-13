@@ -128,6 +128,14 @@ def test_load_activates_imported_domain_and_guide_uses_real_data(restore_engine)
     }
     assert guide["reconcile"]["unavailable_examples"] == []
 
+    # #139：导入态 7 个能力槽位固定全显，顺序与声明一致；本题集全部能出题
+    slots = guide["capability_slots"]
+    assert [slot["capability"] for slot in slots] == guide["runtime"]["declared_capabilities"]
+    assert len(slots) == 7
+    assert all(slot["state"] in {"runnable", "no_example"} for slot in slots)
+    assert all(bool(slot["examples"]) == (slot["state"] == "runnable") for slot in slots)
+    assert any(slot["state"] == "runnable" for slot in slots)
+
     by_capability = {e["capability"]: e for e in guide["examples"]}
     assert "classes" in by_capability
     assert by_capability["individuals"]["params"] == {"class_name": "Employee"}

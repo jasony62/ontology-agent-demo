@@ -1,0 +1,242 @@
+[
+  {
+    "term": "本体",
+    "aliases": [],
+    "plain": "一份把概念和它们的关系写清楚的模型",
+    "where": "页头的领域；06 问的已加载本体",
+    "level": "L1",
+    "exclude": []
+  },
+  {
+    "term": "类",
+    "aliases": [],
+    "plain": "一组事物的共同名字",
+    "where": "01 / 04 问的类计数；图谱里的类节点",
+    "level": "L1",
+    "exclude": ["类型", "类别", "分类", "类目", "类层次", "类似", "人类"]
+  },
+  {
+    "term": "个体",
+    "aliases": ["实例"],
+    "plain": "类里的一个具体东西",
+    "where": "04 问的个体计数；示例题参数下拉的候选",
+    "level": "L1",
+    "exclude": ["个体数"]
+  },
+  {
+    "term": "属性",
+    "aliases": ["属性值", "属性取值"],
+    "plain": "描述一个对象某方面情况的字段",
+    "where": "示例题的参数；05 问新建实体的字段",
+    "level": "L1",
+    "exclude": []
+  },
+  {
+    "term": "关系",
+    "aliases": ["对象属性"],
+    "plain": "两个类或个体之间的一条联系",
+    "where": "图谱里的连线；05 问的接入说明",
+    "level": "L1",
+    "exclude": []
+  },
+  {
+    "term": "三元组",
+    "aliases": [],
+    "plain": "一条「谁 — 关系 — 什么值」的记录",
+    "where": "04 问的推理后三元组；图谱里的一条连线",
+    "level": "L1",
+    "exclude": []
+  },
+  {
+    "term": "公理",
+    "aliases": [],
+    "plain": "写在本体里的规则，让推理能得出新结论",
+    "where": "体检卡的公理计数；有它才推得出业务结论",
+    "level": "L1",
+    "exclude": []
+  },
+  {
+    "term": "推理",
+    "aliases": [],
+    "plain": "按公理从已有事实得出新结论",
+    "where": "04 问的推出来的；图谱里的推理新增连线",
+    "level": "L1",
+    "exclude": []
+  },
+  {
+    "term": "子类",
+    "aliases": [],
+    "plain": "继承另一个类的类",
+    "where": "01 问的类层次；图谱里的结构边",
+    "level": "L1",
+    "exclude": []
+  },
+  {
+    "term": "规则",
+    "aliases": [],
+    "plain": "一条「满足什么条件就推出什么」的约定",
+    "where": "04 问的规则层执行报告",
+    "level": "L1",
+    "exclude": ["规则层"]
+  },
+  {
+    "term": "物化",
+    "aliases": ["OWL 2 RL 物化"],
+    "plain": "把推理能得出的结论先算好，跟原始声明放一起",
+    "where": "04 问的推出来的数字；图谱里的推理新增连线",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "断言图",
+    "aliases": [],
+    "plain": "文件里直接写明的记录集合",
+    "where": "04 问的「文件里声明的」数字",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "派生三元组",
+    "aliases": [],
+    "plain": "由推理补出来的新记录",
+    "where": "规则层报告里的派生条数",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "TBox",
+    "aliases": ["TBox 公理"],
+    "plain": "描述类与属性的公理集合",
+    "where": "体检卡的 TBox 公理计数",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "ABox",
+    "aliases": [],
+    "plain": "描述个体的记录集合",
+    "where": "断言图里的个体事实",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "自反",
+    "aliases": [],
+    "plain": "自己指向自己的结论，不算业务新知识",
+    "where": "04 问推理新增构成的第一项",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "元层",
+    "aliases": [],
+    "plain": "关于本体自身结构的结论",
+    "where": "04 问推理新增构成的第二项",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "推导依据",
+    "aliases": ["推导依据链"],
+    "plain": "一条结论由哪些已有结论与规则得来",
+    "where": "示例题的依据链；GET /api/ontology/proof",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "规则层",
+    "aliases": [],
+    "plain": "领域包自带的业务规则文件",
+    "where": "04 问的规则层执行报告",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "本体体检",
+    "aliases": [],
+    "plain": "按当前内容判断哪些功能有得看",
+    "where": "01 区的体检卡",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "领域包",
+    "aliases": [],
+    "plain": "给本体配的领域能力与说明",
+    "where": "页头的领域下拉；06 问的领域",
+    "level": "L2",
+    "exclude": ["领域模式", "领域专属"]
+  },
+  {
+    "term": "只读能力",
+    "aliases": [],
+    "plain": "只查不改，跑几次结果都一样",
+    "where": "03 问第一组能力；可点「用示例问一次」",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "契约",
+    "aliases": [],
+    "plain": "说明文件必须满足的格式与必填项",
+    "where": "06 问的「契约通过」",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "命名空间",
+    "aliases": [],
+    "plain": "给一组名字起的公共前缀",
+    "where": "图谱与接口里的名称来源",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "兜底类",
+    "aliases": [],
+    "plain": "没归到具体类时使用的类",
+    "where": "图例里的 Thing",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "业务类",
+    "aliases": [],
+    "plain": "本体里实际描述业务的类",
+    "where": "01 / 04 问的业务类计数",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "推理新增",
+    "aliases": [],
+    "plain": "推理后比原文件多出来的结论",
+    "where": "04 问的推出来的；图谱里的绿色虚线",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "断言边",
+    "aliases": [],
+    "plain": "文件里直接写明的连线",
+    "where": "图谱里的实线",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "能力槽位",
+    "aliases": [],
+    "plain": "领域声明的每一项可调用能力",
+    "where": "02 区的一张槽位卡",
+    "level": "L2",
+    "exclude": []
+  },
+  {
+    "term": "图谱",
+    "aliases": [],
+    "plain": "把类和个体画成节点与连线的视图",
+    "where": "左侧的图谱工作台",
+    "level": "L2",
+    "exclude": []
+  }
+]

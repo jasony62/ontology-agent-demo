@@ -385,6 +385,64 @@ def test_guide_endpoint_returns_one_complete_response():
     assert {i["id"] for i in reconcile["unavailable_examples"]} <= set(examples)
 
 
+def test_capability_slots_cover_declared_capabilities():
+    """#139：02 区按槽位渲染——能力全集固定、题目挂在槽位下、状态与指引自洽。"""
+    from fastapi.testclient import TestClient
+
+    body = TestClient(M.app).get("/api/domains/current/guide").json()
+    slots = body["capability_slots"]
+    assert slots, "guide 响应必须给出能力槽位"
+    capabilities = [slot["capability"] for slot in slots]
+    assert len(capabilities) == len(set(capabilities))
+    assert set(capabilities) >= set(body["runtime"]["declared_capabilities"])
+    assert set(capabilities) >= set(body["profile"]["capability_notes"])
+
+    # 每道题只挂在一个槽位下，且槽位里的题目与顶层 examples 同源
+    assigned = [example["id"] for slot in slots for example in slot["examples"]]
+    assert sorted(assigned) == sorted(example["id"] for example in body["examples"])
+
+    for slot in slots:
+        assert slot["state"] in M.CAPABILITY_SLOT_STATES
+        if slot["state"] == "runnable":
+            assert slot["reason"] is None
+            assert slot["next_steps"] == []
+        else:
+            assert slot["reason"]
+            assert slot["next_steps"]
+            for step in slot["next_steps"]:
+                assert set(step) >= {"action", "label"}
+        if slot["state"] == "no_example":
+            assert slot["examples"] == []
+
+
+def test_generic_mode_slots_are_blocked_with_a_real_next_step():
+    """通用模式：槽位不是静默消失，而是给出原因与一条可走通的动作。"""
+    slots = M._capability_slots(
+        {"capability_match": "谁能做"}, ["capability_match"], [],
+        [], [], domain_mode=False, counts={"individuals": 0},
+    )
+    assert [slot["state"] for slot in slots] == ["blocked_generic"]
+    assert "通用模式" in slots[0]["reason"]
+    actions = [step["action"] for step in slots[0]["next_steps"]]
+    assert "reload_domain" in actions
+
+
+def test_no_example_slot_keeps_the_slot_and_explains_why():
+    """能力可用但造不出题：槽位仍在，原因指向具体事实，下一步可操作（#139）。"""
+    slots = M._capability_slots(
+        {"individuals": "类个体列表"}, ["individuals"], [],
+        ["classes"], [], domain_mode=True, counts={"individuals": 5},
+    )
+    assert len(slots) == 1
+    slot = slots[0]
+    assert slot["capability"] == "individuals"
+    assert slot["state"] == "no_example"
+    assert slot["examples"] == []
+    assert "业务类下没有个体" in slot["reason"]
+    actions = [step["action"] for step in slot["next_steps"]]
+    assert actions == ["open_endpoint", "import_ontology"]
+
+
 def test_examples_are_not_safe_in_generic_mode():
     """通用模式下领域端点整组不可用：示例题也不能提供页内试跑。"""
     from api.main import _guide_examples

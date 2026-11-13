@@ -209,6 +209,23 @@ export interface GuideExample extends GuideExampleDeclaration {
   reason: string | null;
 }
 
+/** 槽位的下一步：框架给结构化动作，前端按 action 渲染，不硬编码端点路径 */
+export interface GuideCapabilityNextStep {
+  action: 'open_endpoint' | 'switch_domain' | 'reload_domain' | 'import_ontology' | 'open_write_flow' | string;
+  label: string;
+  target?: string;
+}
+
+/** 能力槽位（#139）：来自领域声明，固定全显；题目挂在槽位下，可为空 */
+export interface GuideCapabilitySlot {
+  capability: string;
+  note: string | null;
+  state: 'runnable' | 'no_example' | 'blocked_generic' | 'write_only' | 'mcp_only' | string;
+  reason: string | null;
+  next_steps: GuideCapabilityNextStep[];
+  examples: GuideExample[];
+}
+
 export interface GuideEntityField {
   name: string;
   property: string;
@@ -338,6 +355,8 @@ export interface DomainGuide {
   };
   runtime: GuideRuntime;
   reconcile: GuideReconcile;
+  /** #139：02 区按槽位渲染；旧后端不发时前端显示空态（不自行猜测） */
+  capability_slots?: GuideCapabilitySlot[];
   examples: GuideExample[];
 }
 

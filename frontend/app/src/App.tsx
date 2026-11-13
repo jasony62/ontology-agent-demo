@@ -53,15 +53,8 @@ export default function App() {
   const [page, setPage] = useState<'graph' | 'guide'>(
     () => (window.location.hash === '#guide' ? 'guide' : 'graph'),
   );
-  // #114：首次访问的指路条。关掉后记 localStorage，不再打扰；从 start.sh
-  // 直接以 #guide 打开时落在当前领域页，看不到这条横幅。
-  const [showOnboarding, setShowOnboarding] = useState(() => {
-    try {
-      return window.localStorage.getItem('oa.onboarding.dismissed.v1') !== '1';
-    } catch {
-      return true;
-    }
-  });
+  // #137：首次引导收敛到「当前领域」页的一个「带我试一题」入口（一次真试跑），
+  // 页头不再维护第二套提示；本地记忆键沿用 oa.onboarding.dismissed.v1。
   const gotoGuide = () => {
     setPage('guide');
     window.history.replaceState(null, '', '#guide');
@@ -70,21 +63,12 @@ export default function App() {
     setPage('graph');
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
   };
-  // 图谱概览里的「去当前领域」用普通 <a href="#guide">，这里跟随 hash 切页；
-  // 不引入第二份页面状态。
+  // 图谱概览里的「去当前领域」用普通 <a href="#guide">，这里跟随 hash 切页。
   useEffect(() => {
     const onHashChange = () => setPage(window.location.hash === '#guide' ? 'guide' : 'graph');
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
-  const dismissOnboarding = () => {
-    setShowOnboarding(false);
-    try {
-      window.localStorage.setItem('oa.onboarding.dismissed.v1', '1');
-    } catch {
-      // 隐私模式下 localStorage 不可写：本次会话隐藏即可，不阻断页面
-    }
-  };
   // 当前领域说明的唯一数据源：随 /api/domains 一起在 loadWorkspace 中刷新
   const [guide, setGuide] = useState<DomainGuide | null>(null);
   const [guideError, setGuideError] = useState<string | null>(null);
@@ -299,31 +283,9 @@ export default function App() {
             当前领域
           </button>
         </nav>
-        {/* #134 R2：首次引导从常驻整条改成页头中段的内联一次性提示，看过即消失；窄屏隐藏，
-            入口仍在「更多」菜单里。 */}
-        {showOnboarding && (
-          <div className="header-onboarding" role="note">
-            <span>第一次用？先看「当前领域」的示例题。</span>
-            <button
-              type="button"
-              className="header-onboarding-go"
-              onClick={() => { dismissOnboarding(); gotoGuide(); }}
-            >
-              去看
-            </button>
-            <button
-              type="button"
-              className="header-onboarding-close"
-              aria-label="关闭首次使用提示"
-              title="关闭提示"
-              onClick={dismissOnboarding}
-            >
-              ×
-            </button>
-          </div>
-        )}
-        {/* 领域包切换：后端 L3 原子切换（失败保持旧领域），前端只负责重拉全量数据 */}
-        <div className="domain-switch" title={guide?.profile.summary ?? domainInfo?.description ?? '当前领域包（切换不落盘，重启服务回默认领域）'}>
+        {/* #137 R1：页头只保留领域下拉这一个名字显示；红色徽标改为「只读」状态标签，
+            不再复述「导入的本体」，两处 title 也只留短提示。 */}
+        <div className="domain-switch" title="当前领域包（切换不落盘，重启服务回默认领域）">
           <span className="domain-label">领域</span>
           <select
             value={domainInfo?.current ?? ''}
@@ -352,15 +314,15 @@ export default function App() {
               <option value="">—</option>
             )}
           </select>
-          {guide && (
-            <span className="domain-display" title={`${guide.profile.display_name} · ${guide.profile.summary}`}>
-              {guide.profile.display_name}
-            </span>
-          )}
-          {/* #134 R1：红色徽标并进领域胶囊，不再作为页头末尾的独立元素被挤到第二行 */}
+          {/* #137 R1：红色徽标改成「只读」能力标签，不再复述领域名 */}
           {(ontologyMode === 'generic' || ontologyMode === 'imported') && (
-            <span className="mode-badge" title="当前对外服务的是导入的本体；重启服务回到默认领域">
-              {ontologyMode === 'imported' ? '导入的本体' : '通用模式'}
+            <span
+              className="mode-badge"
+              title={ontologyMode === 'imported'
+                ? '当前本体是导入的只读副本：可查看、可推理，编辑请先导出'
+                : '通用模式：领域专属推理不可用'}
+            >
+              {ontologyMode === 'imported' ? '只读' : '通用模式'}
             </span>
           )}
           <button
@@ -416,6 +378,9 @@ export default function App() {
             error={guideError}
             loading={guideLoading}
             onRetry={() => void loadWorkspace()}
+            onImport={() => setImportOpen(true)}
+            onReloadDomain={() => void runDomainAction('重载领域', () => api.reloadDomain())}
+            onSwitchDomain={(name) => void runDomainAction('切换领域', () => api.activateDomain(name))}
           />
         ) : (
           <>

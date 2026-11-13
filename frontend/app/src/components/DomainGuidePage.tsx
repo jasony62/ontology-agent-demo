@@ -1,13 +1,34 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { DomainGuide, GuideExample, GuideRuntime } from '../api/client';
+import type { DomainGuide, GuideCapabilitySlot, GuideExample, GuideRuntime } from '../api/client';
+import { GlossaryProvider, TermText } from './TermText';
 
 interface Props {
   guide: DomainGuide | null;
   error: string | null;
   loading: boolean;
   onRetry: () => void;
+  /** #139：槽位「导入含业务个体的本体」入口 */
+  onImport?: () => void;
+  /** #139：通用模式槽位的「重载领域，回到领域包」入口 */
+  onReloadDomain?: () => void;
+  /** #139：切换领域包（target 由后端给） */
+  onSwitchDomain?: (domain: string) => void;
 }
+
+/*
+ * 信息归属表（#137 R8）——新增徽标 / 提示 / 文案前先查表：
+ *
+ *   身份      页头领域下拉（唯一一处名字显示）
+ *   状态      01 区现状卡（文件名 + 业务类 / 个体 / 推理新增）
+ *   细节与依据 01–06 正文（同一字段只渲染一次，换位置必须换视角）
+ *   边界      例外横幅（只写后果）或 03 区能力说明
+ *   排障      06 问（guide_version / 契约 / 模式 / 口径）
+ *   引导      仅首次：02 区「带我试一题」，一次真能跑完，跑过即消失
+ *   术语解释  就地注解层（#138）：不占布局、不入目录、不重复事实
+ *
+ * 一句话：同一事实只在一个位置出现一次；换位置复述必须换视角。
+ */
 
 const SECTIONS = [
   { id: 'overview', no: '01', title: '这个包是干什么的' },
@@ -20,27 +41,42 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number]['id'];
 
-/** #114：示例题分组顺序——北极星入口与预测题置顶，未声明 group 的归入「其余示例」 */
-const GUIDE_GROUP_ORDER = ['看一次编排', '预测一次变化'];
+/** #137：首次引导的本地记忆键；与旧页头提示共用，升级后不会重复打扰。 */
+const OFFER_ONBOARDING_KEY = 'oa.onboarding.dismissed.v1';
 
-function groupGuideExamples(examples: GuideExample[]) {
-  if (!examples.some((example) => example.group)) return null;
-  const titles: string[] = [];
-  for (const title of GUIDE_GROUP_ORDER) {
-    if (examples.some((example) => example.group === title)) titles.push(title);
-  }
-  for (const example of examples) {
-    if (example.group && !titles.includes(example.group)) titles.push(example.group);
-  }
-  const sections = titles.map((title) => ({
-    title,
-    items: examples.filter((example) => example.group === title),
-  }));
-  const rest = examples.filter((example) => !example.group);
-  if (rest.length > 0) sections.push({ title: '其余示例', items: rest });
-  return sections;
+/** #139：槽位状态 → 用户能读懂的徽标文案。 */
+const SLOT_STATE_LABEL: Record<string, string> = {
+  runnable: '可在页内试跑',
+  no_example: '当前不可试跑',
+  blocked_generic: '通用模式不可用',
+  write_only: '仅预览请求',
+  mcp_only: '可能仅 MCP 暴露',
+};
+
+/**
+ * #137 R3：把作者写的 scenario 映射到页面上真能发生的一次动作。
+ * 先按能力关键词找对应示例题，找不到就滚到最相关的区——每个可点项都必有变化。
+ */
+function scenarioCapabilityHints(text: string): string[] {
+  const hints: string[] = [];
+  if (/类|分类|层次/.test(text)) hints.push('classes');
+  if (/个体|实例/.test(text)) hints.push('individuals');
+  if (/类型/.test(text)) hints.push('types_of');
+  if (/属性|取值/.test(text)) hints.push('property_values');
+  if (/SPARQL|查询/i.test(text)) hints.push('query_sparql');
+  if (/推理|派生|新增/.test(text)) hints.push('infer');
+  if (/依据|凭什么|证明/.test(text)) hints.push('proof');
+  return hints;
 }
 
+function scenarioSection(text: string): SectionId {
+  if (/接入|MCP|REST|curl/i.test(text)) return 'integrations';
+  if (/可信|依据|凭什么|证明/.test(text)) return 'trust';
+  if (/能力|能做|写入/.test(text)) return 'capabilities';
+  return 'examples';
+}
+
+/** #114：示例题分组顺序——北极星入口与预测题置顶，未声明 group 的归入「其余示例」 */
 /** 深色代码块 + 复制按钮（与既有「服务能力」弹窗同一视觉语义） */
 function CopyBlock({ code, note }: { code: string; note?: string }) {
   const [copied, setCopied] = useState(false);
@@ -280,7 +316,9 @@ function CapabilityGroup({
                   )}
                 </div>
                 <span className="guide-cap-note">
-                  {note ?? '该包暂未提供用途说明'}
+                  {note
+                    ? <TermText text={note} scope="capabilities" site={`note-${kind}`} />
+                    : '该包暂未提供用途说明'}
                 </span>
                 {endpoint ? (
                   <details className="guide-cap-request">
@@ -398,11 +436,25 @@ function ExamplePanel({
                     <code className="guide-param-static">{pretty(value)}</code>
                   )}
                   <span className="field-hint">
-                    {selectable
-                      ? '候选值来自当前本体，可直接换一个再发'
-                      : example.safe
-                        ? '该参数不是本体个体，按原值透传'
-                        : '领域参数原样透传，此处只作预览'}
+                    {selectable ? (
+                      <TermText
+                        text="候选值来自当前本体，可直接换一个再发"
+                        scope="examples"
+                        site={`param-hint-${example.id}-${key}`}
+                      />
+                    ) : example.safe ? (
+                      <TermText
+                        text="该参数不是本体个体，按原值透传"
+                        scope="examples"
+                        site={`param-hint-${example.id}-${key}`}
+                      />
+                    ) : (
+                      <TermText
+                        text="领域参数原样透传，此处只作预览"
+                        scope="examples"
+                        site={`param-hint-${example.id}-${key}`}
+                      />
+                    )}
                   </span>
                 </label>
               );
@@ -417,7 +469,9 @@ function ExamplePanel({
         <div className="guide-do-action">
           {predict && (
             <div className="guide-predict">
-              <div className="guide-predict-q">先猜一下：{predict.prompt}</div>
+              <div className="guide-predict-q">
+                先猜一下：<TermText text={predict.prompt} scope="examples" site={`predict-${example.id}`} />
+              </div>
               <div className="guide-predict-options">
                 {predict.options.map((option) => (
                   <label
@@ -485,7 +539,7 @@ function ExamplePanel({
                 <strong>{submittedGuess === predict.answer ? '✓ 预测正确' : '✗ 预测不符'}</strong>
                 <div>你的预测：{submittedGuess}</div>
                 <div>参考答案：{predict.answer}</div>
-                <p>{predict.explain}</p>
+                <p><TermText text={predict.explain} scope="examples" site={`explain-${example.id}`} /></p>
               </div>
             )}
             {simulation && (
@@ -517,7 +571,9 @@ function ExamplePanel({
   );
 }
 
-export default function DomainGuidePage({ guide, error, loading, onRetry }: Props) {
+export default function DomainGuidePage({
+  guide, error, loading, onRetry, onImport, onReloadDomain, onSwitchDomain,
+}: Props) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState<SectionId>('overview');
   const [showToc, setShowToc] = useState(true);
@@ -525,6 +581,31 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
   // #135：滚动定位请求「排到 DOM 提交之后」再执行，token 让重复请求也能触发一次 effect。
   const [pendingReveal, setPendingReveal] = useState<{ id: string; token: number } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Record<string, unknown>>>({});
+  // #137 R5：首次引导只剩这一处「带我试一题」，一次真跑；用本地记忆保证只出现一次。
+  const [showFirstRun, setShowFirstRun] = useState(() => {
+    try {
+      return window.localStorage.getItem(OFFER_ONBOARDING_KEY) !== '1';
+    } catch {
+      return true;
+    }
+  });
+  // #138 R7：术语提示开关；关闭后不渲染任何标记（本地记住）。
+  const [glossaryOn, setGlossaryOn] = useState(() => {
+    try {
+      return window.localStorage.getItem('oa.glossary.off.v1') !== '1';
+    } catch {
+      return true;
+    }
+  });
+  const toggleGlossary = () => {
+    const next = !glossaryOn;
+    setGlossaryOn(next);
+    try {
+      window.localStorage.setItem('oa.glossary.off.v1', next ? '0' : '1');
+    } catch {
+      // 隐私模式下不可写：本次会话生效即可
+    }
+  };
   const [results, setResults] = useState<
     Record<string, { loading: boolean; data?: unknown; error?: string }>
   >({});
@@ -561,12 +642,6 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
     && counts.business_classes !== counts.classes
       ? `类（业务类 ${counts.business_classes}）`
       : '类';
-  // #114：只声明了部分 group 时，未声明的题归入「其余示例」；一个 group 都没声明
-  // 则返回 null，页面保持原来的平铺（旧领域包不受影响）。
-  const exampleSections = useMemo(
-    () => (guide ? groupGuideExamples(guide.examples) : null),
-    [guide],
-  );
 
   // 内容短到无需滚动时砍掉左栏，不留装饰目录；内容变长（换包 / 展开示例）再回来。
   useEffect(() => {
@@ -616,6 +691,8 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
   useLayoutEffect(() => {
     if (!pendingReveal) return;
     const card = document.getElementById(`guide-example-${pendingReveal.id}`);
+    // 槽位里的题目默认折叠：定位前先展开所属槽位，否则滚过去也看不见。
+    card?.closest('details')?.setAttribute('open', '');
     card?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   }, [pendingReveal]);
 
@@ -627,12 +704,6 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
     // 先登记定位，等 setOpenExample 的 DOM 提交完成后由上面的 effect 执行。
     revealExample(id);
     setOpenExample(id);
-  };
-
-  const openFirstSafe = () => {
-    if (!firstSafe) return;
-    revealExample(firstSafe.id);
-    setOpenExample(firstSafe.id);
   };
 
   const runExample = async (example: GuideExample) => {
@@ -665,6 +736,62 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
           error: `请求失败：${e instanceof Error ? e.message : String(e)}`,
         },
       }));
+    }
+  };
+
+  const dismissFirstRun = () => {
+    setShowFirstRun(false);
+    try {
+      window.localStorage.setItem(OFFER_ONBOARDING_KEY, '1');
+    } catch {
+      // 隐私模式下不可写：本次会话隐藏即可
+    }
+  };
+
+  // #137 R5：不是「展开看看」的第三个假按钮——展开 + 定位 + 真发一次只读请求。
+  const runFirstExample = () => {
+    if (!firstSafe) return;
+    dismissFirstRun();
+    revealExample(firstSafe.id);
+    setOpenExample(firstSafe.id);
+    void runExample(firstSafe);
+  };
+
+  const handleScenario = (text: string) => {
+    const hints = scenarioCapabilityHints(text);
+    const example = hints.length
+      ? guide?.examples.find((item) => item.safe && hints.includes(item.capability))
+      : undefined;
+    if (example) {
+      revealExample(example.id);
+      setOpenExample(example.id);
+      return;
+    }
+    scrollToSection(scenarioSection(text));
+  };
+
+  const handleSlotStep = (step: GuideCapabilitySlot['next_steps'][number]) => {
+    switch (step.action) {
+      case 'open_endpoint':
+        scrollToSection('integrations');
+        break;
+      case 'open_write_flow':
+        scrollToSection('capabilities');
+        break;
+      case 'reload_domain':
+        if (onReloadDomain) onReloadDomain();
+        else scrollToSection('runtime');
+        break;
+      case 'switch_domain':
+        if (step.target && onSwitchDomain) onSwitchDomain(step.target);
+        else scrollToSection('overview');
+        break;
+      case 'import_ontology':
+        if (onImport) onImport();
+        else scrollToSection('runtime');
+        break;
+      default:
+        scrollToSection('integrations');
     }
   };
 
@@ -702,43 +829,106 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
   const generic = guide.mode === 'generic';
   const imported = guide.imported === true;
   const otherCapabilities = runtime.other_capabilities;
+  const slots = guide.capability_slots ?? [];
+  const businessClasses = runtime.counts.business_classes ?? runtime.counts.classes;
+
+  const renderExample = (example: GuideExample) => {
+    const open = openExample === example.id;
+    return (
+      <article
+        id={`guide-example-${example.id}`}
+        key={example.id}
+        className={`guide-example ${open ? 'open' : ''}`}
+      >
+        <div className="guide-example-head">
+          <span className="guide-example-id">{example.id}</span>
+          <div className="guide-example-title">
+            <h4><TermText text={example.question} scope="examples" site={`q-${example.id}`} /></h4>
+            <div className="guide-example-meta">
+              <code>{example.capability}</code>
+              <span>{example.via}</span>
+              {example.group && <span className="guide-example-group-tag">{example.group}</span>}
+            </div>
+          </div>
+          <span className={`guide-badge ${example.safe ? 'ok' : 'muted'}`}>
+            {example.safe ? '可在页内试跑' : '仅预览请求'}
+          </span>
+        </div>
+        <div className="guide-example-foot">
+          <span className="guide-answer-hint">
+            {example.predict ? (
+              <TermText
+                text="预测配对题：展开后先选一个预测，再点「先猜后验」"
+                scope="examples"
+                site={`predict-hint-${example.id}`}
+              />
+            ) : (
+              <>期望答案：<TermText text={example.answer_hint} scope="examples" site={`answer-${example.id}`} /></>
+            )}
+          </span>
+          <button className="btn secondary" onClick={() => toggleExample(example.id)}>
+            {open ? '收起' : '照着做'}
+          </button>
+        </div>
+        {open && (
+          <ExamplePanel
+            example={example}
+            runtime={runtime}
+            draft={drafts[example.id] ?? example.params}
+            onParamChange={(key, value) => setDrafts((current) => ({
+              ...current,
+              [example.id]: { ...(current[example.id] ?? example.params), [key]: value },
+            }))}
+            result={results[example.id]}
+            running={results[example.id]?.loading ?? false}
+            onRun={() => void runExample(example)}
+          />
+        )}
+      </article>
+    );
+  };
+
 
   return (
+    <GlossaryProvider
+      enabled={glossaryOn}
+      resetKey={`${guide.domain}:${guide.loaded_at}:${guide.guide_version}`}
+    >
     <div className="domain-guide">
-      <div className="guide-head">
-        <div>
-          <h2>{profile.display_name}</h2>
-          <p>{profile.summary}</p>
+      {/* #137 R2：现状卡 = 文件名 + 三个可扫读数字；不复述 display_name / summary / 内部状态 */}
+      <div className="guide-head guide-status">
+        <div className="guide-status-id">
+          <span className="guide-status-label">当前本体</span>
+          <b className="guide-status-name" title={runtime.ontology}>
+            {runtime.ontology_display ?? runtime.ontology}
+          </b>
         </div>
-        <div className="guide-head-meta">
-          <span className="guide-pill">{guide.display_name || guide.domain}</span>
-          <span className={`guide-pill ${generic ? 'warn' : 'ok'}`}>
-            {generic ? '通用模式' : '领域模式'}
-          </span>
-          <span className="guide-pill">guide_version {guide.guide_version}</span>
-          {loading && <span className="guide-muted">刷新中…</span>}
+        <div className="guide-status-facts">
+          <div><b>{businessClasses}</b><span><TermText text="业务类" scope="overview" site="status-business" /></span></div>
+          <div><b>{runtime.counts.individuals}</b><span><TermText text="个体" scope="overview" site="status-individuals" /></span></div>
+          <div><b>{runtime.counts.inferred}</b><span><TermText text="推理新增" scope="overview" site="status-inferred" /></span></div>
         </div>
+        {loading && <span className="guide-muted">刷新中…</span>}
       </div>
 
-      <div className="guide-steps" role="navigation" aria-label="第一次用三步">
-        <span className="guide-steps-title">第一次用 · 三步</span>
-        <button className="guide-step" onClick={() => scrollToSection('examples')}>1 选一道示例题</button>
-        <button className="guide-step" onClick={openFirstSafe} disabled={!firstSafe}>2 看要填什么</button>
-        <button className="guide-step" onClick={openFirstSafe} disabled={!firstSafe}>3 拿示例题试一次</button>
-        <span className="guide-steps-hint">示例题是契约里预置的题目 + 固定参数，不是自然语言问答</span>
-      </div>
-
-      {generic && (
+      {/* #137 R4：例外横幅只写后果，generic / imported 按优先级只取一条 */}
+      {generic ? (
         <div className="mode-banner">
-          当前加载的是自定义本体（通用模式）：以下领域能力整组不可用；图谱 / 物化 / SPARQL 等通用能力不受影响。
+          <TermText
+            text="领域能力整组不可用；图谱 / 物化 / SPARQL 等通用能力不受影响。重启服务可回到默认领域。"
+            scope="banner"
+            site="generic"
+          />
         </div>
-      )}
-      {imported && (
+      ) : imported ? (
         <div className="mode-banner">
-          当前对外服务的是导入的本体：结构 / 推理 / 查询 / 依据等通用只读能力可用；领域专属推理不可用。
-          重启服务会回到默认领域，导入文件仍保留在 data/uploads/。
+          <TermText
+            text="只读：领域专属推理不可用；重启服务会回到默认领域，导入文件仍保留在 data/uploads/。"
+            scope="banner"
+            site="imported"
+          />
         </div>
-      )}
+      ) : null}
 
       <div className={`guide-layout ${showToc ? '' : 'no-toc'}`}>
         {showToc && (
@@ -763,39 +953,65 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
           <section id="guide-overview" className="guide-section">
             <div className="guide-section-head"><span>01</span><h3>这个包是干什么的</h3></div>
             <div className="guide-hero">
-              <p className="guide-hero-summary">{profile.summary}</p>
+              {/* #137 R3：profile.summary 全页只在这里渲染一次 */}
+              <p className="guide-hero-summary">
+                <TermText text={profile.summary} scope="overview" site="summary" />
+              </p>
               {profile.scenarios.length > 0 && (
                 <div className="guide-tags">
-                  {profile.scenarios.map((item) => <span key={item} className="guide-tag">{item}</span>)}
+                  {profile.scenarios.map((item) => (
+                    <button
+                      type="button"
+                      key={item}
+                      className="guide-tag guide-tag-action"
+                      onClick={() => handleScenario(item)}
+                      title="点击直接跳到对应示例题或正文"
+                    >
+                      {item}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
             {runtime.health && (
               <div className={`guide-health ${runtime.health.profile}`} role="note">
                 <div className="guide-health-head">
-                  <span className="guide-health-label">本体体检</span>
+                  <span className="guide-health-label">
+                    <TermText text="本体体检" scope="overview" site="health-label" />
+                  </span>
                   <b>{runtime.health.profile_label}</b>
                 </div>
                 <div className="guide-health-facts">
-                  个体 {runtime.health.facts.individuals} · TBox 公理 {runtime.health.facts.axioms} ·
-                  推理新增 {runtime.health.facts.inferred}（业务 {runtime.health.facts.business_inferred}）
+                  <TermText
+                    text={`个体 ${runtime.health.facts.individuals} · TBox 公理 ${runtime.health.facts.axioms} · 推理新增 ${runtime.health.facts.inferred}（业务 ${runtime.health.facts.business_inferred}）`}
+                    scope="overview"
+                    site="health-facts"
+                  />
                 </div>
                 <ul className="guide-health-list">
                   {runtime.health.expectations.map((item) => (
                     <li key={item.feature} className={item.available ? 'ok' : 'off'}>
                       <span className="guide-health-mark" aria-hidden="true">{item.available ? '✓' : '—'}</span>
-                      <b>{item.feature}</b>：{item.detail}
+                      <b>{item.feature}</b>：
+                      <TermText text={item.detail} scope="overview" site={`health-${item.feature}`} />
                     </li>
                   ))}
                 </ul>
-                <div className="guide-health-next"><b>下一步：</b>{runtime.health.suggestion}</div>
+                <div className="guide-health-next">
+                  <b>下一步：</b>
+                  <TermText text={runtime.health.suggestion} scope="overview" site="health-next" />
+                </div>
               </div>
             )}
             <div className="guide-two-col">
               <div className="guide-card">
                 <h4>覆盖什么</h4>
                 {profile.covers.length ? (
-                  <ul className="guide-list">{profile.covers.map((item) => <li key={item}>{item}</li>)}</ul>
+                  <ul className="guide-list">
+                    {profile.covers.map((item) => (
+                      <li key={item}><TermText text={item} scope="overview" site={`cover-${item}`} /></li>
+                    ))}
+                  </ul>
                 ) : (
                   <div className="guide-empty-inline">该包未声明覆盖范围</div>
                 )}
@@ -803,7 +1019,11 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
               <div className="guide-card">
                 <h4>不覆盖什么</h4>
                 {profile.not_covers.length ? (
-                  <ul className="guide-list muted">{profile.not_covers.map((item) => <li key={item}>{item}</li>)}</ul>
+                  <ul className="guide-list muted">
+                    {profile.not_covers.map((item) => (
+                      <li key={item}><TermText text={item} scope="overview" site={`not-cover-${item}`} /></li>
+                    ))}
+                  </ul>
                 ) : (
                   <div className="guide-empty-inline">该包未声明不覆盖范围</div>
                 )}
@@ -813,7 +1033,11 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
               <div className="guide-paradigm">
                 <h4>范式要素对照</h4>
                 <p className="guide-section-hint">
-                  把本体的要素映射到你自己的系统；最后一列是「你的系统里通常对应什么」。
+                  <TermText
+                    text="把本体的要素映射到你自己的系统；最后一列是「你的系统里通常对应什么」。"
+                    scope="overview"
+                    site="paradigm-hint"
+                  />
                 </p>
                 <div className="guide-table-wrap">
                   <table className="guide-table">
@@ -830,8 +1054,8 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
                         <tr key={row.element}>
                           <td>{row.element}</td>
                           <td><code>{row.in_ontology}</code></td>
-                          <td>{row.where}</td>
-                          <td>{row.yours}</td>
+                          <td><TermText text={row.where} scope="overview" site={`where-${row.element}`} /></td>
+                          <td><TermText text={row.yours} scope="overview" site={`yours-${row.element}`} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -844,86 +1068,115 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
           <section id="guide-examples" className="guide-section">
             <div className="guide-section-head"><span>02</span><h3>能问它什么</h3></div>
             <p className="guide-section-hint">
-              共 {guide.examples.length} 道示例题。每题都给出「填什么 · 发什么请求 · 结果与依据链」；
-              只有被框架判定为只读的能力才提供页内试跑。
+              <TermText
+                text="示例题随领域包预置，是「固定参数 + 只读请求」，不是自然语言问答；点开就能看到请求与真实返回。槽位来自领域声明的全部能力，题目只是挂在槽位下的示例。"
+                scope="examples"
+                site="hint"
+              />
             </p>
-            {guide.examples.length === 0 ? (
-              <div className="guide-empty">
-                该包未提供示例题。可以看第 03 问的能力清单，或直接按第 05 问的接入说明发请求。
-              </div>
-            ) : (
-              (exampleSections ?? [{ title: null, items: guide.examples }]).map((section) => (
-                <div
-                  className={section.title ? 'guide-example-group' : ''}
-                  key={section.title ?? '__all'}
+
+            {showFirstRun && (
+              <div className="guide-first-run" role="note">
+                {firstSafe ? (
+                  <>
+                    <span>第一次用？用下面这道题真跑一次，看看返回什么。</span>
+                    <button type="button" className="btn" onClick={runFirstExample}>带我试一题</button>
+                  </>
+                ) : (
+                  <span>该领域当前没有可页内试跑的示例题，可以按第 05 问直接发请求。</span>
+                )}
+                <button
+                  type="button"
+                  className="guide-first-run-close"
+                  aria-label="关闭首次提示"
+                  title="关闭提示"
+                  onClick={dismissFirstRun}
                 >
-                  {section.title && (
-                    <h4 className="guide-group-title">
-                      {section.title}<span>{section.items.length} 道</span>
-                    </h4>
-                  )}
-                  <div className="guide-example-list">
-                    {section.items.map((example) => {
-                      const open = openExample === example.id;
-                  return (
-                    <article
-                      id={`guide-example-${example.id}`}
-                      key={example.id}
-                      className={`guide-example ${open ? 'open' : ''}`}
-                    >
-                      <div className="guide-example-head">
-                        <span className="guide-example-id">{example.id}</span>
-                        <div className="guide-example-title">
-                          <h4>{example.question}</h4>
-                          <div className="guide-example-meta">
-                            <code>{example.capability}</code>
-                            <span>{example.via}</span>
+                  ×
+                </button>
+              </div>
+            )}
+
+            {slots.length === 0 ? (
+              <div className="guide-empty">该包未声明任何能力槽位。</div>
+            ) : (
+              <div className="guide-slot-list">
+                {slots.map((slot) => (
+                  <article className="guide-slot" key={slot.capability}>
+                    <div className="guide-slot-head">
+                      <div className="guide-slot-title">
+                        <code>{slot.capability}</code>
+                        <span className={`guide-badge slot-${slot.state}`}>
+                          {SLOT_STATE_LABEL[slot.state] ?? slot.state}
+                        </span>
+                      </div>
+                      <p className="guide-slot-note">
+                        {slot.note
+                          ? <TermText text={slot.note} scope="examples" site={`note-${slot.capability}`} />
+                          : '该包暂未提供用途说明'}
+                      </p>
+                      {slot.state !== 'runnable' && (
+                        <div className="guide-slot-blocked">
+                          <div className="guide-slot-reason">
+                            <b>为什么：</b>
+                            <TermText
+                              text={slot.reason ?? '当前不可试跑'}
+                              scope="examples"
+                              site={`reason-${slot.capability}`}
+                            />
                           </div>
+                          {slot.next_steps.length > 0 && (
+                            <div className="guide-slot-steps">
+                              <b>怎么才能用：</b>
+                              {slot.next_steps.map((step) => (
+                                <button
+                                  type="button"
+                                  key={`${step.action}-${step.label}`}
+                                  className="guide-step"
+                                  onClick={() => handleSlotStep(step)}
+                                >
+                                  {step.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <span className={`guide-badge ${example.safe ? 'ok' : 'muted'}`}>
-                          {example.safe ? '可在页内试跑' : '仅预览请求'}
-                        </span>
-                      </div>
-                      <div className="guide-example-foot">
-                        <span className="guide-answer-hint">
-                          {example.predict
-                            ? '预测配对题：展开后先选一个预测，再点「先猜后验」'
-                            : `期望答案：${example.answer_hint}`}
-                        </span>
-                        <button className="btn secondary" onClick={() => toggleExample(example.id)}>
-                          {open ? '收起' : '照着做'}
-                        </button>
-                      </div>
-                      {open && (
-                        <ExamplePanel
-                          example={example}
-                          runtime={runtime}
-                          draft={drafts[example.id] ?? example.params}
-                          onParamChange={(key, value) => setDrafts((current) => ({
-                            ...current,
-                            [example.id]: { ...(current[example.id] ?? example.params), [key]: value },
-                          }))}
-                          result={results[example.id]}
-                          running={results[example.id]?.loading ?? false}
-                          onRun={() => void runExample(example)}
-                        />
                       )}
-                    </article>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))
+                    </div>
+                    {slot.examples.length > 0 ? (
+                      <details className="guide-slot-examples">
+                        <summary>{slot.examples.length} 道示例题</summary>
+                        <div className="guide-example-list">
+                          {slot.examples.map(renderExample)}
+                        </div>
+                      </details>
+                    ) : (
+                      <div className="guide-slot-empty">本槽位当前没有可出题的内容。</div>
+                    )}
+                  </article>
+                ))}
+              </div>
             )}
           </section>
 
           <section id="guide-capabilities" className="guide-section">
             <div className="guide-section-head"><span>03</span><h3>能让它做什么</h3></div>
             <p className="guide-section-hint">
-              只读能力可以反复调用；变更能力会改本体，页内不提供试跑。口径与「预览 / 写入 / 导出」一致：
-              写入是不可逆的，必须走既有确认流程。
+              <TermText
+                text="只读能力可以反复调用；变更能力会改本体，页内不提供试跑。口径与「预览 / 写入 / 导出」一致：写入是不可逆的，必须走既有确认流程。"
+                scope="capabilities"
+                site="hint"
+              />
             </p>
-            {generic && <div className="guide-blocked">当前为通用模式：领域能力整组不可用。切回领域模式后再试。</div>}
+            {generic && (
+              <div className="guide-blocked">
+                <TermText
+                  text="当前为通用模式：领域能力整组不可用。切回领域模式后再试。"
+                  scope="capabilities"
+                  site="generic-blocked"
+                />
+              </div>
+            )}
             <div className="guide-cap-grid">
               <CapabilityGroup
                 title="只读能力"
@@ -978,17 +1231,49 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
 
           <section id="guide-trust" className="guide-section">
             <div className="guide-section-head"><span>04</span><h3>凭什么可信、什么会被拦</h3></div>
+            <p className="guide-section-hint">
+              <TermText
+                text="左边是可核验的证据，右边是真正会拦住写操作的那一层——不是作者声明的边界清单。"
+                scope="trust"
+                site="hint"
+              />
+            </p>
             <div className="guide-two-col">
               <div className="guide-card">
-                <h4>约束摘要</h4>
-                {profile.constraints.length ? (
-                  <ul className="guide-list">{profile.constraints.map((item) => <li key={item}>{item}</li>)}</ul>
-                ) : (
-                  <div className="guide-empty-inline">该包未声明约束摘要</div>
+                <h4>凭什么可信</h4>
+                <div className="guide-stats">
+                  <div><b>{runtime.counts.triples}</b><span>推理后三元组</span></div>
+                  <div><b>{runtime.counts.asserted}</b><span>文件里声明的</span></div>
+                  <div><b>{runtime.counts.inferred}</b><span>推出来的</span></div>
+                  <div><b>{runtime.counts.classes}</b><span>{classLabel}</span></div>
+                  <div><b>{runtime.counts.individuals}</b><span>个体</span></div>
+                </div>
+                {runtime.inference && (
+                  <div className="guide-muted">
+                    <TermText
+                      text={`推理新增构成：自反 ${runtime.inference.reflexive} · 元层 ${runtime.inference.meta} · 业务 ${runtime.inference.business}${runtime.inference.business === 0 ? '（业务派生为 0：这份本体推不出新的业务结论）' : ''}`}
+                      scope="trust"
+                      site="inference"
+                    />
+                  </div>
                 )}
+                <p className="guide-proof-entry">
+                  <TermText
+                    text="任意一条结论都能查推导依据（"
+                    scope="trust"
+                    site="proof-lead"
+                  />
+                  <code>GET /api/ontology/proof</code>
+                  <TermText
+                    text="），不是信我，是可核。"
+                    scope="trust"
+                    site="proof-tail"
+                  />
+                  <a href="/api-docs" target="_blank" rel="noreferrer">打开接口文档 ↗</a>
+                </p>
               </div>
               <div className="guide-card">
-                <h4>规则层执行报告</h4>
+                <h4>什么会被拦</h4>
                 {runtime.rules ? (
                   <div className="guide-rules">
                     <div className="guide-kv"><span>整体状态</span><b>{runtime.rules.ok ? '通过' : '有错误'}</b></div>
@@ -1006,40 +1291,53 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
                     )}
                   </div>
                 ) : (
-                  <div className="guide-empty-inline">该包没有规则执行报告</div>
+                  <div className="guide-empty-inline">
+                    <TermText
+                      text="当前领域没有加载规则层（rules/*.ttl），因此没有业务约束要执行；带规则层的领域包会在这里显示「是否通过 / 派生多少条 / 哪个文件报错」。"
+                      scope="trust"
+                      site="rules-empty"
+                    />
+                  </div>
                 )}
+                <div className="guide-gate">
+                  <b>真实闸门在能力层</b>：
+                  <TermText
+                    text={imported || generic
+                      ? '当前没有注册任何写入能力，能调的只有只读查询（见第 03 问的变更能力组）。'
+                      : '写操作只走第 03 问的变更能力，并且必须走既有确认流程；写入不可逆。'}
+                    scope="trust"
+                    site="gate"
+                  />
+                </div>
               </div>
             </div>
-            <div className="guide-stats">
-              <div><b>{runtime.counts.triples}</b><span>推理后三元组</span></div>
-              <div><b>{runtime.counts.asserted}</b><span>文件里声明的</span></div>
-              <div><b>{runtime.counts.inferred}</b><span>推出来的</span></div>
-              <div><b>{runtime.counts.classes}</b><span>{classLabel}</span></div>
-              <div><b>{runtime.counts.individuals}</b><span>个体</span></div>
-            </div>
-            {runtime.inference && (
-              <div className="guide-muted">
-                推理新增构成：自反 {runtime.inference.reflexive} · 元层 {runtime.inference.meta} ·
-                业务 {runtime.inference.business}
-                {runtime.inference.business === 0 && '（业务派生为 0：这份本体推不出新的业务结论）'}
-              </div>
-            )}
           </section>
 
           <section id="guide-integrations" className="guide-section">
             <div className="guide-section-head"><span>05</span><h3>怎么接进去</h3></div>
             {profile.integrations.length ? (
-              <ul className="guide-list">{profile.integrations.map((item) => <li key={item}>{item}</li>)}</ul>
+              <ul className="guide-list">
+                {profile.integrations.map((item) => (
+                  <li key={item}><TermText text={item} scope="integrations" site={`integration-${item}`} /></li>
+                ))}
+              </ul>
             ) : (
               <div className="guide-empty-inline">该包未提供接入说明</div>
             )}
 
             <h4 className="guide-subhead">MCP 接入（智能体自动发现工具）</h4>
             <p className="guide-section-hint">
-              MCP Server 自带引擎，不需要先启动 REST API；工具随当前领域注册。
-              MCP 不做领域热切换，换领域请用 <code>--domain</code> 重启。
+              <TermText
+                text="MCP Server 自带引擎，不需要先启动 REST API；工具随当前领域注册。MCP 不做领域热切换，换领域请用 --domain 重启。"
+                scope="integrations"
+                site="mcp-hint"
+              />
             </p>
-            {runtime.mcp.note && <p className="guide-muted">{runtime.mcp.note}</p>}
+            {runtime.mcp.note && (
+              <p className="guide-muted">
+                <TermText text={runtime.mcp.note} scope="integrations" site="mcp-note" />
+              </p>
+            )}
             <div className="guide-mcp-grid">
               <div className="guide-card">
                 <h4>Streamable HTTP（豆包等连接器）</h4>
@@ -1112,7 +1410,7 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
           <section id="guide-runtime" className="guide-section">
             <div className="guide-section-head"><span>06</span><h3>现在跑的是哪一份</h3></div>
             <div className="guide-runtime-grid">
-              <div className="guide-kv"><span>领域</span><b>{guide.display_name || guide.domain}</b></div>
+              <div className="guide-kv"><span>领域</span><b>{profile.display_name || guide.display_name || guide.domain}</b></div>
               <div className="guide-kv"><span>已加载本体</span><b title={runtime.ontology}>{runtime.ontology_display ?? runtime.ontology}</b></div>
               <div className="guide-kv"><span>模式</span><b>{imported ? '导入的本体（只读）' : generic ? '通用（自定义本体）' : '领域'}</b></div>
               <div className="guide-kv"><span>加载时刻</span><b>{guide.loaded_at}</b></div>
@@ -1129,9 +1427,28 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
                 ))}
               </div>
             )}
+            {/* #137/#142：作者声明的口径属排障信息，统一收在 06 问，不在 04 区冒充闸门 */}
+            {profile.constraints.length > 0 && (
+              <div className="guide-runtime-constraints">
+                <h4 className="guide-subhead">口径说明</h4>
+                <ul className="guide-list muted">
+                  {profile.constraints.map((item) => (
+                    <li key={item}><TermText text={item} scope="runtime" site={`constraint-${item}`} /></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {/* #138 R7：术语提示开关，关闭后整页不再渲染任何标记 */}
+            <label className="guide-glossary-toggle">
+              <input type="checkbox" checked={glossaryOn} onChange={toggleGlossary} />
+              显示术语提示（悬停 / 聚焦看解释）
+            </label>
             <p className="guide-muted">
-              切换领域 / 重载领域不落盘；进程重启会回到配置里的默认领域。第 06 问的内容随当前句柄实时计算，
-              不来自缓存。
+              <TermText
+                text="切换领域 / 重载领域不落盘；进程重启会回到配置里的默认领域。第 06 问的内容随当前句柄实时计算，不来自缓存。"
+                scope="runtime"
+                site="note"
+              />
             </p>
           </section>
 
@@ -1141,5 +1458,6 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
         </div>
       </div>
     </div>
+    </GlossaryProvider>
   );
 }

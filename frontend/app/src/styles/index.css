@@ -126,22 +126,6 @@ body {
 /* #20：通用模式徽标与常驻横幅 */
 .mode-badge { font-size: 12px; background: #d83b01; color: #fff; padding: 3px 10px; border-radius: 12px; flex: 0 0 auto; white-space: nowrap; }
 .mode-banner { background: #fdf1e9; border: 1px solid #f0c7a8; color: #7a3b12; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; margin-bottom: 14px; }
-/* #134 R2：首次引导改成页头中段的一次性内联提示，不另起一行、不遮挡工具栏 */
-.header-onboarding {
-  display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0;
-  font-size: 12px; color: #cfe3f5;
-}
-.header-onboarding > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.header-onboarding-go {
-  border: 1px solid #6d9cc0; background: transparent; color: #eaf4fc;
-  border-radius: 999px; padding: 2px 9px; font-size: 12px; cursor: pointer; white-space: nowrap;
-}
-.header-onboarding-go:hover { background: #2c4d66; }
-.header-onboarding-close {
-  border: 0; background: transparent; color: #cfe3f5; cursor: pointer;
-  font-size: 16px; line-height: 1; padding: 0 3px;
-}
-.header-onboarding-close:hover { color: #fff; }
 /* #55：推理提示横幅——文案两行且左对齐占满，关闭按钮 flex 右置；
    不用绝对定位（内容换行时会压到文字），点击热区不小于 24×24。 */
 .inference-banner { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
@@ -1048,10 +1032,6 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .app-nav button:hover { color: #fff; background: #25455e; }
 .app-nav button.active { background: #fff; color: #1f3a52; font-weight: 600; }
-.domain-switch .domain-display {
-  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: #d6e8f5; font-size: 12px;
-}
 
 .domain-guide { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .guide-head {
@@ -1059,30 +1039,71 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   gap: 12px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow-sm);
 }
-.guide-head h2 { font-size: var(--fs-page); color: var(--heading); margin-bottom: 4px; }
-.guide-head p { font-size: var(--fs-md); color: var(--muted); line-height: 1.6; }
-.guide-head-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.guide-pill {
-  font-size: var(--fs-xs); color: var(--heading); background: var(--panel-2);
-  border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 3px 9px;
+/* #137 R2：首屏现状卡——文件名 + 业务类 / 个体 / 推理新增，不复述说明与状态 */
+.guide-status { align-items: center; }
+.guide-status-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.guide-status-label { font-size: var(--fs-xs); color: var(--muted); }
+.guide-status-name {
+  font-size: var(--fs-lg); color: var(--heading); max-width: min(560px, 62vw);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.guide-pill.ok { color: var(--success); background: var(--success-bg); border-color: var(--success-border); }
-.guide-pill.warn { color: var(--warning); background: #fdf6e8; border-color: #ecd9a9; }
+.guide-status-facts { display: flex; gap: 8px; flex-wrap: wrap; flex: 0 0 auto; }
+.guide-status-facts > div {
+  display: flex; flex-direction: column; gap: 1px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 10px;
+}
+.guide-status-facts b { font-size: var(--fs-title); color: var(--primary); font-variant-numeric: tabular-nums; }
+.guide-status-facts span { font-size: var(--fs-xs); color: var(--muted); }
+/* #137 R3：scenario 改成真可点入口 */
+.guide-tag-action { border: 1px solid transparent; cursor: pointer; font: inherit; }
+.guide-tag-action:hover { border-color: #b9d5e8; background: #e3eef8; }
+/* #137 R5：首次引导只出现一次，点击真跑一题 */
+.guide-first-run {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--primary-soft); border: 1px solid #cfe1f7; border-radius: var(--radius);
+  padding: 8px 12px; font-size: var(--fs-sm2); color: var(--heading);
+}
+.guide-first-run > span { flex: 1 1 auto; }
+.guide-first-run-close {
+  border: 0; background: transparent; color: var(--muted); font-size: 16px;
+  line-height: 1; cursor: pointer; padding: 0 4px;
+}
+/* #139：能力槽位（固定全显，原因与下一步在卡头） */
+.guide-slot-list { display: flex; flex-direction: column; gap: 10px; }
+.guide-slot {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); padding: 10px 12px;
+}
+.guide-slot-head { display: flex; flex-direction: column; gap: 6px; }
+.guide-slot-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.guide-slot-title code { color: var(--primary); font-size: var(--fs-sm); }
+.guide-slot-title .guide-badge { border: 1px solid var(--border); background: var(--panel-2); color: var(--muted); }
+.guide-slot-title .guide-badge.slot-runnable { color: var(--success); background: var(--success-bg); border-color: var(--success-border); }
+.guide-slot-title .guide-badge.slot-no_example,
+.guide-slot-title .guide-badge.slot-blocked_generic { color: #7a3b12; background: #fdf1e9; border-color: #f0c7a8; }
+.guide-slot-note { font-size: var(--fs-sm2); color: var(--text); line-height: 1.6; }
+.guide-slot-blocked {
+  border-left: 3px solid #e0a458; background: #fdf9f2; border-radius: var(--radius-sm);
+  padding: 6px 10px; display: flex; flex-direction: column; gap: 4px;
+  font-size: var(--fs-sm2); color: #7a3b12;
+}
+.guide-slot-reason { line-height: 1.6; }
+.guide-slot-steps { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; line-height: 1.8; }
+.guide-slot-examples { margin-top: 8px; }
+.guide-slot-examples summary { cursor: pointer; font-size: var(--fs-sm2); color: var(--primary); padding: 4px 0; }
+.guide-slot-empty {
+  margin-top: 8px; font-size: var(--fs-sm2); color: #7b8797;
+  background: #f8fafc; border: 1px dashed var(--border); border-radius: var(--radius); padding: 8px 10px;
+}
+.guide-example-group-tag { color: #6b7c90; }
 .guide-muted { color: var(--muted); font-size: var(--fs-sm2); }
 
-.guide-steps {
-  flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  background: var(--primary-soft); border: 1px solid #cfe1f7; border-radius: var(--radius);
-  padding: 8px 12px;
-}
-.guide-steps-title { font-size: var(--fs-sm); font-weight: 600; color: var(--heading); }
 .guide-step {
   border: 1px solid var(--border-strong); background: #fff; color: var(--primary);
   border-radius: var(--radius-pill); padding: 4px 10px; font-size: var(--fs-sm); cursor: pointer;
 }
 .guide-step:hover:not(:disabled) { background: #fff; border-color: var(--primary); }
 .guide-step:disabled { opacity: .45; cursor: not-allowed; }
-.guide-steps-hint { font-size: var(--fs-xs); color: var(--muted); margin-left: auto; }
 
 .guide-layout {
   flex: 1 1 auto; min-height: 0; display: grid;
@@ -1282,6 +1303,11 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-stats div { display: flex; flex-direction: column; gap: 2px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
 .guide-stats b { font-size: var(--fs-title); color: var(--heading); }
 .guide-stats span { font-size: var(--fs-xs); color: var(--muted); }
+/* #142：04 区「可信 / 被拦」两半——证据与真实闸门 */
+.guide-proof-entry { margin-top: 8px; font-size: var(--fs-sm2); line-height: 1.7; color: var(--muted); }
+.guide-proof-entry a { margin-left: 6px; color: #0b57a0; }
+.guide-gate { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 8px; font-size: var(--fs-sm2); line-height: 1.7; color: var(--text); }
+.guide-runtime-constraints { margin-top: 10px; }
 .guide-kv { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: var(--fs-sm2); padding: 3px 0; }
 .guide-kv span { color: var(--muted); }
 .guide-kv b { color: var(--text); font-weight: 600; text-align: right; }
@@ -1319,7 +1345,6 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
    ============================================================ */
 @media (max-width: 1200px) {
   .app-sub { display: none; }
-  .header-onboarding { display: none; }
   .header-actions { display: none; }
   .header-more { display: block; }
   .graph-zoom-btns { display: none; }
@@ -1331,3 +1356,43 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   .app-nav { display: none; }
   .menu-nav-item { display: block; }
 }
+
+/* ============================================================
+   #138：术语注解层——不占布局的虚线标记 + 固定定位气泡
+   ============================================================ */
+.term-mark {
+  border-bottom: 1px dotted #9aa7b6;
+  cursor: help;
+  outline: none;
+  border-radius: 2px;
+}
+.term-mark:hover,
+.term-mark:focus-visible,
+.term-mark.is-open {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
+}
+.term-tooltip {
+  position: fixed;
+  z-index: 120;
+  pointer-events: none;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(15, 32, 51, .22);
+  padding: 9px 11px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.term-tooltip-term { font-weight: 600; color: var(--heading); font-size: 12px; margin-bottom: 3px; }
+.term-tooltip-where {
+  margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--border);
+  color: var(--muted); font-size: 11.5px;
+}
+.term-tooltip-where span { color: #8a94a6; margin-right: 4px; }
+.guide-glossary-toggle {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+  font-size: var(--fs-sm2); color: var(--muted); cursor: pointer; user-select: none;
+}
+.guide-glossary-toggle input { accent-color: var(--primary); }

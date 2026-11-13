@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- **「当前领域」页术语就地解释（#138）**：新增框架级词表 `frontend/app/src/data/glossary.json`（30 条 L1/L2 术语，含中文主词、别名、一句人话、「在这套系统里」、分级与负向上下文）与 `TermText` 注解层。最长优先匹配 + 负向上下文避免把「类型」拆成「类」；同一术语每个区只标首次、L1 全页最多 3 次；标记是极轻点状下划线、气泡固定定位不占布局，悬停 150ms 出 / 移开 200ms 收，Tab 聚焦、点击固定、Esc 关闭，同一时刻只开一个。06 问底部「显示术语提示」开关本地记忆，关闭后整页不渲染任何标记。词表校验（主词唯一、别名不冲突、解释 ≤30 字、不套用未收录行话）进单测。
+- **能力槽位固定全显（#139）**：`GET /api/domains/current/guide` 新增 `capability_slots[]`——全集 = `capability_notes` 键 ∪ 声明能力 ∪ 题目引用到的框架通用能力，与示例题解耦；每格给 `state`（`runnable / no_example / blocked_generic / write_only / mcp_only`）、`reason` 与结构化 `next_steps`（`open_endpoint / switch_domain / reload_domain / import_ontology / open_write_flow`），由框架按运行态判定、包不自填。02 区改为按槽位渲染：能力名与用途、状态徽标、未展开即见的「为什么 / 怎么才能用」、题目按题数折叠；导入态稳定 7 格，缺题槽位显示正式空态而不是消失。新增前后端契约测试（槽位唯一、题目只挂一处、状态与原因自洽）。
+
+### Changed
+
+- **「当前领域」页信息架构收敛（#137）**：页头只保留领域下拉这一个名字显示，红色徽标改为「只读」状态标签；页内概览从「标题 + 摘要 + 状态 pill」改成「文件名 + 业务类 / 个体 / 推理新增」现状卡，`profile.summary` 全页只在 01 区渲染一次；01 区的 scenario 标签改为真可点入口（按关键词跳到对应示例题或区）；删除常驻「第一次用 · 三步」，收敛成 02 区一个只出现一次的「带我试一题」——展开首道可试跑题、复用 `revealExample` 定位并真的发一次只读请求；`guide_version` / 契约 / 模式只在 06 问出现；`generic` / `imported` 横幅合并为按优先级取一条，只写后果。信息归属表写入组件文件头。
+- **04 区「凭什么可信 / 什么会被拦」去虚向实（#142）**：删除用作者声明冒充闸门的「约束摘要」，左卡保留五个计数 + 推理三层构成并补 `GET /api/ontology/proof` 核验入口；右卡在 `runtime.rules` 为空时不再渲染「该包没有规则执行报告」死卡片，改为诚实解释「没有加载规则层、带规则层时显示什么」，并点明真实闸门在能力层（导入态没有注册写能力，只能调只读查询）。作者声明的口径统一移到 06 问「口径说明」。
+
 ### Fixed
 
 - **dict 形态题库的查重不再静默失效（#140）**：`dedup_against_items` 只认裸数组题库，仓库内 `cq_tests.json` 的真实形态 `{suite, version, description, cases}` 走不到索引构建，`norm_bank` 恒为空——题库正常解析（`skipped: False`）、与既有题逐字相同的提交却查不出撞题，`validate_cqs` 的 dedup 形同虚设。现在先按形态归一（`_bank_case_items`：裸数组 / `{cases: [...]}` 两种法定形态），再建索引，`against_id` 仍指向条目 `id` / `case_id`；缺 `cases` 或 `cases` 非列表时返回 `skipped: True` 并说明原因，不报错也不伪造撞题。裸数组题库行为不变。

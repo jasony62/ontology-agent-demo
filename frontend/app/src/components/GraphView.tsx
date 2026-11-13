@@ -7,6 +7,7 @@ import type { GraphData, GraphGroup } from '../api/client';
 import { CLASS_COLOR, INDIVIDUAL_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView } from '../lib/graphGroups';
 import type { GroupView, LegendFocus } from '../lib/graphGroups';
 import { applyGraphDim } from '../lib/graphSelection';
+import OverflowMenu from './OverflowMenu';
 
 cytoscape.use(fcose);
 
@@ -26,6 +27,8 @@ interface Props {
   issueLevels?: Record<string, 'blocker' | 'required'>;
   /** 工具栏前置控件（视图模式切换等），与搜索 / 缩放同排以节省画布上方空间 */
   toolbarLeading?: ReactNode;
+  /** 窄屏收进「更多」的操作（新建入口等）；宽度不足时由 CSS 显示菜单 */
+  toolbarOverflow?: ReactNode;
   onSelect?: (id: string | null) => void;
 }
 
@@ -230,7 +233,7 @@ function elementsFromGraphData(
 }
 
 export default function GraphView({
-  viewMode, asserted, inferred, groups, focus, selectedId, issueLevels, toolbarLeading, onSelect,
+  viewMode, asserted, inferred, groups, focus, selectedId, issueLevels, toolbarLeading, toolbarOverflow, onSelect,
 }: Props) {
   const groupView = useMemo(() => buildGroupView(groups ?? []), [groups]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -430,8 +433,18 @@ export default function GraphView({
           <button className="secondary" onClick={() => zoomBy(1.25)} title="放大">＋</button>
           <button className="secondary" onClick={() => zoomBy(0.8)} title="缩小">－</button>
           <button className="secondary" onClick={() => cyRef.current?.fit(undefined, 28)} title="适应画布">⛶</button>
-          <button className="secondary" onClick={relayout} title="重新计算节点位置并适应画布">重新布局</button>
+          <button className="secondary" onClick={relayout} title="重新计算节点位置并适应画布">⟳</button>
         </span>
+        {/* #134 R3/R6：缩放（最低优先级）与新建入口在窄屏收进「更多」，工具栏保持单行 */}
+        <OverflowMenu id="graph-toolbar" className="graph-more" label="更多" title="收起的缩放与新建入口" closeOnAction={false}>
+          {toolbarOverflow && <div className="graph-more-create">{toolbarOverflow}</div>}
+          <div className="graph-more-zoom">
+            <button type="button" onClick={() => zoomBy(1.25)}>＋ 放大</button>
+            <button type="button" onClick={() => zoomBy(0.8)}>－ 缩小</button>
+            <button type="button" onClick={() => cyRef.current?.fit(undefined, 28)}>⛶ 适应画布</button>
+            <button type="button" onClick={relayout}>⟳ 重新布局</button>
+          </div>
+        </OverflowMenu>
       </div>
       <div ref={containerRef} id="graph" className="graph-wrap" />
     </div>

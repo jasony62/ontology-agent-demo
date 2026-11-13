@@ -162,9 +162,6 @@ export default function CreateElementBar() {
         >
           ＋ 添加事实
         </button>
-        {readOnly && (
-          <span className="create-readonly-hint">导入的本体为只读副本，编辑请先导出</span>
-        )}
         {last && (
           <button type="button" className="btn ghost" onClick={undo} title="撤销刚才的新建（只移除新建元素）">
             撤销新建

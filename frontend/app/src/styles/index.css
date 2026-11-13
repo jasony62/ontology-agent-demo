@@ -85,24 +85,33 @@ body {
 .app { min-height: 100vh; display: flex; flex-direction: column; }
 
 .app-header {
-  background: #1f3a52; color: #fff; padding: 12px 20px;
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: #1f3a52; color: #fff; padding: 6px 16px;
+  /* #134 R1：恒定单行。三段式结构：左品牌 + 入口 / 中领域上下文（可压缩）/ 右动作 + 状态 */
+  display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; min-height: 52px;
 }
-.app-header h1 { font-size: 18px; font-weight: 600; }
-.app-sub { font-size: 12px; color: #bcd3e4; }
-.health { margin-left: auto; font-size: 12px; background: #2c4d66; padding: 4px 12px; border-radius: 12px; }
+.app-brand { display: flex; align-items: baseline; gap: 10px; flex: 0 0 auto; min-width: 0; }
+.app-header h1 { font-size: 18px; font-weight: 600; white-space: nowrap; }
+.app-sub { font-size: 12px; color: #bcd3e4; white-space: nowrap; }
+.health { margin-left: 0; font-size: 12px; background: #2c4d66; padding: 4px 12px; border-radius: 12px; white-space: nowrap; flex: 0 0 auto; }
 .health.ok { background: #1e6b3d; }
+.app-header-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto; min-width: 0; }
+.app-nav { display: flex; gap: 4px; flex: 0 0 auto; }
 /* 领域包切换器：深底浅字、与 .toolbar 的实心按钮区分——它切的是"当前上下文"，不是执行动作 */
-.domain-switch { display: flex; align-items: center; gap: 6px; font-size: 12px; position: relative; }
-.domain-switch .domain-label { color: #bcd3e4; }
+.domain-switch { display: flex; align-items: center; gap: 6px; font-size: 12px; position: relative; flex: 1 1 auto; min-width: 0; }
+.domain-switch .domain-label { color: #bcd3e4; flex: 0 0 auto; }
 .domain-switch select {
   background: #2c4d66; color: #fff; border: 1px solid #3f6280; border-radius: 6px;
-  padding: 4px 8px; font-size: 12px; cursor: pointer; max-width: 200px;
+  padding: 4px 8px; font-size: 12px; cursor: pointer; max-width: 200px; flex: 0 0 auto; white-space: nowrap;
 }
 .domain-switch select:disabled { opacity: .55; cursor: not-allowed; }
+/* #134 R1：页头只留领域名，长摘要省略并进悬停提示；它是导航，不是说明书 */
+.domain-switch .domain-display {
+  flex: 1 1 auto; min-width: 0; max-width: 340px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d8e8f4;
+}
 .domain-switch .domain-reload {
   background: #2c4d66; color: #fff; border: 1px solid #3f6280; border-radius: 6px;
-  padding: 4px 10px; font-size: 12px; cursor: pointer;
+  padding: 4px 10px; font-size: 12px; cursor: pointer; flex: 0 0 auto; white-space: nowrap;
 }
 .domain-switch .domain-reload:hover:not(:disabled) { background: #3a6280; }
 .domain-switch .domain-reload:disabled { opacity: .55; cursor: not-allowed; }
@@ -115,14 +124,24 @@ body {
   box-shadow: 0 4px 12px rgba(15, 32, 51, .18);
 }
 /* #20：通用模式徽标与常驻横幅 */
-.mode-badge { font-size: 12px; background: #d83b01; color: #fff; padding: 3px 10px; border-radius: 12px; margin-left: 8px; }
+.mode-badge { font-size: 12px; background: #d83b01; color: #fff; padding: 3px 10px; border-radius: 12px; flex: 0 0 auto; white-space: nowrap; }
 .mode-banner { background: #fdf1e9; border: 1px solid #f0c7a8; color: #7a3b12; padding: 10px 14px; border-radius: 8px; font-size: 13px; line-height: 1.6; margin-bottom: 14px; }
-.onboarding-banner { display: flex; align-items: center; gap: 10px; background: #eef6ff; border: 1px solid #b9d7f5; color: #0b57a0; padding: 9px 12px; border-radius: 8px; font-size: 13px; line-height: 1.6; margin-bottom: 14px; }
-.onboarding-banner span { flex: 1 1 auto; }
-.onboarding-banner code { background: #dcebfa; border-radius: 4px; padding: 1px 5px; }
-.onboarding-banner .btn { flex: 0 0 auto; }
-.onboarding-close { flex: 0 0 auto; border: 0; background: transparent; color: #0b57a0; cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; }
-.onboarding-close:hover { color: #063d73; }
+/* #134 R2：首次引导改成页头中段的一次性内联提示，不另起一行、不遮挡工具栏 */
+.header-onboarding {
+  display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0;
+  font-size: 12px; color: #cfe3f5;
+}
+.header-onboarding > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-onboarding-go {
+  border: 1px solid #6d9cc0; background: transparent; color: #eaf4fc;
+  border-radius: 999px; padding: 2px 9px; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.header-onboarding-go:hover { background: #2c4d66; }
+.header-onboarding-close {
+  border: 0; background: transparent; color: #cfe3f5; cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 0 3px;
+}
+.header-onboarding-close:hover { color: #fff; }
 /* #55：推理提示横幅——文案两行且左对齐占满，关闭按钮 flex 右置；
    不用绝对定位（内容换行时会压到文字），点击热区不小于 24×24。 */
 .inference-banner { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
@@ -140,11 +159,46 @@ body {
 .flash-highlight { outline: 3px solid #ff9800; outline-offset: 4px; border-radius: 10px; transition: outline-color 0.3s; }
 /* #23：图谱工具栏 */
 .graph-shell { display: flex; flex-direction: column; gap: 8px; }
-.graph-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.graph-search { flex: 1 1 200px; min-width: 160px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; }
-.graph-hit { font-size: 12px; color: #0b57a0; background: #eef3f8; padding: 2px 8px; border-radius: 10px; }
-.graph-zoom-btns { display: flex; gap: 4px; }
-.graph-zoom-btns button { padding: 4px 9px; font-size: 13px; }
+/* #134 R3：恒定单行，不再让缩放组随机掉到第二行；窄屏收进「更多」 */
+.graph-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
+.graph-search { flex: 1 1 180px; min-width: 90px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; }
+.graph-hit { font-size: 12px; color: #0b57a0; background: #eef3f8; padding: 2px 8px; border-radius: 10px; flex: 0 0 auto; }
+.graph-toolbar-create { display: inline-flex; flex: 0 0 auto; }
+.graph-toolbar-create .btn { padding: 6px 9px; white-space: nowrap; }
+.graph-zoom-btns { display: flex; gap: 4px; flex: 0 0 auto; }
+.graph-zoom-btns button { padding: 4px 9px; font-size: 13px; white-space: nowrap; }
+.view-toggle { flex: 0 0 auto; }
+.view-toggle button { white-space: nowrap; }
+
+/* #134 R6/R7：窄屏「更多」菜单（页头 / 图谱工具栏共用） */
+.overflow-menu { position: relative; flex: 0 0 auto; }
+.overflow-toggle {
+  border: 1px solid #3f6280; background: #2c4d66; color: #fff; border-radius: 6px;
+  padding: 5px 10px; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.overflow-toggle:hover { background: #3a6280; }
+.graph-toolbar .overflow-toggle { background: var(--primary); border-color: var(--primary); }
+.graph-toolbar .overflow-toggle:hover { background: var(--primary-hover); }
+.overflow-panel {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 160px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(15, 32, 51, .22);
+}
+.overflow-panel button,
+.overflow-panel a {
+  display: block; width: 100%; text-align: left; padding: 7px 10px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--text);
+  font-size: 13px; cursor: pointer; text-decoration: none; white-space: nowrap;
+}
+.overflow-panel button:hover:not(:disabled),
+.overflow-panel a:hover { background: #eef3f8; }
+.overflow-panel button:disabled { opacity: .5; cursor: not-allowed; }
+.overflow-panel .graph-more-zoom { display: flex; flex-direction: column; gap: 2px; }
+/* 页头「更多」（≤1200px）与工具栏「更多」默认隐藏，由下方断点打开 */
+.header-more, .graph-more { display: none; }
+.menu-nav-item { display: none; }
+.graph-more-create { display: none; }
 /* #25：导入提示 */
 .import-hint { font-size: 12.5px; color: #7a3b12; background: #fdf1e9; border: 1px solid #f0c7a8; border-radius: 6px; padding: 8px 10px; line-height: 1.6; margin: 4px 0 10px; }
 /* #26：类层次折叠 */
@@ -217,6 +271,27 @@ body {
 .overview-stat .num { font-size: 18px; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
 .overview-stat .num.inferred { color: #2f8f6b; }
 .overview-empty { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+/* #134 R5：本体身份 / 结构规模两组，字段名与值左右对齐，长文件名省略并进悬停提示 */
+.overview-kv { display: flex; flex-direction: column; gap: 4px; }
+.overview-kv-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; }
+.overview-kv-row .label { color: var(--muted); flex: 0 0 auto; }
+.overview-kv-row .value {
+  color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.overview-stats--compact { flex-direction: row; gap: 6px; }
+.overview-stats--compact .overview-stat {
+  flex: 1 1 0; flex-direction: column; align-items: flex-start; gap: 2px; padding: 5px 8px;
+}
+.overview-stats--compact .num { font-size: 15px; }
+.overview-views { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.overview-view-btn {
+  border: 1px solid var(--border); background: #fff; color: var(--muted);
+  border-radius: 999px; padding: 3px 9px; font-size: 11.5px; cursor: pointer;
+}
+.overview-view-btn:hover { background: var(--surface-hover); color: var(--text); }
+.overview-view-btn.active { background: var(--primary-soft); border-color: #cfe1f7; color: var(--primary); font-weight: 600; }
+.overview-next { margin: 8px 0 0; font-size: 11.5px; line-height: 1.6; color: #8a94a6; }
+.overview-next a { color: #0b57a0; }
 .overview-hint {
   font-size: 12px; line-height: 1.6; color: #7a3b12;
   background: #fdf1e9; border: 1px solid #f0c7a8; border-radius: 8px; padding: 7px 9px;
@@ -1235,3 +1310,24 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-cap-no-rest { font-size: var(--fs-xs); color: #9aa7b6; }
 .guide-mcp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
 .guide-mcp-grid .guide-card { display: flex; flex-direction: column; gap: 8px; }
+
+/* ============================================================
+   #134 R6：窄屏收口——一行放不下时按优先级收进「更多」，
+   而不是任由元素随机换行。视图切换与搜索常驻。
+   1200px：页头动作 / 首次引导 / 缩放组
+   1024px：页面入口 / 新建入口
+   ============================================================ */
+@media (max-width: 1200px) {
+  .app-sub { display: none; }
+  .header-onboarding { display: none; }
+  .header-actions { display: none; }
+  .header-more { display: block; }
+  .graph-zoom-btns { display: none; }
+  .graph-more { display: block; }
+  .graph-toolbar-create { display: none; }
+  .graph-more-create { display: block; }
+}
+@media (max-width: 1024px) {
+  .app-nav { display: none; }
+  .menu-nav-item { display: block; }
+}

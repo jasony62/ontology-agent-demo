@@ -305,8 +305,8 @@ export default function WorkspaceSplit({
             <span className="pane-rail-label">图谱</span>
           </div>
         ) : (
-          <div className="pane-head">
-            <span className="pane-title">图谱</span>
+          // #134 R4：去掉只写「图谱」二字的标题行，收起按钮浮在面板右上角，省下一整行高度。
+          <div className="pane-head pane-head--float">
             <button
               type="button"
               className="pane-icon-btn"

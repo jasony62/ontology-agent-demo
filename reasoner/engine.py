@@ -117,6 +117,23 @@ def _resolve_ns(onto_path: str, g: "Graph", use_xml_base: bool = True) -> str:
 # 命名空间，所以那边刻意传空串而不是复用它。
 resolve_ns = _resolve_ns
 
+# 断言图里能承载推理的 TBox 公理谓词。只认用户写下的四类公理与限制：
+# 物化后 `owl:Thing ⊑ owl:Thing` 这类自反结论不是公理，拿它判断会让每份本体
+# 都「有公理」（#121 / #129 体检报告共用这一份口径）。
+TBOX_AXIOM_PREDICATES = (
+    RDFS.subClassOf,
+    OWL.equivalentClass,
+    OWL.disjointWith,
+    OWL.inverseOf,
+)
+
+
+def tbox_axiom_count(engine_or_graph) -> int:
+    """断言图里的 TBox 公理条数（类层次 / 等价 / 互斥 / 逆属性 / 限制）。"""
+    raw = getattr(engine_or_graph, "raw", engine_or_graph)
+    total = sum(1 for predicate in TBOX_AXIOM_PREDICATES for _ in raw.subject_objects(predicate))
+    return total + sum(1 for _ in raw.subjects(RDF.type, OWL.Restriction))
+
 
 class SparqlTimeoutError(RuntimeError):
     """SPARQL 查询超时（两段式：首条结果 / 整体完成）。属性 kind / limit_ms。

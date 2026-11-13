@@ -25,9 +25,10 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
-from rdflib import OWL, RDF, RDFS, URIRef
+from rdflib import URIRef
 
 from ontology_plugin_sdk import AdapterBase, SemanticConfig, local
 from ontology_plugin_sdk.protocol import validate_domain_guide
@@ -39,6 +40,16 @@ DESCRIPTION = (
     "当前导入的本体：结构 / 推理 / 查询 / 依据等通用只读能力；"
     "领域专属推理（能力匹配 / 编排 / 合规）需要领域适配器，当前不可用"
 )
+
+# 上传副本的文件名带 8 位 uuid 前缀（防重名用），对用户没有意义：
+# 页面显示原始文件名，哈希只留在 title / 落盘路径里（#131）。
+_UUID_PREFIX = re.compile(r"^[0-9a-fA-F]{8,}-")
+
+
+def display_filename(filename: str) -> str:
+    """上传副本的对外文件名：去掉 uuid 前缀，保留用户认得的那部分。"""
+    base = os.path.basename(filename or "")
+    return _UUID_PREFIX.sub("", base) or base or filename
 
 # 声明即承诺：每个名字都必须有落点（见 registry._validate_adapter）。
 # 这些不是「领域能力」，而是任何 OWL 都成立的通用只读操作；示例题的 endpoint
@@ -61,12 +72,9 @@ def _has_tbox_axioms(engine) -> bool:
     用户写的公理，拿它判断会让每份本体都「有公理」。空公理集的本体推理
     不会产生新的业务结论，说明页必须如实说出来。
     """
-    raw = getattr(engine, "raw", engine.g)
-    for predicate in (RDFS.subClassOf, OWL.equivalentClass, OWL.disjointWith,
-                      OWL.inverseOf):
-        for _ in raw.subject_objects(predicate):
-            return True
-    return any(True for _ in raw.subjects(RDF.type, OWL.Restriction))
+    from reasoner.engine import tbox_axiom_count   # 延迟导入：domains 属于引导链
+
+    return tbox_axiom_count(engine) > 0
 
 
 class ImportedOntologyAdapter(AdapterBase):
@@ -197,6 +205,8 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
     模板题，也不写死答案。
     """
     filename = filename or os.path.basename(getattr(engine, "onto_path", "") or "") or "（未命名）"
+    # #131：摘要里显示原始文件名；uuid 前缀留在 runtime.ontology（完整落盘名）。
+    filename_display = display_filename(filename)
     classes = engine.classes()
     # owl:Thing 是前端类树的根节点（classes() 保留它），不是用户写的业务类：
     # 直接铺进「有哪些类」的答案会让人以为自己建了 Thing（#121 R3）。
@@ -401,8 +411,9 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
         "guide_version": "1",
         "display_name": DISPLAY_NAME,
         "summary": (
-            f"当前对外服务的是导入的本体「{filename}」：{len(class_names)} 个类、"
-            f"{who}，{inference_text}。以下是任何 OWL 本体都能用的只读能力。"
+            f"当前对外服务的是导入的本体「{filename_display}」：{len(class_names)} 个业务类"
+            f"（另有 owl:Thing 兜底）、{who}，{inference_text}。"
+            "以下是任何 OWL 本体都能用的只读能力。"
         ),
         "scenarios": scenarios,
         "covers": [

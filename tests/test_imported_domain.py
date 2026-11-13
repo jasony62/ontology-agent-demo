@@ -306,6 +306,73 @@ def test_zero_individual_ontology_is_explained_not_hidden(restore_engine):
         assert _run_example(example).status_code == 200, example["id"]
 
 
+# ---------------------------------------------------------------- 体检与只读（#128 / #129 / #131）
+
+
+def test_guide_reports_ontology_health_for_terminology_only(restore_engine):
+    """#129：导入 0 个体 0 公理的本体，体检要主动说出「本来就没得看」。"""
+    assert _upload(ONLY_CLASSES_OWL, "glossary.owl").status_code == 200
+
+    health = client.get("/api/domains/current/guide").json()["runtime"]["health"]
+    assert health["profile"] == "terminology_only"
+    assert health["facts"]["individuals"] == 0
+    assert health["facts"]["axioms"] == 0
+    assert health["facts"]["business_inferred"] == 0
+    assert "纯术语层" in health["profile_label"]
+    # 三项预期逐条给「有得看 / 没得看」，不留给用户猜
+    by_feature = {item["feature"]: item for item in health["expectations"]}
+    assert by_feature["推理新增业务结论"]["available"] is False
+    assert by_feature["查依据（点推理连线看前提）"]["available"] is False
+    assert by_feature["示例题"]["available"] is True
+    assert "补几组个体" in health["suggestion"]
+
+
+def test_guide_health_marks_instances_plus_axioms_as_reasoning_ready(restore_engine):
+    assert _upload(OWL_A, "people.owl").status_code == 200
+
+    health = client.get("/api/domains/current/guide").json()["runtime"]["health"]
+    assert health["profile"] == "reasoning_ready"
+    assert health["facts"]["individuals"] == 2
+    assert health["facts"]["axioms"] >= 1
+    by_feature = {item["feature"]: item for item in health["expectations"]}
+    assert by_feature["查依据（点推理连线看前提）"]["available"] is True
+    assert by_feature["示例题"]["available"] is True
+    # 业务派生是否为 0 由引擎口径决定，体检只如实转述，不自己加码
+    assert by_feature["推理新增业务结论"]["available"] is (
+        health["facts"]["business_inferred"] > 0
+    )
+    assert "推理新增" in health["suggestion"]
+
+
+def test_overwrite_is_rejected_for_imported_ontology(restore_engine):
+    """#128：导入的本体承诺只读——后端拒绝 overwrite，另存仍可用。"""
+    assert _upload(OWL_A, "readonly.owl").status_code == 200
+    model = client.get("/api/ontology/edit-model").json()
+
+    r = client.post("/api/ontology/save", json={"model": model, "mode": "overwrite"})
+    assert r.status_code == 400
+    assert "只读副本" in r.json()["detail"]
+
+    # 另存新文件不受影响（它进入导入的本体，原副本不被改写）
+    r = client.post("/api/ontology/save", json={
+        "model": model, "filename": "copy.owl", "mode": "new",
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["mode"] == "new"
+
+
+def test_guide_shows_original_filename_without_upload_uuid(restore_engine):
+    """#131：页头 / 说明页显示原始文件名，uuid 前缀只留在落盘名里。"""
+    original = "任务工时绩效管理本体-v0.2.owl"
+    assert _upload(ONLY_CLASSES_OWL, original).status_code == 200
+
+    guide = client.get("/api/domains/current/guide").json()
+    assert guide["runtime"]["ontology_display"] == original
+    assert guide["runtime"]["ontology"] != guide["runtime"]["ontology_display"]
+    assert original in guide["profile"]["summary"]
+    assert guide["runtime"]["ontology"] not in guide["profile"]["summary"]
+
+
 def test_switch_back_to_preset_restores_guide_and_graph(restore_engine):
     default_name = M.DOMAINS.settings.effective_default()
     assert default_name, "测试运行态必须有默认领域"

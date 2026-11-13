@@ -51,6 +51,10 @@ SCATTERED_THRESHOLD = 5
 
 _SAME_AS = str(OWL.sameAs)
 
+# 中文术语判定：定位器靠字面匹配中文题干，词表里一个中文字都没有时
+# 「查不到」不是功能坏了，而是这份本体没写中文标签（#131）。
+_CJK = re.compile(r"[\u4e00-\u9fff]")
+
 
 def _sparql_string(text: str) -> str:
     """把任意文本变成 SPARQL 双引号字符串常量（只填常量，不拼查询结构）。"""
@@ -125,8 +129,23 @@ def _label_for(engine, item: str) -> str:
         return item
 
 
-def _hint(anchors: list[str], coverage: str, total: int, conclusion: int) -> str:
+def _hint(
+    anchors: list[str],
+    coverage: str,
+    total: int,
+    conclusion: int,
+    vocabulary: list[str] = (),
+) -> str:
     if not anchors:
+        # #131：匹配失败有三种原因，别让用户只看到「查不到」：
+        # 词表为空 / 词表全是外文（题干是中文）/ 题干用词与本体叫法不同。
+        if not vocabulary:
+            return "词表为空：本体里没有任何 rdfs:label，定位器只认字面，请先给术语补 label。"
+        if not any(_CJK.search(term) for term in vocabulary):
+            return (
+                "题干未匹配到本体术语：这份本体没有中文 rdfs:label（纯英文本体），"
+                "定位器只认字面；请改用本体里的原始英文叫法，或给术语补中文标签。"
+            )
         return "题干中未匹配到本体术语，可尝试使用本体中的原始叫法。"
     if coverage == "gap":
         return "命中 0 条：本体里没有条目直接包含这些术语。"
@@ -161,7 +180,8 @@ def locate_cq(
     fields = set(
         DEFAULT_CONCLUSION_FIELDS if conclusion_fields is None else conclusion_fields
     )
-    anchors = extract_anchors(text, build_vocabulary(engine))
+    vocabulary = build_vocabulary(engine)
+    anchors = extract_anchors(text, vocabulary)
 
     if not anchors:
         return {
@@ -169,7 +189,7 @@ def locate_cq(
             "coverage": "no_anchors",
             "evidence": [],
             "counts": {"total": 0, "conclusion": 0, "description": 0},
-            "hint": _hint([], "no_anchors", 0, 0),
+            "hint": _hint([], "no_anchors", 0, 0, vocabulary),
         }
 
     seen: set[tuple[str, str, str]] = set()

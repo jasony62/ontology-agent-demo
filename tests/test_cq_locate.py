@@ -111,6 +111,13 @@ ENGLISH_OWL = """<?xml version="1.0"?>
 </rdf:RDF>
 """
 
+NO_LABEL_OWL = """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://example.org/nolabel#Item"/>
+</rdf:RDF>
+"""
+
 CQS = [
     "CQ-001 项目交付类与产品研发类的计费区别是什么？",
     "CQ-002 项目间隙/待岗类任务如何处理？",
@@ -238,7 +245,22 @@ def test_english_ontology_returns_no_anchors_not_500(restore_engine):
     assert body["anchors"] == []
     assert body["coverage"] == "no_anchors"
     assert body["evidence"] == []
+    # #131：说清「为什么查不到」——纯英文本体没有中文 label，不是功能坏了
     assert "未匹配到本体术语" in body["hint"]
+    assert "纯英文本体" in body["hint"]
+    assert "英文叫法" in body["hint"]
+
+
+def test_ontology_without_any_label_says_vocabulary_is_empty(restore_engine):
+    """#131：连 rdfs:label 都没有时，提示「词表为空」，而不是让人以为功能坏了。"""
+    assert _upload(NO_LABEL_OWL, "no-label.owl").status_code == 200
+    body = client.post(
+        "/api/domains/current/cq/locate",
+        json={"cq": "项目间隙类任务如何处理？"},
+    ).json()
+    assert body["coverage"] == "no_anchors"
+    assert "词表为空" in body["hint"]
+    assert "补 label" in body["hint"]
 
 
 def test_empty_cq_is_400(restore_engine):

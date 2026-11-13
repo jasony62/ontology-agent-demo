@@ -86,6 +86,7 @@ from reasoner.protocol import (
     validate_entity_schema,
 )
 from domains import DomainManager, DomainContractError, DomainNotFoundError
+from domains.imported import display_filename
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
@@ -809,6 +810,90 @@ def _runtime_individuals(engine) -> list[str]:
     return engine.individual_names()
 
 
+def _ontology_basename(engine, handle) -> str:
+    """当前对外服务的本体文件名（通用模式下是上传 / 保存的那一份）。"""
+    return os.path.basename(getattr(engine, "onto_path", None) or handle.onto_path)
+
+
+def _ontology_health(engine, examples: list[dict]) -> dict:
+    """本体体检（#129）：把「这份本体在这个系统里能看到什么」说成人话。
+
+    分型只看**用户能感知的三件素材**：有没有个体、断言里有没有 TBox 公理、
+    推理有没有推出业务结论。它不判本体好坏，只回答「哪些功能有得看」——
+    初始用户不该靠一路撞墙（图上没新增 → 数字对不上 → 查不到依据）自己悟。
+
+    口径与说明生成共用引擎原语：个体 = `individual_count()`，业务派生 =
+    `inference_breakdown()["business"]`，公理 = `tbox_axiom_count()`（只看
+    断言图，物化补出的自反结论不算）。纯术语层 / 只有实例 / 可推理三型
+    互斥，判定顺序固定，保证同一份本体每次得到同一个结论。
+    """
+    from reasoner.engine import tbox_axiom_count
+
+    breakdown = engine.inference_breakdown()
+    individuals = engine.individual_count()
+    axioms = tbox_axiom_count(engine)
+    if individuals == 0:
+        profile = "terminology_only"
+        profile_label = "纯术语层：没有业务个体，推理只补类型层级"
+        suggestion = (
+            "这份本体没有可推理的个体：想看到推理效果，先补几组个体"
+            "（类型 + 至少一条业务属性）再导入。"
+        )
+    elif axioms == 0:
+        profile = "instances_only"
+        profile_label = "只有实例：没有可验证的 TBox 公理"
+        suggestion = (
+            "个体已经有了，但缺公理：补一条 subClassOf / equivalentClass / "
+            "inverseOf 再导入，才会有「个体被推出新类型 / 新关系」可看。"
+        )
+    else:
+        profile = "reasoning_ready"
+        profile_label = f"有推理素材：{individuals} 个个体 + {axioms} 条公理"
+        suggestion = (
+            "切到「只看推理新增」看结论，再点一条绿色虚线查依据。"
+            if breakdown["business"] > 0
+            else "本体的公理与个体没有形成可派生的组合；先看推理新增，"
+            "若图上仍无新连线，可补 inverseOf / 属性链让个体之间产生结论。"
+        )
+    safe_examples = sum(1 for item in examples if item.get("safe"))
+    return {
+        "profile": profile,
+        "profile_label": profile_label,
+        "facts": {
+            "individuals": individuals,
+            "axioms": axioms,
+            "inferred": breakdown["total"],
+            "business_inferred": breakdown["business"],
+        },
+        "expectations": [
+            {
+                "feature": "推理新增业务结论",
+                "available": breakdown["business"] > 0,
+                "detail": (
+                    f"业务派生 {breakdown['business']} 条"
+                    if breakdown["business"] > 0
+                    else "业务派生 0 条：图上不会多出新连线"
+                ),
+            },
+            {
+                "feature": "查依据（点推理连线看前提）",
+                "available": individuals > 0,
+                "detail": (
+                    "有业务个体，可逐条展开前提链"
+                    if individuals > 0
+                    else "没有业务个体，依据定位只会返回空结果"
+                ),
+            },
+            {
+                "feature": "示例题",
+                "available": safe_examples > 0,
+                "detail": f"{safe_examples} 道可在页内直接试跑",
+            },
+        ],
+        "suggestion": suggestion,
+    }
+
+
 def _rules_summary(report: dict | None) -> dict | None:
     """规则执行报告的使用视角摘要：不暴露包内绝对路径。"""
     if not report:
@@ -1085,15 +1170,19 @@ def domain_guide():
             ],
             "entity_schema": full_schema,
             # 当前对外服务的本体文件（通用模式下是上传/保存的那一份）
-            "ontology": os.path.basename(
-                getattr(ENGINE, "onto_path", None) or handle.onto_path
-            ),
+            "ontology": _ontology_basename(ENGINE, handle),
+            # #131：给用户看的原始文件名（去掉上传副本的 uuid 前缀）；
+            # 完整落盘名保留在 ontology 里，供排查与下载对账。
+            "ontology_display": display_filename(_ontology_basename(ENGINE, handle)),
             "mcp": mcp,
             "counts": _runtime_counts(ENGINE),
             # #121：推理新增拆成自反 / 元层 / 业务；单给总数会把 1000 条
             # 「A 等于 A」当成卖点。三层互斥且相加等于 counts.inferred。
             "inference": ENGINE.inference_breakdown(),
             "rules": _rules_summary(handle.rules_report),
+            # #129：本体体检——分型 / 预期 / 下一步，导入后用户不必读文档
+            # 就能知道哪些功能有得看、哪些没得看。
+            "health": _ontology_health(ENGINE, examples),
             "graph_groups": graph_group_members(ADAPTER),
             # 示例题参数下拉的真实候选值；框架不解释 params 的键，只提供值域。
             "individuals": _runtime_individuals(ENGINE),
@@ -1876,12 +1965,21 @@ def save_ontology(req: SaveOntologyRequest):
     """保存编辑结果：编辑模型 → RDF/XML 写盘 → 重建引擎 + 重推理。
 
     mode=new    另存到 data/uploads/（切换为「导入的本体」只读领域）；
-    mode=overwrite  覆盖当前已加载本体（默认本体覆盖后领域推理保留）。
+    mode=overwrite  覆盖当前已加载本体（默认本体覆盖后领域推理保留）；
+                    导入的本体（只读副本）拒绝覆盖，只能另存（#128）。
 
     无损往返（#108）：model_to_rdf 以当前断言图为底图，只改编辑模型建模到的
     部分，未建模的公理 / 注释 / datatype 原样保留。写盘前把目标文件备份到
     backups/<timestamp>/；重建失败时从备份恢复，不再删除唯一副本。
     """
+    # #128：「导入的本体」对用户承诺只读。前端已置灰覆盖入口，后端再挡一道：
+    # 直接调 API 也不能把上传副本写掉（覆盖后引擎重建会把它变成当前本体，
+    # 用户以为在改草稿，实际改的是服务端唯一副本）。
+    if req.mode == "overwrite" and DOMAINS.current().is_imported:
+        raise HTTPException(
+            status_code=400,
+            detail="导入的本体是只读副本，不能覆盖原文件；请用「生成新本体文件」另存后再使用。",
+        )
     try:
         content = ENGINE.model_to_rdf(req.model.model_dump())
         dropped_axioms = list(getattr(ENGINE, "last_dropped_axioms", []) or [])

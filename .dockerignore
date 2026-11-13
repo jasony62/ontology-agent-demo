@@ -24,6 +24,7 @@ domains/*
 !domains/registry.py
 !domains/manager.py
 !domains/installer.py
+!domains/imported.py
 !domains/README.md
 config/domain.json
 backups/

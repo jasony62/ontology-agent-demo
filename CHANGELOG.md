@@ -21,6 +21,7 @@
 - **导入态展示原始文件名、图例解释兜底类（#131）**：说明页摘要与 `runtime.ontology_display` 去掉上传副本的 8 位 uuid 前缀，完整落盘名留在 `runtime.ontology` 供排查；图例补一行「Thing（`owl:Thing`）= 兜底类」；推理提示横幅拆成「结论 + 动作」两行，三元组与连线的口径差收进悬浮提示；本体的类计数统一表述为「业务类（另有 owl:Thing 兜底）」。
 - **CQ 定位器说清「为什么查不到」（#131）**：`no_anchors` 的 `hint` 区分三种原因——词表为空（本体没有任何 `rdfs:label`）、词表没有中文术语（纯英文本体，提示改用原始英文叫法或补标签）、题干用词与本体叫法不同，不再只给一句「未匹配到本体术语」。
 - **类计数与示例题答案对齐（#130）**：说明页统计卡此前显示含 `owl:Thing` 的类总数（导入纯 TBox 时为 4），而 IMP-01 答案写「共 3 个类」，同屏两个都对却互相矛盾。`runtime.counts` 新增 `business_classes`（不含 `owl:Thing`），导入的本体上两者不同时统计卡标注为「类（业务类 N）」，与示例题、摘要统一口径。
+- **Docker 镜像补回框架自带的 `domains/imported.py`**：`.dockerignore` 用 `domains/*` 排除运行态领域包、再逐个放回框架文件，新增的 `imported.py` 没进白名单——镜像里 `import api.main` 与导入任意 OWL 都会 `ModuleNotFoundError`，表现为容器健康检查连不上。补白名单，并新增 `tests/test_packaging.py` 断言 `domains/*.py` 全部在构建上下文内、运行态目录仍被排除。
 
 - **短名解析不再丢失 IRI 子路径（#120）**：引擎新增三级解析「完整 IRI → 主命名空间 → 全图唯一后缀」，`/dept/deptA`、`/capability/x` 这类带语义目录的 IRI 用短名也能查对；`types_of` / `objects_of` / `individuals_of` / `proof` 主体解析与说明页示例题统一走这一层。`/api/types`、`/api/property`、`/api/individuals` 在名称解析不到或短名命中多个 IRI 时返回 **400**（歧义时列出候选完整 IRI），不再静默返回空集；名称存在但确实没有类型/取值时仍是空列表，两者可区分。完整 IRI 原样使用，不因图里缺席被误判为解析失败。
 

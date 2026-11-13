@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-13
+
 ### Added
 
 - **导入后的本体体检报告（#129）**：`GET /api/domains/current/guide` 的 `runtime` 新增 `health` 段，按真实运行态回答「这份本体在这个系统里能看到什么」——`profile` 三型（`terminology_only` 纯术语层 / `instances_only` 只有实例 / `reasoning_ready` 有推理素材），`facts` 给出个体数、TBox 公理数与业务派生数，`expectations` 逐项列出「推理新增业务结论 / 查依据 / 示例题」有得看或没得看及原因，`suggestion` 给一句下一步。个体 / 公理 / 业务派生分别复用 `individual_count()`、`tbox_axiom_count()`（只看断言图，物化补出的自反结论不算）与 `inference_breakdown()`；判定顺序固定，同一份本体每次得到同一结论。导入成功提示会带上这三行结论，「当前领域」页 01 问渲染成体检卡，图谱侧板导入态直接指向「只看推理新增」或说明页，不再让用户从「图上没新增 → 数字对不上 → CQ 查不到」一路撞墙。

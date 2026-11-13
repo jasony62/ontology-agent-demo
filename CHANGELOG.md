@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **dict 形态题库的查重不再静默失效（#140）**：`dedup_against_items` 只认裸数组题库，仓库内 `cq_tests.json` 的真实形态 `{suite, version, description, cases}` 走不到索引构建，`norm_bank` 恒为空——题库正常解析（`skipped: False`）、与既有题逐字相同的提交却查不出撞题，`validate_cqs` 的 dedup 形同虚设。现在先按形态归一（`_bank_case_items`：裸数组 / `{cases: [...]}` 两种法定形态），再建索引，`against_id` 仍指向条目 `id` / `case_id`；缺 `cases` 或 `cases` 非列表时返回 `skipped: True` 并说明原因，不报错也不伪造撞题。裸数组题库行为不变。
+
 ## [0.8.1] - 2026-11-13
 
 ### Changed

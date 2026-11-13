@@ -8,6 +8,7 @@ P4 起这个工位住在 SDK 里（原 `reasoner/cq/`），本文件因此连 `r
 "不依赖领域"升级成了"不依赖宿主"。
 """
 
+import json
 import os
 import sys
 
@@ -102,6 +103,38 @@ def test_dedup_uses_injected_bank(tmp_path):
     assert r["duplicate"] == 1
     assert r["results"][0]["against_id"] == "Q1"
     assert r["dedup"]["skipped"] is False
+
+
+def test_dedup_uses_dict_shaped_bank(tmp_path):
+    """{suite, cases} 形态题库（仓库内 cq_tests.json 的真实形态）同样查重。"""
+    bank = tmp_path / "cq_tests.json"
+    bank.write_text(json.dumps({
+        "suite": "demo",
+        "version": 1,
+        "cases": [
+            {"id": "C1", "cq": "哪些 Widget 可用？"},
+            {"case_id": "C2", "cq": "Gadget 依赖什么？"},
+        ],
+    }, ensure_ascii=False), encoding="utf-8")
+    p = {"schema_terms": {"classes": ["Widget"]}}
+
+    r = gen.validate_cqs(["哪些 Widget 可用？", "Gadget 依赖什么"], p,
+                         bank_path=str(bank))
+    assert r["duplicate"] == 2
+    assert r["dedup"]["skipped"] is False
+    assert [d["against_id"] for d in r["dedup"]["duplicates"]] == ["C1", "C2"]
+
+
+def test_dedup_skips_dict_bank_without_cases(tmp_path):
+    """边界：dict 题库缺 cases 列表 → 如实跳过，不报错也不伪造撞题。"""
+    bank = tmp_path / "broken.json"
+    bank.write_text(json.dumps({"suite": "demo", "cases": "not-a-list"}),
+                    encoding="utf-8")
+
+    r = gen.dedup_against_items(["哪些 Widget 可用？"], str(bank))
+    assert r["skipped"] is True
+    assert r["duplicates"] == []
+    assert "cases" in r["error"]
 
 
 # ---------------- TBox 草稿校验 ----------------

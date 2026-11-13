@@ -83,4 +83,76 @@ describe('草图 → 图谱', () => {
     expect(edgeIds).toContain('rel--can_execute');
     expect(edgeIds).not.toContain('agent--can_execute--task');
   });
+
+  it('#133 后端 PascalCase 类 id 与草图 camelCase 不同：实例事实边保留，端点改写为画布 id', () => {
+    const next: Ontology = {
+      name: 'T',
+      description: '',
+      entityTypes: [
+        { id: 'workhourRecord', name: '工时记录', description: '', icon: '', color: '', properties: [] },
+        { id: 'performanceEvaluation', name: '绩效评估', description: '', icon: '', color: '', properties: [] },
+      ],
+      relationships: [],
+      // 个体不在草图里：由后端断言图提供（parser 不认识的元类实例）
+      instances: [],
+    };
+    const base: GraphData = {
+      nodes: [
+        { id: 'WorkhourRecord', label: '工时记录', type: 'class' },
+        { id: 'PerformanceEvaluation', label: '绩效评估', type: 'class' },
+        { id: 'opEvaluation', label: '工时绩效评估', type: 'individual', types: ['BusinessOperation'] },
+      ],
+      edges: [
+        { id: 'opEvaluation--involvesClass--WorkhourRecord', source: 'opEvaluation', target: 'WorkhourRecord', label: 'involvesClass', provenance: 'asserted' },
+        { id: 'opEvaluation--basedOn--PerformanceEvaluation', source: 'opEvaluation', target: 'PerformanceEvaluation', label: 'basedOn', provenance: 'asserted' },
+      ],
+    };
+
+    const merged = mergeOntologyIntoGraph(base, null, next);
+    const ids = new Set(merged.nodes.map((n) => n.id));
+    expect(merged.nodes.map((n) => n.id)).toEqual([
+      'workhourRecord', 'performanceEvaluation', 'opEvaluation',
+    ]);
+
+    const instanceEdges = merged.edges.filter((e) => e.label === 'involvesClass' || e.label === 'basedOn');
+    expect(instanceEdges).toHaveLength(2);
+    expect(instanceEdges.find((e) => e.label === 'involvesClass')).toMatchObject({
+      source: 'opEvaluation',
+      target: 'workhourRecord',
+    });
+    expect(instanceEdges.find((e) => e.label === 'basedOn')).toMatchObject({
+      source: 'opEvaluation',
+      target: 'performanceEvaluation',
+    });
+    // 端点必须指向画布真实存在的节点，否则 cytoscape 依然不画
+    for (const edge of instanceEdges) {
+      expect(ids.has(edge.source)).toBe(true);
+      expect(ids.has(edge.target)).toBe(true);
+    }
+  });
+
+  it('#133 端点解析不到时不猜：丢边而不是连错；大小写不同的模型关系仍只留一条', () => {
+    const next = baseOntology();
+    const base: GraphData = {
+      nodes: [
+        { id: 'Agent', label: 'Agent', type: 'class' },
+        { id: 'Task', label: 'Task', type: 'class' },
+        { id: 'dev_agent', label: '研发Agent', type: 'individual' },
+      ],
+      edges: [
+        // PascalCase 端点归一化后与 rel--can_execute 重合：不能出现第二条线
+        { id: 'Agent--can_execute--Task', source: 'Agent', target: 'Task', label: 'can_execute', provenance: 'asserted' },
+        // 目标在画布里不存在：宁可丢这条边，也不连到一个猜测的节点
+        { id: 'dev_agent--appliesTo--Missing', source: 'dev_agent', target: 'Missing', label: 'appliesTo', provenance: 'asserted' },
+      ],
+    };
+
+    const merged = mergeOntologyIntoGraph(base, null, next);
+    const canExecute = merged.edges.filter(
+      (e) => e.id === 'rel--can_execute' || e.label === 'can_execute',
+    );
+    expect(canExecute).toHaveLength(1);
+    expect(canExecute[0].id).toBe('rel--can_execute');
+    expect(merged.edges.some((e) => e.label === 'appliesTo')).toBe(false);
+  });
 });

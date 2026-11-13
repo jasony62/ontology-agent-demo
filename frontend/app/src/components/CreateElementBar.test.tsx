@@ -131,4 +131,15 @@ describe('画布工具栏 · 添加事实（#102）', () => {
     act(() => useAppStore.setState({ viewMode: 'materialized', ontology: { ...baseOntology(), entityTypes: [] } }));
     expect(button('＋ 添加事实').disabled).toBe(true);
   });
+
+  it('#128 导入的本体是只读副本：三个新建入口全置灰并标注', () => {
+    act(() => useAppStore.setState({ ontologyMode: 'imported' }));
+    const el = render();
+
+    expect(button('＋ 新建类').disabled).toBe(true);
+    expect(button('＋ 新建关系').disabled).toBe(true);
+    expect(button('＋ 添加事实').disabled).toBe(true);
+    expect(el.textContent).toContain('导入的本体为只读副本，编辑请先导出');
+    expect(button('＋ 新建类').title).toBe('导入的本体为只读副本，编辑请先导出');
+  });
 });

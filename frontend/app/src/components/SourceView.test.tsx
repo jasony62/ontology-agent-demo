@@ -90,10 +90,11 @@ describe('SourceView（#87 只读弹窗）', () => {
 });
 
 describe('弹窗按钮样式（#87 S3）', () => {
-  it('ImportModal：主操作是实心 .btn，「完成」是 .btn.secondary，未选文件时同步保持禁用', () => {
+  it('ImportModal：主操作是实心 .btn，「完成」是 .btn.secondary，未选文件时主操作保持禁用', () => {
     render(<ImportModal onClose={() => {}} />);
 
-    const sync = buttons().find((b) => b.textContent?.includes('同步到推理引擎'));
+    // #131：按钮说人话——「导入并开始推理」而不是「同步到推理引擎（解锁物化）」
+    const sync = buttons().find((b) => b.textContent?.includes('导入并开始推理'));
     const done = buttons().find((b) => b.textContent === '完成');
 
     expect(sync?.className).toBe('btn');

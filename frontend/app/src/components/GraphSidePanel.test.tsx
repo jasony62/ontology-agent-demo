@@ -92,6 +92,37 @@ describe('图谱右侧栏', () => {
     expect(text).not.toContain('图谱概览');
     expect(text).toContain('关系 ·');
   });
+
+  it('#127 导入态不再提示「点导入并开始推理」，改为下一步引导', () => {
+    useAppStore.setState({
+      ontologyMode: 'imported',
+      syncedToBackend: false,
+      guideHealth: {
+        profile: 'reasoning_ready',
+        profile_label: '有推理素材：2 个个体 + 1 条公理',
+        facts: { individuals: 2, axioms: 1, inferred: 40, business_inferred: 3 },
+        expectations: [],
+        suggestion: '切到「只看推理新增」看结论。',
+      },
+    });
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+    const text = el.textContent ?? '';
+
+    expect(text).not.toContain('点击「导入并开始推理」');
+    expect(text).toContain('有推理素材：2 个个体 + 1 条公理');
+    const next = Array.from(el.querySelectorAll('button'))
+      .find((b) => b.textContent?.includes('切到「只看推理新增」'));
+    expect(next).toBeTruthy();
+    act(() => next!.click());
+    expect(useAppStore.getState().viewMode).toBe('diff');
+  });
+
+  it('#131 图例解释 Thing 是什么', () => {
+    useAppStore.setState({ ontologyMode: 'default' });
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+    expect(el.textContent).toContain('Thing');
+    expect(el.textContent).toContain('兜底类');
+  });
 });
 
 describe('图谱右侧编辑框（#91 融合重构）', () => {

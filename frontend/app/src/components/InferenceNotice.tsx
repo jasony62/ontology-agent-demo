@@ -23,8 +23,11 @@ export default function InferenceNotice() {
   if (!notice) return null;
 
   return (
-    <div className="mode-banner inference-banner">
-      <div className="inference-banner-text">{notice}</div>
+    <div className="mode-banner inference-banner" title={notice.detail}>
+      <div className="inference-banner-text">
+        <div className="inference-banner-lead">{notice.lead}</div>
+        <div className="inference-banner-action">{notice.action}</div>
+      </div>
       <button
         type="button"
         className="inference-banner-close"

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Ontology } from '../data/ontology';
-import type { GraphData, GraphGroup } from '../api/client';
+import type { GraphData, GraphGroup, GuideHealth } from '../api/client';
 import { isNoticeDismissed } from '../lib/inferenceBanner';
 
 export type ViewMode = 'asserted' | 'materialized' | 'diff';
@@ -28,6 +28,12 @@ interface AppState {
   // 是否已同步到后端推理引擎（通用模式）
   syncedToBackend: boolean;
   error: string | null;
+  // #126：成功通道。导入同步成功的好消息走绿色 notice，不再借用红色 error 横幅；
+  // null 表示没有提示。
+  notice: string | null;
+  // #129：当前本体体检（分型 / 预期 / 下一步），来自 guide.runtime.health。
+  // 图谱侧板据此给「下一步」，不用再自己猜导入后该看什么。
+  guideHealth: GuideHealth | null;
   // 图谱选中项（节点 id 或 "edge|{edgeId}"；新建关系草稿为 "sketch|rel|{id}"）
   selectedId: string | null;
   // 新建元素后需要聚焦的编辑框（ElementEditor 消费一次）
@@ -48,6 +54,8 @@ interface AppState {
   setViewMode: (m: ViewMode) => void;
   setSynced: (v: boolean) => void;
   setError: (e: string | null) => void;
+  setNotice: (n: string | null) => void;
+  setGuideHealth: (h: GuideHealth | null) => void;
   setSelectedId: (id: string | null) => void;
   setEditorFocusId: (id: string | null) => void;
   setOntologyMode: (m: 'default' | 'imported' | 'generic' | null) => void;
@@ -68,6 +76,8 @@ export const useAppStore = create<AppState>((set) => ({
   viewMode: 'materialized',
   syncedToBackend: false,
   error: null,
+  notice: null,
+  guideHealth: null,
   selectedId: null,
   editorFocusId: null,
   ontologyMode: null,
@@ -82,6 +92,8 @@ export const useAppStore = create<AppState>((set) => ({
   setViewMode: (m) => set({ viewMode: m }),
   setSynced: (v) => set({ syncedToBackend: v }),
   setError: (e) => set({ error: e }),
+  setNotice: (n) => set({ notice: n }),
+  setGuideHealth: (h) => set({ guideHealth: h }),
   setSelectedId: (id) => set({ selectedId: id }),
   setEditorFocusId: (id) => set({ editorFocusId: id }),
   setOntologyMode: (m) => set({ ontologyMode: m }),

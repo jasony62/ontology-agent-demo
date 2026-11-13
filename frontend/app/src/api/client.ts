@@ -225,6 +225,30 @@ export interface GuideEntitySchema {
   fields: GuideEntityField[];
 }
 
+/** 本体体检的一条「预期」（#129）：这项能力在这份本体上有得看 / 没得看。 */
+export interface GuideHealthExpectation {
+  feature: string;
+  available: boolean;
+  detail: string;
+}
+
+/**
+ * 本体体检（#129）：后端按真实运行态算出的分型 / 预期 / 下一步。
+ * 分型三选一：纯术语层 / 只有实例 / 可推理；前端不自己推断。
+ */
+export interface GuideHealth {
+  profile: 'terminology_only' | 'instances_only' | 'reasoning_ready' | string;
+  profile_label: string;
+  facts: {
+    individuals: number;
+    axioms: number;
+    inferred: number;
+    business_inferred: number;
+  };
+  expectations: GuideHealthExpectation[];
+  suggestion: string;
+}
+
 export interface GuideRuntime {
   /** 当前实际可调用的只读能力名（POST capabilities/query） */
   query_kinds: string[];
@@ -237,6 +261,8 @@ export interface GuideRuntime {
   entity_schema: GuideEntitySchema | null;
   /** 当前对外服务的本体文件名（通用模式下是上传 / 保存的那一份） */
   ontology: string;
+  /** 给用户看的原始文件名：去掉上传副本的 uuid 前缀（#131）；旧后端不发时回退 ontology */
+  ontology_display?: string;
   /** MCP 接入参数（框架级约定；端口来自运行态配置，领域名随当前句柄变化） */
   mcp: {
     transport: string;
@@ -271,6 +297,8 @@ export interface GuideRuntime {
     files: { file: string; derived: number | null; error: string | null }[];
     note: string | null;
   } | null;
+  /** 本体体检（#129）：分型 / 预期 / 下一步；旧后端不发时前端不渲染该区块 */
+  health?: GuideHealth;
   graph_groups: GraphGroup[];
   /** 当前图里的个体短名：示例题参数下拉的真实候选值 */
   individuals: string[];

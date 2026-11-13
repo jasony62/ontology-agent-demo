@@ -127,6 +127,8 @@ body {
    不用绝对定位（内容换行时会压到文字），点击热区不小于 24×24。 */
 .inference-banner { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .inference-banner-text { flex: 1 1 auto; }
+/* #131：结论一行、动作一行；口径细节在 banner 的 title 里，不占版面。 */
+.inference-banner-action { margin-top: 2px; font-size: 12px; color: #8a5a2a; }
 .inference-banner-close {
   flex: 0 0 auto; width: 26px; height: 26px; padding: 0;
   border: none; background: transparent; color: #7a3b12; font-size: 16px; line-height: 1;
@@ -219,6 +221,10 @@ body {
   font-size: 12px; line-height: 1.6; color: #7a3b12;
   background: #fdf1e9; border: 1px solid #f0c7a8; border-radius: 8px; padding: 7px 9px;
 }
+.overview-hint-action {
+  display: inline; padding: 0; margin-left: 2px; border: 0; background: none;
+  color: #0b57a0; font: inherit; cursor: pointer; text-decoration: underline;
+}
 .overview-section { border-top: 1px solid var(--border); padding-top: 10px; }
 .legend.overview-legend { display: flex; flex-direction: column; flex-wrap: nowrap; gap: 8px; margin: 0; }
 .overview-legend-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
@@ -227,6 +233,8 @@ body {
   font-size: 11px; font-weight: 600; color: #8a94a6; letter-spacing: .04em;
 }
 .overview-footnote { margin: 0; font-size: 11.5px; line-height: 1.6; color: #8a94a6; }
+.overview-legend-note { margin: 4px 0 0; font-size: 11.5px; line-height: 1.6; color: #8a94a6; }
+.overview-legend-note code { font-size: 11px; }
 
 .graph-wrap { position: relative; width: 100%; height: 520px; background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 
@@ -689,6 +697,16 @@ a.download-link { display: inline-flex; align-items: center; height: var(--contr
 a.download-link:hover { background: var(--primary-soft); border-color: var(--border-strong); }
 
 .notice-banner { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-md); }
+/* #126：成功提示（页头下方常驻区）——与 error-banner 同位置、不同颜色；
+   多行结论按 \n 换行，右上角可手动关闭。 */
+.app-notice { display: flex; align-items: flex-start; gap: 10px; white-space: pre-line; line-height: 1.6; }
+.app-notice-text { flex: 1 1 auto; }
+.app-notice-close {
+  flex: 0 0 auto; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px;
+  background: transparent; color: var(--success); font-size: 16px; line-height: 1;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.app-notice-close:hover { background: rgba(22, 121, 84, .12); }
 
 /* 类编辑行：2 列网格，字段成对排布，删除按钮规整靠右，消除换行错位 */
 /* minmax(0,1fr) 允许列收缩到内容以下，避免内容把列撑出横向滚动 */
@@ -940,6 +958,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .element-related-list { list-style: none; padding-left: 8px; margin: 4px 0; font-size: 12px; line-height: 1.8; }
 .create-element-bar { display: inline-flex; align-items: center; gap: 4px; }
+.create-readonly-hint { font-size: 11.5px; color: #7a3b12; background: #fdf1e9; border: 1px solid #f0c7a8; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 
 /* ============================================================
    页头平级导航 + 当前领域单页（#103）
@@ -1028,6 +1047,19 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-section-head h3 { font-size: var(--fs-title); color: var(--heading); }
 .guide-section-hint { font-size: var(--fs-sm2); color: var(--muted); line-height: 1.7; margin-bottom: 10px; }
 .guide-hero { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+/* #129：本体体检——分型 / 预期 / 下一步。默认中性色，可推理时转绿，
+   有缺口时保持中性（不报警：纯术语层是正常形态，不是错误）。 */
+.guide-health { border: 1px solid var(--border); border-left: 3px solid #b9803a; border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; background: #fffdf9; font-size: var(--fs-sm2); line-height: 1.7; }
+.guide-health.reasoning_ready { border-left-color: var(--success); background: var(--success-bg); }
+.guide-health-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.guide-health-label { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: #8a6a3a; background: #f6ead9; border-radius: 999px; padding: 1px 8px; }
+.guide-health-facts { color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.guide-health-list { list-style: none; margin: 6px 0; padding: 0; }
+.guide-health-list li { display: flex; gap: 6px; align-items: baseline; }
+.guide-health-list li.off { color: var(--muted); }
+.guide-health-mark { flex: 0 0 14px; text-align: center; }
+.guide-health-list li.ok .guide-health-mark { color: var(--success); }
+.guide-health-next { border-top: 1px dashed var(--border); padding-top: 6px; }
 .guide-hero-summary { font-size: var(--fs-lg); line-height: 1.7; color: var(--text); }
 .guide-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .guide-tag { font-size: var(--fs-xs); color: #0b57a0; background: #eef3f8; border-radius: var(--radius-pill); padding: 3px 9px; }

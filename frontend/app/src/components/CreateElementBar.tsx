@@ -27,6 +27,9 @@ export default function CreateElementBar() {
   const setGraphData = useAppStore((s) => s.setGraphData);
   const setSelectedId = useAppStore((s) => s.setSelectedId);
   const setEditorFocusId = useAppStore((s) => s.setEditorFocusId);
+  // #128：导入的本体承诺只读——新建入口一并置灰，别让人填完才在保存处发现。
+  const ontologyMode = useAppStore((s) => s.ontologyMode);
+  const readOnly = ontologyMode === 'imported';
   const [last, setLast] = useState<LastCreated>(null);
   const [factOpen, setFactOpen] = useState(false);
   const [factName, setFactName] = useState('');
@@ -116,9 +119,13 @@ export default function CreateElementBar() {
     setLast(null);
   };
 
-  const disabled = !ontology || viewMode === 'diff';
+  const disabled = !ontology || viewMode === 'diff' || readOnly;
   const noClasses = (ontology?.entityTypes.length ?? 0) === 0;
-  const viewHint = viewMode === 'diff' ? '仅差异视图只读；切回「显示推理全貌」再新建' : '';
+  const viewHint = readOnly
+    ? '导入的本体为只读副本，编辑请先导出'
+    : viewMode === 'diff'
+      ? '仅差异视图只读；切回「显示推理全貌」再新建'
+      : '';
 
   return (
     <>
@@ -155,6 +162,9 @@ export default function CreateElementBar() {
         >
           ＋ 添加事实
         </button>
+        {readOnly && (
+          <span className="create-readonly-hint">导入的本体为只读副本，编辑请先导出</span>
+        )}
         {last && (
           <button type="button" className="btn ghost" onClick={undo} title="撤销刚才的新建（只移除新建元素）">
             撤销新建

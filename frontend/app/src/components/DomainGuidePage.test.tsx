@@ -53,6 +53,16 @@ const GUIDE: DomainGuide = {
     },
     counts: { triples: 100, asserted: 80, inferred: 20, classes: 12, individuals: 23 },
     inference: { total: 20, reflexive: 12, meta: 5, business: 3 },
+    health: {
+      profile: 'reasoning_ready',
+      profile_label: '有推理素材：23 个个体 + 39 条公理',
+      facts: { individuals: 23, axioms: 39, inferred: 20, business_inferred: 3 },
+      expectations: [
+        { feature: '推理新增业务结论', available: true, detail: '业务派生 3 条' },
+        { feature: '查依据（点推理连线看前提）', available: true, detail: '有业务个体，可逐条展开前提链' },
+      ],
+      suggestion: '切到「只看推理新增」看结论，再点一条绿色虚线查依据。',
+    },
     rules: {
       ok: true, total_derived: 7, exceeded_iterations: false,
       elapsed_ms: 12, materialize_ms: 30,
@@ -142,6 +152,18 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(text).toContain('http://127.0.0.1:9000/mcp');
     expect(text).toContain('mcpServers');
     expect(text).toContain('<项目根目录>/.venv/bin/python');
+  });
+
+  it('#129 本体体检：分型、预期与下一步同屏给出', () => {
+    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    const text = container!.textContent ?? '';
+
+    expect(text).toContain('本体体检');
+    expect(text).toContain('有推理素材：23 个个体 + 39 条公理');
+    expect(text).toContain('个体 23 · TBox 公理 39 · 推理新增 20（业务 3）');
+    expect(text).toContain('推理新增业务结论');
+    expect(text).toContain('业务派生 3 条');
+    expect(text).toContain('下一步：切到「只看推理新增」看结论');
   });
 
   it('只读示例：下拉候选来自 runtime.individuals，换值后请求体同步变化', async () => {

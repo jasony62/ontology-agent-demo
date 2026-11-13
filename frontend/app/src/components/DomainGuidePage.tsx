@@ -717,6 +717,27 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
                 </div>
               )}
             </div>
+            {runtime.health && (
+              <div className={`guide-health ${runtime.health.profile}`} role="note">
+                <div className="guide-health-head">
+                  <span className="guide-health-label">本体体检</span>
+                  <b>{runtime.health.profile_label}</b>
+                </div>
+                <div className="guide-health-facts">
+                  个体 {runtime.health.facts.individuals} · TBox 公理 {runtime.health.facts.axioms} ·
+                  推理新增 {runtime.health.facts.inferred}（业务 {runtime.health.facts.business_inferred}）
+                </div>
+                <ul className="guide-health-list">
+                  {runtime.health.expectations.map((item) => (
+                    <li key={item.feature} className={item.available ? 'ok' : 'off'}>
+                      <span className="guide-health-mark" aria-hidden="true">{item.available ? '✓' : '—'}</span>
+                      <b>{item.feature}</b>：{item.detail}
+                    </li>
+                  ))}
+                </ul>
+                <div className="guide-health-next"><b>下一步：</b>{runtime.health.suggestion}</div>
+              </div>
+            )}
             <div className="guide-two-col">
               <div className="guide-card">
                 <h4>覆盖什么</h4>
@@ -1039,7 +1060,7 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
             <div className="guide-section-head"><span>06</span><h3>现在跑的是哪一份</h3></div>
             <div className="guide-runtime-grid">
               <div className="guide-kv"><span>领域</span><b>{guide.display_name || guide.domain}</b></div>
-              <div className="guide-kv"><span>已加载本体</span><b>{runtime.ontology}</b></div>
+              <div className="guide-kv"><span>已加载本体</span><b title={runtime.ontology}>{runtime.ontology_display ?? runtime.ontology}</b></div>
               <div className="guide-kv"><span>模式</span><b>{imported ? '导入的本体（只读）' : generic ? '通用（自定义本体）' : '领域'}</b></div>
               <div className="guide-kv"><span>加载时刻</span><b>{guide.loaded_at}</b></div>
               <div className="guide-kv"><span>说明文件</span><b>guide_version {guide.guide_version} · 契约通过</b></div>

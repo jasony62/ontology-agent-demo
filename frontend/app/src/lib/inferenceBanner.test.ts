@@ -31,29 +31,30 @@ afterEach(() => {
 });
 
 describe('buildInferenceNotice：计数全部来自数据，禁止常量', () => {
-  it('文案 A（全貌）：并集连线数、新增数、can_execute 条数正确，口径说明在场', () => {
+  it('文案 A（全貌）：并集连线数、新增数、can_execute 条数正确，口径说明在悬浮提示', () => {
     const text = buildInferenceNotice(snapshotWith(10), 'materialized')!;
 
-    expect(text).toContain('图上 86 条连线里，22 条不在本体文件里');
-    expect(text).toContain('其中 10 条是「谁能做这个任务」');
-    // 三元组与连线的口径差必须解释，否则横幅自己在制造困惑
-    expect(text).toContain('545 条新增三元组里，类型与父子类等骨架已折叠进节点，图上表现为 22 条连线');
-    expect(text).toContain('点任意虚线看依据');
+    expect(text.lead).toContain('图上 86 条连线里，22 条不在本体文件里');
+    expect(text.lead).toContain('其中 10 条是「谁能做这个任务」');
+    expect(text.action).toContain('点任意虚线看依据');
+    // 三元组与连线的口径差不占正文，收进悬浮提示（#131）
+    expect(text.detail).toContain('545 条新增三元组里，类型与父子类等骨架已折叠进节点，图上表现为 22 条连线');
+    expect(text.lead).not.toContain('545 条新增三元组');
   });
 
   it('文案 B（原始）：断言数 / 隐藏的推理数正确，指向「显示推理全貌」', () => {
     const text = buildInferenceNotice(snapshotWith(10), 'asserted')!;
 
-    expect(text).toContain('你现在只看得到本体里声明的 64 条');
-    expect(text).toContain('另有 22 条是推出来的（10 条「谁能做这个任务」）');
-    expect(text).toContain('点「显示推理全貌」可见');
+    expect(text.lead).toContain('你现在只看得到本体里声明的 64 条');
+    expect(text.lead).toContain('另有 22 条是推出来的（10 条「谁能做这个任务」）');
+    expect(text.action).toContain('点「显示推理全貌」可见');
   });
 
   it('文案 C（新增）：只讲推理边与缺失的断言边', () => {
     const text = buildInferenceNotice(snapshotWith(10), 'diff')!;
 
-    expect(text).toContain('这里只有推出来的 22 条，本体里声明的那 64 条不在图中');
-    expect(text).toContain('点「显示推理全貌」看全貌');
+    expect(text.lead).toContain('这里只有推出来的 22 条，本体里声明的那 64 条不在图中');
+    expect(text.action).toContain('点「显示推理全貌」看全貌');
   });
 
   it('数据变化数字跟着变（抓硬编码常量）：换一组数据 / 无 can_execute 的领域', () => {
@@ -63,17 +64,17 @@ describe('buildInferenceNotice：计数全部来自数据，禁止常量', () =>
     other.stats = { triples_asserted: 100, triples_materialized: 180, inferred_added: 80 };
 
     const a = buildInferenceNotice(other, 'materialized')!;
-    expect(a).toContain('图上 38 条连线里，7 条不在本体文件里');
+    expect(a.lead).toContain('图上 38 条连线里，7 条不在本体文件里');
     // 没有 can_execute 边（如 fault_diag）→ 不出现领域句，也不出现 0 条的空话
-    expect(a).not.toContain('谁能做这个任务');
-    expect(a).toContain('80 条新增三元组里');
+    expect(a.lead).not.toContain('谁能做这个任务');
+    expect(a.detail).toContain('80 条新增三元组里');
   });
 
   it('generic 模式：三个视图都不出现领域措辞，数字保留', () => {
     for (const viewMode of ['materialized', 'asserted', 'diff'] as const) {
       const text = buildInferenceNotice(snapshotWith(10), viewMode, true)!;
-      expect(text).not.toContain('谁能做这个任务');
-      expect(text).toContain('22 条');
+      expect(`${text.lead}${text.action}`).not.toContain('谁能做这个任务');
+      expect(text.lead).toContain('22 条');
     }
   });
 

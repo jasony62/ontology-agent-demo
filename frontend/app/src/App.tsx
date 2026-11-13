@@ -31,12 +31,16 @@ export default function App() {
   const setGraphData = useAppStore((s) => s.setGraphData);
   const setGraphGroups = useAppStore((s) => s.setGraphGroups);
   const setError = useAppStore((s) => s.setError);
+  const notice = useAppStore((s) => s.notice);
+  const setNotice = useAppStore((s) => s.setNotice);
+  const setGuideHealth = useAppStore((s) => s.setGuideHealth);
   const setSelectedId = useAppStore((s) => s.setSelectedId);
   const error = useAppStore((s) => s.error);
   const materialized = useAppStore((s) => s.materialized);
   const graphData = useAppStore((s) => s.graphData);
   const graphGroups = useAppStore((s) => s.graphGroups);
   const viewMode = useAppStore((s) => s.viewMode);
+  const setViewMode = useAppStore((s) => s.setViewMode);
   const sourceName = useAppStore((s) => s.sourceName);
   const selectedId = useAppStore((s) => s.selectedId);
   const ontology = useAppStore((s) => s.ontology);
@@ -193,19 +197,36 @@ export default function App() {
     // 缓存当现状——换包后若接口不可用，页面必须明确说"读不到"。
     setGuideLoading(true);
     try {
-      setGuide(await api.guide());
+      const nextGuide = await api.guide();
+      setGuide(nextGuide);
+      setGuideHealth(nextGuide.runtime.health ?? null);
       setGuideError(null);
     } catch (e) {
       setGuide(null);
+      setGuideHealth(null);
       setGuideError(`无法读取当前领域信息：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setGuideLoading(false);
     }
-  }, [setBackendOk, setMaterialized, setSource, setOntology, setGraphData, setGraphGroups, setError, setOntologyMode]);
+  }, [setBackendOk, setMaterialized, setSource, setOntology, setGraphData, setGraphGroups, setError, setOntologyMode, setGuideHealth]);
 
   useEffect(() => {
     void loadWorkspace();
   }, [loadWorkspace]);
+
+  // #131：导入的本体先看「我声明的模型长什么样」——推理全貌是第二步诉求。
+  // 只在模式切换时改默认值，用户之后手动切视图不受影响。
+  useEffect(() => {
+    if (ontologyMode === 'imported') setViewMode('asserted');
+  }, [ontologyMode, setViewMode]);
+
+  // #126：成功提示不常驻——给足读完三行体检结论的时间，然后自动收起；
+  // 用户也可以点 × 立即关闭。
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 12000);
+    return () => window.clearTimeout(timer);
+  }, [notice, setNotice]);
 
   /**
    * 领域切换 / 重载的公共流程。
@@ -330,6 +351,20 @@ export default function App() {
       </header>
 
       <main className="app-main">
+        {notice && (
+          <div className="notice-banner app-notice" role="status">
+            <span className="app-notice-text">{notice}</span>
+            <button
+              type="button"
+              className="app-notice-close"
+              aria-label="关闭提示"
+              title="关闭提示"
+              onClick={() => setNotice(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {error && <div className="error-banner">{error}</div>}
         {page === 'guide' ? (
           <DomainGuidePage

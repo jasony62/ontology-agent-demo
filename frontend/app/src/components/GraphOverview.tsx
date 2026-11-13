@@ -20,7 +20,15 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
   const groups = useAppStore((s) => s.graphGroups);
   const stats = useAppStore((s) => s.materialized.stats);
   const synced = useAppStore((s) => s.syncedToBackend);
+  const ontologyMode = useAppStore((s) => s.ontologyMode);
+  const health = useAppStore((s) => s.guideHealth);
+  const viewMode = useAppStore((s) => s.viewMode);
+  const setViewMode = useAppStore((s) => s.setViewMode);
   const legend = useMemo(() => buildGroupView(groups).legend, [groups]);
+  // #127：导入态与「是否同步过」无关——刷新页面后 syncedToBackend 会回到 false，
+  // 但本体其实已经导入过了。判据用后端运行态（status.mode），不再让侧板
+  // 反复叫用户去点一个已经点过的按钮。
+  const imported = ontologyMode === 'imported' || ontologyMode === 'generic';
 
   const focused = (next: LegendFocus) => sameLegendFocus(focus, next);
 
@@ -47,10 +55,40 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
         <div className="overview-empty">暂无物化统计（图谱加载后自动计算）。</div>
       )}
 
-      {!synced && (
-        <div className="overview-hint">
-          提示：导入自定义本体后，点击「同步到推理引擎」即可查看该本体的物化结果。
+      {imported ? (
+        <div className="overview-hint" role="note">
+          {health ? (
+            <>
+              <b>{health.profile_label}</b>
+              {health.profile === 'reasoning_ready' ? (
+                viewMode === 'diff' ? (
+                  <> 正在看推理新增；切回「显示推理全貌」可看两者叠加。</>
+                ) : (
+                  <>
+                    {' '}想看推理给模型新增了什么？
+                    <button
+                      type="button"
+                      className="overview-hint-action"
+                      onClick={() => setViewMode('diff')}
+                    >
+                      切到「只看推理新增」
+                    </button>
+                  </>
+                )
+              ) : (
+                <> 原因与下一步见「当前领域」页的说明，不必重复导入。</>
+              )}
+            </>
+          ) : (
+            <>已导入完成：需要看推理结论时，切到「只看推理新增」。</>
+          )}
         </div>
+      ) : (
+        !synced && (
+          <div className="overview-hint">
+            提示：导入自定义本体后，点击「导入并开始推理」即可查看该本体的物化结果。
+          </div>
+        )
       )}
 
       <section className="overview-section">
@@ -99,6 +137,10 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
             <span className="item"><span className="line"></span> 原始断言边</span>
             <span className="item"><span className="line dashed" style={{ borderColor: '#2f8f6b' }}></span> 推理新增边（物化）</span>
           </div>
+
+          <p className="overview-legend-note">
+            Thing（<code>owl:Thing</code>）= 兜底类：它出现在这里，说明有元素没归到具体类。
+          </p>
         </div>
       </section>
 

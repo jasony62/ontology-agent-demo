@@ -91,6 +91,10 @@ export default function OntologyEditor() {
   const setGraphData = useAppStore((s) => s.setGraphData);
   const setOntology = useAppStore((s) => s.setOntology);
   const sourceName = useAppStore((s) => s.sourceName);
+  // #128：「导入的本体」是只读副本。编辑器仍可用来查看 / 整理模型，但保存
+  // 一律置灰——改了也没地方落盘，继续开放只会让人以为在改服务端文件。
+  const ontologyMode = useAppStore((s) => s.ontologyMode);
+  const readOnly = ontologyMode === 'imported';
   const [filename, setFilename] = useState('');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -351,6 +355,10 @@ export default function OntologyEditor() {
   };
 
   const save = (mode: 'new' | 'overwrite') => {
+    if (readOnly) {
+      setError('当前是导入的本体（只读副本）：不能保存；如需编辑，请先导出本体或切回默认领域。');
+      return;
+    }
     if (errors.length > 0) {
       setError(`存在 ${errors.length} 项校验错误，请先修复：\n${errors.join('\n')}`);
       return;
@@ -423,10 +431,10 @@ export default function OntologyEditor() {
               onChange={(e) => setFilename(e.target.value)}
               title="生成的文件名（默认 本体名-edited.owl）"
             />
-            <button className="btn" onClick={() => save('new')} disabled={saving || loading}>
+            <button className="btn" onClick={() => save('new')} disabled={saving || loading || readOnly} title={readOnly ? '导入的本体为只读副本，编辑请先导出' : undefined}>
               {saving ? '写入中…' : '生成新本体文件'}
             </button>
-            <button className="btn danger" onClick={() => save('overwrite')} disabled={saving || loading}>
+            <button className="btn danger" onClick={() => save('overwrite')} disabled={saving || loading || readOnly} title={readOnly ? '导入的本体为只读副本，不能覆盖原文件' : undefined}>
               {saving ? '写入中…' : '覆盖当前本体文件'}
             </button>
             {savedFilename && (
@@ -438,6 +446,12 @@ export default function OntologyEditor() {
         </div>
       </div>
 
+      {readOnly && (
+        <div className="mode-banner" role="note">
+          当前是<b>导入的本体（只读副本）</b>：可以查看与整理模型，但保存已关闭。
+          要修改这份本体，请先在页头「导出」得到文件，改完再重新导入；或切回默认领域编辑。
+        </div>
+      )}
       {loading && <div className="error-banner">正在载入编辑模型…</div>}
       {error && <div className="error-banner" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
       {notice && <div className="notice-banner">{notice}</div>}

@@ -7,11 +7,19 @@
 
 ### Added
 
+- **导入后的本体体检报告（#129）**：`GET /api/domains/current/guide` 的 `runtime` 新增 `health` 段，按真实运行态回答「这份本体在这个系统里能看到什么」——`profile` 三型（`terminology_only` 纯术语层 / `instances_only` 只有实例 / `reasoning_ready` 有推理素材），`facts` 给出个体数、TBox 公理数与业务派生数，`expectations` 逐项列出「推理新增业务结论 / 查依据 / 示例题」有得看或没得看及原因，`suggestion` 给一句下一步。个体 / 公理 / 业务派生分别复用 `individual_count()`、`tbox_axiom_count()`（只看断言图，物化补出的自反结论不算）与 `inference_breakdown()`；判定顺序固定，同一份本体每次得到同一结论。导入成功提示会带上这三行结论，「当前领域」页 01 问渲染成体检卡，图谱侧板导入态直接指向「只看推理新增」或说明页，不再让用户从「图上没新增 → 数字对不上 → CQ 查不到」一路撞墙。
+
 - **导入任意 OWL 即得到一致的「导入的本体」只读领域（#119）**：导入 / 生成新本体后不再停在旧包的「通用模式」——框架内置 `imported` 领域接管运行态，页头与说明页固定显示「导入的本体」（`display_name`，不拿文件名当领域名），说明、能力清单、示例题与页头一起换，上一个包的题干 / 能力名 / 计数不再残留。说明的第二类来源由 `domains/imported.build_guide()` 按运行态生成，与包内静态 `guide.json` 走同一份 `validate_domain_guide`：生成失败即整包拒绝，切换失败旧领域继续服务、运行态不被触碰。示例题按「看结构 / 看推理 / 直接问 / 查依据」分组，全部从真实类 / 个体 / 边生成（答案提示现算），点开返回真实数据；`GUIDE_GENERIC_ENDPOINTS` 补上此前漏登记的「类层次」`/api/classes` 与「重新推理」`/api/infer`，并新增带方法的 `proof` → `GET /api/ontology/proof`，前端按 endpoint 方法派发、GET 题生成 `curl -s <url>?<query>` 预览。V1 只读：不提供新建 / 修改 / 删除 / 覆盖本体，领域专属推理明确不可用且端点不提供（未声明能力返回 400 而非 500）。`GET /api/domains` 与 `GET /api/domains/current/guide` 新增 `display_name` / `imported`，`/api/ontology/status` 的 `mode` 新增 `imported`，前端据此显示只读徽标与横幅；`imported` 进入 `RESERVED_DOMAIN_NAMES` 且不出现在 `installed()`。导入文件保留原始 basename 并加 8 位 uuid 前缀，说明页可显示真实文件名；MCP 接入说明在导入态退回默认领域的启动命令并注明原因。重启服务仍回配置里的默认领域。
 
 - **CQ 依据定位端点（#124）**：新增只读 `POST /api/domains/current/cq/locate`，把「翻文件找依据」变成一次检索。词表来自当前图的 `rdfs:label` 与枚举值（按 `,，、;；` 切分、不切 `/`），锚点做最长匹配（短词被更长命中覆盖时丢弃），再作为字符串常量填进固定 SPARQL 模板——不生成查询、不调模型、不落库 CQ 文件。结果按 `no_anchors`（未匹配到术语，不是缺口）/ `gap`（0 条）/ `scattered`（>5 条且无结论性字段，有实无名）/ `has_candidates` 归类，`hint` 只报事实，不判「可答 / 不可答」。结论性字段按属性短名的语义白名单（`statement` / `enumValues` 等，可被请求的 `conclusion_fields` 覆盖），不按命名空间硬编码；过滤 `owl:sameAs` 与空短名条目，避免自反物化与本体自身 label 虚增证据。导入自定义本体后同样可用，不需要领域适配器。
 
 ### Fixed
+
+- **导入成功的提示不再走红色错误横幅（#126）**：`ImportModal` 的同步成功分支改走全局 `notice` 通道，由 `App` 以绿色 `notice-banner` 渲染（可手动关闭，12 秒后自动收起），红条只留给真正的失败；成功文案同时给出原始文件名与断言数，不再显示上传副本的 uuid 文件名。
+- **导入完成后图谱侧板不再提示「点导入并开始推理」（#127）**：侧板引导改为跟随后端运行态（`status.mode`），导入态下按体检结论给下一步（有业务派生直接提供「切到只看推理新增」按钮，否则指向说明页的原因与建议）；刷新页面丢失会话标记也不会让旧引导复活。
+- **「导入的本体」只读承诺在界面上有对应收敛（#128）**：导入态下画布「新建类 / 新建关系 / 添加事实」三个入口置灰并标注「导入的本体为只读副本，编辑请先导出」；在线编辑器的两个保存按钮一并置灰并显示只读横幅；后端 `POST /api/ontology/save` 在导入态拒绝 `mode=overwrite`（400，提示改用另存），直接调 API 也不能改掉上传副本。另存新文件不受影响。
+- **导入态展示原始文件名、图例解释兜底类（#131）**：说明页摘要与 `runtime.ontology_display` 去掉上传副本的 8 位 uuid 前缀，完整落盘名留在 `runtime.ontology` 供排查；图例补一行「Thing（`owl:Thing`）= 兜底类」；推理提示横幅拆成「结论 + 动作」两行，三元组与连线的口径差收进悬浮提示；本体的类计数统一表述为「业务类（另有 owl:Thing 兜底）」。
+- **CQ 定位器说清「为什么查不到」（#131）**：`no_anchors` 的 `hint` 区分三种原因——词表为空（本体没有任何 `rdfs:label`）、词表没有中文术语（纯英文本体，提示改用原始英文叫法或补标签）、题干用词与本体叫法不同，不再只给一句「未匹配到本体术语」。
 
 - **短名解析不再丢失 IRI 子路径（#120）**：引擎新增三级解析「完整 IRI → 主命名空间 → 全图唯一后缀」，`/dept/deptA`、`/capability/x` 这类带语义目录的 IRI 用短名也能查对；`types_of` / `objects_of` / `individuals_of` / `proof` 主体解析与说明页示例题统一走这一层。`/api/types`、`/api/property`、`/api/individuals` 在名称解析不到或短名命中多个 IRI 时返回 **400**（歧义时列出候选完整 IRI），不再静默返回空集；名称存在但确实没有类型/取值时仍是空列表，两者可区分。完整 IRI 原样使用，不因图里缺席被误判为解析失败。
 

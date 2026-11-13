@@ -47,6 +47,20 @@ export interface NoticeSnapshot {
 }
 
 /**
+ * 横幅文案（#131）：第一行给结论，第二行给动作；三元组与连线的口径差
+ * （「545 条新增，图上只多 22 条线」）收进 `detail` 做悬浮提示。
+ * 原先一句话塞三个概念，初始用户读不完也记不住。
+ */
+export interface InferenceNoticeText {
+  /** 结论：当前视图里有多少断言 / 推理连线 */
+  lead: string;
+  /** 下一步动作：点哪里看什么 */
+  action: string;
+  /** 口径细节（悬浮提示）：三元组新增数与图上连线数的差 */
+  detail: string;
+}
+
+/**
  * 计数 + 句式选择：所有数字从数据计算，禁止写常量——换领域后必须自动变。
  *
  * generic 模式不出现领域能力字样：「谁能做这个任务」是 can_execute 的口语化，
@@ -57,7 +71,7 @@ export function buildInferenceNotice(
   mat: NoticeSnapshot,
   viewMode: ViewMode,
   generic = false,
-): string | null {
+): InferenceNoticeText | null {
   const stats = mat.stats;
   if (!stats) return null; // 数据未加载：不渲染
   const assertedEdges = mat.asserted?.edges.length ?? 0;
@@ -67,25 +81,28 @@ export function buildInferenceNotice(
   const domainClauseA = !generic && canExecute > 0 ? `，其中 ${canExecute} 条是「谁能做这个任务」` : '';
   const domainClauseB = !generic && canExecute > 0 ? `（${canExecute} 条「谁能做这个任务」）` : '';
   // 三元组与连线的口径差：概览写「推出来的 545」，图上只多 22 条线——
-  // 不解释这条括注，横幅自己就在制造困惑。
-  const caliber =
+  // 放进悬浮提示，让第一行只讲用户眼前看到的东西。
+  const detail =
     `${stats.inferred_added} 条新增三元组里，类型与父子类等骨架已折叠进节点，` +
     `图上表现为 ${inferredEdges} 条连线。`;
 
   if (viewMode === 'materialized') {
-    return (
-      `图上 ${totalEdges} 条连线里，${inferredEdges} 条不在本体文件里。` +
-      `绿色虚线是推理推出来的${domainClauseA}。点任意虚线看依据。（${caliber}）`
-    );
+    return {
+      lead: `图上 ${totalEdges} 条连线里，${inferredEdges} 条不在本体文件里。绿色虚线是推理推出来的${domainClauseA}。`,
+      action: '点任意虚线看依据。',
+      detail,
+    };
   }
   if (viewMode === 'asserted') {
-    return (
-      `你现在只看得到本体里声明的 ${assertedEdges} 条。` +
-      `另有 ${inferredEdges} 条是推出来的${domainClauseB}，点「显示推理全貌」可见。（${caliber}）`
-    );
+    return {
+      lead: `你现在只看得到本体里声明的 ${assertedEdges} 条。另有 ${inferredEdges} 条是推出来的${domainClauseB}。`,
+      action: '点「显示推理全貌」可见。',
+      detail,
+    };
   }
-  return (
-    `这里只有推出来的 ${inferredEdges} 条，本体里声明的那 ${assertedEdges} 条不在图中。` +
-    `点「显示推理全貌」看全貌。（${caliber}）`
-  );
+  return {
+    lead: `这里只有推出来的 ${inferredEdges} 条，本体里声明的那 ${assertedEdges} 条不在图中。`,
+    action: '点「显示推理全貌」看全貌。',
+    detail,
+  };
 }

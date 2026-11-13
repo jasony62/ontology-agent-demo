@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { DomainGuide, GuideExample, GuideRuntime } from '../api/client';
 
@@ -411,6 +411,54 @@ function ExamplePanel({
         )}
       </div>
 
+      {/* #135 R5：展开面板常常高于可视区，发送入口放在参数之后、请求预览之前，
+          保证卡片滚到顶部后首屏就能看到「用示例问一次」，不用先往下翻一屏。 */}
+      {example.safe && (
+        <div className="guide-do-action">
+          {predict && (
+            <div className="guide-predict">
+              <div className="guide-predict-q">先猜一下：{predict.prompt}</div>
+              <div className="guide-predict-options">
+                {predict.options.map((option) => (
+                  <label
+                    key={option}
+                    className={`guide-predict-option ${guess === option ? 'is-selected' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name={`predict-${example.id}`}
+                      value={option}
+                      checked={guess === option}
+                      disabled={predictLocked}
+                      onChange={() => setGuess(option)}
+                    />
+                    <span>{option}</span>
+                  </label>
+                ))}
+              </div>
+              {!guess && <div className="guide-run-note">选一个预测后，才能点「先猜后验」。</div>}
+            </div>
+          )}
+          <div className="guide-do-buttons">
+            <button
+              className="btn"
+              onClick={submit}
+              disabled={running || result?.loading || (predict != null && (guess == null || predictLocked))}
+            >
+              {running || result?.loading ? '发送中…' : predict ? '先猜后验' : '用示例问一次'}
+            </button>
+            <div className="guide-run-note">
+              {predict
+                ? example.simulate
+                  ? '先记录你的预测，再在断言图副本上推演改动；结果区并排给出改动前后与对错'
+                  : '先记录你的预测，再发送只读查询；结果区会给出对错与解释'
+                : '本次真实返回 · 只读请求 · 数据来自当前本体'}
+            </div>
+            {result?.error && <div className="guide-error-inline">{result.error}</div>}
+          </div>
+        </div>
+      )}
+
       <div className="guide-do-step">
         <div className="guide-do-label">2 · 系统会发出什么请求</div>
         <div className="guide-endpoint"><code>{example.endpoint ?? '不提供页内试跑'}</code></div>
@@ -432,45 +480,6 @@ function ExamplePanel({
           <div className="guide-blocked">{example.reason ?? '该题当前不可试跑'}</div>
         ) : (
           <>
-            {predict && (
-              <div className="guide-predict">
-                <div className="guide-predict-q">先猜一下：{predict.prompt}</div>
-                <div className="guide-predict-options">
-                  {predict.options.map((option) => (
-                    <label
-                      key={option}
-                      className={`guide-predict-option ${guess === option ? 'is-selected' : ''}`}
-                    >
-                      <input
-                        type="radio"
-                        name={`predict-${example.id}`}
-                        value={option}
-                        checked={guess === option}
-                        disabled={predictLocked}
-                        onChange={() => setGuess(option)}
-                      />
-                      <span>{option}</span>
-                    </label>
-                  ))}
-                </div>
-                {!guess && <div className="guide-run-note">选一个预测后，才能点「先猜后验」。</div>}
-              </div>
-            )}
-            <button
-              className="btn"
-              onClick={submit}
-              disabled={running || result?.loading || (predict != null && (guess == null || predictLocked))}
-            >
-              {running || result?.loading ? '发送中…' : predict ? '先猜后验' : '用示例问一次'}
-            </button>
-            <div className="guide-run-note">
-              {predict
-                ? example.simulate
-                  ? '先记录你的预测，再在断言图副本上推演改动；结果区并排给出改动前后与对错'
-                  : '先记录你的预测，再发送只读查询；结果区会给出对错与解释'
-                : '本次真实返回 · 只读请求 · 数据来自当前本体'}
-            </div>
-            {result?.error && <div className="guide-error-inline">{result.error}</div>}
             {predictRevealed && predict && (
               <div className={`guide-predict-result ${submittedGuess === predict.answer ? 'ok' : 'bad'}`}>
                 <strong>{submittedGuess === predict.answer ? '✓ 预测正确' : '✗ 预测不符'}</strong>
@@ -513,6 +522,8 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
   const [active, setActive] = useState<SectionId>('overview');
   const [showToc, setShowToc] = useState(true);
   const [openExample, setOpenExample] = useState<string | null>(null);
+  // #135：滚动定位请求「排到 DOM 提交之后」再执行，token 让重复请求也能触发一次 effect。
+  const [pendingReveal, setPendingReveal] = useState<{ id: string; token: number } | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Record<string, unknown>>>({});
   const [results, setResults] = useState<
     Record<string, { loading: boolean; data?: unknown; error?: string }>
@@ -521,6 +532,7 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
   // 换包后整体换内容：新的 guide 对象 → 参数草稿、展开项与旧结果全部作废，
   // 不把上一个包的题干 / 能力名 / 数值带进来。
   useEffect(() => {
+    setPendingReveal(null);
     if (!guide) {
       setDrafts({});
       setResults({});
@@ -532,6 +544,9 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
     setDrafts(next);
     setResults({});
     setOpenExample(null);
+    // 滚动容器会被复用：旧包的阅读位置不能带进新包（#135 V6）。
+    setActive('overview');
+    if (contentRef.current) contentRef.current.scrollTop = 0;
   }, [guide]);
 
   const firstSafe = useMemo(
@@ -586,9 +601,38 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
     setActive(current);
   };
 
+  /**
+   * #135：把展开的示例题卡片带回内容区顶部（唯一入口）。
+   *
+   * 只登记请求，真正的 scrollIntoView 放在 useLayoutEffect 里：切题时旧卡收起 + 新卡展开
+   * 会让容器高度骤变，同步滚动算在旧高度上，实测 scrollTop 恒定不动。目标始终是卡片
+   * 本身（`#guide-example-<id>`），复用 `.guide-example` 已有的 scroll-margin-top: 8px。
+   */
+  const revealExample = (id: string) => {
+    setActive('examples');
+    setPendingReveal((current) => ({ id, token: (current?.token ?? 0) + 1 }));
+  };
+
+  useLayoutEffect(() => {
+    if (!pendingReveal) return;
+    const card = document.getElementById(`guide-example-${pendingReveal.id}`);
+    card?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }, [pendingReveal]);
+
+  const toggleExample = (id: string) => {
+    if (openExample === id) {
+      setOpenExample(null);
+      return;
+    }
+    // 先登记定位，等 setOpenExample 的 DOM 提交完成后由上面的 effect 执行。
+    revealExample(id);
+    setOpenExample(id);
+  };
+
   const openFirstSafe = () => {
-    if (firstSafe) setOpenExample(firstSafe.id);
-    scrollToSection('examples');
+    if (!firstSafe) return;
+    revealExample(firstSafe.id);
+    setOpenExample(firstSafe.id);
   };
 
   const runExample = async (example: GuideExample) => {
@@ -610,8 +654,9 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
               ? api.getJson(target.path, params)
               : api.postJson(target.path, params);
           })();
+      // 结果只往卡片内部追加，卡片顶部不动，因此不再二次滚动：
+      // 旧实现在这里同步 scrollIntoView，返回时会把正在看结果的用户拽回题头（#135 R3/V4）。
       setResults((current) => ({ ...current, [example.id]: { loading: false, data } }));
-      document.getElementById(`guide-example-${example.id}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     } catch (e) {
       setResults((current) => ({
         ...current,
@@ -845,7 +890,7 @@ export default function DomainGuidePage({ guide, error, loading, onRetry }: Prop
                             ? '预测配对题：展开后先选一个预测，再点「先猜后验」'
                             : `期望答案：${example.answer_hint}`}
                         </span>
-                        <button className="btn secondary" onClick={() => setOpenExample(open ? null : example.id)}>
+                        <button className="btn secondary" onClick={() => toggleExample(example.id)}>
                           {open ? '收起' : '照着做'}
                         </button>
                       </div>

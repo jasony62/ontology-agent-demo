@@ -41,6 +41,16 @@
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   min-height: 24px; padding: 0 2px 8px;
 }
+/* #134 R4：图谱面板不再有「图谱」标题行；收起按钮浮在面板右上角 */
+.pane--left { position: relative; }
+.pane-head--float {
+  position: absolute; top: 6px; right: 8px; z-index: 8;
+  min-height: 0; padding: 0; justify-content: flex-end;
+}
+.pane-head--float .pane-icon-btn {
+  background: rgba(255, 255, 255, .92); border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
 .pane-title { font-size: 12px; font-weight: 600; color: var(--heading); }
 .pane-head-actions { display: flex; align-items: center; gap: 4px; }
 

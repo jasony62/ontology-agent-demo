@@ -132,14 +132,17 @@ describe('画布工具栏 · 添加事实（#102）', () => {
     expect(button('＋ 添加事实').disabled).toBe(true);
   });
 
-  it('#128 导入的本体是只读副本：三个新建入口全置灰并标注', () => {
+  it('#128 导入的本体是只读副本：三个新建入口全置灰，原因在悬停说明与右侧概览（#134）', () => {
     act(() => useAppStore.setState({ ontologyMode: 'imported' }));
     const el = render();
 
     expect(button('＋ 新建类').disabled).toBe(true);
     expect(button('＋ 新建关系').disabled).toBe(true);
     expect(button('＋ 添加事实').disabled).toBe(true);
-    expect(el.textContent).toContain('导入的本体为只读副本，编辑请先导出');
-    expect(button('＋ 新建类').title).toBe('导入的本体为只读副本，编辑请先导出');
+    // #134 R3：橙色说明移出工具栏，按钮悬停仍给出原因；完整说明进右侧「可用性与下一步」
+    expect(el.querySelector('.create-readonly-hint')).toBeNull();
+    for (const text of ['＋ 新建类', '＋ 新建关系', '＋ 添加事实']) {
+      expect(button(text).title).toContain('导入的本体为只读副本，编辑请先导出');
+    }
   });
 });

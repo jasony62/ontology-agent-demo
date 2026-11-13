@@ -117,6 +117,7 @@ afterEach(() => {
   container?.remove();
   container = null;
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function render(node: ReactElement) {
@@ -152,6 +153,86 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(text).toContain('http://127.0.0.1:9000/mcp');
     expect(text).toContain('mcpServers');
     expect(text).toContain('<项目根目录>/.venv/bin/python');
+  });
+
+  it('#135 切题后把新展开的卡片滚到内容区顶部，而不是 section 顶部', () => {
+    // 全局 scrollIntoView 在文件顶部被打成空实现：这里换成 spy，断言真的定位到卡片。
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+
+    const cardOf = (id: string) => container!.querySelector(`#guide-example-${id}`)!;
+    const openOf = (id: string) =>
+      [...cardOf(id).querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
+    const section = document.getElementById('guide-examples');
+
+    act(() => openOf('T2-01').click());
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0]).toBe(cardOf('T2-01'));
+
+    // 第 2 题：上一题收起 + 本题展开，仍要定位到新卡片（旧实现在这里只改 state、不滚动）
+    act(() => openOf('T2-08').click());
+    expect(cardOf('T2-01').className).not.toContain('open');
+    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(scroll.mock.contexts[1]).toBe(cardOf('T2-08'));
+
+    // 定位目标是卡片，不是 02 区 section 顶部
+    expect(scroll.mock.contexts.every((ctx) => ctx !== section)).toBe(true);
+  });
+
+  it('#135 试跑返回后不再二次滚动，当前题不被顶走', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ matches: ['dev_agent'], derivation: ['前提 A → 结论 B'] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    const card = container!.querySelector('#guide-example-T2-01')!;
+    act(() => ([...card.querySelectorAll('button')].find((b) => b.textContent === '照着做') as HTMLButtonElement).click());
+    expect(scroll).toHaveBeenCalledTimes(1);
+
+    const run = [...card.querySelectorAll('button')].find((b) => b.textContent === '用示例问一次') as HTMLButtonElement;
+    await act(async () => {
+      run.click();
+    });
+
+    // 结果只往卡片内部追加：不再把用户从结果区拽回题头
+    expect(card.textContent).toContain('本次真实返回');
+    expect(scroll).toHaveBeenCalledTimes(1);
+  });
+
+  it('#135 发送入口放在参数之后、请求预览之前，展开首屏可见', () => {
+    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    const card = container!.querySelector('#guide-example-T2-01')!;
+    act(() => ([...card.querySelectorAll('button')].find((b) => b.textContent === '照着做') as HTMLButtonElement).click());
+
+    const action = card.querySelector('.guide-do-action')!;
+    const params = card.querySelector('.guide-param-grid')!;
+    const requestStep = [...card.querySelectorAll('.guide-do-step')]
+      .find((el) => el.textContent?.includes('2 · 系统会发出什么请求'))!;
+
+    expect(action).not.toBeNull();
+    expect(action.textContent).toContain('用示例问一次');
+    // params 在 action 之前，action 在请求预览之前
+    expect(params.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(action.compareDocumentPosition(requestStep) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('#135 换包后不残留展开项与滚动位置', () => {
+    render(<DomainGuidePage guide={GUIDE} error={null} loading={false} onRetry={() => {}} />);
+    const card = container!.querySelector('#guide-example-T2-01')!;
+    act(() => ([...card.querySelectorAll('button')].find((b) => b.textContent === '照着做') as HTMLButtonElement).click());
+    expect(container!.querySelector('.guide-example.open')).not.toBeNull();
+
+    const content = container!.querySelector('.guide-content') as HTMLDivElement;
+    content.scrollTop = 620;
+
+    render(<DomainGuidePage guide={{ ...GUIDE, domain: 'other_domain' }} error={null} loading={false} onRetry={() => {}} />);
+    expect(container!.querySelector('.guide-example.open')).toBeNull();
+    expect(content.scrollTop).toBe(0);
   });
 
   it('#129 本体体检：分型、预期与下一步同屏给出', () => {

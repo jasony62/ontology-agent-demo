@@ -18,6 +18,7 @@ import ExportDialog from './components/ExportDialog';
 import CreateElementBar from './components/CreateElementBar';
 import OntologyEditor from './components/OntologyEditor';
 import DomainGuidePage from './components/DomainGuidePage';
+import OverflowMenu from './components/OverflowMenu';
 import WorkspaceSplit from './components/WorkspaceSplit';
 import type { WorkspaceTab } from './components/WorkspaceSplit';
 import { useEditorStore } from './store/editorStore';
@@ -65,6 +66,17 @@ export default function App() {
     setPage('guide');
     window.history.replaceState(null, '', '#guide');
   };
+  const gotoGraph = () => {
+    setPage('graph');
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  };
+  // 图谱概览里的「去当前领域」用普通 <a href="#guide">，这里跟随 hash 切页；
+  // 不引入第二份页面状态。
+  useEffect(() => {
+    const onHashChange = () => setPage(window.location.hash === '#guide' ? 'guide' : 'graph');
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
   const dismissOnboarding = () => {
     setShowOnboarding(false);
     try {
@@ -273,23 +285,43 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>本体图谱工作台</h1>
-        <span className="app-sub">OWL 2 RL 推理 API</span>
+        {/* #134 R1：页头三段式、恒定单行——左品牌 + 页面入口 / 中领域上下文（可压缩）/ 右动作 + 状态 */}
+        <div className="app-brand">
+          <h1>本体图谱工作台</h1>
+          <span className="app-sub">OWL 2 RL 推理 API</span>
+        </div>
         {/* 两个平级入口：内容区整页替换，不弹框、不加遮罩 */}
         <nav className="app-nav" aria-label="页面切换">
-          <button
-            className={page === 'graph' ? 'active' : ''}
-            onClick={() => { setPage('graph'); window.history.replaceState(null, '', window.location.pathname + window.location.search); }}
-          >
+          <button className={page === 'graph' ? 'active' : ''} onClick={gotoGraph}>
             图谱工作台
           </button>
-          <button
-            className={page === 'guide' ? 'active' : ''}
-            onClick={gotoGuide}
-          >
+          <button className={page === 'guide' ? 'active' : ''} onClick={gotoGuide}>
             当前领域
           </button>
         </nav>
+        {/* #134 R2：首次引导从常驻整条改成页头中段的内联一次性提示，看过即消失；窄屏隐藏，
+            入口仍在「更多」菜单里。 */}
+        {showOnboarding && (
+          <div className="header-onboarding" role="note">
+            <span>第一次用？先看「当前领域」的示例题。</span>
+            <button
+              type="button"
+              className="header-onboarding-go"
+              onClick={() => { dismissOnboarding(); gotoGuide(); }}
+            >
+              去看
+            </button>
+            <button
+              type="button"
+              className="header-onboarding-close"
+              aria-label="关闭首次使用提示"
+              title="关闭提示"
+              onClick={dismissOnboarding}
+            >
+              ×
+            </button>
+          </div>
+        )}
         {/* 领域包切换：后端 L3 原子切换（失败保持旧领域），前端只负责重拉全量数据 */}
         <div className="domain-switch" title={guide?.profile.summary ?? domainInfo?.description ?? '当前领域包（切换不落盘，重启服务回默认领域）'}>
           <span className="domain-label">领域</span>
@@ -321,8 +353,14 @@ export default function App() {
             )}
           </select>
           {guide && (
-            <span className="domain-display" title={guide.profile.summary}>
-              {guide.profile.display_name} · {guide.profile.summary}
+            <span className="domain-display" title={`${guide.profile.display_name} · ${guide.profile.summary}`}>
+              {guide.profile.display_name}
+            </span>
+          )}
+          {/* #134 R1：红色徽标并进领域胶囊，不再作为页头末尾的独立元素被挤到第二行 */}
+          {(ontologyMode === 'generic' || ontologyMode === 'imported') && (
+            <span className="mode-badge" title="当前对外服务的是导入的本体；重启服务回到默认领域">
+              {ontologyMode === 'imported' ? '导入的本体' : '通用模式'}
             </span>
           )}
           <button
@@ -335,19 +373,25 @@ export default function App() {
           </button>
           {domainNote && <span className="domain-note">{domainNote}</span>}
         </div>
-        <div className="toolbar" style={{ marginLeft: 'auto' }}>
-          <button onClick={() => setImportOpen(true)}>导入</button>
-          <button onClick={() => setExportOpen(true)}>导出</button>
-          <button onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>
-          {/* 编辑入口只在工作区：右侧面板 Tab 条 / 40px 图标条 / 窄屏标签页，页头不再重复一份 */}
-          <a className="toolbar-link secondary" href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
+        <div className="app-header-right">
+          <span className={`health ${backendOk ? 'ok' : ''}`}>{backendOk ? '后端已连接' : '后端未连接'}</span>
+          <div className="toolbar header-actions">
+            <button onClick={() => setImportOpen(true)}>导入</button>
+            <button onClick={() => setExportOpen(true)}>导出</button>
+            <button onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>
+            {/* 编辑入口只在工作区：右侧面板 Tab 条 / 40px 图标条 / 窄屏标签页，页头不再重复一份 */}
+            <a className="toolbar-link secondary" href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
+          </div>
+          {/* #134 R6：≤1200px 页头动作与 ≤1024px 的页面入口收进「更多」，保证恒定单行 */}
+          <OverflowMenu id="header" className="header-more" title="宽度不足时收起的页头入口">
+            <button type="button" className="menu-nav-item" onClick={gotoGraph}>图谱工作台</button>
+            <button type="button" className="menu-nav-item" onClick={gotoGuide}>当前领域</button>
+            <button type="button" onClick={() => setImportOpen(true)}>导入本体</button>
+            <button type="button" onClick={() => setExportOpen(true)}>导出本体</button>
+            <button type="button" onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>
+            <a href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
+          </OverflowMenu>
         </div>
-        <span className={`health ${backendOk ? 'ok' : ''}`}>{backendOk ? '后端已连接' : '后端未连接'}</span>
-        {(ontologyMode === 'generic' || ontologyMode === 'imported') && (
-          <span className="mode-badge" title="当前对外服务的是导入的本体；重启服务回到默认领域">
-            {ontologyMode === 'imported' ? '导入的本体' : '通用模式'}
-          </span>
-        )}
       </header>
 
       <main className="app-main">
@@ -375,21 +419,6 @@ export default function App() {
           />
         ) : (
           <>
-            {showOnboarding && (
-              <div className="onboarding-banner" role="note">
-                <span>
-                  第一次用？点右上角「当前领域」，从 <code>T2-15</code> 看一次完整编排。
-                </span>
-                <button className="btn secondary" onClick={gotoGuide}>去看当前领域</button>
-                <button
-                  className="onboarding-close"
-                  aria-label="关闭首次使用提示"
-                  onClick={dismissOnboarding}
-                >
-                  ×
-                </button>
-              </div>
-            )}
             {ontologyMode === 'generic' && (
               <div className="mode-banner">
                 当前为非默认本体（通用模式）：领域推理（能力匹配 / 任务编排 / 合规冲突检测）不可用；图谱 / 物化 / SPARQL 不受影响。重启服务可恢复默认本体。
@@ -417,10 +446,11 @@ export default function App() {
                               <ViewModeToggle />
                               {/* 恢复按钮与切换器并列但在组外：三格是互斥视图，不能混进第四个按钮 */}
                               <NoticeRestoreButton />
-                              {/* D9：新建入口常驻画布工具栏，不依赖选中态 */}
-                              <CreateElementBar />
+                              {/* D9：新建入口常驻画布工具栏，不依赖选中态；窄屏收进「更多」 */}
+                              <span className="graph-toolbar-create"><CreateElementBar /></span>
                             </>
                           }
+                          toolbarOverflow={<CreateElementBar />}
                           onSelect={(id) => setSelectedId(id)}
                         />
                       </GraphErrorBoundary>

@@ -86,6 +86,26 @@ export function ontologyToGraphData(o: Ontology): GraphData {
 const edgeKey = (source: string, label: string, target: string) => `${source}--${label}--${target}`;
 
 /**
+ * #133：后端短名 → 画布节点 id 的归一化解析。
+ *
+ * 后端断言图给的是 OWL 短名（`WorkhourRecord`，PascalCase），草图模型是 camelCase
+ * （`workhourRecord`）。端点解析必须共用这一层：先精确匹配，再大小写不敏感回退；
+ * 同一大小写键命中多个画布节点时返回 null——不猜，避免把边连到错误节点上。
+ */
+function createNodeResolver(nodeIds: Iterable<string>) {
+  const exact = new Set(nodeIds);
+  const byLower = new Map<string, string | null>();
+  for (const id of exact) {
+    const key = id.toLowerCase();
+    byLower.set(key, byLower.has(key) ? null : id);
+  }
+  return (id: string): string | null => {
+    if (exact.has(id)) return id;
+    return byLower.get(id.toLowerCase()) ?? null;
+  };
+}
+
+/**
  * 把草图的改动「合并」进后端断言图。
  *
  * 断言图里还有两类草图不直接建模的内容：
@@ -96,6 +116,9 @@ const edgeKey = (source: string, label: string, target: string) => `${source}--$
  *  - 结构边**不由 base 保留**，统一按 `parent` / `types` 重算——否则改完个体类型，
  *    旧的 rdf:type 边会残留成幽灵边；
  *  - 业务关系边按模型 id 跟踪：模型里有就覆盖同名旧边，模型里没有的实例事实边保留。
+ *  - base 边端点按「精确 → 大小写不敏感」解析成画布节点 id 后再判断去留，并回写 id：
+ *    后端短名 PascalCase（WorkhourRecord）与草图 camelCase（workhourRecord）不是同一串，
+ *    旧实现只做精确匹配，会把整批个体 → 类的实例边静默丢掉（#133）。
  */
 export function mergeOntologyIntoGraph(base: GraphData | null, prev: Ontology | null, next: Ontology): GraphData {
   if (!base) return ontologyToGraphData(next);
@@ -109,15 +132,18 @@ export function mergeOntologyIntoGraph(base: GraphData | null, prev: Ontology | 
   );
   const nodes = [...model.nodes, ...extraNodes];
   const nodeIds = new Set(nodes.map((n) => n.id));
+  // 后端短名与画布 id 的大小写 / 命名形式不一致时，统一在这里解析（#133）。
+  const resolveNodeId = createNodeResolver(nodeIds);
+  const modelClassIds = new Set(next.entityTypes.map((e) => e.id));
+  const resolveClassId = createNodeResolver(modelClassIds);
 
   // 模型没覆盖到的个体：用 base 里的断言类型补结构边，并映射到模型里的类 id
   // （大小写不同：后端短名 Agent ↔ 草图 agent）。
-  const classIdByLower = new Map(next.entityTypes.map((e) => [e.id.toLowerCase(), e.id]));
   const extraStructureEdges: GraphEdge[] = [];
   const structureSeen = new Set<string>();
   for (const n of extraNodes) {
     for (const type of n.types ?? []) {
-      const classId = classIdByLower.get(type.toLowerCase());
+      const classId = resolveClassId(type);
       if (!classId) continue;
       const id = `${n.id}--rdf:type--${classId}`;
       if (structureSeen.has(id)) continue;
@@ -152,13 +178,19 @@ export function mergeOntologyIntoGraph(base: GraphData | null, prev: Ontology | 
   const keptEdges: GraphEdge[] = [];
   for (const e of base.edges) {
     if (e.kind === 'structure') continue; // 结构边由模型重算
-    if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) continue;
-    if (removedBaseKeys.has(edgeKey(e.source, e.label, e.target))) continue;
+    // 端点必须都解析到画布节点；解析成功的边同时改写成画布 id，否则 cytoscape 不会画（#133）。
+    const source = resolveNodeId(e.source);
+    const target = resolveNodeId(e.target);
+    if (!source || !target) continue;
+    const normalizedKey = edgeKey(source, e.label, target);
+    const rawKey = edgeKey(e.source, e.label, e.target);
+    if (removedBaseKeys.has(normalizedKey) || removedBaseKeys.has(rawKey)) continue;
     // base 的对象属性 label 是 localName（即模型关系的 id）；模型里已有同名关系时，
     // 以模型边为准（label 用 rdfs:label，id 用 rel--id），避免同一条关系出两条线。
-    const modelEdgeId = modelRelBySourceTarget.get(edgeKey(e.source, e.label, e.target));
+    const modelEdgeId = modelRelBySourceTarget.get(normalizedKey)
+      ?? modelRelBySourceTarget.get(rawKey);
     if (modelEdgeId) continue;
-    keptEdges.push(e);
+    keptEdges.push(source === e.source && target === e.target ? e : { ...e, source, target });
   }
 
   // 模型业务边（id 稳定；同一 id 只留一条）

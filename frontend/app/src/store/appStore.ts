@@ -44,6 +44,9 @@ interface AppState {
   // 是同一件事的三个角度，关掉一个说明已经明白。初始值来自 sessionStorage，
   // 本次会话内有效；读写入口在 lib/inferenceBanner，store 只做跨组件的响应式镜像。
   noticeDismissed: boolean;
+  // #134：窄屏「更多」菜单同一时刻只开一个。存菜单 id（页头 / 图谱工具栏…），
+  // null = 全关；点外部由 OverflowMenu 统一关闭。
+  openOverflow: string | null;
 
   setBackendOk: (ok: boolean, info?: Record<string, unknown>) => void;
   setOntology: (o: Ontology | null) => void;
@@ -60,6 +63,7 @@ interface AppState {
   setEditorFocusId: (id: string | null) => void;
   setOntologyMode: (m: 'default' | 'imported' | 'generic' | null) => void;
   setNoticeDismissed: (v: boolean) => void;
+  setOpenOverflow: (id: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -82,6 +86,7 @@ export const useAppStore = create<AppState>((set) => ({
   editorFocusId: null,
   ontologyMode: null,
   noticeDismissed: isNoticeDismissed(),
+  openOverflow: null,
 
   setBackendOk: (ok, info) => set({ backendOk: ok, backendInfo: info ?? null }),
   setOntology: (o) => set({ ontology: o }),
@@ -98,4 +103,5 @@ export const useAppStore = create<AppState>((set) => ({
   setEditorFocusId: (id) => set({ editorFocusId: id }),
   setOntologyMode: (m) => set({ ontologyMode: m }),
   setNoticeDismissed: (v) => set({ noticeDismissed: v }),
+  setOpenOverflow: (id) => set({ openOverflow: id }),
 }));

@@ -96,6 +96,22 @@ def test_validate_duplicate_against_bank(tmp_path, monkeypatch):
     assert r["dedup"]["duplicates"][0]["against_id"] == "T1"
 
 
+def test_validate_duplicate_against_dict_bank(tmp_path, monkeypatch):
+    """反例①c：领域题库是 {suite, cases} 形态时撞题同样检出（#140）。"""
+    bank_file = tmp_path / "cq_tests.json"
+    bank_file.write_text(json.dumps({
+        "suite": "demo",
+        "version": 1,
+        "cases": [{"id": "T1", "cq": "哪些智能体可以执行登录模块开发？"}],
+    }, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(cq, "_CQ_TESTS", str(bank_file))
+    r = cq.validate_cqs(["哪些智能体可以执行 登录模块 开发？"])
+    assert r["duplicate"] == 1
+    assert r["results"][0]["status"] == "duplicate"
+    assert r["dedup"]["skipped"] is False
+    assert r["dedup"]["duplicates"][0]["against_id"] == "T1"
+
+
 def test_validate_internal_duplicate_flagged():
     """反例①b：本次输入内同义重复（标点差异）→ 第二道标 duplicate。"""
     r = cq.validate_cqs([

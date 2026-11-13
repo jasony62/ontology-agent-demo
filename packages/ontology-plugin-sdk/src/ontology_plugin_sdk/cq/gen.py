@@ -217,11 +217,28 @@ def guide_cq_generation(prompts: dict | None = None, engine=None, focus: str | N
     }
 
 
+def _bank_case_items(bank) -> list | None:
+    """把题库归一成 case 列表；形态无法识别时返回 None（调用方如实跳过）。
+
+    题库两种法定形态：裸数组 `[{cq, id}, ...]`，以及带元信息的
+    `{"suite": ..., "version": ..., "cases": [...]}`（仓库内 `cq_tests.json`
+    用的就是后者）。只做形态识别，不改条目内容——条目可以是 dict / str。
+    """
+    if isinstance(bank, list):
+        return bank
+    if isinstance(bank, dict):
+        cases = bank.get("cases")
+        if isinstance(cases, list):
+            return cases
+    return None
+
+
 def dedup_against_items(items: list, bank_path: str | None = None) -> dict:
     """对既有题库查重；路径不存在或解析失败时如实跳过。
 
     items 可为 str 或 dict（含 cq 键）混合列表——与 validate_cqs 输入同型。
-    撞题记录指向题库既有 case id（id / case_id 字段，缺省 None）。
+    题库支持裸数组与 `{suite, cases}` 两种形态；撞题记录指向题库既有 case id
+    （id / case_id 字段，缺省 None）。
     """
     cqs = [str(x) if not isinstance(x, dict) else str(x.get("cq", x)) for x in items]
     against = os.path.basename(bank_path) if bank_path else "cq_tests.json"
@@ -233,17 +250,20 @@ def dedup_against_items(items: list, bank_path: str | None = None) -> dict:
     except Exception:
         return {"against": against, "skipped": True,
                 "duplicates": [], "error": "题库解析失败，已跳过查重"}
+    cases = _bank_case_items(bank)
+    if cases is None:
+        return {"against": against, "skipped": True, "duplicates": [],
+                "error": "题库形态无法识别（缺 cases 列表），已跳过查重"}
     norm_bank: dict[str, str | None] = {}
-    if isinstance(bank, list):
-        for item in bank:
-            if isinstance(item, dict):
-                cq_text = str(item.get("cq", ""))
-                case_id = item.get("id") or item.get("case_id")
-            else:
-                cq_text, case_id = str(item), None
-            norm = normalize(cq_text)
-            if norm:
-                norm_bank.setdefault(norm, case_id)
+    for item in cases:
+        if isinstance(item, dict):
+            cq_text = str(item.get("cq", ""))
+            case_id = item.get("id") or item.get("case_id")
+        else:
+            cq_text, case_id = str(item), None
+        norm = normalize(cq_text)
+        if norm:
+            norm_bank.setdefault(norm, case_id)
     dup = []
     for i, cq in enumerate(cqs):
         n = normalize(cq)

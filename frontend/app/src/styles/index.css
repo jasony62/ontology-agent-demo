@@ -1121,6 +1121,13 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-do-panel { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; display: flex; flex-direction: column; gap: 12px; }
 .guide-do-step { display: flex; flex-direction: column; gap: 8px; }
 .guide-do-label { font-size: var(--fs-sm); font-weight: 600; color: var(--heading); }
+/* #135 R5：展开面板常高于可见区，动作区紧跟在参数后面，首屏就能看到发送入口。 */
+.guide-do-action {
+  border: 1px solid var(--border); background: var(--panel-2);
+  border-radius: var(--radius); padding: 10px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.guide-do-buttons { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .guide-param-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
 .guide-param-static { font-size: var(--fs-sm2); background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; overflow-x: auto; }
 .guide-endpoint { font-size: var(--fs-sm2); color: var(--muted); }

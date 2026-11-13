@@ -146,7 +146,19 @@ def _hint(
                 "题干未匹配到本体术语：这份本体没有中文 rdfs:label（纯英文本体），"
                 "定位器只认字面；请改用本体里的原始英文叫法，或给术语补中文标签。"
             )
-        return "题干中未匹配到本体术语，可尝试使用本体中的原始叫法。"
+        # #132：只说「试原始叫法」用户仍然不知道叫什么。给出术语总量 + 几个
+        # 真实样本（按词长 / 字典序取最短的三个，稳定且不猜语义）——不给
+        # 「相关词」：单字 / 双字重合挑出来的都是噪声，那是假装理解语义。
+        chinese_terms = sorted(
+            {term.strip() for term in vocabulary if _CJK.search(term)} - {""},
+            key=lambda term: (len(term), term),
+        )
+        samples = "、".join(f"「{term}」" for term in chinese_terms[:3])
+        return (
+            f"题干中未匹配到本体术语。这份本体有 {len(chinese_terms)} 个中文术语"
+            f"（例如{samples}）；定位器只认字面、不认同义或简称，"
+            "请改用本体里的原始叫法，或到「当前领域 → 类层次」确认用词。"
+        )
     if coverage == "gap":
         return "命中 0 条：本体里没有条目直接包含这些术语。"
     if coverage == "scattered":

@@ -171,7 +171,7 @@ export default function App() {
     }
     try {
       const src = await api.source();
-      setSource(src.content, src.filename);
+      setSource(src.content, src.display_name ?? src.filename);
       try {
         const { ontology } = parseRDF(src.content);
         setOntology(ontology);

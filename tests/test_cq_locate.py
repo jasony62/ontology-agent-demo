@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -261,6 +262,32 @@ def test_ontology_without_any_label_says_vocabulary_is_empty(restore_engine):
     assert body["coverage"] == "no_anchors"
     assert "词表为空" in body["hint"]
     assert "补 label" in body["hint"]
+
+
+def test_chinese_ontology_lists_real_vocabulary_samples(restore_engine):
+    """#132：未命中时给出术语总量与 3 个真实样本，用户当场知道该换成什么词。
+
+    样本必须来自本体词表（不能是猜出来的「相关词」）；数量按词表现算。
+    """
+    assert _upload(CQ_OWL, "cq-samples.owl").status_code == 200
+    body = client.post(
+        "/api/domains/current/cq/locate",
+        json={"cq": "量子纠缠态下的供应链履约责任如何界定？"},
+    ).json()
+
+    assert body["coverage"] == "no_anchors"
+    hint = body["hint"]
+    assert "不认同义或简称" in hint
+
+    vocabulary = {term.strip() for term in build_vocabulary(M.ENGINE)}
+    chinese = {term for term in vocabulary if re.search(r"[\u4e00-\u9fff]", term)}
+    assert f"{len(chinese)} 个中文术语" in hint
+
+    samples = re.findall(r"「([^」]+)」", hint.split("例如")[1].split("；")[0])
+    assert len(samples) == 3
+    assert all(term in vocabulary for term in samples), samples
+    # 取词规则稳定：最短优先，再按字典序
+    assert samples == sorted(chinese, key=lambda term: (len(term), term))[:3]
 
 
 def test_empty_cq_is_400(restore_engine):

@@ -341,7 +341,11 @@ class OntologyLoadResponse(BaseModel):
 class OntologySourceResponse(BaseModel):
     """当前本体原始 RDF/XML。"""
 
-    filename: str = Field(..., description="当前本体文件名。")
+    filename: str = Field(..., description="当前本体文件名（导入态含上传副本的 uuid 前缀，用于排查对账）。")
+    display_name: str = Field(
+        ...,
+        description="给用户看的文件名：去掉上传副本的 uuid 前缀（#132）；标题与下载名用它。",
+    )
     content: str = Field(..., description="原始 RDF/XML 文本（未物化）。")
 
 

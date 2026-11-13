@@ -362,8 +362,13 @@ export const api = {
       `/api/ontology/proof?${new URLSearchParams({ s, p, o })}`,
     ),
 
-  /** 当前本体原始 RDF/XML 文本 */
-  source: () => request<{ filename: string; content: string }>('/api/ontology/source'),
+  /**
+   * 当前本体原始 RDF/XML 文本。
+   * `filename` 是完整落盘名（导入态含 uuid 前缀，供排查对账）；
+   * `display_name` 去掉了 uuid 前缀，标题与下载名用它（#132）。
+   */
+  source: () =>
+    request<{ filename: string; display_name?: string; content: string }>('/api/ontology/source'),
 
   /** 上传并加载本体到推理引擎（进入通用模式） */
   loadOntology: (file: File) => {

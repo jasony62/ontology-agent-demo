@@ -61,7 +61,7 @@ export default function ImportModal({ onClose, onSynced }: Props) {
       const mat = await api.materialized();
       setMaterialized(mat);
       const src = await api.source();
-      setSource(src.content, src.filename);
+      setSource(src.content, src.display_name ?? src.filename);
       // #119：导入即激活「导入的本体」领域，说明页 / 页头 / 能力清单整体重拉；
       // 不在这里手写 mode，避免前端猜的状态与后端运行态各说各话。
       await onSynced?.();

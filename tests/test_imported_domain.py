@@ -377,6 +377,12 @@ def test_guide_shows_original_filename_without_upload_uuid(restore_engine):
     assert original in guide["profile"]["summary"]
     assert guide["runtime"]["ontology"] not in guide["profile"]["summary"]
 
+    # #132：OWL 源码回执给展示名（标题 / 下载名用），完整落盘名保留供排查
+    src = client.get("/api/ontology/source").json()
+    assert src["display_name"] == original
+    assert src["filename"] != src["display_name"]
+    assert src["filename"].endswith(src["display_name"])
+
 
 def test_switch_back_to_preset_restores_guide_and_graph(restore_engine):
     default_name = M.DOMAINS.settings.effective_default()

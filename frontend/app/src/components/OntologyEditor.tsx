@@ -330,7 +330,7 @@ export default function OntologyEditor() {
       // 保存成功后草图快照必须失效重拉——否则切回图谱仍是保存前的旧模型（#91 S9）。
       setMaterialized(res.materialized);
       const src = await api.source();
-      setSource(src.content, src.filename);
+      setSource(src.content, src.display_name ?? src.filename);
       try {
         const { ontology } = parseRDF(src.content);
         setOntology(ontology);

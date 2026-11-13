@@ -1888,7 +1888,14 @@ def ontology_source():
     避免前端误判"后端未启动"。
     """
     try:
-        return {"filename": Path(ENGINE.onto_path).name, "content": ENGINE.source_xml()}
+        filename = Path(ENGINE.onto_path).name
+        # #132：filename 保留完整落盘名（排查对账）；display_name 去掉上传副本的
+        # uuid 前缀，给 OWL 源码标题 / 原样备份下载名用。
+        return {
+            "filename": filename,
+            "display_name": display_filename(filename),
+            "content": ENGINE.source_xml(),
+        }
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,

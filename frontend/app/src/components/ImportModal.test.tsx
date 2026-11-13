@@ -48,7 +48,11 @@ beforeEach(() => {
   root = createRoot(container);
   vi.spyOn(api, 'loadOntology').mockResolvedValue(LOAD_RESULT as never);
   vi.spyOn(api, 'materialized').mockResolvedValue({ edges: [], nodes: [] } as never);
-  vi.spyOn(api, 'source').mockResolvedValue({ content: OWL, filename: 'policy.owl' } as never);
+  vi.spyOn(api, 'source').mockResolvedValue({
+    content: OWL,
+    filename: '9f3a1c2b-policy.owl',
+    display_name: 'policy.owl',
+  } as never);
   vi.spyOn(api, 'guide').mockResolvedValue({ runtime: { health: HEALTH } } as never);
 });
 
@@ -98,6 +102,8 @@ describe('ImportModal（#126 成功提示 / #131 按钮文案）', () => {
     expect(state.notice).toContain('当前看不了：推理新增业务结论、查依据（点推理连线看前提）');
     expect(state.notice).toContain('下一步：先补几组个体再导入。');
     expect(state.viewMode).toBe('asserted');
+    // #132：源码标题 / 下载名用展示名（无 uuid），完整落盘名只在回执里
+    expect(state.sourceName).toBe('policy.owl');
     // 弹窗内不再渲染红色错误横幅
     expect(container!.querySelector('.error-banner')).toBeNull();
     expect(primaryButton().textContent).toBe('再次导入');

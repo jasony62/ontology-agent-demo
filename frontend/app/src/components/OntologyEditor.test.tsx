@@ -39,7 +39,7 @@ let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
 beforeEach(() => {
-  useAppStore.setState({ sourceName: 'agent_task_ontology.owl' });
+  useAppStore.setState({ sourceName: 'agent_task_ontology.owl', ontologyMode: null });
   useEditorStore.setState({
     model: MODEL,
     history: [],
@@ -196,6 +196,20 @@ describe('OntologyEditor 写盘文案与覆盖确认（#92 #100）', () => {  fu
     expect(toolbarButton('覆盖当前本体文件')).toBeTruthy();
     expect(container!.textContent).not.toContain('另存为新本体');
     expect(container!.textContent).not.toContain('保存中…');
+  });
+
+  it('#128 导入的本体是只读副本：两个保存入口置灰并给出原因', () => {
+    act(() => useAppStore.setState({ ontologyMode: 'imported' }));
+    render();
+
+    const saveNew = toolbarButton('生成新本体文件');
+    const overwrite = toolbarButton('覆盖当前本体文件');
+    expect(saveNew.disabled).toBe(true);
+    expect(overwrite.disabled).toBe(true);
+    expect(saveNew.title).toContain('只读副本');
+    expect(overwrite.title).toContain('不能覆盖原文件');
+    expect(container!.textContent).toContain('当前是导入的本体（只读副本）');
+    expect(container!.textContent).toContain('请先在页头「导出」得到文件');
   });
 
   it('点覆盖先出结构化确认框，取消后不发请求、状态不变', () => {

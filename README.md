@@ -28,7 +28,7 @@
 | **OWL 2 RL 推理引擎** | 加载 OWL 本体并物化推理；SPARQL / 类层次 / 个体 / 属性查询 | `scripts/query.py classes --local` |
 | **业务规则 R1 / R2 / R2a / R2b / R5 / R6** | 能力匹配、任务委派、认证有效期、担责判定、人工介入、双人复核与复核候选；R4 合规冲突由适配器在分配时校验。规则层可审查、可改口径，输出可解释推导链 | `make demo` |
 | **REST API** | 45 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / CQ 依据定位 / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
-| **MCP Server** | 同进程双端点：`/mcp/ontology`（领域业务 10 + 引擎通用 15）与 `/mcp/cq`（CQ 8），智能体（豆包等）一行配置接入 | `make mcp` |
+| **MCP Server** | 同进程双端点：`/mcp/ontology`（领域业务 10 + 引擎通用 15）与 `/mcp/cq`（CQ 10），智能体（豆包等）一行配置接入 | `make mcp` |
 | **当前领域单页** | 六问导航：定位 / 能问什么 / 能做什么 / 凭什么可信 / 怎么接入 / 现在跑的是哪一份；示例题按「看一次编排 / 预测一次变化 / 其余示例」分组，预测题在断言图副本上做只读推演、并排展示改动前后 | 页头「当前领域」 |
 | **图谱工作台** | React 工作台：三档视图图谱、OWL 源码查看、导入导出、图谱右侧编辑框（草图预览）+ 在线编辑（写盘） | `npm run dev` |
 | **CLI 双通道** | HTTP 优先、失败回退内嵌引擎（`--local` 零依赖） | `python scripts/query.py -h` |
@@ -413,8 +413,8 @@ adapter = AgentTaskAdapter(get_engine(), DEFAULT_CONFIG.update(
     `property_values` / `infer` / `explain_proof` / `predefined_queries` / `run_predefined_query` /
     `active_facts` / `guard_status` / `pipeline_gate` / `run_rules` / `list_rules` / `merge_check`
 - `/mcp/cq`——CQ 集全生命周期（框架级，**不依赖领域包**，导入裸 OWL 也可用）：
-  `cq_set_read` / `cq_set_write` / `cq_case_upsert` / `cq_case_remove` / `cq_author` /
-  `cq_to_schema` / `cq_regression` / `cq_audit`
+  `cq_set_read` / `cq_set_write` / `cq_case_upsert` / `cq_case_remove` / `cq_locate` /
+  `cq_validate` / `cq_author` / `cq_to_schema` / `cq_regression` / `cq_audit`
 
 CQ 工具与本体端点共享同一个 `get_engine()` 工厂和同一份 `cq_store`：回归跑的是当前
 内存引擎图，不会吃到过期图；身份沿用 `workspaces` 的 `ontology_id`（导入态与 REST 同一个

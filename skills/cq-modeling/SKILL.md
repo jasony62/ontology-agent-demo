@@ -12,7 +12,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 ## 2. 前置自检
 
 - 服务与 MCP 就绪（quickstart 断言链 + §3.4 握手拿到 session id）；以下工具均经 MCP `tools/call` 调用；
-- **端点**：CQ 工位都在框架级 **`/mcp/cq`**（#171/#172），不依赖领域包——切到任何预置领域、甚至 `--domain imported` 导入裸 OWL 都可用；先 `tools/list` 确认 8 个 `cq_` 工具。`validate_shapes` 因依赖领域 `shapes/*.ttl` 仍在 `/mcp/ontology`；通用闸门（`pipeline_gate` / `run_rules` / `list_rules` / `merge_check`）也在 `/mcp/ontology`；
+- **端点**：CQ 工位都在框架级 **`/mcp/cq`**（#171/#172），不依赖领域包——切到任何预置领域、甚至 `--domain imported` 导入裸 OWL 都可用；先 `tools/list` 确认 10 个 `cq_` 工具。`validate_shapes` 因依赖领域 `shapes/*.ttl` 仍在 `/mcp/ontology`；通用闸门（`pipeline_gate` / `run_rules` / `list_rules` / `merge_check`）也在 `/mcp/ontology`；
 - 分清两种模式：**schema_anchored**（默认，对照既有本体 schema 出题）与 **from_description**（传 `focus` 领域描述，全新领域降级用）；
 - 明确一个事实：`cq_author`（不传 `draft`）返回的是**给宿主 LLM 的出题指令**（题型配比、措辞规则、锚点要求），**不是题目本身**——题目由你（智能体）按指令起草。
 
@@ -32,13 +32,21 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 
 ### 3.3 质检
 
+先逐条做结构质检（题型 / 锚点 / 查重），**只读不落库**：
+
 ```json
-{"name": "cq_author", "arguments": {"draft": ["<题1>", "<题2>", "..."]}}
+{"name": "cq_validate", "arguments": {"cases": [{"cq": "<题1>", "expected_type": "retrieval"}, {"cq": "<题2>", "expected_type": "counting"}]}}
 ```
 
-断言：句式检查过、锚点检查过、查重通过（对拍既有题库 `cq_tests.json`，不与已入库题重复）、覆盖度报告可接受。不过关 → 回 3.2 改题，**不要**为了过检硬凑句式。
+断言：每条 `ok=true`、`reasons` 为空；`warnings` 里的「零证据 / 无锚点」需要你回看题面或本体词表。要单独看某一题的锚点明细与 hint，用 `cq_locate`：
 
-`focus` 模式出的题（指令要求你在输出 JSON 里声明 `anchor_terms`）同样送 `cq_author`——把 `{cq, expected_type, anchor_terms}` 数组原样放进 `draft`，工具会采信声明锚点：
+```json
+{"name": "cq_locate", "arguments": {"cq": "<题1>"}}
+```
+
+返回与 REST `/cq/locate` 一致的 `anchors / coverage / evidence / counts / hint`。需要可读的覆盖度报告（usable / revise / duplicate）时，再用 `cq_author(draft=...)` 复核。不过关 → 回 3.2 改题，**不要**为了过检硬凑句式。
+
+`focus` 模式出的题（指令要求你在输出 JSON 里声明 `anchor_terms`）同样送质检——把 `{cq, expected_type, anchor_terms}` 数组原样放进 `cq_author.draft`，工具会采信声明锚点：
 
 ```json
 {"name": "cq_author", "arguments": {"draft": [{"cq": "<题1>", "expected_type": "retrieval", "anchor_terms": ["<术语1>", "<术语2>"]}, "..."]}}
@@ -84,8 +92,8 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 | 症状 | 原因与自救 |
 |---|---|
 | `cq_author` 没有 schema 术语 | 未接引擎——按 schema_anchored 模式让服务端导出锚点；全新领域才传 `focus` 降级 |
-| `cq_author` 报与既有题重复 | 质检会对拍当前 CQ 集与题干——重复即换角度改题，不是调参数绕过 |
-| 术语有、但和质检口径不一致 | 查事实源：`cq_author` 的锚点来自运行时 `schema_map(engine)`，不是手写词表——出题与质检共用同一 `/mcp/cq` 引擎 |
+| `cq_validate` / `cq_author` 报与既有题重复 | 质检会对拍当前 CQ 集与题干——重复即换角度改题，不是调参数绕过 |
+| 术语有、但和质检口径不一致 | 查事实源：`cq_locate` / `cq_validate` / `cq_author` 都读当前 `/mcp/cq` 内存引擎；先 `cq_locate` 看 anchors 与 coverage，再判断是词表问题还是题面问题 |
 | 回归报「先建题库」 | 题库为空/缺失是如实报错：先走 3.5 落库 |
 | 回归失败项不知道改哪 | 看失败项的 `rule` 退化 hint（R1 属性链 / R2 委派 / R3 传递闭包 / R4 合规冲突）定位受影响规则 |
 | TBox 草稿某级不过 | 分级评审逐级暴露问题：按 `cq_to_schema`（带 ttl）报告修对应等级，不从 L1 重头看 |

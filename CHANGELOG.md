@@ -7,11 +7,14 @@
 
 ### Added
 
+- **CQ MCP 定位工具 `cq_locate`（#174）**：`/mcp/cq` 新增单题定位工具，复用 `reasoner/cq_locate.py`，返回与 REST `POST /cq/locate` 同构的 `anchors / anchor_sources / coverage / evidence / counts / hint`，并附 `evidence_count`；只读、不落库，智能体可纯 MCP 完成「出题 → 定位 → 质检 → 入题」。
+- **CQ MCP 质检工具 `cq_validate`（#175）**：`/mcp/cq` 新增批量质检，逐条检查题型是否 CQ4OE 四类、锚点是否命中当前本体词表（零证据仅 warn）、是否与现有集或本批内重复；返回每条 `{ok, reasons, warnings, anchors, coverage, evidence}` 与汇总，不落库。
 - **CQ 集独立为同进程 `/mcp/cq` 端点（#171）**：`mcp/mcp_server.py` 现在同一进程内构建两个 MCPServer——`/mcp/ontology`（领域工具 + 通用工具）与 `/mcp/cq`（CQ 集管理），共享同一个 `get_engine()` 工厂与同一份 `cq_store`；CQ 回归查当前内存引擎图，身份沿用 `identity_for`（导入态与 REST 同一工作区 uuid）。`/mcp` 保留为 `/mcp/ontology` 的旧路径别名。新增 `--domain imported`：直接绑定 `workspaces/_current.json` 指向的导入本体，无领域包也可用 CQ 工具。stdio 单通道下 CQ 工具与本体工具注册在同一 server。
-- **CQ MCP 工具面收敛（#172）**：`/mcp/cq` 只暴露 8 个 `cq_` 前缀工具——`cq_set_read` / `cq_set_write` / `cq_case_upsert` / `cq_case_remove` / `cq_author`（出题 + 质检合一）/ `cq_to_schema`（TBox 指引 + 校验合一）/ `cq_regression` / `cq_audit`；错误统一为 `{ok: false, error: {code, message}}`，不再裸抛 `str(exc)`。所有工具接受可选 `ontology_id`（仅当前身份或已存在工作区）。
+- **CQ MCP 工具面收敛（#172，后由 #174/#175 扩到 10 个）**：`/mcp/cq` 以 `cq_` 前缀统一工具，合并 save/import 与 guide/validate 冗余 pair——`cq_set_read` / `cq_set_write` / `cq_case_upsert` / `cq_case_remove` / `cq_author`（出题 + 质检合一）/ `cq_to_schema`（TBox 指引 + 校验合一）/ `cq_regression` / `cq_audit`，再加 #174 的 `cq_locate` 与 #175 的 `cq_validate`；错误统一为 `{ok: false, error: {code, message}}`，不再裸抛 `str(exc)`。所有工具接受可选 `ontology_id`（仅当前身份或已存在工作区）。
 
 ### Changed
 
+- **`cq_author` 引导断链修复（#175）**：出题指引的 `next_step` 不再引用已随 #172 收敛掉的 `validate_cqs`，改为指向 `/mcp/cq` 真实存在的 `cq_validate`，形成「出题 → 质检 → `cq_case_upsert` 入题」纯 MCP 闭环。
 - **CQ 工具移出 agent_task 领域包**：`examples/agent_task/mcp.py` 删除 `guide_cq_generation` / `validate_cqs` / `validate_cqs_declared` / `guide_tbox_draft` / `validate_tbox_draft` / `cq_regression` 与 #155 的 7 个集管理工具，只保留 `validate_shapes`（依赖领域 `shapes/*.ttl`）；领域包工具数 16 → 10。
 
 ## [0.8.2] - 2026-11-14

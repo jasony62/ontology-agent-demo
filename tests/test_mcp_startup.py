@@ -111,7 +111,7 @@ def test_mcp_cq_identity_matches_rest_workspace(tmp_path, monkeypatch):
 
 
 def test_cq_mcp_surface_is_consolidated_and_prefixed():
-    """#172：/mcp/cq 工具数 ≤ 8，统一 cq_ 前缀，无 guide/validate、save/import 冗余 pair。"""
+    """#172/#174/#175：/mcp/cq 工具统一 cq_ 前缀；#174 补定位，#175 补质检。"""
     server = mcp_server.build_cq_server(lambda: None, lambda: ("agent_task", None))
     names = sorted(tool.name for tool in asyncio.run(server.list_tools()))
     assert names == [
@@ -119,13 +119,77 @@ def test_cq_mcp_surface_is_consolidated_and_prefixed():
         "cq_author",
         "cq_case_remove",
         "cq_case_upsert",
+        "cq_locate",
         "cq_regression",
         "cq_set_read",
         "cq_set_write",
         "cq_to_schema",
+        "cq_validate",
     ]
-    assert len(names) <= 8
     assert all(name.startswith("cq_") for name in names)
+
+
+def test_cq_locate_matches_rest_structure():
+    """#174：/mcp/cq 的 cq_locate 与 REST /cq/locate 返回同构。"""
+    from reasoner.cq_locate import locate_cq
+    from reasoner.engine import ONTO_PATH, OntologyEngine
+
+    engine = OntologyEngine(ONTO_PATH)
+    server = _FakeServer()
+    mcp_server.cq_tools_mod.register_tools(
+        mcp_server._ToolNameGuard(server), lambda: engine, lambda: ("agent_task", None),
+    )
+    question = "哪些智能体可以执行登录模块开发？"
+    result = server.tools["cq_locate"](cq=question)
+    expected = locate_cq(engine, question)
+
+    assert result["ok"] is True
+    for key in ("anchors", "anchor_sources", "coverage", "evidence", "counts", "hint"):
+        assert result[key] == expected[key]
+    assert result["evidence_count"] == expected["counts"]["total"]
+
+
+def test_cq_validate_checks_type_anchors_and_duplicates(tmp_path, monkeypatch):
+    """#175：cq_validate 逐条查题型 / 定位锚点 / 与现有集和本批重复，且不落库。"""
+    from cq import cq_store
+    from reasoner.engine import ONTO_PATH, OntologyEngine
+
+    monkeypatch.setenv("ONTOLOGY_WORKSPACES_ROOT", str(tmp_path))
+    engine = OntologyEngine(ONTO_PATH)
+    server = _FakeServer()
+    mcp_server.cq_tools_mod.register_tools(
+        mcp_server._ToolNameGuard(server), lambda: engine, lambda: ("agent_task", None),
+    )
+    cq_store.save_set("agent_task", {"suite": "t", "cases": [
+        {"id": "E1", "cq": "哪些智能体可以执行登录模块开发？", "expected_type": "retrieval"},
+    ]})
+
+    out = server.tools["cq_validate"](cases=[
+        {"cq": "哪些智能体可以执行登录模块开发？", "expected_type": "retrieval"},
+        {"cq": "哪些智能体可以执行部署任务？", "expected_type": "wrong"},
+        {"cq": "哪些智能体可以执行部署任务？", "expected_type": "derived"},
+        {"cq": "量子纠缠与火星殖民有何关系？", "expected_type": "retrieval"},
+    ])
+
+    assert out["ok"] is False
+    first, bad_type, batch_dup, no_anchor = out["results"]
+    assert first["ok"] is False and any("重复" in reason for reason in first["reasons"])
+    assert bad_type["ok"] is False and any("不属于" in reason for reason in bad_type["reasons"])
+    assert batch_dup["ok"] is False and any("本批" in reason for reason in batch_dup["reasons"])
+    assert no_anchor["ok"] is True and no_anchor["warnings"]
+    # 只读：现有集没有被追加或改写
+    assert len(cq_store.get_set("agent_task")["cases"]) == 1
+
+
+def test_cq_author_next_step_points_to_existing_tool():
+    """#175：引导文案引用的工具必须真实存在，不留断链。"""
+    server = mcp_server.build_cq_server(lambda: None, lambda: ("agent_task", None))
+    names = {tool.name for tool in asyncio.run(server.list_tools())}
+    result = asyncio.run(server.call_tool("cq_author", {}))
+    text = str(result.structured_content or result.content)
+    assert "cq_validate" in text
+    assert "validate_cqs" not in text
+    assert "cq_validate" in names
 
 
 def test_cq_mcp_errors_are_structured():

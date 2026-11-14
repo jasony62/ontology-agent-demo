@@ -76,6 +76,27 @@ ONE_CLASS_OWL = """<?xml version="1.0"?>
 </rdf:RDF>
 """
 
+# #145：字面量属性 + 非默认命名空间谓词（旧 `_business_edge` 的两道门槛都过不了）
+LITERAL_OWL = """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:uom="http://example.org/vocab#">
+  <owl:Ontology rdf:about="http://example.org/lit#"/>
+  <owl:Class rdf:about="http://example.org/lit#BusinessRule"/>
+  <owl:Class rdf:about="http://example.org/lit#WorkhourRecord"/>
+  <owl:ObjectProperty rdf:about="http://example.org/vocab#appliesTo"/>
+  <owl:NamedIndividual rdf:about="http://example.org/lit#ruleVerifyDeadline">
+    <rdf:type rdf:resource="http://example.org/lit#BusinessRule"/>
+    <uom:appliesTo rdf:resource="http://example.org/lit#recordA"/>
+    <uom:statement xml:lang="zh">检查和核定工作应在 5 个工作日内完成。</uom:statement>
+    <uom:threshold>5 个工作日</uom:threshold>
+  </owl:NamedIndividual>
+  <owl:NamedIndividual rdf:about="http://example.org/lit#recordA">
+    <rdf:type rdf:resource="http://example.org/lit#WorkhourRecord"/>
+  </owl:NamedIndividual>
+</rdf:RDF>
+"""
+
 CAPABILITY_QUERY_PATH = "/api/domains/current/capabilities/query"
 
 
@@ -183,6 +204,39 @@ def test_one_class_one_individual_is_a_normal_page(restore_engine):
     assert examples["individuals"]["params"] == {"class_name": "Item"}
     for example in guide["examples"]:
         assert _run_example(example).status_code == 200, example["id"]
+
+    # #145：这条个体没有任何属性，property_values 仍是槽位而不是「被系统禁止」；
+    # 原因与下一步都要给出可看的 POST /api/property 入口。
+    slots = {slot["capability"]: slot for slot in guide["capability_slots"]}
+    assert slots["property_values"]["state"] == "no_example"
+    assert "POST /api/property" in slots["property_values"]["reason"]
+    assert any(
+        "POST /api/property" in step["label"]
+        for step in slots["property_values"]["next_steps"]
+    )
+
+
+def test_literal_properties_are_covered_by_property_values(restore_engine):
+    """#145：字面量属性 / 非默认命名空间谓词也能生成示例，不再显示「不可试跑」。"""
+    r = _upload(LITERAL_OWL, "literal.owl")
+    assert r.status_code == 200, r.text
+    guide = client.get("/api/domains/current/guide").json()
+
+    example = next(e for e in guide["examples"] if e["capability"] == "property_values")
+    assert example["params"]["subject"] == "ruleVerifyDeadline"
+    assert example["params"]["property"] in {"statement", "threshold"}
+    assert "检查和核定" in example["answer_hint"] or "5 个工作日" in example["answer_hint"]
+
+    # 示例与真实端点一致：按题目参数发一次必须 200，且返回同样的字面量
+    result = _run_example(example)
+    assert result.status_code == 200, result.text
+    values = result.json()["values"]
+    assert any("检查和核定" in value or "5 个工作日" in value for value in values)
+
+    slot = next(s for s in guide["capability_slots"] if s["capability"] == "property_values")
+    assert slot["state"] == "runnable"
+    assert slot["reason"] is None
+    assert [e["id"] for e in slot["examples"]] == [example["id"]]
 
 
 # ---------------------------------------------------------------- 失败语义

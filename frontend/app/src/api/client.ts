@@ -61,6 +61,24 @@ export interface ProofResponse {
   conclusion: { subject: string; predicate: string; object: string };
 }
 
+/** 节点 / 关系的原始三元组（#144）：describe 子图 + 结构化三元组 */
+export interface DescribeTriple {
+  subject: string;
+  predicate: string;
+  object: string;
+  object_kind: 'iri' | 'literal';
+  object_datatype?: string | null;
+  object_language?: string | null;
+}
+
+export interface DescribeResponse {
+  iri: string;
+  local_name: string;
+  count: number;
+  triples: DescribeTriple[];
+  ntriples: string;
+}
+
 export interface InferStats {
   triples_before: number;
   triples_after: number;
@@ -380,6 +398,14 @@ export const api = {
     request<ProofResponse>(
       `/api/ontology/proof?${new URLSearchParams({ s, p, o })}`,
     ),
+
+  /** 节点 / 关系的原始三元组（#144）：只读，含字面量 */
+  describe: (iri: string, includeAsObject = false) =>
+    request<DescribeResponse>('/api/ontology/describe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ iri, include_as_object: includeAsObject }),
+    }),
 
   /**
    * 当前本体原始 RDF/XML 文本。

@@ -251,3 +251,39 @@ def test_graph_groups_agree_with_graph_export():
     for ind in client.get("/api/domains/current/ontology").json()["individuals"]:
         exported.setdefault(ind["group"], set()).add(ind["name"])
     assert groups == exported
+
+
+# ---------- #144：节点 / 关系的原始三元组 ----------
+
+def test_describe_returns_literals_and_full_iri():
+    r = client.post("/api/ontology/describe", json={"iri": "t_deploy"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["local_name"] == "t_deploy"
+    assert body["iri"].endswith("t_deploy")
+    assert body["count"] == len(body["triples"])
+    assert "has_risk_level" in body["ntriples"]
+    literal = [t for t in body["triples"] if t["object_kind"] == "literal"]
+    assert literal, "描述视图必须包含字面量"
+    assert any(t["predicate"].endswith("has_risk_level") for t in literal)
+
+
+def test_describe_can_include_incoming_and_is_read_only():
+    outgoing = client.post("/api/ontology/describe", json={"iri": "cap_coding"}).json()
+    both = client.post(
+        "/api/ontology/describe",
+        json={"iri": "cap_coding", "include_as_object": True},
+    ).json()
+    assert both["count"] >= outgoing["count"]
+    assert any(t["predicate"].endswith("has_capability") for t in both["triples"])
+
+    before = client.get("/api/ontology/materialized").json()["asserted"]
+    client.post("/api/ontology/describe", json={"iri": "t_deploy"})
+    after = client.get("/api/ontology/materialized").json()["asserted"]
+    assert before == after
+
+
+def test_describe_unknown_name_is_400_not_500():
+    r = client.post("/api/ontology/describe", json={"iri": "definitely-not-in-ontology"})
+    assert r.status_code == 400
+    assert "detail" in r.json()

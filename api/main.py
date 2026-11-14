@@ -71,6 +71,7 @@ from reasoner.engine import (
     OntologyEngine,
     SparqlTimeoutError,
     get_engine,
+    local,
 )
 from reasoner.cq_locate import locate_cq
 from reasoner.proof import build_proof
@@ -90,7 +91,7 @@ from domains.imported import display_filename
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
-    SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
+    DescribeRequest, SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
 )
 from .response_schemas import (
     ClassesResponse,
@@ -98,6 +99,7 @@ from .response_schemas import (
     DomainActivateResponse,
     DomainReloadResponse,
     ErrorResponse,
+    OntologyDescribeResponse,
     GraphGroupsResponse,
     HealthResponse,
     IndividualsResponse,
@@ -1021,10 +1023,16 @@ def _slot_step(action: str, label: str, target: str | None = None) -> dict:
     return step
 
 
-def _no_example_reason(counts: dict) -> str:
-    """能力可用但没有示例题时，指向当前本体的具体事实（#139 §6）。"""
+def _no_example_reason(counts: dict, capability: str | None = None) -> str:
+    """能力可用但没有示例题时，指向当前本体的具体事实（#139 §6 / #145）。"""
     if counts.get("individuals", 0) == 0:
         return "这是一份术语层本体，没有业务个体可验证；返回空集是正常结论"
+    if capability == "property_values":
+        # #145：示例没覆盖到不等于「不能查」——POST /api/property 对字面量同样可用。
+        return (
+            "示例没有覆盖到这条个体的属性值（字面量属性也可以直接查）；"
+            "可用 POST /api/property 查任意个体的任意属性"
+        )
     return (
         "当前本体有个体，但缺少这类问题需要的内容"
         "（业务类下没有个体，或焦点个体没有属性关系）"
@@ -1069,11 +1077,17 @@ def _capability_slots(
                 state, reason, steps = "runnable", None, []
             else:
                 state = "no_example"
-                reason = _no_example_reason(counts)
-                steps = [
-                    _slot_step("open_endpoint", "直接调用通用只读端点（第 05 问）"),
-                    _slot_step("import_ontology", "导入含业务个体的本体"),
-                ]
+                reason = _no_example_reason(counts, capability)
+                if capability == "property_values":
+                    steps = [
+                        _slot_step("open_endpoint", "看 POST /api/property 请求（第 05 问）", "property"),
+                        _slot_step("import_ontology", "导入含属性值的本体"),
+                    ]
+                else:
+                    steps = [
+                        _slot_step("open_endpoint", "直接调用通用只读端点（第 05 问）"),
+                        _slot_step("import_ontology", "导入含业务个体的本体"),
+                    ]
         elif capability in apply:
             state = "write_only"
             reason = "该能力会修改本体，不提供页内试跑"
@@ -2008,6 +2022,52 @@ def ontology_source():
                 "请重新加载本体（POST /api/ontology/load）或重启服务恢复默认本体。"
             ),
         )
+
+
+@app.post(
+    "/api/ontology/describe",
+    tags=["本体管理"],
+    summary="节点 / 关系的原始三元组",
+    responses={
+        200: {
+            "model": OntologyDescribeResponse,
+            "description": "该 IRI 作主语（可选含作宾语）的全部三元组，N-Triples + 结构化列表。",
+        },
+        **ERROR_400,
+    },
+)
+def describe_ontology(req: DescribeRequest):
+    """按 IRI 取子图：同时覆盖对象属性与字面量（#144）。
+
+    只读、不推理、不改图：与 `ontology_source` / `export_ontology` 同族。
+    节点源码视角 = 它的全部三元组；关系源码视角 = 前端在 `triples` 里按
+    predicate / object 定位那一条。短名解析失败由全局 handler 转 400。
+    """
+    subject = URIRef(ENGINE.resolve(req.iri))
+    graph = Graph()
+    for triple in ENGINE.g.triples((subject, None, None)):
+        graph.add(triple)
+    if req.include_as_object:
+        for triple in ENGINE.g.triples((None, None, subject)):
+            graph.add(triple)
+
+    triples = []
+    for s, p, o in sorted(graph, key=lambda t: (str(t[0]), str(t[1]), str(t[2]))):
+        triples.append({
+            "subject": str(s),
+            "predicate": str(p),
+            "object": str(o),
+            "object_kind": "literal" if isinstance(o, Literal) else "iri",
+            "object_datatype": str(o.datatype) if isinstance(o, Literal) and o.datatype else None,
+            "object_language": o.language if isinstance(o, Literal) else None,
+        })
+    return {
+        "iri": str(subject),
+        "local_name": local(subject),
+        "count": len(triples),
+        "triples": triples,
+        "ntriples": graph.serialize(format="nt"),
+    }
 
 
 @app.get(

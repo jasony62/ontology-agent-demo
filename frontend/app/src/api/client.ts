@@ -396,8 +396,6 @@ export interface CqSetCase {
   requirement?: string;
   status?: string;
   regression?: {
-    tool?: string;
-    params?: Record<string, unknown>;
     query?: string;
     expect?: unknown;
   } | null;
@@ -406,7 +404,6 @@ export interface CqSetCase {
   located?: boolean;
   answerable?: boolean;
   location?: CqCaseLocation;
-  [key: string]: unknown;
 }
 
 export interface CqSetSummary {

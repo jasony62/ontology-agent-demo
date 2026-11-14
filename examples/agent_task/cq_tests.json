@@ -1,185 +1,303 @@
 {
   "suite": "agent_task_cq_regression",
-  "version": 1,
-  "description": "agent_task 领域 CQ 回归测试集：能力问题 + 工具调用 + 期望答案（LLM-free 确定性判分）。题源：评测 Harness T2 隐含关系档 12 题平移 + #61/#60/#68 修复锚点 8 题，gold 全部由引擎/适配器确定性输出生成（无人工标注）。改本体/公理/规则后跑 cq_regression 一键回归。覆盖：R1 能力匹配（含多能力 AND 否定）/ R2 委派 / R2b 担责 / R3 传递 / R4 合规 / R5-R6 正反例 / 编排顺序 / defined class。",
+  "version": 2,
+  "description": "agent_task 领域 CQ 回归测试集：单一 regression{query, expect} 形态，针对本体图的可答 SPARQL 断言（LLM-free 确定性判分）。题源：评测 Harness T2 隐含关系档 + #61/#60/#68 修复锚点；#179 起不再使用 tool+params 测智能体能力。覆盖：R1 能力覆盖（含多能力 AND 否定）/ R2 委派与担责 / R3 传递闭包 / R4 合规约束与 defined class / R5-R6 正反例。",
   "cases": [
     {
       "id": "T2-01",
       "cq": "哪些智能体可以执行「登录模块开发」？",
-      "tool": "capability_match",
-      "params": {"task": "t_login_dev"},
-      "expect": {"type": "set_exact", "pick": "matches.agent", "set": ["dev_agent", "junior_dev"]},
-      "rule": "R1"
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R1",
+      "regression": {
+        "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_login_dev> }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "dev_agent",
+            "junior_dev"
+          ]
+        }
+      }
     },
     {
       "id": "T2-02",
       "cq": "哪些智能体可以执行「登录模块代码审查」？",
-      "tool": "capability_match",
-      "params": {"task": "t_login_review"},
-      "expect": {"type": "set_exact", "pick": "matches.agent", "set": ["dev_agent"]},
-      "rule": "R1"
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R1",
+      "regression": {
+        "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_login_review> }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "dev_agent"
+          ]
+        }
+      }
     },
     {
       "id": "T2-03",
       "cq": "哪些智能体可以执行「生产部署发布」？",
-      "tool": "capability_match",
-      "params": {"task": "t_deploy"},
-      "expect": {"type": "set_exact", "pick": "matches.agent", "set": ["deploy_agent"]},
-      "rule": "R1"
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R1",
+      "regression": {
+        "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_deploy> }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "deploy_agent"
+          ]
+        }
+      }
     },
     {
       "id": "T2-04",
-      "cq": "哪些智能体可以执行「新功能上线」？",
-      "tool": "capability_match",
-      "params": {"task": "t_feature"},
-      "expect": {"type": "set_exact", "pick": "matches.agent", "set": []},
+      "cq": "哪些智能体可以整体执行「新功能上线」？",
+      "expected_type": "negative",
+      "status": "active",
       "rule": "R1 反例",
-      "note": "无人可整体执行（复合任务能力覆盖不足）——空集是有效期望，防幻觉列举"
+      "regression": {
+        "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_feature> }",
+        "expect": {
+          "type": "set_exact",
+          "values": []
+        }
+      }
     },
     {
       "id": "T2-05",
       "cq": "「登录模块测试执行」依赖哪些任务？请包含间接依赖。",
-      "tool": "query_sparql",
-      "params": {"sparql": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_login_test> <http://ontology.localhost/agent-task#depends_on>+ ?dep }"},
-      "expect": {"type": "set_exact", "pick": "results.dep", "set": ["t_login_review", "t_login_dev", "t_req"]},
-      "rule": "R3"
+      "expected_type": "derived",
+      "status": "active",
+      "rule": "R3",
+      "regression": {
+        "query": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_login_test> <http://ontology.localhost/agent-task#depends_on>+ ?dep }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "t_login_review",
+            "t_login_dev",
+            "t_req"
+          ]
+        }
+      }
     },
     {
       "id": "T2-06",
-      "cq": "「生产部署发布」间接依赖哪些任务？（不含直接依赖）",
-      "tool": "query_sparql",
-      "params": {"sparql": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_deploy> <http://ontology.localhost/agent-task#depends_on>* ?dep . FILTER(?dep != <http://ontology.localhost/agent-task#t_deploy> && ?dep != <http://ontology.localhost/agent-task#t_login_test>) }"},
-      "expect": {"type": "set_exact", "pick": "results.dep", "set": ["t_login_review", "t_login_dev", "t_req"]},
-      "rule": "R3"
+      "cq": "「生产部署发布」间接依赖哪些任务？（不含自身与直接前置的测试任务）",
+      "expected_type": "derived",
+      "status": "active",
+      "rule": "R3",
+      "regression": {
+        "query": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_deploy> <http://ontology.localhost/agent-task#depends_on>* ?dep . FILTER(?dep != <http://ontology.localhost/agent-task#t_deploy> && ?dep != <http://ontology.localhost/agent-task#t_login_test>) }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "t_login_review",
+            "t_login_dev",
+            "t_req"
+          ]
+        }
+      }
     },
     {
       "id": "T2-07",
       "cq": "「敏感数据报表开发」有什么约束？",
-      "tool": "property_values",
-      "params": {"subject": "t_compliance_dev", "property_name": "requires_constraint"},
-      "expect": {"type": "set_exact", "pick": "values", "set": ["creq_default"]},
+      "expected_type": "retrieval",
+      "status": "active",
       "rule": "R4",
-      "note": "#64 起约束以实例引用（creq_default a ComplianceRequirement）"
+      "regression": {
+        "query": "SELECT ?c WHERE { <http://ontology.localhost/agent-task#t_compliance_dev> <http://ontology.localhost/agent-task#requires_constraint> ?c }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "creq_default"
+          ]
+        }
+      }
     },
     {
       "id": "T2-08",
-      "cq": "把「敏感数据报表开发」分配给「初级研发Agent」会怎样？",
-      "tool": "assign",
-      "params": {"task": "t_compliance_dev", "agent": "junior_dev"},
-      "expect": {"type": "exact_struct", "keys": {"assigned": true, "conflict.type": "合规认证冲突", "conflict.rule": "R4"}},
-      "rule": "R4"
+      "cq": "「敏感数据报表开发」要求的是合规类约束吗？",
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R4",
+      "regression": {
+        "query": "ASK { <http://ontology.localhost/agent-task#t_compliance_dev> <http://ontology.localhost/agent-task#requires_constraint> ?c . ?c a <http://ontology.localhost/agent-task#ComplianceRequirement> }",
+        "expect": true
+      }
     },
     {
       "id": "T2-09",
-      "cq": "把「敏感数据报表开发」分配给「研发Agent」会怎样？",
-      "tool": "assign",
-      "params": {"task": "t_compliance_dev", "agent": "dev_agent"},
-      "expect": {"type": "exact_struct", "keys": {"assigned": true, "conflict": null}},
-      "rule": "R4 边界",
-      "note": "已认证不触发冲突（覆盖式重分配）"
+      "cq": "「登录模块开发」要求合规类约束吗？",
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R4",
+      "regression": {
+        "query": "ASK { <http://ontology.localhost/agent-task#t_login_dev> <http://ontology.localhost/agent-task#requires_constraint> ?c . ?c a <http://ontology.localhost/agent-task#ComplianceRequirement> }",
+        "expect": false
+      }
     },
     {
       "id": "T2-10",
       "cq": "哪些智能体可以整体执行「双模块开发」？",
-      "tool": "capability_match",
-      "params": {"task": "t_double_dev"},
-      "expect": {"type": "set_exact", "pick": "matches.agent", "set": ["dev_agent", "junior_dev"]},
-      "rule": "R2"
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R2",
+      "regression": {
+        "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_double_dev> }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "dev_agent",
+            "junior_dev"
+          ]
+        }
+      }
     },
     {
       "id": "T2-11",
       "cq": "全系统哪些智能体是「已认证」的（CertifiedAgent）？",
-      "tool": "individuals",
-      "params": {"class_name": "CertifiedAgent"},
-      "expect": {"type": "set_exact", "pick": "individuals", "set": ["dev_agent", "req_agent", "test_agent", "deploy_agent"]},
-      "rule": "类别推理"
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R2",
+      "regression": {
+        "query": "SELECT ?a WHERE { ?a a <http://ontology.localhost/agent-task#CertifiedAgent> }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "deploy_agent",
+            "dev_agent",
+            "req_agent",
+            "test_agent"
+          ]
+        }
+      }
     },
     {
       "id": "T2-12",
-      "cq": "初级研发Agent 属于哪些类别？",
-      "tool": "types_of",
-      "params": {"individual": "junior_dev"},
-      "expect": {"type": "contains", "pick": "types", "contains": ["JuniorDevAgent", "DevAgent", "Agent"]},
-      "rule": "子类链",
-      "note": "contains 判分：业务类别必须齐；推理机内建类型（Thing/NamedIndividual）随实现浮动，不作硬断言"
+      "cq": "初级研发Agent 属于哪些业务类别？",
+      "expected_type": "derived",
+      "status": "active",
+      "rule": "R2",
+      "regression": {
+        "query": "SELECT ?t WHERE { <http://ontology.localhost/agent-task#junior_dev> a ?t . FILTER(?t IN (<http://ontology.localhost/agent-task#JuniorDevAgent>, <http://ontology.localhost/agent-task#DevAgent>, <http://ontology.localhost/agent-task#Agent>)) }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "JuniorDevAgent",
+            "DevAgent",
+            "Agent"
+          ]
+        }
+      }
     },
     {
       "id": "T2-13",
       "cq": "「敏感数据报表开发」会被归类为合规任务吗？",
-      "tool": "types_of",
-      "params": {"individual": "t_compliance_dev"},
-      "expect": {"type": "contains", "pick": "types", "contains": ["ComplianceTask"]},
-      "rule": "defined class",
-      "note": "#61 修复锚点：someValuesFrom 要求约束的实例（creq_default），修复前 ComplianceTask 永远推不出"
+      "expected_type": "derived",
+      "status": "active",
+      "rule": "R4",
+      "regression": {
+        "query": "ASK { <http://ontology.localhost/agent-task#t_compliance_dev> a <http://ontology.localhost/agent-task#ComplianceTask> }",
+        "expect": true
+      }
     },
     {
       "id": "T2-14",
       "cq": "哪些智能体可以执行「全栈改造任务」（要求编码与部署双能力）？",
-      "tool": "capability_match",
-      "params": {"task": "t_full_stack"},
-      "expect": {"type": "set_exact", "pick": "matches.agent", "set": []},
-      "rule": "R1 反例·多能力",
-      "note": "#59/#68 锚点：dev_agent 缺部署、deploy_agent 缺编码——多能力必须 AND 全覆盖，只满足一项不算可执行。修复前（属性链 OR）dev/junior/deploy 三个都误判可执行"
+      "expected_type": "negative",
+      "status": "active",
+      "rule": "R1",
+      "regression": {
+        "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_full_stack> }",
+        "expect": {
+          "type": "set_exact",
+          "values": []
+        }
+      }
     },
     {
       "id": "T2-15",
-      "cq": "「新功能上线」的执行计划是什么顺序？",
-      "tool": "orchestrate",
-      "params": {"task": "t_feature"},
-      "expect": {"type": "exact_struct", "keys": {
-        "steps.task": ["t_req", "t_login_dev", "t_login_review", "t_login_test", "t_deploy"],
-        "steps.executor": ["req_agent", "dev_agent", "dev_agent", "test_agent", "deploy_agent"]
-      }},
-      "rule": "编排顺序",
-      "note": "#68 锚点：编排顺序必须精确匹配（depends_on 拓扑序），而非仅「非空」；执行者按可担责优先"
+      "cq": "「新功能上线」由哪些任务组成？",
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R2",
+      "regression": {
+        "query": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_feature> <http://ontology.localhost/agent-task#composed_of> ?dep }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "t_req",
+            "t_login_dev",
+            "t_login_review",
+            "t_login_test",
+            "t_deploy"
+          ]
+        }
+      }
     },
     {
       "id": "T2-16",
       "cq": "「新功能上线」需要人工介入吗？",
-      "tool": "property_values",
-      "params": {"subject": "t_feature", "property_name": "needs_manual_review"},
-      "expect": {"type": "set_exact", "pick": "values", "set": ["true"]},
-      "rule": "R5 正例",
-      "note": "#68 锚点：五步无人能一人包揽（can_own 为空）且风险 4 → needs_manual_review"
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R5",
+      "regression": {
+        "query": "ASK { <http://ontology.localhost/agent-task#t_feature> <http://ontology.localhost/agent-task#needs_manual_review> true }",
+        "expect": true
+      }
     },
     {
       "id": "T2-17",
       "cq": "「双模块开发」需要人工介入吗？",
-      "tool": "property_values",
-      "params": {"subject": "t_double_dev", "property_name": "needs_manual_review"},
-      "expect": {"type": "set_exact", "pick": "values", "set": []},
-      "rule": "R5 反例",
-      "note": "#68 锚点：dev_agent 能担责（can_own）→ 不提示人工介入。R5 改判 can_own 后，有人「能做」但没人「能担」才会触发"
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R5",
+      "regression": {
+        "query": "ASK { <http://ontology.localhost/agent-task#t_double_dev> <http://ontology.localhost/agent-task#needs_manual_review> true }",
+        "expect": false
+      }
     },
     {
       "id": "T2-18",
       "cq": "「敏感数据报表开发」需要双人复核吗？",
-      "tool": "property_values",
-      "params": {"subject": "t_compliance_dev", "property_name": "needs_second_review"},
-      "expect": {"type": "set_exact", "pick": "values", "set": ["true"]},
-      "rule": "R6 正例",
-      "note": "#68 锚点：SimpleTask 且风险 5 → 强制双人复核"
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R6",
+      "regression": {
+        "query": "ASK { <http://ontology.localhost/agent-task#t_compliance_dev> <http://ontology.localhost/agent-task#needs_second_review> true }",
+        "expect": true
+      }
     },
     {
       "id": "T2-19",
       "cq": "「登录模块开发」需要双人复核吗？",
-      "tool": "property_values",
-      "params": {"subject": "t_login_dev", "property_name": "needs_second_review"},
-      "expect": {"type": "set_exact", "pick": "values", "set": []},
-      "rule": "R6 反例",
-      "note": "#68 锚点：风险 2，低于阈值，不应产出复核标记（AND 语义零误报）"
+      "expected_type": "retrieval",
+      "status": "active",
+      "rule": "R6",
+      "regression": {
+        "query": "ASK { <http://ontology.localhost/agent-task#t_login_dev> <http://ontology.localhost/agent-task#needs_second_review> true }",
+        "expect": false
+      }
     },
     {
       "id": "T2-20",
-      "cq": "「敏感数据报表开发」的候选智能体里，谁能担责？",
-      "tool": "capability_match",
-      "params": {"task": "t_compliance_dev"},
-      "expect": {"type": "exact_struct", "keys": {
-        "matches.agent": ["dev_agent", "junior_dev"],
-        "matches.can_own": [true, false]
-      }},
-      "rule": "R2b 担责",
-      "note": "#60 锚点：候选仍按 can_execute 返回（junior 能力够），「能否接」以 can_own 标注；排序可担责优先"
+      "cq": "「敏感数据报表开发」谁可以担责（can_own）？",
+      "expected_type": "derived",
+      "status": "active",
+      "rule": "R2b",
+      "regression": {
+        "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_own> <http://ontology.localhost/agent-task#t_compliance_dev> }",
+        "expect": {
+          "type": "set_exact",
+          "values": [
+            "dev_agent"
+          ]
+        }
+      }
     }
   ]
 }

@@ -42,7 +42,7 @@ def test_import_then_export_roundtrips_verbatim(client):
                 "cq": "这条结论凭什么成立？",
                 "expected_type": "derived",
                 "status": "draft",
-                "regression": {"tool": "proof", "params": {}, "expect": {}},
+                "regression": {"query": "ASK { ?s ?p ?o }", "expect": True},
                 "coverage_cache": {"conclusion": 2, "ran_at": "2026-11-14T00:00:00"},
             },
         ],
@@ -65,7 +65,7 @@ def test_import_then_export_roundtrips_verbatim(client):
     assert 0 <= view["summary"]["coverage_real"] <= 1
     q2 = next(case for case in view["cases"] if case["id"] == "Q2")
     assert q2["answerable"] is True
-    assert q2["regression"]["tool"] == "proof"
+    assert q2["regression"]["query"] == "ASK { ?s ?p ?o }"
     assert "located" in q2 and "location" in q2
 
     exported = client.get("/api/domains/current/cq/export")
@@ -184,34 +184,71 @@ def test_export_handles_scalar_expect_and_junit_states():
     assert "<error" in junit
 
 
-def test_expected_type_and_status_are_controlled(client):
-    """#169：非法/遗留值归一（set→unknown，乱码→unknown/unset），不静默裸存。"""
-    payload = {
-        "suite": "controlled",
-        "version": 1,
-        "cases": [
-            {"id": "L1", "cq": "遗留 set", "expected_type": "set", "status": "active"},
-            {"id": "L2", "cq": "乱码", "expected_type": "whatever", "status": "weird"},
-        ],
-    }
-    raw = json.dumps(payload, ensure_ascii=False)
-    client.post(
-        "/api/domains/current/cq/import",
-        files={"file": ("cq_set.json", raw.encode("utf-8"), "application/json")},
-    )
-    view = client.get("/api/domains/current/cq/set").json()
-    by_id = {case["id"]: case for case in view["cases"]}
-    assert by_id["L1"]["expected_type"] == "unknown"
-    assert by_id["L1"]["status"] == "active"
-    assert by_id["L2"]["expected_type"] == "unknown"
-    assert by_id["L2"]["status"] == "unset"
-    assert view["summary"]["by_type"] == {"unknown": 2}
+def test_invalid_expected_type_and_status_fail_fast(client):
+    """#181：非法题型 / 状态不再静默归一，写入即 400 并给出合法枚举。"""
+    for case, field in (
+        ({"cq": "遗留 set", "expected_type": "set", "status": "active"}, "expected_type"),
+        ({"cq": "乱码", "expected_type": "whatever", "status": "active"}, "expected_type"),
+        ({"cq": "乱码状态", "expected_type": "retrieval", "status": "weird"}, "status"),
+    ):
+        r = client.post("/api/domains/current/cq/cases", json=case)
+        assert r.status_code == 400, r.text
+        assert field in r.json()["detail"]
+        assert "合法值" in r.json()["detail"]
 
     added = client.post("/api/domains/current/cq/cases", json={
         "cq": "合法新题", "expected_type": "counting", "status": "archived",
     }).json()
     assert added["case"]["expected_type"] == "counting"
     assert added["case"]["status"] == "archived"
+
+
+def test_missing_type_and_status_get_formal_defaults(client):
+    """未填字段补 unknown / unset（只有「填错」才拒绝）。"""
+    added = client.post("/api/domains/current/cq/cases", json={"cq": "只填题干"})
+    assert added.status_code == 200, added.text
+    assert added.json()["case"]["expected_type"] == "unknown"
+    assert added.json()["case"]["status"] == "unset"
+
+
+def test_legacy_format_and_dead_fields_are_rejected(client):
+    """#179/#180：旧 tool+params 与 anchor_terms/priority/note 写入即 400。"""
+    for case, needle in (
+        ({"cq": "旧格式", "tool": "capability_match", "params": {},
+          "expect": {"type": "set_exact"}}, "regression"),
+        ({"cq": "旧断言", "regression": {"tool": "proof", "params": {},
+                                         "expect": {}}}, "regression"),
+        ({"cq": "死字段", "anchor_terms": ["x"]}, "anchor_terms"),
+        ({"cq": "死字段", "priority": "high"}, "priority"),
+        ({"cq": "死字段", "note": "备忘"}, "note"),
+    ):
+        r = client.post("/api/domains/current/cq/cases", json=case)
+        assert r.status_code == 400, (case, r.text)
+        assert needle in r.json()["detail"]
+
+
+def test_expect_type_is_validated(client):
+    """#181：expect.type 枚举与配套字段 fail-fast，报错指向 expect。"""
+    bad = [
+        {"type": "unknown_mode"},
+        {"type": "count", "value": "12"},
+        {"type": "values"},                      # 缺 values
+        {"type": "contains", "values": "x"},     # values 不是数组
+    ]
+    for expect in bad:
+        r = client.post("/api/domains/current/cq/cases", json={
+            "cq": "断言题", "regression": {"query": "ASK { ?s ?p ?o }", "expect": expect},
+        })
+        assert r.status_code == 400, (expect, r.text)
+        assert "expect" in r.json()["detail"]
+
+    ok = client.post("/api/domains/current/cq/cases", json={
+        "cq": "合法断言", "regression": {
+            "query": "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1",
+            "expect": {"type": "values", "values": ["s"]},
+        },
+    })
+    assert ok.status_code == 200, ok.text
 
 
 def test_audit_endpoint_paginates_and_filters(client):

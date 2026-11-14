@@ -1,15 +1,18 @@
-"""CQ 集受管存储（#150 / #154 / #157）：框架级、领域无关。
+"""CQ 集受管存储（#150 / #154 / #157 / #181）：框架级、领域无关。
 
 存储位置：`workspaces/<ontology_id>/cq_set.json`。导入的本体用工作区 id；
-预置领域用领域名（首次访问时从包内 `cq_tests.json` 播种，向后兼容旧格式）。
+预置领域用领域名（首次访问时从包内 `cq_tests.json` 播种）。
 
 同目录还有：
   - `cq_set.audit.jsonl`：追加式变更审计（#157，REST / MCP 写路径共用）；
   - `runs/<ts>.json`：回归执行历史（#156）；
   - `metrics.jsonl`：北极星事件（#156）。
 
-边界：不认任何领域字段；题型 / 状态缺省归到 unknown / unset；写操作一律
-「先写集、再 append 审计」，保证两者在同一写路径内顺序完成。
+边界：不认任何领域字段。写入按单一 schema 强制校验（#179/#180/#181）：
+只允许 `regression{query, expect}` 断言；旧 `tool`+`params`、平铺
+`query`/`expect`、`anchor_terms` / `priority` / `note` 一律 400；
+题型 / 状态缺省补 unknown / unset，填错则报错并给出合法枚举。
+写操作一律「先写集、再 append 审计」，保证两者在同一写路径内顺序完成。
 """
 
 from __future__ import annotations
@@ -25,9 +28,10 @@ from api import workspaces
 from cq.constants import (
     EXPECTED_TYPE_ALIASES,
     EXPECTED_TYPE_UNKNOWN,
-    EXPECTED_TYPES,
+    EXPECTED_TYPE_VALUES,
+    REGRESSION_EXPECT_TYPES,
+    STATUS_CONTRACT_VALUES,
     STATUS_UNSET,
-    STATUS_VALUES,
 )
 from reasoner.cq_locate import locate_cq
 
@@ -116,23 +120,121 @@ def _ensure_ids(cases: list) -> bool:
     return changed
 
 
-def _normalize_expected_type(value) -> str:
+def _display_expected_type(value) -> str:
+    """只读展示归一：历史 set / 任意旧值 → unknown（写入路径会拒绝，见 #181）。"""
     raw = str(value or "").strip()
     if raw in EXPECTED_TYPE_ALIASES:
         return EXPECTED_TYPE_ALIASES[raw]
-    return raw if raw in EXPECTED_TYPES else EXPECTED_TYPE_UNKNOWN
+    return raw if raw in EXPECTED_TYPE_VALUES else EXPECTED_TYPE_UNKNOWN
 
 
-def _normalize_status(value) -> str:
+def _display_status(value) -> str:
     raw = str(value or "").strip()
-    return raw if raw in STATUS_VALUES else STATUS_UNSET
+    return raw if raw in STATUS_CONTRACT_VALUES else STATUS_UNSET
 
 
-def normalize_case(case: dict) -> dict:
-    """写入路径统一受控：非法题型归 unknown，非法状态归 unset（#169）。"""
-    case["expected_type"] = _normalize_expected_type(case.get("expected_type"))
-    case["status"] = _normalize_status(case.get("status"))
-    return case
+# CQ 题目的合法字段（#180/#181）：只保留真正被消费的字段。
+_CASE_FIELDS = {
+    "id", "cq", "expected_type", "status", "requirement",
+    "regression", "rule", "coverage_cache",
+}
+# 旧格式 / 死字段的定向报错，避免用户看到泛化的 "未知字段"。
+_LEGACY_CASE_FIELDS = {
+    "tool": "旧断言格式已移除：请改用 regression{query, expect}（#179）",
+    "params": "旧断言格式已移除：请改用 regression{query, expect}（#179）",
+    "expect": "断言必须放在 regression.expect，不能平铺在题目上（#179）",
+    "query": "断言必须放在 regression.query，不能平铺在题目上（#179）",
+    "anchor_terms": "anchor_terms 不再存进 CQ 集；定位由系统按题干自动计算（#180）",
+    "priority": "priority 字段已移除（#180）",
+    "note": "note 字段已移除；需要备注请写进题干或 requirement（#180）",
+}
+
+
+def _validate_expect(case_ref: str, expect) -> None:
+    """校验回归期望（#181）：布尔 / 整数 / 枚举型 dict，非法值 fail-fast。"""
+    if isinstance(expect, (bool, int)):
+        return
+    if not isinstance(expect, dict):
+        raise ValueError(
+            f"{case_ref}.regression.expect 必须是 bool / int / 对象，"
+            f"实际为 {type(expect).__name__}"
+        )
+    kind = expect.get("type")
+    if kind not in REGRESSION_EXPECT_TYPES:
+        raise ValueError(
+            f"{case_ref}.regression.expect.type 非法：{kind!r}；"
+            f"合法值：{' / '.join(REGRESSION_EXPECT_TYPES)}"
+        )
+    if kind in {"values", "set_exact"}:
+        values = expect.get("values", expect.get("set"))
+        if not isinstance(values, list):
+            raise ValueError(
+                f"{case_ref}.regression.expect.{kind} 需要 values 数组"
+            )
+    elif kind == "contains":
+        values = expect.get("values", expect.get("contains"))
+        if not isinstance(values, list):
+            raise ValueError(
+                f"{case_ref}.regression.expect.contains 需要 values 数组"
+            )
+    elif kind == "count":
+        if not isinstance(expect.get("value"), int) or isinstance(expect.get("value"), bool):
+            raise ValueError(
+                f"{case_ref}.regression.expect.value 必须是整数（count 判分）"
+            )
+    elif kind in {"boolean", "exists"}:
+        value = expect.get("value", True)
+        if not isinstance(value, bool):
+            raise ValueError(
+                f"{case_ref}.regression.expect.value 必须是布尔（{kind} 判分）"
+            )
+
+
+def _validate_regression(case_ref: str, regression) -> None:
+    if regression is None:
+        return
+    if not isinstance(regression, dict):
+        raise ValueError(f"{case_ref}.regression 必须是对象")
+    extra = set(regression) - {"query", "expect"}
+    if extra:
+        raise ValueError(
+            f"{case_ref}.regression 含未知字段：{', '.join(sorted(extra))}；"
+            "只允许 query + expect（旧 tool/params 已移除，见 #179）"
+        )
+    if not str(regression.get("query") or "").strip():
+        raise ValueError(f"{case_ref}.regression 缺少非空 query（只支持 SPARQL 断言）")
+    if "expect" not in regression:
+        raise ValueError(f"{case_ref}.regression 缺少 expect")
+    _validate_expect(case_ref, regression["expect"])
+
+
+def _validate_case(index: int, case: dict) -> None:
+    """写入前的 CQ schema 强制校验（#179/#180/#181），非法值不再静默兜底。"""
+    ref = f"cases[{index}]"
+    if not str(case.get("cq") or "").strip():
+        raise ValueError(f"{ref} 缺少非空 cq 题干")
+    for key in case:
+        if key in _LEGACY_CASE_FIELDS:
+            raise ValueError(f"{ref}.{key}：{_LEGACY_CASE_FIELDS[key]}")
+        if key not in _CASE_FIELDS:
+            raise ValueError(
+                f"{ref}.{key} 不是 CQ 字段；允许：{', '.join(sorted(_CASE_FIELDS))}"
+            )
+    expected_type = str(case.get("expected_type") or "").strip()
+    if expected_type and expected_type not in EXPECTED_TYPE_VALUES:
+        raise ValueError(
+            f"{ref}.expected_type 非法：{expected_type!r}；"
+            f"合法值：{' / '.join(EXPECTED_TYPE_VALUES)}"
+        )
+    case["expected_type"] = expected_type or EXPECTED_TYPE_UNKNOWN
+    status = str(case.get("status") or "").strip()
+    if status and status not in STATUS_CONTRACT_VALUES:
+        raise ValueError(
+            f"{ref}.status 非法：{status!r}；"
+            f"合法值：{' / '.join(STATUS_CONTRACT_VALUES)}"
+        )
+    case["status"] = status or STATUS_UNSET
+    _validate_regression(ref, case.get("regression"))
 
 
 def _validate(data: dict) -> list:
@@ -144,9 +246,7 @@ def _validate(data: dict) -> list:
     for index, case in enumerate(cases):
         if not isinstance(case, dict):
             raise ValueError(f"cases[{index}] 必须是对象")
-        if not str(case.get("cq") or "").strip():
-            raise ValueError(f"cases[{index}] 缺少非空 cq 题干")
-        normalize_case(case)
+        _validate_case(index, case)
     return cases
 
 
@@ -468,8 +568,8 @@ def build_view(engine, data: dict) -> dict:
         except (TypeError, ValueError):
             conclusion = 0
         is_answerable = bool(regression) and conclusion > 0
-        expected_type = _normalize_expected_type(case.get("expected_type"))
-        status = _normalize_status(case.get("status"))
+        expected_type = _display_expected_type(case.get("expected_type"))
+        status = _display_status(case.get("status"))
         by_type[expected_type] += 1
         by_status[status] += 1
         if is_located:

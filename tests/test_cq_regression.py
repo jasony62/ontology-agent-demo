@@ -1,11 +1,10 @@
-"""CQ 回归套件测试（agent_task 领域包，白名单纪律内）。
+"""CQ 回归套件测试（框架级 `cq/cq_runner.py` + 预置题库，#179）。
 
-覆盖 cq_regression 执行器 + cq_tests.json 题库：
-  - 正例：预置 12 题在当前全量模型上全部通过；判分三档按 expect.type 正确路由
-  - 反例：删一条物化推理边（can_execute）→ 仅依赖该边的 R1 系 CQ 精准变红
-    （含 expect/actual 对照 + hint），其余 CQ 保持绿（不误伤）
-  - 边界：题库缺失/为空 → 「先建题库」提示（非 0/0 假成功）；未知工具逐条
-    error 不拖垮全跑；cq 字段与 guide_tbox_draft 输入同型（可直喂）
+覆盖：
+  - 正例：20 题在当前全量模型上全部通过；题库只用 `regression{query, expect}`
+  - 反例：删一条物化推理边（can_execute）→ 依赖它的 CQ 精准变红，其余保持绿
+  - 边界：旧平铺 tool/params 题标 not_tested；空集返回 0 而不是假成功
+  - 同型：cq 字段可直接喂 TBox 建模工位
 """
 
 import json
@@ -14,157 +13,117 @@ from pathlib import Path
 from reasoner.engine import OntologyEngine
 from reasoner.rules import apply_rules
 
-from _helpers import domain_module, make_adapter, submodule  # noqa: E402
+from _helpers import domain_module, submodule  # noqa: E402
 
 mod = domain_module()
-cq_reg = submodule(mod, "cq_regression")
 cq_mod = submodule(mod, "cq")
-BANK = cq_reg._BANK
+BANK = Path(mod.__file__).parent / "cq_tests.json"
 
 
-def _engine():
-    """独立 engine（反例不污染真实本体，每用例全新实例）。
+def _bank() -> dict:
+    return json.loads(BANK.read_text(encoding="utf-8"))
 
-    激活路径对齐（owlrl 物化 → rules/*.ttl → 适配器）：R2 已在规则层，
-    适配器构造不再自算 R2——不跑规则，依赖 R2 委派边的 CQ 会集体失真。
-    """
+
+def _engine() -> OntologyEngine:
+    """独立 engine（反例不污染真实本体，每用例全新实例）。"""
     engine = OntologyEngine(mod.ONTO_FILE)
     rules_dir = Path(mod.__file__).parent / "rules"
     apply_rules(engine, sorted(rules_dir.glob("*.ttl")))
     return engine
 
 
-def _adapter():
-    return make_adapter(mod, _engine())
-
-
 # ---------------- 正例 ----------------
 
+def test_bank_uses_single_sparql_format():
+    """#179：题库不再有 tool/params/平铺 query/expect，也不再有死字段。"""
+    bank = _bank()
+    assert bank["suite"] == "agent_task_cq_regression"
+    assert len(bank["cases"]) == 20
+    for case in bank["cases"]:
+        assert "regression" in case and set(case["regression"]) == {"query", "expect"}
+        assert not {"tool", "params", "query", "expect", "anchor_terms",
+                    "priority", "note"} & set(case)
+        assert case["regression"]["query"].strip()
+        assert case["expected_type"] in {"retrieval", "derived", "counting", "negative", "unknown"}
+        assert case["status"] in {"draft", "active", "archived", "unset"}
+
+
 def test_full_bank_passes_on_current_model():
-    """正例①：预置题库全过（当前全量模型），无失败项。
+    """正例①：预置题库全过（当前全量模型），无失败项。"""
+    from cq import cq_runner
 
-    题数 12 → 20：#61/#60/#68 修复锚点 8 题入册（多能力否定 / 编排顺序 /
-    R5-R6 正反例 / 担责标注 / defined class）。
-    """
-    r = cq_reg.run_suite(_adapter())
-    assert "error" not in r, r.get("error")
+    bank = _bank()
+    r = cq_runner.run_suite(_engine(), bank["cases"], bank["suite"])
     assert r["total"] == 20
-    assert r["passed"] == 20 and r["failed"] == 0
-    assert r["failures"] == []
-    assert r["suite"] == "agent_task_cq_regression"
-    assert r["duration_ms"] >= 0
+    assert r["pass"] == 20, [c for c in r["cases"] if c["state"] != "pass"]
+    assert r["fail"] == 0 and r["cannot_tell"] == 0 and r["not_tested"] == 0
+    assert r["coverage_real"] == 1.0
 
 
-def test_judgment_types_route_correctly():
-    """正例②：题库判分三档齐备（set_exact ≥3 + exact_struct ≥2 + contains ≥1），
-    且各档判分逻辑正确路由（抽样断言集合/结构/包含语义）。"""
-    with open(BANK, encoding="utf-8") as f:
-        bank = json.load(f)
-    kinds = [c["expect"]["type"] for c in bank["cases"]]
-    assert kinds.count("set_exact") >= 3
-    assert kinds.count("exact_struct") >= 2
-    assert kinds.count("contains") >= 1
-    # set_exact：含「空集期望」反例题（T2-04 无人可执行是有效期望）
-    t2_04 = next(c for c in bank["cases"] if c["id"] == "T2-04")
-    assert t2_04["expect"]["set"] == []
-    # exact_struct：null 期望与嵌套键（T2-09 无冲突 → conflict: null）
-    t2_09 = next(c for c in bank["cases"] if c["id"] == "T2-09")
-    assert t2_09["expect"]["keys"]["conflict"] is None
-    # contains：T2-12 业务类别三项必须齐
-    t2_12 = next(c for c in bank["cases"] if c["id"] == "T2-12")
-    assert set(t2_12["expect"]["contains"]) == {"JuniorDevAgent", "DevAgent", "Agent"}
+def test_expect_types_are_contract_values():
+    """#181：题库里的 expect.type 全部在契约枚举内，没有旧工具判分残留。"""
+    from cq.constants import REGRESSION_EXPECT_TYPES
 
-
-def test_dispatch_mirrors_mcp_tool_outputs():
-    """正例③：分发表与 MCP 工具输出结构一致（领域工具与通用工具抽样对拍）。"""
-    a = _adapter()
-    # 领域工具：capability_match 与 adapter 直调同构
-    r = cq_reg._TOOL_TABLE["capability_match"](a, task="t_login_dev")
-    assert {m["agent"] for m in r["matches"]} == {"dev_agent", "junior_dev"}
-    # 通用工具镜像：individuals / types_of / property_values / query_sparql
-    r2 = cq_reg._TOOL_TABLE["individuals"](a, class_name="CertifiedAgent")
-    assert set(r2["individuals"]) == {"dev_agent", "req_agent", "test_agent", "deploy_agent"}
-    r3 = cq_reg._TOOL_TABLE["property_values"](a, subject="t_compliance_dev",
-                                               property_name="requires_constraint")
-    assert r3["values"] == ["creq_default"]  # #64 起约束以实例引用
-    NS = "http://ontology.localhost/agent-task#"
-    r4 = cq_reg._TOOL_TABLE["query_sparql"](a, sparql=(
-        f"SELECT ?dep WHERE {{ <{NS}t_login_test> <{NS}depends_on>+ ?dep }}"))
-    assert {row["dep"] for row in r4["results"]} == {"t_login_review", "t_login_dev", "t_req"}
+    for case in _bank()["cases"]:
+        expect = case["regression"]["expect"]
+        if isinstance(expect, bool):
+            continue
+        assert expect["type"] in REGRESSION_EXPECT_TYPES, case["id"]
 
 
 # ---------------- 反例（退化精准变红） ----------------
 
 def test_removed_inference_edge_flags_only_dependent_cq():
     """反例：删一条物化推理边（junior_dev can_execute t_login_dev）→
-    仅 T2-01 变红（含对照与 hint），其余 11 题保持绿（失效检测精准不误伤）。
+    仅 T2-01 变红（含对照与 hint），其余 19 题保持绿（失效检测精准不误伤）。
 
     说明：owlrl 物化单调，删断言后旧结论仍残留于 g（真正的断言删除需重载本体），
     故直接删物化边模拟「推理结论退化」——这正是运行期回归层要抓的退化形态。
     """
+    from cq import cq_runner
+
     engine = _engine()
-    a = make_adapter(mod, engine)
     engine.remove_triples("junior_dev", "can_execute", "t_login_dev")
-    r = cq_reg.run_suite(a)
-    assert r["passed"] == 19 and r["failed"] == 1
-    f = r["failures"][0]
-    assert f["id"] == "T2-01"
-    assert "junior_dev" not in f["actual"] and "dev_agent" in f["actual"]
-    assert f["expect"] == ["dev_agent", "junior_dev"]
-    assert "R1" in f["hint"] and "属性链" in f["hint"]
-    # 其余 11 题全绿（不同任务/边/规则互不受牵连——精准不误伤，由 passed==11 断言）
-
-
-def test_no_conflict_branch_not_false_positive():
-    """反例②：R4 边界（已认证 → conflict=null）不因判分实现被误标失败
-    （exact_struct 的 null 期望与实际 None 相等）。"""
-    r = cq_reg.run_suite(_adapter())
-    for c in r["failures"]:
-        assert c["id"] != "T2-09", "已认证分配不应误报冲突"
+    bank = _bank()
+    r = cq_runner.run_suite(engine, bank["cases"], bank["suite"])
+    failures = [c for c in r["cases"] if c["state"] == "fail"]
+    assert [c["id"] for c in failures] == ["T2-01"], failures
+    f = failures[0]
+    assert "junior_dev" not in f["detail"]["actual"]
+    assert "dev_agent" in f["detail"]["actual"]
+    assert f["detail"]["expect"] == ["dev_agent", "junior_dev"]
+    assert "R1" in f["hint"] and "退化" in f["hint"]
+    assert r["pass"] == 19
 
 
 # ---------------- 边界例 ----------------
 
-def test_missing_bank_honest_error(tmp_path):
-    """边界①：题库文件缺失 → 「先建题库」提示（非 0/0 假成功）。"""
-    r = cq_reg.run_suite(_adapter(), bank_path=str(tmp_path / "no_such.json"))
-    assert "error" in r and "先建题库" in r["error"]
-    assert r["total"] == 0 and r["passed"] == 0
+def test_old_flat_tool_case_is_not_tested():
+    """#179：旧平铺 tool/params 不再执行，如实标 not_tested（不伪造通过）。"""
+    from cq import cq_runner
+
+    case = {
+        "id": "OLD-1", "cq": "旧格式题",
+        "tool": "capability_match", "params": {"task": "t_login_dev"},
+        "expect": {"type": "set_exact", "pick": "matches.agent", "set": []},
+    }
+    result = cq_runner.run_case(_engine(), case)
+    assert result["state"] == "not_tested"
+    assert "regression" in result["detail"]["reason"]
 
 
-def test_empty_bank_honest_error(tmp_path):
-    """边界②：题库 cases 为空 → 诚实提示，不返回全绿假成功。"""
-    p = tmp_path / "empty.json"
-    p.write_text(json.dumps({"suite": "x", "cases": []}), encoding="utf-8")
-    r = cq_reg.run_suite(_adapter(), bank_path=str(p))
-    assert "error" in r and "题库为空" in r["error"]
-    assert r["passed"] == 0
+def test_empty_cases_is_honest_zero():
+    from cq import cq_runner
 
-
-def test_unknown_tool_case_errors_but_suite_continues(tmp_path):
-    """边界③：case.tool 写不存在的工具 → 该条标 error、其余继续跑完。"""
-    p = tmp_path / "bad_tool.json"
-    p.write_text(json.dumps({"suite": "x", "cases": [
-        {"id": "OK-1", "cq": "哪些智能体可以执行「登录模块开发」？",
-         "tool": "capability_match", "params": {"task": "t_login_dev"},
-         "expect": {"type": "set_exact", "pick": "matches.agent",
-                    "set": ["dev_agent", "junior_dev"]}, "rule": "R1"},
-        {"id": "BAD-1", "cq": "不存在的工具？", "tool": "no_such_tool",
-         "params": {}, "expect": {"type": "set_exact", "pick": "x", "set": []},
-         "rule": ""},
-    ]}), encoding="utf-8")
-    r = cq_reg.run_suite(_adapter(), bank_path=str(p))
-    assert r["total"] == 2 and r["passed"] == 1 and r["failed"] == 1
-    assert "未知工具" in r["failures"][0]["error"]
-    assert r["failures"][0]["id"] == "BAD-1"
+    r = cq_runner.run_suite(_engine(), [], "empty")
+    assert r["total"] == 0 and r["pass"] == 0 and r["coverage_real"] == 0.0
 
 
 def test_cq_field_same_shape_as_guide_tbox_input():
     """边界④：cq 字段与 guide_tbox_draft 输入同型——题库问题文本可直接喂建模工位。"""
-    with open(BANK, encoding="utf-8") as f:
-        bank = json.load(f)
+    bank = _bank()
     cqs = [c["cq"] for c in bank["cases"]]
     assert len(cqs) == 20
     r = cq_mod.guide_tbox_draft(OntologyEngine(mod.ONTO_FILE), cqs)
-    assert isinstance(r, dict) and "prompt" in r          # 同型即跑通
+    assert isinstance(r, dict) and "prompt" in r
     assert len(r.get("schema_map", {}).get("classes", [])) > 0

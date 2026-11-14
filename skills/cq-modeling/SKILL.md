@@ -65,13 +65,24 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 
 ### 3.5 落库与回归
 
-把过检的 CQ 固化成回归条目：写入受管 CQ 集（`cq_set_write` / `cq_case_upsert`，落盘 `workspaces/<ontology_id>/cq_set.json`），每条含题面、期望工具调用与期望答案，判分三档选一——
+把过检的 CQ 固化成回归条目：写入受管 CQ 集（`cq_set_write` / `cq_case_upsert`，落盘 `workspaces/<ontology_id>/cq_set.json`）。**只有一种断言形态**（#179）：
 
-| 判分档 | 语义 | 适用 |
+```json
+{"cq": "<题面>", "expected_type": "retrieval", "status": "active",
+ "regression": {"query": "ASK { ... }", "expect": true}}
+```
+
+判分按 `expect` 形态自动路由：
+
+| `expect` 形态 | 语义 | 适用 |
 |---|---|---|
-| `set_exact` | 集合精确相等（含空集期望） | 结果个体集合可完全枚举 |
-| `contains` | 业务类别必须齐（推理机内建类型随实现浮动，不作硬断言） | 按类聚合的开放集合 |
-| `exact_struct` | 已知键精确匹配，值可为 null | 结构化报告类结果 |
+| `true` / `false` | ASK 布尔 | 探活「某事实是否成立」 |
+| 整数 | SELECT 结果行数 | 计数题 |
+| `{type: "values" \| "set_exact", values: [...]}` | 结果首列集合精确相等（含空集） | 结果个体可完全枚举 |
+| `{type: "contains", values: [...]}` | 结果首列包含全部期望值 | 业务类别必须齐（内建类型浮动不作硬断言） |
+| `{type: "count", value: n}` / `{type: "boolean" \| "exists", value: bool}` | 显式计数 / 布尔 | 需要点名判分方式时 |
+
+> 旧平铺 `tool` + `params` 形态已移除；`anchor_terms` / `priority` / `note` 也不再进 CQ 契约（#180）。写入时缺题型/状态会补 `unknown` / `unset`，**填错则 400 并列出合法枚举**（#181）。
 
 改动公理/规则后跑回归：
 
@@ -79,7 +90,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 {"name": "cq_regression", "arguments": {}}
 ```
 
-断言：通过 X/Y + 失败清单（每条附期望 vs 实际对照与按 rule 的退化定位 hint）。**题库为空时它会诚实报错「先建题库」，不会返回 0/0 假成功。**
+断言：通过 X/Y + 失败清单（每条附期望 vs 实际对照与按 rule 的退化定位 hint）。**题库为空时 total=0、coverage_real=0，不返回假成功；旧格式题标 not_tested。**
 
 ### 3.6 配套质量闸门（按需）
 
@@ -102,7 +113,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 ## 5. 深入阅读
 
 - `docs/MODELING_GATES.md`：G1–G4 闸门权威规格
-- `examples/agent_task/cq_tests.json`：回归题库样例（12 题平移自评测题库）
+- `examples/agent_task/cq_tests.json`：回归题库样例（20 题，单一 `regression{query, expect}` 形态）
 - 仓库 README「MCP 接入」：`/mcp/cq` 的 8 个工具清单
 - `docs/guide/03-本体推理原理.md`：R1–R4 规则原理（退化定位 hint 依据）
 
@@ -110,4 +121,4 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 
 - 起草题目时**不发明规则**：聚合/禁止/阈值类业务规则必须来自用户的领域知识或知识库，你只负责按指令成形与质检；
 - `cq_tests.json` 与 `rules/*.ttl` 是随领域包分发的资产：写入前向用户展示条目内容；
-- 回归判分写 `set_exact` 前确认结果集合确实完全可枚举，否则误报会淹没真退化。
+- SPARQL `set_exact` / `values` 前确认结果集合确实完全可枚举，否则误报会淹没真退化；`contains` 只表达「包含全部期望值」。

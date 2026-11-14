@@ -61,10 +61,31 @@ let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
 function stubFetch(set = SET) {
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const method = String(init?.method || 'GET').toUpperCase();
     if (url.includes('/cq/locate')) {
       return { ok: true, status: 200, json: async () => LOCATE } as unknown as Response;
+    }
+    if (url.includes('/cq/regression/run')) {
+      return {
+        ok: true, status: 200, json: async () => ({
+          suite: set.suite, ran_at: '2026-11-14T10:00:00', total: 2,
+          pass: 1, fail: 1, cannot_tell: 0, not_tested: 0,
+          coverage_real: 0.5, cases: [], trend_delta: 0,
+        }),
+      } as unknown as Response;
+    }
+    if (url.includes('/cq/runs')) {
+      return { ok: true, status: 200, json: async () => ({ ontology_id: 'ws-1', runs: [] }) } as unknown as Response;
+    }
+    if (url.includes('/cq/cases') && method === 'POST') {
+      const payload = JSON.parse(String(init?.body || '{}'));
+      const newCase = { ...payload, id: 'NEW' };
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ...set, case: newCase, cases: [...set.cases, newCase] }),
+      } as unknown as Response;
     }
     if (url.includes('/cq/set')) {
       return { ok: true, status: 200, json: async () => set } as unknown as Response;
@@ -129,5 +150,54 @@ describe('CQ 集页（#151）', () => {
     expect(text).toContain('还没有挂 CQ 集');
     expect(text).toContain('导入一份');
     expect(container!.querySelectorAll('.cq-row')).toHaveLength(0);
+
+    // 空态下仍可直接新增第一题
+    const add = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '新增题目')!;
+    act(() => add.click());
+    expect(container!.querySelector('.cq-editor')).not.toBeNull();
+  });
+
+  it('页面内可新增题目并保存（#154）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const add = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '新增题目')!;
+    act(() => add.click());
+    expect(container!.querySelector('.cq-editor')).not.toBeNull();
+
+    const textarea = container!.querySelector('.cq-editor textarea') as HTMLTextAreaElement;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      setValue.call(textarea, '新增：本体里有哪些类？');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const save = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor button')]
+      .find((button) => button.textContent === '保存')!;
+    await act(async () => { save.click(); });
+    await flush();
+
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/cases') && String(init?.method).toUpperCase() === 'POST');
+    expect(call).toBeTruthy();
+    expect(JSON.parse(String((call![1] as RequestInit).body)).cq).toContain('新增：本体里有哪些类');
+    expect(container!.querySelector('.cq-editor')).toBeNull();
+  });
+
+  it('工具栏「运行评估」调用回归端点并提示通过数（#156）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const run = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '运行评估')!;
+    await act(async () => { run.click(); });
+    await flush();
+
+    const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/cq/regression/run'));
+    expect(call).toBeTruthy();
+    expect(container!.textContent).toContain('评估完成：1/2 通过');
   });
 });

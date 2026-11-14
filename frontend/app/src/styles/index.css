@@ -1510,3 +1510,15 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 
 .source-raw--nested { margin-top: 6px; }
 .source-raw--nested summary { color: #8a94a6; }
+
+/* #154 / #156：CQ 编辑与评估趋势 */
+.cq-detail-actions { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 8px; }
+.cq-trend { font-size: 11.5px; color: var(--muted); }
+.cq-editor { display: flex; flex-direction: column; gap: 10px; }
+.cq-editor h3 { font-size: var(--fs-title); color: var(--heading); }
+.cq-editor h4 { font-size: var(--fs-md); color: var(--heading); }
+.cq-editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.cq-editor-wide { grid-column: 1 / -1; }
+.cq-editor .field { display: flex; flex-direction: column; gap: 3px; }
+.cq-editor textarea { font-family: inherit; resize: vertical; }
+.cq-editor-actions { display: flex; gap: 8px; }

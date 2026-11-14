@@ -94,3 +94,97 @@ def test_invalid_import_is_400(client):
         files={"file": ("bad.json", b"not json", "application/json")},
     )
     assert r.status_code == 400
+
+
+def test_case_crud_and_audit(client):
+    raw = json.dumps({
+        "suite": "crud",
+        "version": 1,
+        "cases": [{"id": "Q1", "cq": "原来的题干", "status": "draft"}],
+    })
+    client.post(
+        "/api/domains/current/cq/import",
+        files={"file": ("cq_set.json", raw.encode("utf-8"), "application/json")},
+    )
+
+    added = client.post("/api/domains/current/cq/cases", json={
+        "cq": "新题：本体里有哪些类？", "status": "active", "expected_type": "set",
+    })
+    assert added.status_code == 200, added.text
+    new_id = added.json()["case"]["id"]
+    assert new_id
+
+    patched = client.patch(f"/api/domains/current/cq/cases/{new_id}", json={
+        "cq": "改过的题干", "status": "active",
+    })
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["case"]["cq"] == "改过的题干"
+
+    view = client.get("/api/domains/current/cq/set").json()
+    assert any(case["id"] == new_id and case["cq"] == "改过的题干" for case in view["cases"])
+
+    removed = client.delete(f"/api/domains/current/cq/cases/{new_id}")
+    assert removed.status_code == 200, removed.text
+    assert all(case["id"] != new_id for case in client.get("/api/domains/current/cq/set").json()["cases"])
+
+    ontology_id, _ = M._cq_identity()
+    audit = (M.cq_store.audit_path(ontology_id)).read_text(encoding="utf-8")
+    actions = [json.loads(line)["action"] for line in audit.splitlines() if line.strip()]
+    assert {"import", "add", "update", "delete"} <= set(actions)
+
+
+def test_regression_run_history_metrics_and_exports(client):
+    payload = {
+        "suite": "runner",
+        "version": 1,
+        "cases": [
+            {
+                "id": "S1",
+                "cq": "本体里有任何三元组吗？",
+                "regression": {
+                    "query": "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1",
+                    "expect": {"type": "exists", "value": True},
+                },
+            },
+            {
+                "id": "S2",
+                "cq": "不存在的结论成立吗？",
+                "regression": {
+                    "query": "SELECT ?s WHERE { ?s <http://example.org/nope> ?o } LIMIT 1",
+                    "expect": {"type": "exists", "value": True},
+                },
+            },
+        ],
+    }
+    raw = json.dumps(payload, ensure_ascii=False)
+    client.post(
+        "/api/domains/current/cq/import",
+        files={"file": ("cq_set.json", raw.encode("utf-8"), "application/json")},
+    )
+
+    run = client.post("/api/domains/current/cq/regression/run", json={"actor_type": "human"})
+    assert run.status_code == 200, run.text
+    body = run.json()
+    assert body["total"] == 2
+    assert body["pass"] == 1
+    assert body["fail"] == 1
+    assert body["coverage_real"] == 0.5
+
+    view = client.get("/api/domains/current/cq/set").json()
+    by_id = {case["id"]: case for case in view["cases"]}
+    assert by_id["S1"]["coverage_cache"]["conclusion"] == 1
+    assert by_id["S2"]["coverage_cache"]["conclusion"] == 0
+
+    runs = client.get("/api/domains/current/cq/runs").json()["runs"]
+    assert runs and runs[0]["total"] == 2
+
+    ontology_id, _ = M._cq_identity()
+    metrics = M.cq_store.metrics_path(ontology_id).read_text(encoding="utf-8")
+    assert "cq_evaluated_real" in metrics
+
+    yaml_export = client.get("/api/domains/current/cq/export?format=cq-test")
+    assert yaml_export.status_code == 200
+    assert "query: |" in yaml_export.text
+    junit = client.get("/api/domains/current/cq/export?format=junit")
+    assert junit.status_code == 200
+    assert "<testsuite" in junit.text and 'failures="1"' in junit.text

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
-import type { CqLocateResult, CqSetCase, CqSetResponse } from '../api/client';
+import type { CqLocateResult, CqRun, CqSetCase, CqSetResponse } from '../api/client';
 
 /**
  * CQ 集页（#151，P0）：概览看板 + 单题定位/可答卡 + 导入导出。
@@ -16,6 +16,9 @@ export default function CqPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [locate, setLocate] = useState<CqLocateResult | null>(null);
   const [locateError, setLocateError] = useState<string | null>(null);
+  const [runs, setRuns] = useState<CqRun[]>([]);
+  const [editing, setEditing] = useState<{ mode: 'create' | 'edit'; draft: CqSetCase } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -24,6 +27,12 @@ export default function CqPage() {
       const next = await api.cqSet();
       setData(next);
       setSelected((current) => current ?? (next.cases[0] ? caseKey(next.cases[0], 0) : null));
+      try {
+        const history = await api.cqRuns();
+        setRuns(history.runs);
+      } catch {
+        setRuns([]);
+      }
     } catch (e) {
       setError(`读取 CQ 集失败：${e instanceof Error ? e.message : String(e)}`);
       setData(null);
@@ -69,6 +78,59 @@ export default function CqPage() {
     }
   };
 
+  const saveCase = async (draft: CqSetCase) => {
+    if (!editing) return;
+    setBusy('save');
+    setError(null);
+    try {
+      const saved = editing.mode === 'create'
+        ? await api.cqAddCase(draft)
+        : await api.cqUpdateCase(String(draft.id), draft);
+      setNotice(editing.mode === 'create' ? '已新增题目。' : '已保存题目。');
+      setEditing(null);
+      setData(saved);
+      setSelected(saved.case?.id ? caseKey(saved.case, saved.cases.findIndex((c) => c.id === saved.case.id)) : selected);
+    } catch (e) {
+      setError(`保存失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const deleteCurrent = async () => {
+    if (!current?.id) return;
+    if (!window.confirm(`删除题目「${current.id}」？此操作会写入审计日志。`)) return;
+    setBusy('delete');
+    setError(null);
+    try {
+      const next = await api.cqDeleteCase(String(current.id));
+      setNotice('已删除题目。');
+      setEditing(null);
+      setSelected(null);
+      setData(next);
+    } catch (e) {
+      setError(`删除失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runRegression = async () => {
+    setBusy('run');
+    setError(null);
+    setNotice(null);
+    try {
+      const run = await api.cqRun('human');
+      setNotice(`评估完成：${run.pass}/${run.total} 通过（可答覆盖 ${Math.round(run.coverage_real * 100)}%）。`);
+      setRuns((currentRuns) => [run, ...currentRuns].slice(0, 20));
+      await load();
+    } catch (e) {
+      setError(`运行评估失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const summary = data?.summary;
 
   return (
@@ -82,8 +144,19 @@ export default function CqPage() {
           </p>
         </div>
         <div className="cq-toolbar-actions">
-          <button type="button" className="btn secondary" onClick={() => void load()} disabled={loading}>
+          <button type="button" className="btn secondary" onClick={() => void load()} disabled={loading || busy != null}>
             刷新
+          </button>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={busy != null}
+            onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'set' } })}
+          >
+            新增题目
+          </button>
+          <button type="button" className="btn" onClick={() => void runRegression()} disabled={busy != null || !summary || summary.total === 0}>
+            {busy === 'run' ? '评估中…' : '运行评估'}
           </button>
           <label className="btn secondary cq-import">
             导入 JSON
@@ -96,9 +169,9 @@ export default function CqPage() {
               }}
             />
           </label>
-          <a className="btn secondary" href={api.cqExportUrl()} download>
-            导出
-          </a>
+          <a className="btn secondary" href={api.cqExportUrl('json')} download>导出 JSON</a>
+          <a className="btn secondary" href={api.cqExportUrl('cq-test')} download>cq-test</a>
+          <a className="btn secondary" href={api.cqExportUrl('junit')} download>JUnit</a>
         </div>
       </div>
 
@@ -108,13 +181,26 @@ export default function CqPage() {
       {loading && !data ? (
         <div className="guide-empty">正在读取 CQ 集…</div>
       ) : !summary || summary.total === 0 ? (
-        <div className="cq-empty panel">
-          <h3>当前本体还没有挂 CQ 集</h3>
-          <p>
-            导入一份 <code>cq_set.json</code>，或让智能体通过 MCP 写入后点「刷新」。
-            导入后会立刻看到「承诺 N / 已定位 X / 可答 Y / 缺口 Z」。
-          </p>
-        </div>
+        editing ? (
+          <section className="panel cq-detail">
+            <CqEditor
+              key={`${editing.mode}-${editing.draft.id ?? 'new'}`}
+              mode={editing.mode}
+              draft={editing.draft}
+              busy={busy === 'save'}
+              onCancel={() => setEditing(null)}
+              onSave={(draft) => void saveCase(draft)}
+            />
+          </section>
+        ) : (
+          <div className="cq-empty panel">
+            <h3>当前本体还没有挂 CQ 集</h3>
+            <p>
+              导入一份 <code>cq_set.json</code>，或让智能体通过 MCP 写入后点「刷新」。
+              导入后会立刻看到「承诺 N / 已定位 X / 可答 Y / 缺口 Z」。
+            </p>
+          </div>
+        )
       ) : (
         <>
           <div className="cq-overview">
@@ -141,6 +227,14 @@ export default function CqPage() {
                 <div className="cq-bar real"><i style={{ width: `${Math.round(summary.coverage_real * 100)}%` }} /></div>
                 <b>{Math.round(summary.coverage_real * 100)}%</b>
               </div>
+              {runs[0] && (
+                <div className="cq-trend">
+                  最近评估：{runs[0].pass}/{runs[0].total} 通过 · {runs[0].ran_at}
+                  {runs.length > 1 && (
+                    <> · 上次 {Math.round((runs[0].coverage_real - runs[1].coverage_real) * 100)} 个百分点</>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -178,15 +272,44 @@ export default function CqPage() {
             </section>
 
             <section className="panel cq-detail" aria-label="CQ 详情">
-              {!current ? (
+              {editing ? (
+                <CqEditor
+                  key={`${editing.mode}-${editing.draft.id ?? 'new'}`}
+                  mode={editing.mode}
+                  draft={editing.draft}
+                  busy={busy === 'save'}
+                  onCancel={() => setEditing(null)}
+                  onSave={(draft) => void saveCase(draft)}
+                />
+              ) : !current ? (
                 <div className="guide-empty">左侧选一道题看定位证据。</div>
               ) : (
-                <CqDetail
-                  item={current}
-                  index={cases.indexOf(current)}
-                  locate={locate}
-                  error={locateError}
-                />
+                <div className="cq-detail-body">
+                  <div className="cq-detail-actions">
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      disabled={busy != null}
+                      onClick={() => setEditing({ mode: 'edit', draft: { ...current } })}
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      className="btn danger"
+                      disabled={busy != null || !current.id}
+                      onClick={() => void deleteCurrent()}
+                    >
+                      删除
+                    </button>
+                  </div>
+                  <CqDetail
+                    item={current}
+                    index={cases.indexOf(current)}
+                    locate={locate}
+                    error={locateError}
+                  />
+                </div>
               )}
             </section>
           </div>
@@ -198,6 +321,111 @@ export default function CqPage() {
 
 function caseKey(item: CqSetCase, index: number): string {
   return item.id ? `${item.id}#${index}` : `case-${index}`;
+}
+
+function CqEditor({
+  mode, draft, busy, onCancel, onSave,
+}: {
+  mode: 'create' | 'edit';
+  draft: CqSetCase;
+  busy: boolean;
+  onCancel: () => void;
+  onSave: (draft: CqSetCase) => void;
+}) {
+  const regression = draft.regression || {};
+  const [cq, setCq] = useState(draft.cq || '');
+  const [expectedType, setExpectedType] = useState(draft.expected_type || '');
+  const [status, setStatus] = useState(draft.status || 'draft');
+  const [requirement, setRequirement] = useState(draft.requirement || '');
+  const [tool, setTool] = useState(regression.tool || '');
+  const [query, setQuery] = useState(regression.query || '');
+  const [params, setParams] = useState(JSON.stringify(regression.params || {}, null, 2));
+  const [expect, setExpect] = useState(JSON.stringify(regression.expect || {}, null, 2));
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = () => {
+    setError(null);
+    if (!cq.trim()) {
+      setError('题干不能为空');
+      return;
+    }
+    let normalized: CqSetCase['regression'] | undefined;
+    try {
+      if (query.trim()) {
+        normalized = { query: query.trim(), expect: expect.trim() ? JSON.parse(expect) : {} };
+      } else if (tool.trim()) {
+        normalized = {
+          tool: tool.trim(),
+          params: params.trim() ? JSON.parse(params) : {},
+          expect: expect.trim() ? JSON.parse(expect) : {},
+        };
+      }
+    } catch (e) {
+      setError(`JSON 解析失败：${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    onSave({
+      ...draft,
+      cq: cq.trim(),
+      expected_type: expectedType.trim() || undefined,
+      status: status.trim() || undefined,
+      requirement: requirement.trim() || undefined,
+      ...(normalized ? { regression: normalized } : {}),
+    });
+  };
+
+  return (
+    <div className="cq-editor">
+      <h3>{mode === 'create' ? '新增题目' : `编辑 ${draft.id || ''}`}</h3>
+      <label className="field">
+        <span className="field-label">题干</span>
+        <textarea value={cq} onChange={(event) => setCq(event.target.value)} rows={3} />
+      </label>
+      <div className="cq-editor-grid">
+        <label className="field">
+          <span className="field-label">题型</span>
+          <input value={expectedType} onChange={(event) => setExpectedType(event.target.value)} placeholder="set / proof / …" />
+        </label>
+        <label className="field">
+          <span className="field-label">状态</span>
+          <input value={status} onChange={(event) => setStatus(event.target.value)} placeholder="active / draft" />
+        </label>
+        <label className="field">
+          <span className="field-label">来源需求</span>
+          <input value={requirement} onChange={(event) => setRequirement(event.target.value)} placeholder="REQ-1" />
+        </label>
+      </div>
+      <h4>回归断言</h4>
+      <p className="guide-muted">
+        SPARQL 题填 query + expect；领域工具题填 tool + params + expect。两者都留空则不进入回归。
+      </p>
+      <div className="cq-editor-grid">
+        <label className="field">
+          <span className="field-label">工具（tool）</span>
+          <input value={tool} onChange={(event) => setTool(event.target.value)} placeholder="property_values / query_sparql" />
+        </label>
+        <label className="field cq-editor-wide">
+          <span className="field-label">SPARQL query</span>
+          <textarea value={query} onChange={(event) => setQuery(event.target.value)} rows={3} />
+        </label>
+        <label className="field cq-editor-wide">
+          <span className="field-label">params（JSON）</span>
+          <textarea value={params} onChange={(event) => setParams(event.target.value)} rows={3} />
+        </label>
+        <label className="field cq-editor-wide">
+          <span className="field-label">expect（JSON）</span>
+          <textarea value={expect} onChange={(event) => setExpect(event.target.value)} rows={3} />
+        </label>
+      </div>
+      {error && <div className="field-error">{error}</div>}
+      <div className="cq-editor-actions">
+        <button type="button" className="btn" onClick={submit} disabled={busy}>
+          {busy ? '保存中…' : '保存'}
+        </button>
+        <button type="button" className="btn secondary" onClick={onCancel} disabled={busy}>取消</button>
+      </div>
+    </div>
+  );
 }
 
 function CqDetail({

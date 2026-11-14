@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import types
 
@@ -49,6 +50,39 @@ def test_active_domain_mcp_has_no_duplicate_tool_names():
     server = _FakeServer()
     mod.register_tools(mcp_server._ToolNameGuard(server), lambda: None)
     assert "status" in server.tools
+
+
+def test_mcp_cq_write_tools_share_the_same_store(tmp_path, monkeypatch):
+    """#155：MCP 写工具与 REST 写同一个 cq_store，并以 agent 身份记审计。"""
+    from types import SimpleNamespace
+
+    from api import workspaces
+    from cq import cq_store
+
+    monkeypatch.setenv("ONTOLOGY_WORKSPACES_ROOT", str(tmp_path))
+    mod = submodule(domain_module(), "mcp")
+    adapter = SimpleNamespace(NAME="agent_task")
+    server = _FakeServer()
+    mod.register_tools(mcp_server._ToolNameGuard(server), lambda: adapter)
+
+    added = server.tools["add_cq"](cq="智能体场景：本体里有哪些类？", status="active")
+    assert added["ok"] is True
+    case_id = added["case"]["id"]
+    stored = cq_store.get_set("agent_task")
+    assert any(case["id"] == case_id for case in stored["cases"])
+
+    updated = server.tools["update_cq"](case_id=case_id, cq="改过的题干")
+    assert updated["ok"] is True
+    assert cq_store.get_set("agent_task")["cases"][0]["cq"] == "改过的题干"
+
+    deleted = server.tools["delete_cq"](case_id=case_id)
+    assert deleted["ok"] is True
+    assert cq_store.get_set("agent_task")["cases"] == []
+
+    audit = workspaces.workspace_dir("agent_task") / "cq_set.audit.jsonl"
+    lines = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+    assert all(line["actor_type"] == "agent" for line in lines if line["action"] != "save")
+    assert {"add", "update", "delete"} <= {line["action"] for line in lines}
 
 
 def test_build_server_allows_domain_without_mcp_module(monkeypatch):

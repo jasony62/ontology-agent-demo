@@ -78,7 +78,7 @@ docker compose up -d mcp
 
 | 工具 | 说明 |
 |---|---|
-| `query_sparql(sparql)` | SPARQL SELECT，结果 IRI 自动转短名 |
+| `query_sparql(sparql)` | SPARQL 查询：SELECT 返回 `results`，ASK 返回 `askAnswer`；IRI 自动转短名 |
 | `individuals(class_name)` | 指定类（含子类）的个体列表 |
 | `classes()` | 全部类层次（name/label/parent） |
 | `types_of(individual)` | 个体推理后的全部类型 |

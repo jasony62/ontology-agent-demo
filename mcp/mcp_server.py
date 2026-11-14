@@ -224,8 +224,9 @@ def _register_generic_tools(server: MCPServer, get_engine, policy=None, guard=No
         }
 
     @tool(description=(
-        "SPARQL 查询（通用）：执行 SPARQL SELECT 并返回结果行，IRI 值自动转为短名。适用于任何本体，"
-        "不依赖领域语义。支持面见 README「SPARQL 支持边界」。两段式超时（可选，环境变量 "
+        "SPARQL 查询（通用）：执行 SPARQL 并返回结果。SELECT → {results: [...]}（IRI 值自动转短名）；"
+        "ASK → {askAnswer: true|false}。适用于任何本体，不依赖领域语义。支持面见 README"
+        "「SPARQL 支持边界」。两段式超时（可选，环境变量 "
         "ONTOLOGY_SPARQL_FIRST_RESULT_TIMEOUT_MS / ONTOLOGY_SPARQL_TOTAL_TIMEOUT_MS，未设=不启用，"
         "对齐 Jena ARQ 两段式形态）：超时返回结构化错误 {error: query_timeout, kind: first|total, "
         "limit_ms, hint} 而非挂住。"))
@@ -233,7 +234,9 @@ def _register_generic_tools(server: MCPServer, get_engine, policy=None, guard=No
         if active:
             return _deny("已开启语义白名单，请改用 run_predefined_query", available_queries=policy.query_names())
         try:
-            return {"results": get_engine().query_sparql(sparql)}
+            result = get_engine().query_sparql(sparql)
+            # #177：引擎对 ASK 返回 {"askAnswer": bool}；不要再套一层 results
+            return result if isinstance(result, dict) else {"results": result}
         except SparqlTimeoutError as exc:
             return _timeout_error(exc)
 
@@ -298,7 +301,9 @@ def _register_generic_tools(server: MCPServer, get_engine, policy=None, guard=No
         if not rendered["ok"]:
             return {"denied": True, "reason": rendered["error"]}
         try:
-            return {"query": rendered["name"], "results": eng.query_sparql(rendered["sparql"])}
+            result = eng.query_sparql(rendered["sparql"])
+            payload = result if isinstance(result, dict) else {"results": result}
+            return {"query": rendered["name"], **payload}
         except SparqlTimeoutError as exc:
             return _timeout_error(exc)
 

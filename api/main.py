@@ -1735,7 +1735,10 @@ def import_individuals(req: ImportRequest):
     responses={
         200: {
             "model": SparqlResultsResponse,
-            "description": "SPARQL SELECT 结果行；键为变量名，IRI 值已转成短名。",
+            "description": (
+                "SPARQL 结果：SELECT 返回结果行（键为变量名，IRI 值已转成短名）；"
+                "ASK 返回 {askAnswer: true|false}。"
+            ),
         },
         **ERROR_400,
         **ERROR_408,
@@ -1744,11 +1747,13 @@ def import_individuals(req: ImportRequest):
 def sparql_query(req: SparqlRequest):
     """SPARQL 查询入口（支持面见 README「SPARQL 支持边界」）。
 
+    SELECT 返回 {results: [...]}；ASK 返回 {askAnswer: true|false}（#177）。
     给调用方：两段式超时（可选，环境变量 ONTOLOGY_SPARQL_FIRST_RESULT_TIMEOUT_MS /
     ONTOLOGY_SPARQL_TOTAL_TIMEOUT_MS）：超时返回 408 与结构化详情，而非挂住。
     """
     try:
-        return {"results": ENGINE.query_sparql(req.sparql)}
+        result = ENGINE.query_sparql(req.sparql)
+        return result if isinstance(result, dict) else {"results": result}
     except SparqlTimeoutError as exc:
         raise HTTPException(
             status_code=408,

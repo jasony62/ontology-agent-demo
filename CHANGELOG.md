@@ -7,6 +7,7 @@
 
 ### Added
 
+- **SPARQL ASK 支持（#177）**：`OntologyEngine.query_sparql` 现在同时支持 SELECT（`[{变量: 值}, ...]`）与 ASK（`{askAnswer: true|false}`），两段式超时路径同样适用；MCP `query_sparql`、REST `/api/query`、`scripts/query.py` 统一透传 `askAnswer`，不再把布尔结果当 SELECT 行消费（此前 `AttributeError: 'bool' object has no attribute 'asdict'`）。README「SPARQL 支持边界」同步更新。
 - **CQ MCP 定位工具 `cq_locate`（#174）**：`/mcp/cq` 新增单题定位工具，复用 `reasoner/cq_locate.py`，返回与 REST `POST /cq/locate` 同构的 `anchors / anchor_sources / coverage / evidence / counts / hint`，并附 `evidence_count`；只读、不落库，智能体可纯 MCP 完成「出题 → 定位 → 质检 → 入题」。
 - **CQ MCP 质检工具 `cq_validate`（#175）**：`/mcp/cq` 新增批量质检，逐条检查题型是否 CQ4OE 四类、锚点是否命中当前本体词表（零证据仅 warn）、是否与现有集或本批内重复；返回每条 `{ok, reasons, warnings, anchors, coverage, evidence}` 与汇总，不落库。
 - **CQ 集独立为同进程 `/mcp/cq` 端点（#171）**：`mcp/mcp_server.py` 现在同一进程内构建两个 MCPServer——`/mcp/ontology`（领域工具 + 通用工具）与 `/mcp/cq`（CQ 集管理），共享同一个 `get_engine()` 工厂与同一份 `cq_store`；CQ 回归查当前内存引擎图，身份沿用 `identity_for`（导入态与 REST 同一工作区 uuid）。`/mcp` 保留为 `/mcp/ontology` 的旧路径别名。新增 `--domain imported`：直接绑定 `workspaces/_current.json` 指向的导入本体，无领域包也可用 CQ 工具。stdio 单通道下 CQ 工具与本体工具注册在同一 server。

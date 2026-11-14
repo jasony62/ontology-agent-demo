@@ -382,7 +382,7 @@ agent_task 自己的方法（MCP 工具仍叫这个名字）。
 
 | 方法 | 路径 | 请求 | 说明 |
 |---|---|---|---|
-| POST | `/api/query` | `{sparql}` | SPARQL SELECT（IRI 转短名） |
+| POST | `/api/query` | `{sparql}` | SPARQL SELECT / ASK（SELECT 转短名，ASK 返回 askAnswer） |
 | POST | `/api/individuals` | `{class_name}` | 类下个体列表 |
 | POST | `/api/classes` | — | 类层次 |
 | POST | `/api/types` | `{individual}` | 个体推理后类型 |

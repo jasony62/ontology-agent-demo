@@ -204,11 +204,15 @@ class GraphGroupsResponse(BaseModel):
 
 
 class SparqlResultsResponse(BaseModel):
-    """SPARQL SELECT 结果。"""
+    """SPARQL 结果：SELECT 行列表或 ASK 布尔。"""
 
     results: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="结果行列表；键为 SPARQL 变量名，IRI 值已转成短名。",
+        description="SELECT 结果行列表；键为 SPARQL 变量名，IRI 值已转成短名。",
+    )
+    askAnswer: bool | None = Field(
+        None,
+        description="ASK 查询的布尔结果；SELECT 查询时为空。",
     )
 
 

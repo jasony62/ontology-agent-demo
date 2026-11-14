@@ -1,8 +1,9 @@
 """「智能体任务编排」领域 MCP 工具注册（领域相关代码，随领域包走）。
 
 MCP Server（mcp/mcp_server.py）是通用出口层，启动时动态加载本模块，
-把 9 个领域工具注册到 server；换领域 = 换领域包（新领域须提供同构的 mcp.py，
-暴露 register_tools(server, get_adapter)）。
+把 10 个领域工具注册到 server；换领域 = 换领域包（新领域须提供同构的 mcp.py，
+暴露 register_tools(server, get_adapter)）。CQ 集工具已移出领域包，由框架的
+`/mcp/cq` 端点统一提供（#171/#172）；本文件只保留领域专属工具。
 
 002 批次（REQ-01.2）：工具闭包不再绑定 adapter 实例，改为绑定"动态获取当前
 adapter 的工厂"——SIGHUP 热重载后新 adapter 自动生效，无需重建 MCPServer。
@@ -11,8 +12,6 @@ adapter 的工厂"——SIGHUP 热重载后新 adapter 自动生效，无需重�
 from mcp.server.mcpserver import MCPServer
 
 from ontology_plugin_sdk import local
-from . import cq, cq_regression as cq_reg
-from cq import cq_store
 
 import os
 from rdflib import Graph, Namespace, RDF, URIRef
@@ -215,23 +214,6 @@ def register_tools(server: MCPServer, get_adapter) -> None:
         }
 
     @server.tool(description=(
-        "CQ 建模入口-指南（领域）：输入能力问题（CQ）清单，返回给宿主 LLM 的 TBox 生成指令"
-        "（prompt，含目标 Turtle 格式、命名空间、公理模式提示）、当前本体的 schema 对照"
-        "（schema_map）与自查清单（checklist）。宿主据此生成 Turtle 草稿，再用"
-        "validate_tbox_draft 校验。用于 LLM 自动建模 + 推理验证流水线。"))
-    def guide_tbox_draft(cqs: list[str]) -> dict:
-        a = get_adapter()
-        return cq.guide_tbox_draft(a.engine, cqs)
-
-    @server.tool(description=(
-        "CQ 建模入口（校验工位，领域）：校验宿主生成的 Turtle TBox 草稿，返回分级验证报告"
-        "（L1 语法 → L2 命名空间/结构 → L3 一致性 → L4 公理表达力 → L5 术语覆盖）与 verdict"
-        "（pass / fixable / reject）及修复建议。cqs（可选）提供原 CQ 时，L4 按关键词校验"
-        "期望公理（能力→属性链/依赖→传递/约束→disjoint）。只验 TBox，不替宿主编造 ABox 断言。"))
-    def validate_tbox_draft(ttl: str, cqs: list[str] | None = None) -> dict:
-        return cq.validate_tbox_draft(ttl, cqs)
-
-    @server.tool(description=(
         "数据体检（SHACL，领域）：按领域包内 shapes/agent_task.ttl 对当前 ABox 实例数据做"
         "SHACL 形状校验，返回结构化报告 {conforms, summary, violations}——violations 逐条给出"
         "焦点个体短名、属性路径、违反的约束与中文说明；不合格的列出来而非抛异常。"
@@ -241,179 +223,3 @@ def register_tools(server: MCPServer, get_adapter) -> None:
         "用于「LLM 抽取/生成 → SHACL 体检 → 合格才入库」的 AI 数据治理闭环。"))
     def validate_shapes() -> dict:
         return run_shacl_validation(get_adapter().engine)
-
-    @server.tool(description=(
-        "CQ 自动出题器-指南（领域）：生成宿主 LLM 出题指令（含现有 schema 术语对照、四类题型"
-        "定义与建议配比、措辞规则、输出 JSON 格式），宿主据此产出 CQ 问题数组。focus 可选，"
-        "提供全新领域描述时降级为 from_description 模式（无 schema 对照仍可用）。"
-        "补齐「出题 → guide_tbox_draft 建模 → 判卷」链的最前端。"))
-    def guide_cq_generation(focus: str | None = None) -> dict:
-        a = get_adapter()
-        return cq.guide_cq_generation(a.engine, focus)
-
-    @server.tool(description=(
-        "CQ 自动出题器-质检（领域）：对宿主 LLM 产出的 CQ 问题数组做确定性质检——问题句式/"
-        "schema 术语锚点（与 guide_cq_generation 共用运行时本体 schema）/本次输入内查重/"
-        "对 008 cq_tests.json 题库查重（存在时）/规则式题型预标（predicted_type 为建议标注）/"
-        "四类题型覆盖度报告。返回 usable / revise / duplicate 三档与缺口提醒。"
-        "出题质量是人把关：机器质检后仍需挑题人终审。"))
-    def validate_cqs(cqs: list[str]) -> dict:
-        return cq.validate_cqs(cqs, engine=get_adapter().engine)
-
-    @server.tool(description=(
-        "CQ 自动出题器-质检（focus 模式声明锚点，领域）：专用于 guide_cq_generation(focus=...) "
-        "产出的 {cq, expected_type, anchor_terms} 数组——除普通质检外，采信每条题目的 "
-        "anchor_terms 声明锚点（受四重约束：题干真实出现 / 长度 2-40 / 非 OWL 元词 / 非领域"
-        "停用词），且本卷声明词表须有 6-8 个不同术语方整批生效。不传声明时按普通质检处理。"))
-    def validate_cqs_declared(cqs: list[dict]) -> dict:
-        return cq.validate_cqs_declared(cqs, engine=get_adapter().engine)
-
-    @server.tool(description=(
-        "CQ 回归套件（领域）：一键执行 cq_tests.json 题库全部断言（CQ + 工具调用 + 期望答案），"
-        "返回「通过 X/Y + 失败清单」。失败项附期望 vs 实际对照与按 rule 生成的退化定位 hint。"
-        "判分三档（LLM-free 确定性）：set_exact（集合精确相等）/ contains（包含关键项）/ "
-        "exact_struct（已知键精确匹配）。改公理/规则后即时回归——「牵一发动全身」的恐慌"
-        "变「带安全带换轮胎」。题库为空/缺失时如实提示先建题库，不返回 0/0 假成功。"))
-    def cq_regression() -> dict:
-        a = get_adapter()
-        return cq_reg.run_suite(a)
-
-    # ---- CQ 集写路径（#155）：与 REST 对称，读写同一个 cq_store ----
-
-    def _cq_identity() -> tuple[str, str | None]:
-        adapter = get_adapter()
-        domain = getattr(adapter, "NAME", "domain")
-        seed = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cq_tests.json")
-        return cq_store.identity_for(domain, seed if os.path.isfile(seed) else None)
-
-    @server.tool(description=(
-        "读取当前 CQ 集（与 REST GET /cq/set 对称）：返回 suite、cases、概览 summary"
-        "（承诺 / 已定位 / 可答 / 缺口与两档覆盖率）。"))
-    def get_cq_set() -> dict:
-        domain, seed = _cq_identity()
-        data = cq_store.get_set(domain, seed)
-        return {"ontology_id": domain, **cq_store.build_view(get_adapter().engine, data)}
-
-    @server.tool(description=(
-        "新增一道 CQ（与 REST POST /cq/cases 对称，写回受管 cq_set.json 并记审计）。"
-        "cq 为题干；expected_type/status/requirement 可选；regression 可传 "
-        "{tool,params,expect} 或 {query,expect}。缺 id 时自动分配。"))
-    def add_cq(
-        cq: str,
-        expected_type: str | None = None,
-        status: str = "draft",
-        requirement: str | None = None,
-        regression: dict | None = None,
-    ) -> dict:
-        domain, _ = _cq_identity()
-        case = {
-            "cq": cq,
-            "status": status,
-            **({"expected_type": expected_type} if expected_type else {}),
-            **({"requirement": requirement} if requirement else {}),
-            **({"regression": regression} if regression else {}),
-        }
-        try:
-            item = cq_store.add_case(domain, case, actor_type="agent", actor="mcp")
-        except ValueError as exc:
-            return {"error": str(exc)}
-        return {"ok": True, "case": item, "ontology_id": domain}
-
-    @server.tool(description=(
-        "修改一道 CQ（与 REST PATCH /cq/cases/{id} 对称）。只覆盖传入字段；"
-        "id 不可改。写回受管存储并记审计（actor=agent/mcp）。"))
-    def update_cq(
-        case_id: str,
-        cq: str | None = None,
-        expected_type: str | None = None,
-        status: str | None = None,
-        requirement: str | None = None,
-        regression: dict | None = None,
-    ) -> dict:
-        patch = {
-            key: value for key, value in {
-                "cq": cq, "expected_type": expected_type, "status": status,
-                "requirement": requirement, "regression": regression,
-            }.items() if value is not None
-        }
-        domain, _ = _cq_identity()
-        try:
-            item = cq_store.update_case(
-                domain, case_id, patch, actor_type="agent", actor="mcp",
-            )
-        except ValueError as exc:
-            return {"error": str(exc)}
-        return {"ok": True, "case": item, "ontology_id": domain}
-
-    @server.tool(description=(
-        "删除一道 CQ（与 REST DELETE /cq/cases/{id} 对称），按稳定 id 操作，"
-        "写回受管存储并记审计（actor=agent/mcp）。"))
-    def delete_cq(case_id: str) -> dict:
-        domain, _ = _cq_identity()
-        try:
-            removed = cq_store.delete_case(
-                domain, case_id, actor_type="agent", actor="mcp",
-            )
-        except ValueError as exc:
-            return {"error": str(exc)}
-        return {"ok": True, "deleted": removed, "ontology_id": domain}
-
-    @server.tool(description=(
-        "读取 CQ 变更审计（与 REST GET /cq/audit 对称）：按时间倒序返回 "
-        "add/update/delete/import/save 记录（actor_type=human/agent、before/after 摘要），"
-        "支持 limit / offset / case_id 过滤。"))
-    def get_cq_audit(limit: int = 50, offset: int = 0, case_id: str = "") -> dict:
-        domain, _ = _cq_identity()
-        entries = cq_store.read_audit(
-            domain, limit=limit, offset=offset, case_id=case_id or None,
-        )
-        return {"ontology_id": domain, "limit": limit, "offset": offset, "entries": entries}
-
-    @server.tool(description=(
-        "整集保存（与 REST PUT /cq/set 对称）：suite / cases 覆盖当前 CQ 集，"
-        "写回受管存储并记审计（actor=agent/mcp）。"))
-    def save_cq_set(suite: str, cases: list[dict]) -> dict:
-        domain, _ = _cq_identity()
-        try:
-            saved = cq_store.save_set(
-                domain, {"suite": suite, "cases": cases},
-                actor_type="agent", actor="mcp", action="save",
-            )
-        except ValueError as exc:
-            return {"error": str(exc)}
-        return {"ok": True, "suite": saved.get("suite"), "cases": len(saved.get("cases") or [])}
-
-    @server.tool(description=(
-        "整集导入（与 REST POST /cq/import 对称）：content 为 cq_set.json 的 UTF-8 "
-        "文本；校验后原子覆盖并记审计。"))
-    def import_cq_set(content: str) -> dict:
-        domain, _ = _cq_identity()
-        try:
-            data = cq_store.import_set(
-                domain, content.encode("utf-8"), actor_type="agent", actor="mcp",
-            )
-        except ValueError as exc:
-            return {"error": str(exc)}
-        return {
-            "ok": True,
-            "suite": data.get("suite") or "",
-            "cases": len(data.get("cases") or []),
-            "ontology_id": domain,
-        }
-
-    @server.tool(description=(
-        "整集导出（与 REST GET /cq/export 对称）：format=json 返回原文；"
-        "format=cq-test 返回 rdf-construct 兼容 YAML；format=junit 返回最近一次回归报告。"))
-    def export_cq_set(format: str = "json") -> dict:
-        domain, seed = _cq_identity()
-        if format == "json":
-            return {"ontology_id": domain, "format": "json", "content": cq_store.export_text(domain, seed)}
-        if format == "cq-test":
-            data = cq_store.get_set(domain, seed)
-            return {"ontology_id": domain, "format": "cq-test", "content": cq_store.export_cq_test(data)}
-        if format == "junit":
-            runs = cq_store.list_runs(domain, limit=1)
-            if not runs:
-                return {"error": "还没有回归执行历史；请先运行评估"}
-            return {"ontology_id": domain, "format": "junit", "content": cq_store.export_junit(runs[0])}
-        return {"error": f"不支持的导出格式：{format}"}

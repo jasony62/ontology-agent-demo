@@ -28,7 +28,7 @@
 | **OWL 2 RL 推理引擎** | 加载 OWL 本体并物化推理；SPARQL / 类层次 / 个体 / 属性查询 | `scripts/query.py classes --local` |
 | **业务规则 R1 / R2 / R2a / R2b / R5 / R6** | 能力匹配、任务委派、认证有效期、担责判定、人工介入、双人复核与复核候选；R4 合规冲突由适配器在分配时校验。规则层可审查、可改口径，输出可解释推导链 | `make demo` |
 | **REST API** | 45 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / CQ 依据定位 / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
-| **MCP Server** | 31 个工具（领域业务 9 + 建模/质量 7 + 引擎通用 15），智能体（豆包等）一行配置接入 | `make mcp` |
+| **MCP Server** | 同进程双端点：`/mcp/ontology`（领域业务 10 + 引擎通用 15）与 `/mcp/cq`（CQ 8），智能体（豆包等）一行配置接入 | `make mcp` |
 | **当前领域单页** | 六问导航：定位 / 能问什么 / 能做什么 / 凭什么可信 / 怎么接入 / 现在跑的是哪一份；示例题按「看一次编排 / 预测一次变化 / 其余示例」分组，预测题在断言图副本上做只读推演、并排展示改动前后 | 页头「当前领域」 |
 | **图谱工作台** | React 工作台：三档视图图谱、OWL 源码查看、导入导出、图谱右侧编辑框（草图预览）+ 在线编辑（写盘） | `npm run dev` |
 | **CLI 双通道** | HTTP 优先、失败回退内嵌引擎（`--local` 零依赖） | `python scripts/query.py -h` |
@@ -404,31 +404,40 @@ adapter = AgentTaskAdapter(get_engine(), DEFAULT_CONFIG.update(
 ## MCP 接入（智能体直接调用）
 
 本体推理已封装为标准 MCP Server（`mcp/mcp_server.py`，内嵌引擎、复用**当前领域**），
-31 个工具按来源分三组：
+同一进程内暴露两个 streamable-http 端点（`/mcp` 仍是 `/mcp/ontology` 的旧路径别名）：
 
-- **领域业务工具 9 个**随领域包走（`domains/<name>/mcp.py` 注册）：`capability_match` / `orchestrate` /
-  `assign` / `classify` / `consistency` / `explain` / `ontology` / `status` / `entities`
-- **建模 / 质量工具 7 个**也随领域包走（`domains/<name>/mcp.py` 注册）：`guide_tbox_draft` /
-  `validate_tbox_draft` / `validate_shapes` / `guide_cq_generation` / `validate_cqs` /
-  `validate_cqs_declared` / `cq_regression`
-- **引擎通用工具 15 个**任意 `.owl` 可用：`query_sparql` / `individuals` / `classes` / `types_of` /
-  `property_values` / `infer` / `explain_proof` / `predefined_queries` / `run_predefined_query` /
-  `active_facts` / `guard_status` / `pipeline_gate` / `run_rules` / `list_rules` / `merge_check`
+- `/mcp/ontology`——本体推理：
+  - **领域业务工具 10 个**随领域包走（`domains/<name>/mcp.py` 注册）：`capability_match` / `orchestrate` /
+    `assign` / `classify` / `consistency` / `explain` / `ontology` / `status` / `entities` / `validate_shapes`
+  - **引擎通用工具 15 个**任意 `.owl` 可用：`query_sparql` / `individuals` / `classes` / `types_of` /
+    `property_values` / `infer` / `explain_proof` / `predefined_queries` / `run_predefined_query` /
+    `active_facts` / `guard_status` / `pipeline_gate` / `run_rules` / `list_rules` / `merge_check`
+- `/mcp/cq`——CQ 集全生命周期（框架级，**不依赖领域包**，导入裸 OWL 也可用）：
+  `cq_set_read` / `cq_set_write` / `cq_case_upsert` / `cq_case_remove` / `cq_author` /
+  `cq_to_schema` / `cq_regression` / `cq_audit`
+
+CQ 工具与本体端点共享同一个 `get_engine()` 工厂和同一份 `cq_store`：回归跑的是当前
+内存引擎图，不会吃到过期图；身份沿用 `workspaces` 的 `ontology_id`（导入态与 REST 同一个
+工作区 uuid）。所有 CQ 错误统一返回 `{ok: false, error: {code, message}}`。
 
 调用护栏在同目录 `policy.py`（语义白名单门禁）与 `tool_guard.py`（预算熔断 / 循环拦截 /
 缓存复用 / 审计留痕），均随领域包配置，未启用时逐字节向后兼容。
-**换领域时领域工具随之更换**：有 `mcp.py` 的领域注册自有工具；未提供 `mcp.py` 的领域只注册引擎通用工具，其自有能力仍可通过 REST 调用。
+**换领域时领域工具随之更换**：有 `mcp.py` 的领域注册自有工具；未提供 `mcp.py` 的领域只注册
+引擎通用工具，其自有能力仍可通过 REST 调用；`/mcp/cq` 始终可用。`--domain imported`
+直接绑定当前导入的本体，不需要任何领域包。
 
 ```bash
 cd <项目根目录>
 .venv/bin/python mcp/mcp_server.py                                   # 默认领域；streamable-http
 .venv/bin/python mcp/mcp_server.py --domain agent_task --port 9000    # 换领域
+.venv/bin/python mcp/mcp_server.py --domain imported --port 9000      # 当前导入的本体
 .venv/bin/python mcp/mcp_server.py --watch                            # 文件监听热重载（推荐）
 .venv/bin/python mcp/mcp_server.py --transport stdio                  # stdio（本地 Client）
 ```
 
 接入豆包：侧边栏「技能 / 连接器」→ 添加 → 新建自定义连接器 → 传输类型 **HTTP** →
-URL 填 `http://127.0.0.1:9000/mcp`，保存后即可在对话中直接调用。
+URL 填 `http://127.0.0.1:9000/mcp/ontology`（本体推理）或 `http://127.0.0.1:9000/mcp/cq`
+（CQ 集管理）；旧地址 `http://127.0.0.1:9000/mcp` 仍可连接本体推理。
 
 ## 与《本体上手指南》配套
 

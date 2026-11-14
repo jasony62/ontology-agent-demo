@@ -14,7 +14,8 @@
 from __future__ import annotations
 
 import asyncio
-from types import SimpleNamespace
+import importlib.util
+import os
 
 from reasoner.engine import ONTO_PATH, OntologyEngine
 
@@ -22,7 +23,13 @@ from _helpers import domain_module, submodule  # noqa: E402
 
 domain = domain_module()
 cq = submodule(domain, "cq")
-mcp_tools = submodule(domain, "mcp")
+
+_CQ_TOOLS_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "mcp", "cq_tools.py"
+)
+_cq_spec = importlib.util.spec_from_file_location("_cq_tools_anchor_test", _CQ_TOOLS_PATH)
+cq_mcp = importlib.util.module_from_spec(_cq_spec)
+_cq_spec.loader.exec_module(cq_mcp)
 
 from ontology_plugin_sdk.cq import tbox  # noqa: E402
 
@@ -212,37 +219,35 @@ def _register_tools() -> tuple:
     from mcp.server.mcpserver import MCPServer
 
     engine = _engine()
-    adapter = SimpleNamespace(engine=engine, NAME=domain.NAME)
     server = MCPServer(name="cq-anchor-test")
-    mcp_tools.register_tools(server, lambda: adapter)
+    cq_mcp.register_tools(server, lambda: engine, lambda: (domain.NAME, None))
     return server, engine
 
 
 def test_v10_declared_tool_is_added_without_changing_old_schema():
-    """V10：tools/list 多一个工具；旧 validate_cqs 的输入 schema 逐项不变。"""
+    """#172：CQ 工具面收敛后，cq_author 仍是原锚点来源（engine 由 MCP 层注入）。"""
     server, engine = _register_tools()
     tools = {t.name: t for t in asyncio.run(server.list_tools())}
 
-    assert "validate_cqs_declared" in tools
-    old_schema = tools["validate_cqs"].input_schema
-    assert set(old_schema["properties"]) == {"cqs"}
-    assert old_schema["properties"]["cqs"]["type"] == "array"
-    assert old_schema["properties"]["cqs"]["items"] == {"type": "string"}
-    assert old_schema["required"] == ["cqs"]
+    assert "cq_author" in tools
+    schema = tools["cq_author"].input_schema
+    assert {"focus", "draft", "ontology_id"} <= set(schema["properties"])
+    draft_schema = schema["properties"]["draft"]
+    assert any(option.get("type") == "array" for option in draft_schema["anyOf"])
 
-    # 旧客户端按原签名调用仍工作，且锚点来自运行时 schema（engine 由 MCP 层注入）
+    # 旧能力（质检）合并进 cq_author；锚点仍来自运行时 schema
     result = asyncio.run(server.call_tool(
-        "validate_cqs", {"cqs": ["哪些 IDE 被 GitRepo 使用？"]}))
+        "cq_author", {"draft": ["哪些 IDE 被 GitRepo 使用？"]}))
     payload = result.structured_content or result.content
     text = str(payload)
     assert "usable" in text and "GitRepo" in text
 
 
 def test_v10_declared_tool_accepts_focus_output():
-    """V10：新工具吃 {cq, expected_type, anchor_terms} 数组。"""
+    """#172：cq_author 吃 {cq, expected_type, anchor_terms} 数组。"""
     server, _engine_obj = _register_tools()
     result = asyncio.run(server.call_tool(
-        "validate_cqs_declared",
-        {"cqs": [{"cq": "哪些无人机可以巡检地块？", "anchor_terms": ["无人机", "地块"]}]}))
+        "cq_author",
+        {"draft": [{"cq": "哪些无人机可以巡检地块？", "anchor_terms": ["无人机", "地块"]}]}))
     text = str(result.structured_content or result.content)
     assert "revise" in text  # 单题批次词表不足 → 声明不采信（V7 ⑤）

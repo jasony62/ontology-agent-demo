@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import asyncio
 import json
 import os
 import types
@@ -45,37 +46,40 @@ def test_tool_name_guard_rejects_duplicate_registration():
 
 
 def test_active_domain_mcp_has_no_duplicate_tool_names():
-    """当前领域包（agent_task）注册表无重名，防止 merge 残留再次混入。"""
+    """当前领域包（agent_task）注册表无重名，且 CQ 工具不再随领域包走。"""
     mod = submodule(domain_module(), "mcp")
     server = _FakeServer()
     mod.register_tools(mcp_server._ToolNameGuard(server), lambda: None)
     assert "status" in server.tools
+    assert "validate_shapes" in server.tools          # 依赖领域 shapes，留在 /mcp/ontology
+    assert not {"get_cq_set", "add_cq", "save_cq_set", "cq_regression",
+                "guide_cq_generation", "validate_cqs"} & set(server.tools)
 
 
 def test_mcp_cq_write_tools_share_the_same_store(tmp_path, monkeypatch):
-    """#155：MCP 写工具与 REST 写同一个 cq_store，并以 agent 身份记审计。"""
-    from types import SimpleNamespace
-
+    """#171/#172：CQ 工具脱离领域包，写同一个 cq_store，并以 agent 身份记审计。"""
     from api import workspaces
     from cq import cq_store
 
     monkeypatch.setenv("ONTOLOGY_WORKSPACES_ROOT", str(tmp_path))
-    mod = submodule(domain_module(), "mcp")
-    adapter = SimpleNamespace(NAME="agent_task")
     server = _FakeServer()
-    mod.register_tools(mcp_server._ToolNameGuard(server), lambda: adapter)
+    mcp_server.cq_tools_mod.register_tools(
+        mcp_server._ToolNameGuard(server), lambda: None, lambda: ("agent_task", None),
+    )
 
-    added = server.tools["add_cq"](cq="智能体场景：本体里有哪些类？", status="active")
+    added = server.tools["cq_case_upsert"](case={"cq": "智能体场景：本体里有哪些类？", "status": "active"})
     assert added["ok"] is True
     case_id = added["case"]["id"]
+    assert added["action"] == "add"
     stored = cq_store.get_set("agent_task")
     assert any(case["id"] == case_id for case in stored["cases"])
 
-    updated = server.tools["update_cq"](case_id=case_id, cq="改过的题干")
+    updated = server.tools["cq_case_upsert"](case={"id": case_id, "cq": "改过的题干"})
     assert updated["ok"] is True
+    assert updated["action"] == "update"
     assert cq_store.get_set("agent_task")["cases"][0]["cq"] == "改过的题干"
 
-    deleted = server.tools["delete_cq"](case_id=case_id)
+    deleted = server.tools["cq_case_remove"](case_id=case_id)
     assert deleted["ok"] is True
     assert cq_store.get_set("agent_task")["cases"] == []
 
@@ -86,9 +90,7 @@ def test_mcp_cq_write_tools_share_the_same_store(tmp_path, monkeypatch):
 
 
 def test_mcp_cq_identity_matches_rest_workspace(tmp_path, monkeypatch):
-    """#164：导入态下 MCP 与 REST 使用同一个工作区 id，而不是 workspaces/imported。"""
-    from types import SimpleNamespace
-
+    """#164/#171：导入态下 MCP 与 REST 使用同一个工作区 id，而不是 workspaces/imported。"""
     from api import workspaces
     from cq import cq_store
 
@@ -96,14 +98,113 @@ def test_mcp_cq_identity_matches_rest_workspace(tmp_path, monkeypatch):
     meta, _ = workspaces.create(b"<rdf:RDF/>", "x.owl")
     workspaces.set_current(meta["id"], "imported")
 
-    mod = submodule(domain_module(), "mcp")
     server = _FakeServer()
-    mod.register_tools(mcp_server._ToolNameGuard(server), lambda: SimpleNamespace(NAME="agent_task"))
-    result = server.tools["add_cq"](cq="导入态 CQ")
+    mcp_server.cq_tools_mod.register_tools(
+        mcp_server._ToolNameGuard(server), lambda: None,
+        lambda: cq_store.identity_for("agent_task"),
+    )
+    result = server.tools["cq_case_upsert"](case={"cq": "导入态 CQ"})
     assert result["ontology_id"] == meta["id"]
     assert (workspaces.workspace_dir(meta["id"]) / "cq_set.json").is_file()
     assert not workspaces.workspace_dir("imported").exists()
     assert cq_store.identity_for("agent_task")[0] == meta["id"]
+
+
+def test_cq_mcp_surface_is_consolidated_and_prefixed():
+    """#172：/mcp/cq 工具数 ≤ 8，统一 cq_ 前缀，无 guide/validate、save/import 冗余 pair。"""
+    server = mcp_server.build_cq_server(lambda: None, lambda: ("agent_task", None))
+    names = sorted(tool.name for tool in asyncio.run(server.list_tools()))
+    assert names == [
+        "cq_audit",
+        "cq_author",
+        "cq_case_remove",
+        "cq_case_upsert",
+        "cq_regression",
+        "cq_set_read",
+        "cq_set_write",
+        "cq_to_schema",
+    ]
+    assert len(names) <= 8
+    assert all(name.startswith("cq_") for name in names)
+
+
+def test_cq_mcp_errors_are_structured():
+    """#172：错误统一 {ok:false, error:{code,message}}，不裸抛 str(exc)。"""
+    server = _FakeServer()
+    mcp_server.cq_tools_mod.register_tools(
+        mcp_server._ToolNameGuard(server), lambda: None, lambda: ("agent_task", None),
+    )
+    bad_format = server.tools["cq_set_read"](format="xml")
+    assert bad_format["ok"] is False
+    assert bad_format["error"]["code"] == "bad_format"
+
+    unknown = server.tools["cq_set_read"](ontology_id="../escape")
+    assert unknown["ok"] is False
+    assert unknown["error"]["code"] == "invalid_ontology"
+
+    no_case = server.tools["cq_case_upsert"](case="not-a-dict")
+    assert no_case["ok"] is False
+    assert no_case["error"]["code"] == "invalid_case"
+
+
+def test_build_server_can_skip_domain_tools_for_imported():
+    """#171：导入本体没有领域包，只注册通用工具；CQ 由 /mcp/cq 独立提供。"""
+    adapter = types.SimpleNamespace(NAME="imported")
+    server = mcp_server.build_server(
+        lambda: None, lambda: adapter, "imported", "导入的本体", with_domain_tools=False,
+    )
+    names = {tool.name for tool in asyncio.run(server.list_tools())}
+    assert "query_sparql" in names
+    assert "status" not in names
+    assert "validate_shapes" not in names
+    assert not any(name.startswith("cq_") for name in names)
+
+
+def test_combined_http_app_exposes_both_endpoints_with_alias():
+    """#171：单进程双端点；/mcp 保留为旧路径别名，不新建第二份会话管理。"""
+    adapter = types.SimpleNamespace(NAME="minimal")
+    ontology_server = mcp_server.build_server(
+        lambda: None, lambda: adapter, "minimal", "最小领域", with_domain_tools=False,
+    )
+    cq_server = mcp_server.build_cq_server(lambda: None, lambda: ("minimal", None))
+    app = mcp_server.combined_http_app(
+        {"/mcp/ontology": ontology_server, "/mcp/cq": cq_server},
+        aliases={"/mcp": "/mcp/ontology"},
+    )
+    paths = {getattr(route, "path", None) for route in app.routes}
+    assert {"/mcp/ontology", "/mcp/cq", "/mcp"} <= paths
+    assert ontology_server.session_manager is not cq_server.session_manager
+
+
+def test_imported_runtime_binds_current_workspace(tmp_path, monkeypatch):
+    """#171：--domain imported 直接绑定当前导入工作区，无领域包也能提供 CQ。"""
+    from api import workspaces
+
+    monkeypatch.setenv("ONTOLOGY_WORKSPACES_ROOT", str(tmp_path))
+    owl = (
+        '<?xml version="1.0"?>'
+        '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'
+        ' xmlns:owl="http://www.w3.org/2002/07/owl#"'
+        ' xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#">'
+        '<owl:Class rdf:about="http://example.org/Widget">'
+        '<rdfs:label>部件</rdfs:label></owl:Class></rdf:RDF>'
+    ).encode("utf-8")
+    meta, _ = workspaces.create(owl, "widget.owl")
+    workspaces.set_current(meta["id"], "imported")
+
+    module, engine, adapter, source, loaded_meta = mcp_server.load_imported_runtime()
+    assert module.NAME == "imported"
+    assert adapter.NAME == "imported"
+    assert loaded_meta["id"] == meta["id"]
+    assert source == str(workspaces.source_path(meta["id"]))
+    assert "Widget" in engine.classes()[0]["name"]
+
+
+def test_imported_runtime_requires_a_workspace(tmp_path, monkeypatch):
+    """没有导入态工作区时诚实报错，不静默退回预置领域。"""
+    monkeypatch.setenv("ONTOLOGY_WORKSPACES_ROOT", str(tmp_path))
+    with pytest.raises(RuntimeError, match="导入态本体"):
+        mcp_server.load_imported_runtime()
 
 
 def test_build_server_allows_domain_without_mcp_module(monkeypatch):

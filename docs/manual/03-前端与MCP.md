@@ -22,7 +22,7 @@
 
 **在线编辑边界**：编辑模型覆盖类 / 属性 / 个体子集，外加 `owl:disjointWith` 具名互斥对（#112）、对象属性逆属性（#117，成对生效、写回单方向）与 `X ≡ A ⊓ ∃p.C` 模板定义类（#117）；restriction 自由表达式、属性链等复杂公理不进入表单，但保存**不再重建整份文件**：后端以当前文件为底图，只覆盖表单建模到的部分，未建模的公理（含其他等价表达式 / BNode 匿名互斥）、属性注释与字面量 datatype 原样保留，不改直接保存是无损的（双写逆属性会规约成单写）。写盘前自动备份到 `backups/<时间戳>/`（保留最近 10 份），重建失败从备份恢复原文件（「生成新本体文件」仍写到 `data/uploads/` 并进入「导入的本体」只读领域）。校验规则刻意宽松（开放世界假设）：id 仅要求非空且无 IRI 危险字符，中文/下划线短名合法，对象断言可指向未声明实体。**图谱右侧编辑框与在线编辑采用同一 id 判据**：都不检查派生的 `EntityType.id` 命名风格（camelCase / snake_case / 中文均可）。图谱编辑框是**草图**：刷新即丢，不写盘；要写入系统请用「在线编辑」，要留住草图请导出文件。
 
-**校验边界**：图谱编辑框只做**可写入性校验**（这份模型能否被本编辑器安全写回），不是语义校验。类不可满足、`disjoint` 冲突、`domain`/`range` 违反等本体质量问题由后端 SHACL / OWL RL / `validate_tbox_draft` 判定，前端不重复实现。建议层（缺描述 / 尚无属性等）已删除；只有 blocker / required，以节点 ⚠ 角标 + 表单内就地修复呈现，导出时统一汇总拦截。
+**校验边界**：图谱编辑框只做**可写入性校验**（这份模型能否被本编辑器安全写回），不是语义校验。类不可满足、`disjoint` 冲突、`domain`/`range` 违反等本体质量问题由后端 SHACL / OWL RL / `cq_to_schema` 判定，前端不重复实现。建议层（缺描述 / 尚无属性等）已删除；只有 blocker / required，以节点 ⚠ 角标 + 表单内就地修复呈现，导出时统一汇总拦截。
 
 ### 标识属性与 `owl:hasKey`
 
@@ -55,6 +55,7 @@ docker compose up -d mcp
 
 # 方式二：手动
 .venv/bin/python mcp/mcp_server.py --domain agent_task --port 9000    # streamable-http
+.venv/bin/python mcp/mcp_server.py --domain imported --port 9000      # 当前导入的本体
 .venv/bin/python mcp/mcp_server.py --transport stdio                  # stdio（本地 Client / Claude Desktop）
 # --watch 参数可开启文件监听热重载
 ```
@@ -62,10 +63,16 @@ docker compose up -d mcp
 ### 接入豆包（连接器）
 
 1. 豆包电脑版 → 侧边栏「技能 / 连接器」→ 右上角「添加」→「新建自定义连接器」；
-2. 传输类型选 **HTTP**，MCP 服务器 URL 填 `http://127.0.0.1:9000/mcp`；
+2. 传输类型选 **HTTP**，MCP 服务器 URL 填 `http://127.0.0.1:9000/mcp/ontology`（本体推理）或 `http://127.0.0.1:9000/mcp/cq`（CQ 集管理）；旧地址 `/mcp` 仍指向本体推理；
 3. 保存后即可在对话中直接调用本体推理工具。
 
-### 工具清单（31 个：领域业务 9 + 建模/质量 7 + 引擎通用 15）
+### 工具清单（同进程双端点）
+
+| 端点 | 工具数 | 组成 |
+|---|---|---|
+| `/mcp/ontology` | 25（agent_task） | 领域业务 10 + 引擎通用 15；导入本体时为 15（无领域包） |
+| `/mcp/cq` | 8 | CQ 集管理 / 出题质检 / TBox 校验 / 回归 / 审计（不依赖领域包） |
+| `/mcp` | 同 `/mcp/ontology` | 旧路径别名，兼容既有客户端 |
 
 **通用工具**（`mcp/mcp_server.py`，与本体无关，任意 `.owl` 可用）：
 
@@ -99,13 +106,24 @@ docker compose up -d mcp
 | `ontology()` | 本体结构（类/个体/边，图谱渲染） |
 | `status()` | 本体状态（基线哈希/脏标记，与 API 一致性校验） |
 | `entities()` | 实体短名清单（辅助选参） |
-| `guide_tbox_draft(cqs)` | CQ 建模-指南：输出 TBox 生成指令 + schema 对照 + 自查清单 |
-| `validate_tbox_draft(ttl, cqs?)` | CQ 建模-校验：TBox 草稿分级验证（L1 语法→L5 术语覆盖）+ verdict（pass/fixable/reject） |
 | `validate_shapes()` | SHACL 数据体检：按领域包 `shapes/*.ttl` 返回 {conforms, summary, violations}；**只校验断言图（`engine.raw`）、不含推理闭包**——属性链/规则层推导的 `can_execute` 不参与，要审推理产物须显式对物化图执行 |
-| `guide_cq_generation(focus?)` | **CQ 自动出题-指南**：生成宿主 LLM 出题指令（四类题型配比、措辞规则、JSON 格式）；focus 提供全新领域时降级 from_description 模式 |
-| `validate_cqs(cqs)` | **CQ 自动出题-质检**：确定性质检（零 LLM 依赖）——句式/schema 术语锚点/查重/题型预标/覆盖度报告，返回 usable/revise/duplicate |
-| `validate_cqs_declared(cqs)` | **CQ 自动出题-质检（focus 模式）**：接受 `guide_cq_generation(focus=...)` 产出的 `{cq, expected_type, anchor_terms}` 数组，采信题内声明锚点（题干匹配 / 元词黑名单 / 领域停用词表 / 本卷词表 6–8 四重约束）；不传声明时按普通质检处理 |
-| `cq_regression()` | **CQ 回归**：按 cq_tests.json 复放能力点断言（CQ）验证集，检查质检是否回归 |
+
+> CQ 出题 / 质检 / TBox 建模工具已从领域包移到框架级 `/mcp/cq`（#171/#172）；`validate_shapes` 因依赖领域 `shapes/*.ttl` 仍留在本端点。
+
+**CQ 工具**（`/mcp/cq`，框架级，任意本体可用；错误统一 `{ok: false, error: {code, message}}`）：
+
+| 工具 | 说明 |
+|---|---|
+| `cq_set_read(format?, ontology_id?)` | 读当前 CQ 集 + 概览（承诺 / 已定位 / 可答 / 缺口、两档覆盖率）；`format=cq-test` 返回 rdf-construct 兼容 YAML |
+| `cq_set_write(suite?, cases?, content?, ontology_id?)` | 整集覆盖：直接传 suite+cases，或传 `content`（cq_set.json 文本）走校验导入；原子写 + 审计 |
+| `cq_case_upsert(case, ontology_id?)` | 单条增改：带 id 且存在则更新，否则自动分配 id 新增 |
+| `cq_case_remove(case_id, ontology_id?)` | 按稳定 id 删除单题 |
+| `cq_author(focus?, draft?, ontology_id?)` | 出题 + 质检合一：`draft` 为空返回出题指引；非空对草稿做确定性质检 |
+| `cq_to_schema(cqs, ttl?, ontology_id?)` | TBox 指引 + 校验合一：`ttl` 为空返回生成指令；非空做 L1–L5 校验 |
+| `cq_regression(want?, ontology_id?)` | 当前内存引擎跑回归；`want=json / junit / cq-test` |
+| `cq_audit(limit?, offset?, case_id?, ontology_id?)` | CQ 变更审计（时间倒序） |
+
+`ontology_id` 缺省取当前本体身份（预置领域名 / 导入工作区 uuid，与 REST 一致）；显式覆盖只接受当前身份或已存在工作区。
 
 **受控语义接口**：配置领域包 `access_policy.json` 语义白名单后，MCP 只暴露允许的类/谓词（含子类继承），白名单外查询被拒并返回诚实提示；策略激活时 `query_sparql` 禁用。
 

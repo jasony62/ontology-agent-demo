@@ -12,6 +12,7 @@ from mcp.server.mcpserver import MCPServer
 
 from ontology_plugin_sdk import local
 from . import cq, cq_regression as cq_reg
+from cq import cq_store
 
 import os
 from rdflib import Graph, Namespace, RDF, URIRef
@@ -276,3 +277,132 @@ def register_tools(server: MCPServer, get_adapter) -> None:
     def cq_regression() -> dict:
         a = get_adapter()
         return cq_reg.run_suite(a)
+
+    # ---- CQ 集写路径（#155）：与 REST 对称，读写同一个 cq_store ----
+
+    def _cq_identity() -> tuple[str, str | None]:
+        adapter = get_adapter()
+        domain = getattr(adapter, "NAME", "domain")
+        seed = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cq_tests.json")
+        return domain, seed if os.path.isfile(seed) else None
+
+    @server.tool(description=(
+        "读取当前 CQ 集（与 REST GET /cq/set 对称）：返回 suite、cases、概览 summary"
+        "（承诺 / 已定位 / 可答 / 缺口与两档覆盖率）。"))
+    def get_cq_set() -> dict:
+        domain, seed = _cq_identity()
+        data = cq_store.get_set(domain, seed)
+        return {"ontology_id": domain, **cq_store.build_view(get_adapter().engine, data)}
+
+    @server.tool(description=(
+        "新增一道 CQ（与 REST POST /cq/cases 对称，写回受管 cq_set.json 并记审计）。"
+        "cq 为题干；expected_type/status/requirement 可选；regression 可传 "
+        "{tool,params,expect} 或 {query,expect}。缺 id 时自动分配。"))
+    def add_cq(
+        cq: str,
+        expected_type: str | None = None,
+        status: str = "draft",
+        requirement: str | None = None,
+        regression: dict | None = None,
+    ) -> dict:
+        domain, _ = _cq_identity()
+        case = {
+            "cq": cq,
+            "status": status,
+            **({"expected_type": expected_type} if expected_type else {}),
+            **({"requirement": requirement} if requirement else {}),
+            **({"regression": regression} if regression else {}),
+        }
+        try:
+            item = cq_store.add_case(domain, case, actor_type="agent", actor="mcp")
+        except ValueError as exc:
+            return {"error": str(exc)}
+        return {"ok": True, "case": item, "ontology_id": domain}
+
+    @server.tool(description=(
+        "修改一道 CQ（与 REST PATCH /cq/cases/{id} 对称）。只覆盖传入字段；"
+        "id 不可改。写回受管存储并记审计（actor=agent/mcp）。"))
+    def update_cq(
+        case_id: str,
+        cq: str | None = None,
+        expected_type: str | None = None,
+        status: str | None = None,
+        requirement: str | None = None,
+        regression: dict | None = None,
+    ) -> dict:
+        patch = {
+            key: value for key, value in {
+                "cq": cq, "expected_type": expected_type, "status": status,
+                "requirement": requirement, "regression": regression,
+            }.items() if value is not None
+        }
+        domain, _ = _cq_identity()
+        try:
+            item = cq_store.update_case(
+                domain, case_id, patch, actor_type="agent", actor="mcp",
+            )
+        except ValueError as exc:
+            return {"error": str(exc)}
+        return {"ok": True, "case": item, "ontology_id": domain}
+
+    @server.tool(description=(
+        "删除一道 CQ（与 REST DELETE /cq/cases/{id} 对称），按稳定 id 操作，"
+        "写回受管存储并记审计（actor=agent/mcp）。"))
+    def delete_cq(case_id: str) -> dict:
+        domain, _ = _cq_identity()
+        try:
+            removed = cq_store.delete_case(
+                domain, case_id, actor_type="agent", actor="mcp",
+            )
+        except ValueError as exc:
+            return {"error": str(exc)}
+        return {"ok": True, "deleted": removed, "ontology_id": domain}
+
+    @server.tool(description=(
+        "整集保存（与 REST PUT /cq/set 对称）：suite / cases 覆盖当前 CQ 集，"
+        "写回受管存储并记审计（actor=agent/mcp）。"))
+    def save_cq_set(suite: str, cases: list[dict]) -> dict:
+        domain, _ = _cq_identity()
+        try:
+            saved = cq_store.save_set(
+                domain, {"suite": suite, "cases": cases},
+                actor_type="agent", actor="mcp", action="save",
+            )
+        except ValueError as exc:
+            return {"error": str(exc)}
+        return {"ok": True, "suite": saved.get("suite"), "cases": len(saved.get("cases") or [])}
+
+    @server.tool(description=(
+        "整集导入（与 REST POST /cq/import 对称）：content 为 cq_set.json 的 UTF-8 "
+        "文本；校验后原子覆盖并记审计。"))
+    def import_cq_set(content: str) -> dict:
+        domain, _ = _cq_identity()
+        try:
+            data = cq_store.import_set(
+                domain, content.encode("utf-8"), actor_type="agent", actor="mcp",
+            )
+        except ValueError as exc:
+            return {"error": str(exc)}
+        return {
+            "ok": True,
+            "suite": data.get("suite") or "",
+            "cases": len(data.get("cases") or []),
+            "ontology_id": domain,
+        }
+
+    @server.tool(description=(
+        "整集导出（与 REST GET /cq/export 对称）：format=json 返回原文；"
+        "format=cq-test 返回 rdf-construct 兼容 YAML；format=junit 返回最近一次回归报告。"))
+    def export_cq_set(format: str = "json") -> dict:
+        domain, seed = _cq_identity()
+        if format == "json":
+            return {"ontology_id": domain, "format": "json", "content": cq_store.export_text(domain, seed)}
+        if format == "cq-test":
+            data = cq_store.get_set(domain, seed)
+            return {"ontology_id": domain, "format": "cq-test", "content": cq_store.export_cq_test(data)}
+        if format == "junit":
+            runs = cq_store.list_runs(domain, limit=1)
+            if not runs:
+                return {"error": "还没有回归执行历史；请先运行评估"}
+            return {"ontology_id": domain, "format": "junit", "content": cq_store.export_junit(runs[0])}
+        return {"error": f"不支持的导出格式：{format}"}

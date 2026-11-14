@@ -397,7 +397,12 @@ export interface CqSetCase {
   requirement?: string;
   priority?: string;
   status?: string;
-  regression?: { tool?: string; params?: Record<string, unknown>; expect?: unknown } | null;
+  regression?: {
+    tool?: string;
+    params?: Record<string, unknown>;
+    query?: string;
+    expect?: unknown;
+  } | null;
   coverage_cache?: { conclusion?: number; ran_at?: string; [key: string]: unknown } | null;
   notes?: string;
   updated_at?: string;
@@ -442,6 +447,29 @@ export interface CqLocateResult {
   evidence: CqEvidence[];
   counts: { total: number; conclusion: number; description: number };
   hint: string;
+}
+
+export interface CqRunCase {
+  id?: string;
+  cq?: string;
+  rule?: string;
+  state: 'pass' | 'fail' | 'cannot_tell' | 'not_tested';
+  detail?: Record<string, unknown>;
+  hint?: string;
+}
+
+export interface CqRun {
+  suite: string;
+  ran_at: string;
+  total: number;
+  pass: number;
+  fail: number;
+  cannot_tell: number;
+  not_tested: number;
+  coverage_real: number;
+  cases: CqRunCase[];
+  actor_type?: string;
+  actor?: string;
 }
 
 export const api = {
@@ -494,8 +522,44 @@ export const api = {
     );
   },
 
-  /** CQ 集导出地址（附件下载） */
-  cqExportUrl: () => '/api/domains/current/cq/export',
+  /** CQ 集导出地址（附件下载；format: json / cq-test / junit） */
+  cqExportUrl: (format: 'json' | 'cq-test' | 'junit' = 'json') =>
+    `/api/domains/current/cq/export?format=${format}`,
+
+  /** 单题 CRUD（#154） */
+  cqAddCase: (payload: Partial<CqSetCase>) =>
+    request<CqSetResponse & { case: CqSetCase }>('/api/domains/current/cq/cases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  cqUpdateCase: (caseId: string, patch: Partial<CqSetCase>) =>
+    request<CqSetResponse & { case: CqSetCase }>(
+      `/api/domains/current/cq/cases/${encodeURIComponent(caseId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      },
+    ),
+
+  cqDeleteCase: (caseId: string) =>
+    request<CqSetResponse & { deleted: CqSetCase }>(
+      `/api/domains/current/cq/cases/${encodeURIComponent(caseId)}`,
+      { method: 'DELETE' },
+    ),
+
+  /** 回归执行与历史（#156） */
+  cqRun: (actorType: 'human' | 'agent' = 'human') =>
+    request<CqRun & { trend_delta: number | null }>('/api/domains/current/cq/regression/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actor_type: actorType }),
+    }),
+
+  cqRuns: (limit = 20) =>
+    request<{ ontology_id: string; runs: CqRun[] }>(`/api/domains/current/cq/runs?limit=${limit}`),
 
   /** CQ 依据定位（#124） */
   cqLocate: (cq: string, conclusionFields?: string[]) =>

@@ -89,7 +89,7 @@ from reasoner.protocol import (
 from domains import DomainManager, DomainContractError, DomainNotFoundError
 from domains.imported import display_filename
 from . import workspaces
-from cq import cq_store
+from cq import cq_runner, cq_store
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
@@ -2022,22 +2022,180 @@ async def cq_import(file: UploadFile = File(..., description="cq_set.json（UTF-
     response_class=Response,
     responses={
         200: {
-            "description": "cq_set.json 原内容（附件下载）。",
-            "content": {"application/json": {"schema": {"type": "string"}}},
+            "description": "cq_set.json 原内容（json）或转换后的 cq-test YAML / JUnit XML。",
+            "content": {
+                "application/json": {"schema": {"type": "string"}},
+                "text/yaml": {"schema": {"type": "string"}},
+                "application/xml": {"schema": {"type": "string"}},
+            },
         },
+        **ERROR_400,
     },
 )
-def cq_export():
-    """下载当前 CQ 集原文（attachment；导入内容可逐字还原）。"""
+def cq_export(format: str = Query(
+    "json",
+    description="json（默认，原文） / cq-test（rdf-construct 兼容 YAML） / junit（最近一次回归）",
+)):
+    """导出当前 CQ 集；junit 使用最近一次 runs/ 结果。"""
     ontology_id, seed = _cq_identity()
-    text = cq_store.export_text(ontology_id, seed)
-    return Response(
-        content=text,
-        media_type="application/json",
-        headers={
-            "Content-Disposition": f'attachment; filename="{ontology_id}-cq_set.json"',
-        },
+    if format == "json":
+        text = cq_store.export_text(ontology_id, seed)
+        return Response(
+            content=text, media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{ontology_id}-cq_set.json"'},
+        )
+    if format == "cq-test":
+        data = cq_store.get_set(ontology_id, seed)
+        return Response(
+            content=cq_store.export_cq_test(data), media_type="text/yaml",
+            headers={"Content-Disposition": f'attachment; filename="{ontology_id}-cq-test.yaml"'},
+        )
+    if format == "junit":
+        runs = cq_store.list_runs(ontology_id, limit=1)
+        if not runs:
+            raise HTTPException(status_code=400, detail="还没有回归执行历史；请先运行评估")
+        return Response(
+            content=cq_store.export_junit(runs[0]), media_type="application/xml",
+            headers={"Content-Disposition": f'attachment; filename="{ontology_id}-junit.xml"'},
+        )
+    raise HTTPException(status_code=400, detail=f"不支持的导出格式：{format}")
+
+
+def _cq_actor(actor_type: str, actor: str) -> tuple[str, str]:
+    if actor_type not in {"human", "agent"}:
+        raise HTTPException(status_code=400, detail="actor_type 只能是 human / agent")
+    return actor_type, actor
+
+
+@app.post(
+    "/api/domains/current/cq/cases",
+    tags=["通用查询"],
+    summary="新增 CQ 题目",
+    responses={
+        200: {"model": OpenEnvelope, "description": "新增后的题目与重新计算的概览。"},
+        **ERROR_400,
+    },
+)
+def cq_add_case(
+    case: dict = Body(..., description="题目对象：至少有非空 cq；缺 id 时自动分配。"),
+    actor_type: str = Query("human", description="human / agent（审计用）"),
+    actor: str = Query("web", description="操作者标识（审计用）"),
+):
+    """新增一道 CQ：自动分配稳定 id，写回受管存储并追加审计。"""
+    ontology_id, _ = _cq_identity()
+    actor_type, actor = _cq_actor(actor_type, actor)
+    try:
+        item = cq_store.add_case(ontology_id, case, actor_type=actor_type, actor=actor)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    data = cq_store.get_set(ontology_id)
+    return {"case": item, **cq_store.build_view(ENGINE, data)}
+
+
+@app.patch(
+    "/api/domains/current/cq/cases/{case_id}",
+    tags=["通用查询"],
+    summary="修改 CQ 题目",
+    responses={
+        200: {"model": OpenEnvelope, "description": "修改后的题目与重新计算的概览。"},
+        **ERROR_400,
+    },
+)
+def cq_update_case(
+    case_id: str = ApiPath(..., description="题目稳定 id"),
+    patch: dict = Body(..., description="要覆盖的字段；id 不可改。"),
+    actor_type: str = Query("human", description="human / agent（审计用）"),
+    actor: str = Query("web", description="操作者标识（审计用）"),
+):
+    """修改一道 CQ：按稳定 id 合并字段，写回受管存储并追加审计。"""
+    ontology_id, _ = _cq_identity()
+    actor_type, actor = _cq_actor(actor_type, actor)
+    try:
+        item = cq_store.update_case(
+            ontology_id, case_id, patch, actor_type=actor_type, actor=actor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    data = cq_store.get_set(ontology_id)
+    return {"case": item, **cq_store.build_view(ENGINE, data)}
+
+
+@app.delete(
+    "/api/domains/current/cq/cases/{case_id}",
+    tags=["通用查询"],
+    summary="删除 CQ 题目",
+    responses={
+        200: {"model": OpenEnvelope, "description": "删除结果与重新计算的概览。"},
+        **ERROR_400,
+    },
+)
+def cq_delete_case(
+    case_id: str = ApiPath(..., description="题目稳定 id"),
+    actor_type: str = Query("human", description="human / agent（审计用）"),
+    actor: str = Query("web", description="操作者标识（审计用）"),
+):
+    """删除一道 CQ：按稳定 id 移除，写回受管存储并追加审计。"""
+    ontology_id, _ = _cq_identity()
+    actor_type, actor = _cq_actor(actor_type, actor)
+    try:
+        removed = cq_store.delete_case(
+            ontology_id, case_id, actor_type=actor_type, actor=actor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    data = cq_store.get_set(ontology_id)
+    return {"deleted": removed, **cq_store.build_view(ENGINE, data)}
+
+
+@app.post(
+    "/api/domains/current/cq/regression/run",
+    tags=["通用查询"],
+    summary="运行 CQ 回归评估",
+    responses={
+        200: {"model": OpenEnvelope, "description": "本次回归结果、覆盖率与相对上次的趋势。"},
+    },
+)
+def cq_regression_run(payload: dict | None = Body(None)):
+    """对当前 CQ 集执行全量回归（框架级、LLM-free），写 runs/ 与 metrics。"""
+    body = payload or {}
+    actor_type, actor = _cq_actor(
+        str(body.get("actor_type") or "human"), str(body.get("actor") or "web"),
     )
+    ontology_id, seed = _cq_identity()
+    data = cq_store.get_set(ontology_id, seed)
+    cases = data.get("cases") or []
+    previous = cq_store.list_runs(ontology_id, limit=1)
+    run = cq_runner.run_suite(ENGINE, cases, suite=str(data.get("suite") or ""))
+    run["actor_type"] = actor_type
+    run["actor"] = actor
+    cq_store.save_run(ontology_id, run)
+    cq_store.record_run_cache(ontology_id, run)
+    trend = round(run["coverage_real"] - float(previous[0].get("coverage_real") or 0), 3) if previous else None
+    if run["total"] > 0:
+        cq_store.record_metric(ontology_id, "cq_evaluated_real", {
+            "actor_type": actor_type,
+            "actor": actor,
+            "coverage_real": run["coverage_real"],
+            "trend_delta": trend,
+            "total": run["total"],
+            "pass": run["pass"],
+        })
+    return {**run, "trend_delta": trend}
+
+
+@app.get(
+    "/api/domains/current/cq/runs",
+    tags=["通用查询"],
+    summary="CQ 回归历史",
+    responses={
+        200: {"model": OpenEnvelope, "description": "最近若干次回归结果（新到旧）与趋势。"},
+    },
+)
+def cq_regression_runs(limit: int = Query(20, ge=1, le=100, description="最多返回多少条历史（新到旧）")):
+    """返回最近若干次回归结果（新到旧），供页面显示趋势。"""
+    ontology_id, _ = _cq_identity()
+    runs = cq_store.list_runs(ontology_id, limit=limit)
+    return {"ontology_id": ontology_id, "runs": runs}
 
 
 # ---------------- 本体管理（v1.3.0：加载 / 物化 / 源码 / 导出） ----------------

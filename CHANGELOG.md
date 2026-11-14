@@ -9,6 +9,11 @@
 
 ### Added
 
+- **CQ 单题 CRUD 与页面编辑器（#154）**：`cq_store` 为缺 `id` 的题自动补稳定 `uuid`，新增 `POST/PATCH/DELETE /cq/cases`；`#cq` 页面支持新增 / 编辑 / 删除单题，编辑题干、题型、状态、来源需求与回归断言（`tool+params+expect` 或 SPARQL `query+expect`），保存后即时重算概览。
+- **CQ 变更审计（#157）**：所有写路径（REST 的 PUT/import/CRUD 与 MCP 写工具）统一在 `workspaces/<id>/cq_set.audit.jsonl` 追加一行 `ts / ontology_id / actor_type / actor / action / case_id / before / after`；先写集、再追加审计，重启后仍在，可直接 grep。
+- **MCP 对称写工具（#155）**：`examples/agent_task/mcp.py` 新增 `get_cq_set / add_cq / update_cq / delete_cq / save_cq_set / import_cq_set / export_cq_set`，与 REST 共用同一个 `cq_store`（含审计），智能体可闭环「读集 → 出题 → 写回 → 质检 → 回归」。
+- **框架级回归执行器与历史（#156）**：新增 `cq/cq_runner.py`（LLM-free、确定性），用引擎原语 / SPARQL 执行 CQ 集，结果采用 EARL 枚举 `pass / fail / cannot_tell / not_tested`；`POST /cq/regression/run` 写入 `workspaces/<id>/runs/<ts>.json`、回写每题 `coverage_cache.conclusion`、追加 `metrics.jsonl` 的 `cq_evaluated_real` 事件（空集不计），`GET /cq/runs` 返回历史；`#cq` 页面新增「运行评估」与最近一次通过数 / 趋势。
+- **CQ 套件行业互操作与 JUnit（#158）**：`regression` 支持 SPARQL `query` + `expect`（boolean / exists / count / values）并与旧 `tool/params` 并存；`GET /cq/export?format=cq-test` 导出 rdf-construct 兼容 YAML，`format=junit` 输出最近一次回归 JUnit XML。
 - **导入本体的持久工作区（#149）**：导入 / 另存的本体从 `data/uploads/<uuid>-<原名>.owl` 迁到 `data/workspaces/<id>/source.owl`，`meta.json` 记录一次性分配、永不重算的 `id`（`uuid4().hex[:12]`）、原始文件名、展示名、`content_hash` 与历史；同一内容重复导入复用同一工作区，保存后保持 id 不变。`_current.json` 记录导入态，服务启动自动恢复；切回预置领域 / 重载默认本体时清除。工作区根可用 `ONTOLOGY_WORKSPACES_ROOT` 覆盖（测试隔离）。`runtime.ontology_display` 与 OWL 源码标题改为从 `meta.json` 读取原始文件名。
 - **CQ 集受管存储与 REST（#150）**：新增 `cq/cq_store.py`，在 `workspaces/<id>/cq_set.json` 上读写 CQ 集（导入态按工作区 id，预置领域按领域名并首次从包内 `cq_tests.json` 播种）。新增 `GET/PUT /api/domains/current/cq/set`、`POST /api/domains/current/cq/import`、`GET /api/domains/current/cq/export`：无集返回空骨架、整集导入按原字节保存（导出可逐字还原）、PUT 覆盖并重算概览。概览分两档：`coverage_light`（定位到证据）/ `coverage_real`（有回归且上次结论 > 0），逐题附带 `located / answerable / location`。
 - **`#cq` 页面（#151，P0）**：新增 `#cq` 页面——承诺 / 已定位 / 可答 / 缺口看板与两档覆盖率条；列表带题型、状态与定位/可答标记；右栏单题卡调用已有 `POST /cq/locate` 展示锚点与证据，并展示 `coverage_cache` 上次结论与来源需求；工具栏支持刷新、导入 JSON、导出。无集显示正式空态；不引入 LLM 调用与 CQ 写接口。

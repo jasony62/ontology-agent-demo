@@ -422,12 +422,15 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+/** curl 示例的默认 origin（#148）：与 dev 代理共用 VITE_API_ORIGIN。 */
+const DEFAULT_API_ORIGIN = import.meta.env.VITE_API_ORIGIN || 'http://127.0.0.1:8000';
+
 export function buildCurl(
   method: string,
   url: string,
   headers: Record<string, string>,
   body?: string,
-  origin = 'http://127.0.0.1:8000',
+  origin = DEFAULT_API_ORIGIN,
 ): string {
   const absolute = /^https?:\/\//.test(url) ? url : new URL(url, origin).toString();
   const parts = [`curl -sS -X ${method.toUpperCase()}`, shellQuote(absolute)];

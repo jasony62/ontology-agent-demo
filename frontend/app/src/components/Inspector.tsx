@@ -1,39 +1,45 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { api } from '../api/client';
-import type { DescribeResponse, GraphData, GraphNode, GraphEdge, ProofResponse } from '../api/client';
+import type { DescribeResponse, DescribeTriple, GraphData, GraphNode, GraphEdge, ProofResponse } from '../api/client';
+import { SourceTriples, localNameOf } from './RdfSource';
+import { describeFailure, describeFailureText } from '../lib/errors';
+import type { DescribeFailure } from '../lib/errors';
 
 function findNode(graph: GraphData | null, id: string): GraphNode | null {
   return graph?.nodes.find((n) => n.id === id) ?? null;
 }
 
-/** IRI / 短名的局部名（#144）：页面身份区与边的源码定位共用。 */
-function localNameOf(value: string): string {
-  const tail = value.replace(/[#/]+$/, '').split(/[#/]/).pop() ?? value;
-  return decodeURIComponent(tail);
-}
-
-function tripleLine(subject: string, predicate: string, object: string): string {
-  return `<${subject}> <${predicate}> ${object} .`;
-}
-
 function SourceBlock({
-  text, loading, error, note,
+  data, failure, note, onSelect,
 }: {
-  text: string;
-  loading: boolean;
-  error: boolean;
+  data: DescribeResponse | null;
+  failure: DescribeFailure | null;
   note?: string;
+  onSelect?: (id: string) => void;
 }) {
-  if (error) {
-    return <div className="element-readonly-note">源码读取失败：该元素可能已不在当前本体中。</div>;
+  if (failure) {
+    return <div className="element-readonly-note">{describeFailureText(failure)}</div>;
   }
-  if (loading) return <div className="inspector-source-note">正在读取原始三元组…</div>;
+  if (!data) return <div className="inspector-source-note">正在读取原始三元组…</div>;
   return (
     <div className="inspector-source-body">
       {note && <div className="inspector-source-note">{note}</div>}
-      <pre className="inspector-ntriples">{text || '（没有可展示的三元组）'}</pre>
+      <SourceTriples triples={data.triples} onSelect={onSelect} />
+      <details className="source-raw">
+        <summary>原始文本（N-Triples，可复制）</summary>
+        <pre className="inspector-ntriples">{data.ntriples || '（没有可展示的三元组）'}</pre>
+      </details>
     </div>
+  );
+}
+
+function RawTriple({ triple }: { triple: DescribeTriple }) {
+  const object = triple.object_kind === 'literal'
+    ? JSON.stringify(triple.object)
+    : `<${triple.object}>`;
+  return (
+    <pre className="inspector-ntriples">{`<${triple.subject}> <${triple.predicate}> ${object} .`}</pre>
   );
 }
 
@@ -148,14 +154,18 @@ export default function Inspector({ onJump }: Props) {
     };
   }, [shouldFetchProof, edge?.source, edge?.label, edge?.target]);
 
-  // #144：源码视角——节点取它的全部三元组；边取它作主语的那一条（展开时才请求）。
+  // #144 / #147：源码视角——节点取它的三元组（类含入边），边取作主语的那一条。
   // 短名交给后端解析成 IRI（ENGINE.resolve），前端不猜命名空间。
   const [edgeSourceOpen, setEdgeSourceOpen] = useState(false);
+  const selectedType = selectedId && !isEdge
+    ? (findNode(graphData, selectedId)?.type ?? findNode(inferred, selectedId)?.type)
+    : null;
+  const includeIncoming = selectedType === 'class';
   const describeSubject = isEdge
     ? (edgeSourceOpen ? edge?.source ?? null : null)
     : (selectedId && !selectedId.startsWith('sketch|') ? selectedId : null);
   const [describe, setDescribe] = useState<DescribeResponse | null>(null);
-  const [describeFailed, setDescribeFailed] = useState(false);
+  const [describeError, setDescribeError] = useState<DescribeFailure | null>(null);
   const [sourceView, setSourceView] = useState(false);
 
   useEffect(() => {
@@ -166,23 +176,23 @@ export default function Inspector({ onJump }: Props) {
   useEffect(() => {
     if (!describeSubject) {
       setDescribe(null);
-      setDescribeFailed(false);
+      setDescribeError(null);
       return;
     }
     let cancelled = false;
     setDescribe(null);
-    setDescribeFailed(false);
-    api.describe(describeSubject)
+    setDescribeError(null);
+    api.describe(describeSubject, includeIncoming)
       .then((data) => {
         if (!cancelled) setDescribe(data);
       })
-      .catch(() => {
-        if (!cancelled) setDescribeFailed(true);
+      .catch((error) => {
+        if (!cancelled) setDescribeError(describeFailure(error));
       });
     return () => {
       cancelled = true;
     };
-  }, [describeSubject]);
+  }, [describeSubject, includeIncoming]);
 
   if (!selectedId) return null;
 
@@ -195,27 +205,35 @@ export default function Inspector({ onJump }: Props) {
       localNameOf(triple.predicate) === wantedPredicate
       && localNameOf(triple.object).toLowerCase() === localNameOf(edge.target).toLowerCase())
     : null;
-  const edgeSourceText = edgeTriple
-    ? tripleLine(
-      edgeTriple.subject,
-      edgeTriple.predicate,
-      edgeTriple.object_kind === 'literal' ? JSON.stringify(edgeTriple.object) : `<${edgeTriple.object}>`,
-    )
-    : edge
-      ? tripleLine(edge.source, edge.label, `<${edge.target}>`)
-      : '';
+  const fallbackTriple: DescribeTriple = {
+    subject: edge?.source ?? '',
+    predicate: edge?.label ?? '',
+    object: edge?.target ?? '',
+    object_kind: 'iri',
+  };
   const edgeSourceBlock = (
     <details
       className="inspector-source"
       onToggle={(event) => setEdgeSourceOpen((event.currentTarget as HTMLDetailsElement).open)}
     >
       <summary>源码视角（原始三元组）</summary>
-      <SourceBlock
-        text={edgeSourceText}
-        loading={!describe && !describeFailed}
-        error={describeFailed}
-        note={describe && !edgeTriple ? '当前图中未定位到完整 IRI，以下用短名表示。' : undefined}
-      />
+      <div className="inspector-source-body">
+        {describeError && <div className="element-readonly-note">{describeFailureText(describeError)}</div>}
+        {!describe && !describeError && <div className="inspector-source-note">正在读取原始三元组…</div>}
+        {describe && !edgeTriple && (
+          <div className="inspector-source-note">当前图中未定位到完整 IRI，以下用短名表示。</div>
+        )}
+        <SourceTriples
+          triples={edgeTriple ? [edgeTriple] : [fallbackTriple]}
+          onSelect={onJump}
+        />
+        {edgeTriple && (
+          <details className="source-raw">
+            <summary>原始文本（N-Triples，可复制）</summary>
+            <RawTriple triple={edgeTriple} />
+          </details>
+        )}
+      </div>
     </details>
   );
 
@@ -379,10 +397,12 @@ export default function Inspector({ onJump }: Props) {
 
       {sourceView ? (
         <SourceBlock
-          text={describe?.ntriples ?? ''}
-          loading={!describe && !describeFailed}
-          error={describeFailed}
-          note="以该元素作主语的全部三元组（对象属性与字面量都在）。"
+          data={describe}
+          failure={describeError}
+          onSelect={onJump}
+          note={includeIncoming
+            ? '以该元素作主语或宾语的全部三元组（类能看到实例 / 子类入边）。'
+            : '以该元素作主语的全部三元组（对象属性与字面量都在）。'}
         />
       ) : (
         relatedEdges.length > 0 && (

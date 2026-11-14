@@ -18,6 +18,7 @@ import ExportDialog from './components/ExportDialog';
 import CreateElementBar from './components/CreateElementBar';
 import OntologyEditor from './components/OntologyEditor';
 import DomainGuidePage from './components/DomainGuidePage';
+import CqPage from './components/CqPage';
 import OverflowMenu from './components/OverflowMenu';
 import WorkspaceSplit from './components/WorkspaceSplit';
 import type { WorkspaceTab } from './components/WorkspaceSplit';
@@ -50,8 +51,8 @@ export default function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   // 两个平级页面：图谱工作台 / 当前领域（正式单页，不用弹框）
-  const [page, setPage] = useState<'graph' | 'guide'>(
-    () => (window.location.hash === '#guide' ? 'guide' : 'graph'),
+  const [page, setPage] = useState<'graph' | 'guide' | 'cq'>(
+    () => (window.location.hash === '#guide' ? 'guide' : window.location.hash === '#cq' ? 'cq' : 'graph'),
   );
   // #137：首次引导收敛到「当前领域」页的一个「带我试一题」入口（一次真试跑），
   // 页头不再维护第二套提示；本地记忆键沿用 oa.onboarding.dismissed.v1。
@@ -59,13 +60,20 @@ export default function App() {
     setPage('guide');
     window.history.replaceState(null, '', '#guide');
   };
+  const gotoCq = () => {
+    setPage('cq');
+    window.history.replaceState(null, '', '#cq');
+  };
   const gotoGraph = () => {
     setPage('graph');
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
   };
   // 图谱概览里的「去当前领域」用普通 <a href="#guide">，这里跟随 hash 切页。
   useEffect(() => {
-    const onHashChange = () => setPage(window.location.hash === '#guide' ? 'guide' : 'graph');
+    const onHashChange = () => {
+      const hash = window.location.hash;
+      setPage(hash === '#guide' ? 'guide' : hash === '#cq' ? 'cq' : 'graph');
+    };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
@@ -282,6 +290,9 @@ export default function App() {
           <button className={page === 'guide' ? 'active' : ''} onClick={gotoGuide}>
             当前领域
           </button>
+          <button className={page === 'cq' ? 'active' : ''} onClick={gotoCq}>
+            CQ 集
+          </button>
         </nav>
         {/* #137 R1：页头只保留领域下拉这一个名字显示；红色徽标改为「只读」状态标签，
             不再复述「导入的本体」，两处 title 也只留短提示。 */}
@@ -348,6 +359,7 @@ export default function App() {
           <OverflowMenu id="header" className="header-more" title="宽度不足时收起的页头入口">
             <button type="button" className="menu-nav-item" onClick={gotoGraph}>图谱工作台</button>
             <button type="button" className="menu-nav-item" onClick={gotoGuide}>当前领域</button>
+            <button type="button" className="menu-nav-item" onClick={gotoCq}>CQ 集</button>
             <button type="button" onClick={() => setImportOpen(true)}>导入本体</button>
             <button type="button" onClick={() => setExportOpen(true)}>导出本体</button>
             <button type="button" onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>
@@ -382,6 +394,8 @@ export default function App() {
             onReloadDomain={() => void runDomainAction('重载领域', () => api.reloadDomain())}
             onSwitchDomain={(name) => void runDomainAction('切换领域', () => api.activateDomain(name))}
           />
+        ) : page === 'cq' ? (
+          <CqPage />
         ) : (
           <>
             {ontologyMode === 'generic' && (

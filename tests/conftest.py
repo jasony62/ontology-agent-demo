@@ -66,6 +66,11 @@ def _prepare_runtime() -> str:
 #   只依赖 stdlib + config（config 不 import reasoner），顺序安全。
 _PREPARED = _prepare_runtime()
 
+# #149：工作区写入隔离。必须在 import api.main 之前设置：启动恢复会读
+# `_current.json`，测试不能碰开发者本机的导入态。
+_WORKSPACES_ROOT = tempfile.mkdtemp(prefix="oat-test-workspaces-")
+os.environ["ONTOLOGY_WORKSPACES_ROOT"] = _WORKSPACES_ROOT
+
 import pytest                                          # noqa: E402
 from fastapi.testclient import TestClient              # noqa: E402
 
@@ -117,6 +122,13 @@ def restore_engine():
 
     yield
     E._engine = None
+    # #149：清掉工作区当前指针；否则后续子进程（如文档数字校验）会按
+    # `_current.json` 恢复上一个导入本体，读到与默认领域不同的数字。
+    try:
+        from api import workspaces
+        workspaces.clear_current()
+    except Exception:  # noqa: BLE001
+        pass
     # #119：导入本体后会激活内置「导入的本体」领域。只 reload_ontology()
     # 会把导入的文件再重载一遍，测试之间就一直停在 imported 上；必须显式
     # 切回配置里的默认领域，才是真正的「运行态还原」。

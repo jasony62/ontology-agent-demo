@@ -110,7 +110,7 @@ def test_model_to_rdf_roundtrip():
 # ---------- 保存（另存 / 覆盖） ----------
 
 def test_save_new_mode(restore_engine):
-    """另存：文件落盘 data/uploads/、引擎切换、物化刷新、新类生效。"""
+    """另存：文件落盘 data/workspaces/<id>/、引擎切换、物化刷新、新类生效。"""
     model = client.get("/api/ontology/edit-model").json()
     model["classes"].append({"id": "NewClass", "label": "新类", "parent": None, "description": ""})
     r = client.post("/api/ontology/save", json={
@@ -120,7 +120,8 @@ def test_save_new_mode(restore_engine):
     d = r.json()
     assert d["status"] == "ok"
     assert d["mode"] == "new"
-    assert "/uploads/" in d["path"]
+    assert d["path"].endswith("source.owl")
+    assert d["workspace_id"]
     assert d["filename"].endswith(".owl")
     assert d["stats"]["triples_after"] >= d["stats"]["triples_before"]
     assert "materialized" in d and d["materialized"]["stats"]["triples_asserted"] > 0
@@ -175,7 +176,7 @@ def test_save_rejects_empty_class_id(restore_engine):
 
 
 def test_save_filename_sanitized(restore_engine):
-    """文件名穿越被阻止：只取 basename 并加短 uuid 前缀。"""
+    """文件名穿越被阻止：只取 basename；磁盘固定写 source.owl。"""
     model = client.get("/api/ontology/edit-model").json()
     r = client.post("/api/ontology/save", json={
         "model": model, "filename": "../../etc/evil.owl", "mode": "new",
@@ -183,17 +184,18 @@ def test_save_filename_sanitized(restore_engine):
     assert r.status_code == 200
     name = r.json()["filename"]
     assert ".." not in name and "/" not in name and name.endswith(".owl")
+    assert r.json()["path"].endswith("source.owl")
 
 
 # ---------- 下载（防路径穿越） ----------
 
 def test_download_saved_file(restore_engine):
-    """保存后可通过 download 下载落盘 OWL 文件。"""
+    """保存后可按 workspace_id 下载落盘 OWL 文件（#149）。"""
     model = client.get("/api/ontology/edit-model").json()
     r = client.post("/api/ontology/save", json={"model": model, "mode": "new"})
     assert r.status_code == 200
-    name = r.json()["filename"]
-    dl = client.get(f"/api/ontology/download?name={name}")
+    workspace_id = r.json()["workspace_id"]
+    dl = client.get(f"/api/ontology/download?workspace_id={workspace_id}")
     assert dl.status_code == 200
     assert "<rdf:RDF" in dl.text
 

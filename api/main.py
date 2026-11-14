@@ -48,7 +48,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Path as ApiPath
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Path as ApiPath, Body
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from rdflib import Graph, Literal, RDF, OWL, RDFS, URIRef
@@ -88,6 +88,8 @@ from reasoner.protocol import (
 )
 from domains import DomainManager, DomainContractError, DomainNotFoundError
 from domains.imported import display_filename
+from . import workspaces
+from cq import cq_store
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
@@ -116,6 +118,33 @@ from .response_schemas import (
 
 # 领域运行态：唯一真相源（名字、引擎、适配器、加载时刻都在里面）。
 DOMAINS = DomainManager(eager=True)
+
+
+def _restore_imported_workspace() -> None:
+    """#149：启动时恢复上次对外服务的导入本体（`_current.json`）。
+
+    只有导入态、且 `source.owl` 仍存在时才恢复；任何异常都回退默认领域，
+    不让一个损坏的工作区阻止服务启动。
+    """
+    current = workspaces.get_current()
+    if not current or current.get("mode") != "imported":
+        return
+    workspace_id = current.get("current_id")
+    source = workspaces.source_path(workspace_id)
+    meta = workspaces.read_meta(workspace_id)
+    if meta is None or not source.is_file():
+        return
+    try:
+        engine = OntologyEngine(str(source), extensions_dir=None)
+        DOMAINS.activate_imported(
+            engine,
+            filename=meta.get("original_filename") or f"{workspace_id}.owl",
+        )
+    except Exception:  # noqa: BLE001 —— 损坏的工作区不应阻止启动
+        return
+
+
+_restore_imported_workspace()
 
 
 # 模块级 ENGINE / ADAPTER 是 DOMAINS 的**请求级快照**：
@@ -1294,7 +1323,10 @@ def domain_guide():
             "ontology": _ontology_basename(ENGINE, handle),
             # #131：给用户看的原始文件名（去掉上传副本的 uuid 前缀）；
             # 完整落盘名保留在 ontology 里，供排查与下载对账。
-            "ontology_display": display_filename(_ontology_basename(ENGINE, handle)),
+            "ontology_display": (
+                workspaces.display_name_for_path(getattr(ENGINE, "onto_path", ""))
+                or display_filename(_ontology_basename(ENGINE, handle))
+            ),
             "mcp": mcp,
             "counts": counts,
             # #121：推理新增拆成自反 / 元层 / 业务；单给总数会把 1000 条
@@ -1889,6 +1921,125 @@ def cq_locate(req: CqLocateRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+# ---------------- CQ 集（#150：框架级受管存储，领域无关） ----------------
+
+
+def _cq_identity() -> tuple[str, Path | None]:
+    """当前 CQ 集的存储身份与领域包播种文件。
+
+    导入的本体用工作区 id（稳定，重启 / 重导不变）；预置领域用领域名，
+    首次读取时从包内 `cq_tests.json` 播种。
+    """
+    handle = DOMAINS.current()
+    if handle.is_imported:
+        current = workspaces.get_current()
+        if current and current.get("mode") == "imported":
+            workspace_id = str(current.get("current_id") or "")
+            if workspace_id and workspaces.meta_path(workspace_id).is_file():
+                return workspace_id, None
+        # 旧上传（没有工作区）也要能读：用固定标识，不返回 500。
+        return "imported", None
+    module_file = getattr(handle.module, "__file__", None)
+    seed = Path(module_file).parent / "cq_tests.json" if module_file else None
+    return handle.name, seed if seed is not None and seed.is_file() else None
+
+
+@app.get(
+    "/api/domains/current/cq/set",
+    tags=["通用查询"],
+    summary="当前 CQ 集与概览",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "当前本体挂载的 CQ 集：suite / version / ontology_id / "
+                "summary（两档覆盖率）/ cases（含逐题 located / answerable / location）。"
+            ),
+        },
+    },
+)
+def cq_set():
+    """读 CQ 集：无集时返回空骨架，不 500。"""
+    ontology_id, seed = _cq_identity()
+    data = cq_store.get_set(ontology_id, seed)
+    return {"ontology_id": ontology_id, **cq_store.build_view(ENGINE, data)}
+
+
+@app.put(
+    "/api/domains/current/cq/set",
+    tags=["通用查询"],
+    summary="保存 CQ 集",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "保存后的 CQ 集与重新计算的概览（PUT 为整集覆盖）。",
+        },
+        **ERROR_400,
+    },
+)
+def cq_set_put(payload: dict = Body(..., description="cq_set.json 结构：suite / version / cases[]。")):
+    """整集覆盖当前 CQ 集并立即重算概览；非法骨架返回 400。"""
+    ontology_id, _ = _cq_identity()
+    try:
+        saved = cq_store.save_set(ontology_id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ontology_id": ontology_id, **cq_store.build_view(ENGINE, saved)}
+
+
+@app.post(
+    "/api/domains/current/cq/import",
+    tags=["通用查询"],
+    summary="导入 CQ 集",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "整集导入结果：ontology_id / suite / cases 数量；导入内容原样保存。",
+        },
+        **ERROR_400,
+    },
+)
+async def cq_import(file: UploadFile = File(..., description="cq_set.json（UTF-8 JSON，cases 数组必填）。")):
+    """导入一份 CQ 集（multipart JSON，整集原子覆盖）；内容按原字节保存。"""
+    ontology_id, _ = _cq_identity()
+    raw = await file.read()
+    try:
+        data = cq_store.import_set(ontology_id, raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "status": "ok",
+        "ontology_id": ontology_id,
+        "suite": data.get("suite") or "",
+        "cases": len(data.get("cases") or []),
+    }
+
+
+@app.get(
+    "/api/domains/current/cq/export",
+    tags=["通用查询"],
+    summary="导出 CQ 集",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "cq_set.json 原内容（附件下载）。",
+            "content": {"application/json": {"schema": {"type": "string"}}},
+        },
+    },
+)
+def cq_export():
+    """下载当前 CQ 集原文（attachment；导入内容可逐字还原）。"""
+    ontology_id, seed = _cq_identity()
+    text = cq_store.export_text(ontology_id, seed)
+    return Response(
+        content=text,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{ontology_id}-cq_set.json"',
+        },
+    )
+
+
 # ---------------- 本体管理（v1.3.0：加载 / 物化 / 源码 / 导出） ----------------
 
 @app.post(
@@ -1908,27 +2059,30 @@ async def load_ontology(file: UploadFile = File(..., description="要加载的�
     filename = (file.filename or "").lower()
     if not filename.endswith((".owl", ".rdf", ".xml")):
         raise HTTPException(status_code=400, detail="仅支持 .owl / .rdf / .xml 文件")
-    # 保留用户文件名（basename + 安全字符）并加短 uuid 防重名：说明页要显示
-    # 「导入的是哪一份」，纯 uuid 文件名对用户没有意义。路径分隔符已由
-    # basename + 白名单挡掉，不能借文件名写到 uploads/ 之外。
     original = os.path.basename(file.filename or "") or "ontology.owl"
-    safe_name = re.sub(r"[^\w.-]+", "_", original).strip("._") or "ontology.owl"
-    dest = UPLOAD_DIR / f"{uuid.uuid4().hex[:8]}-{safe_name}"
+    data = await file.read()
+    meta: dict | None = None
+    created = False
     try:
-        dest.write_bytes(await file.read())
+        # #149：内容哈希去重 → 稳定 workspace id；同文件重复导入复用同一目录。
+        meta, created = workspaces.create(data, original)
+        source = workspaces.source_path(meta["id"])
         # 直接构造而不是 get_engine()：失败时不能把 reasoner.engine 的单例
         # 留在新引擎上（那会违反「运行态未被触碰」）。成功后才由 manager
         # 的 _commit 同步单例。
-        engine = OntologyEngine(str(dest), extensions_dir=None)
+        engine = OntologyEngine(str(source), extensions_dir=None)
         # #119：导入即激活「导入的本体」领域——说明 / 能力 / 示例题与页头
         # 一起换成这份本体，不再保留上一个包的句柄。构建失败时旧领域原样服务。
-        handle = DOMAINS.activate_imported(engine, filename=dest.name)
+        handle = DOMAINS.activate_imported(engine, filename=meta["original_filename"])
+        workspaces.set_current(meta["id"], "imported")
     except Exception as exc:
-        dest.unlink(missing_ok=True)
+        if created and meta is not None:
+            workspaces.remove(meta["id"])
         raise HTTPException(status_code=400, detail=f"本体加载失败：{exc}")
     return {
         "status": "ok",
-        "path": str(dest),
+        "path": str(workspaces.source_path(meta["id"])),
+        "workspace_id": meta["id"],
         "domain": handle.name,
         "display_name": handle.display_name,
         "triples_before": len(engine.raw),
@@ -2011,7 +2165,10 @@ def ontology_source():
         # uuid 前缀，给 OWL 源码标题 / 原样备份下载名用。
         return {
             "filename": filename,
-            "display_name": display_filename(filename),
+            "display_name": (
+                workspaces.display_name_for_path(str(ENGINE.onto_path))
+                or display_filename(filename)
+            ),
             "content": ENGINE.source_xml(),
         }
     except FileNotFoundError:
@@ -2043,7 +2200,21 @@ def describe_ontology(req: DescribeRequest):
     节点源码视角 = 它的全部三元组；关系源码视角 = 前端在 `triples` 里按
     predicate / object 定位那一条。短名解析失败由全局 handler 转 400。
     """
-    subject = URIRef(ENGINE.resolve(req.iri))
+    # 前端图谱的类 id 可能来自草图模型的小写形式（agent ↔ 本体里的 Agent）：
+    # 精确 / 后缀解析失败时，再按局部名大小写不敏感找一次；多个候选仍报 400。
+    key = local(req.iri).lower()
+    try:
+        subject = URIRef(ENGINE.resolve(req.iri))
+    except NameResolutionError:
+        matches = {candidate for candidate in ENGINE.g.subjects() if local(candidate).lower() == key}
+        if len(matches) != 1:
+            raise
+        subject = next(iter(matches))
+    else:
+        if subject not in set(ENGINE.g.subjects()):
+            matches = {candidate for candidate in ENGINE.g.subjects() if local(candidate).lower() == key}
+            if len(matches) == 1:
+                subject = next(iter(matches))
     graph = Graph()
     for triple in ENGINE.g.triples((subject, None, None)):
         graph.add(triple)
@@ -2166,6 +2337,8 @@ def save_ontology(req: SaveOntologyRequest):
         raise HTTPException(status_code=400, detail=f"编辑模型非法：{exc}")
 
     # 文件名安全：仅 basename + 白名单扩展名（防路径穿越 / 任意文件写入）
+    workspace_meta: dict | None = None
+    workspace_created = False
     if req.mode == "overwrite":
         target = Path(ENGINE.onto_path)
     else:
@@ -2174,9 +2347,11 @@ def save_ontology(req: SaveOntologyRequest):
             raw_name = f"{raw_name.rsplit('.', 1)[0] if '.' in raw_name else raw_name or 'edited'}.owl"
             if not raw_name.endswith(".owl"):
                 raw_name = "edited.owl"
-        stem, _, ext = raw_name.rpartition(".")
-        safe_name = f"{stem}-{uuid.uuid4().hex[:8]}.{ext.lower()}"
-        target = UPLOAD_DIR / safe_name
+        # #149：另存也进工作区；内容哈希去重，同内容复用同一稳定 id。
+        workspace_meta, workspace_created = workspaces.create(
+            content.encode("utf-8"), raw_name,
+        )
+        target = workspaces.source_path(workspace_meta["id"])
 
     # 写盘前备份（#108）：目标文件已存在时先复制到 backups/<timestamp>/，
     # 重建失败才能把原文件恢复回去——旧实现失败时 unlink()，等于删掉唯一副本。
@@ -2200,9 +2375,14 @@ def save_ontology(req: SaveOntologyRequest):
             # 覆盖当前本体：预置包重建适配器；导入的本体重建说明 + 示例题。
             DOMAINS.rebind(new_engine)
         else:
-            # 另存到 uploads/：与导入同一条路径——激活「导入的本体」领域，
+            # 另存到工作区：与导入同一条路径——激活「导入的本体」领域，
             # 说明 / 能力 / 页头一起换（#119），不再停在旧包的通用模式。
-            DOMAINS.activate_imported(new_engine, filename=target.name)
+            DOMAINS.activate_imported(
+                new_engine,
+                filename=(workspace_meta or {}).get("original_filename") or target.name,
+            )
+            if workspace_meta is not None:
+                workspaces.set_current(workspace_meta["id"], "imported")
     except Exception as exc:
         if backup is not None:
             try:
@@ -2210,6 +2390,9 @@ def save_ontology(req: SaveOntologyRequest):
                 restored = f"已从备份恢复原文件（备份在 {backup}）"
             except OSError as restore_exc:
                 restored = f"备份恢复失败，原文件备份在 {backup}：{restore_exc}"
+        elif workspace_meta is not None and workspace_created:
+            workspaces.remove(workspace_meta["id"])
+            restored = "已删除本次新建的工作区"
         else:
             target.unlink(missing_ok=True)
             restored = "已删除本次新文件"
@@ -2219,7 +2402,8 @@ def save_ontology(req: SaveOntologyRequest):
     return {
         "status": "ok",
         "path": str(target),
-        "filename": Path(target).name,
+        "filename": (workspace_meta or {}).get("original_filename") or Path(target).name,
+        "workspace_id": (workspace_meta or {}).get("id"),
         "mode": req.mode,
         "backup": str(backup) if backup is not None else None,
         "dropped_axioms": dropped_axioms,
@@ -2250,11 +2434,27 @@ def save_ontology(req: SaveOntologyRequest):
         **ERROR_404,
     },
 )
-def download_ontology(name: str = Query(
-    ...,
-    description="data/uploads/ 下的文件名；只接受 basename，不接受路径（防路径穿越）。",
-)):
-    """下载 data/uploads/ 内保存的本体文件（仅允许该目录，防路径穿越）。"""
+def download_ontology(
+    name: str = Query(
+        "",
+        description="data/uploads/ 下的文件名，或工作区原始文件名；只接受 basename（防路径穿越）。",
+    ),
+    workspace_id: str = Query(
+        "",
+        description="工作区 id（#149）：优先按 id 下载 workspaces/<id>/source.owl。",
+    ),
+):
+    """下载保存的本体文件：优先工作区，其次兼容旧的 data/uploads/。"""
+    if workspace_id:
+        meta = workspaces.read_meta(workspace_id)
+        path = workspaces.source_path(workspace_id)
+        if meta is not None and path.is_file():
+            return FileResponse(
+                path,
+                media_type="application/rdf+xml",
+                filename=meta.get("original_filename") or f"{workspace_id}.owl",
+            )
+        raise HTTPException(status_code=404, detail=f"工作区文件不存在：{workspace_id}")
     safe = os.path.basename(name)
     path = UPLOAD_DIR / safe
     if not path.is_file():
@@ -2293,6 +2493,8 @@ def reload_ontology():
     except (DomainContractError, ValueError, OSError) as exc:
         raise HTTPException(status_code=400, detail=f"重载失败（旧状态保持可用）：{exc}")
     elapsed = round((_time.monotonic() - t0) * 1000, 2)
+    if not handle.is_imported:
+        workspaces.clear_current()
     new_engine = handle.engine
     return {
         "status": "ok",
@@ -2372,6 +2574,8 @@ def activate_domain(name: str = ApiPath(..., description="已安装领域包名�
         handle = DOMAINS.activate(name)
     except (DomainContractError, DomainNotFoundError, ValueError, OSError) as exc:
         raise HTTPException(status_code=400, detail=f"切换领域失败（当前领域保持可用）：{exc}")
+    # #149：切到预置包后，重启不再恢复上一个导入本体。
+    workspaces.clear_current()
     return {"status": "ok", "domain": handle.name, "loaded_at": handle.loaded_at,
             "capabilities": handle.capabilities, "triples": len(handle.engine.g)}
 

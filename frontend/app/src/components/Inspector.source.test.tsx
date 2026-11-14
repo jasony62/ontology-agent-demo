@@ -127,5 +127,23 @@ describe('检视器源码视角（#144）', () => {
     expect(source).toContain('<http://example.org/x#ruleVerifyDeadline>');
     expect(source).toContain('<http://example.org/x#appliesTo>');
     expect(source).toContain('<http://example.org/x#WorkhourRecord> .');
+    // 结构化主视图不再出现 N-Triples 的结尾点
+    const structured = container!.querySelector('.source-triples')!.textContent ?? '';
+    expect(structured).toContain('appliesTo');
+    expect(structured).not.toContain(' .');
+  });
+
+  it('类节点带 include_as_object，源码视角能看到入边', async () => {
+    useAppStore.setState({ selectedId: 'WorkhourRecord' });
+    const fetchMock = vi.mocked(fetch);
+    act(() => root!.render(<Inspector onJump={() => {}} />));
+    await flush();
+
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/describe'));
+    expect(call).toBeTruthy();
+    expect(JSON.parse(String((call![1] as RequestInit).body))).toMatchObject({
+      iri: 'WorkhourRecord',
+      include_as_object: true,
+    });
   });
 });

@@ -139,7 +139,8 @@ def test_load_activates_imported_domain_and_guide_uses_real_data(restore_engine)
     assert guide["imported"] is True
     assert guide["mode"] == "domain"
     assert "people.owl" in guide["profile"]["summary"]
-    assert guide["runtime"]["ontology"].endswith("people.owl")
+    assert guide["runtime"]["ontology_display"] == "people.owl"
+    assert guide["runtime"]["ontology"].endswith("source.owl")
     assert guide["runtime"]["counts"]["individuals"] == 2
     # 领域专属能力不在声明里；通用只读能力逐项有说明
     assert "capability_match" not in guide["runtime"]["declared_capabilities"]
@@ -174,6 +175,25 @@ def test_load_activates_imported_domain_and_guide_uses_real_data(restore_engine)
     individuals = _run_example(by_capability["individuals"]).json()
     assert "alice" in individuals["individuals"]
     assert "dev_agent" not in json.dumps(individuals)
+
+
+def test_workspace_identity_is_stable_and_restorable(restore_engine):
+    """#149：同内容重导复用工作区；重启按 _current.json 自动恢复导入态。"""
+    from api import workspaces
+
+    first = _upload(OWL_A, "people.owl").json()
+    second = _upload(OWL_A, "same-again.owl").json()
+    assert first["workspace_id"] == second["workspace_id"]
+    assert first["path"].endswith("source.owl")
+
+    default = M.DOMAINS.settings.effective_default()
+    assert default
+    M.DOMAINS.activate(default)
+    assert not M.DOMAINS.current().is_imported
+
+    M._restore_imported_workspace()
+    assert M.DOMAINS.current().is_imported
+    assert workspaces.get_current()["current_id"] == first["workspace_id"]
 
 
 def test_second_import_replaces_all_generated_content(restore_engine):
@@ -439,11 +459,10 @@ def test_guide_shows_original_filename_without_upload_uuid(restore_engine):
     assert original in guide["profile"]["summary"]
     assert guide["runtime"]["ontology"] not in guide["profile"]["summary"]
 
-    # #132：OWL 源码回执给展示名（标题 / 下载名用），完整落盘名保留供排查
+    # #149：落盘名固定 source.owl，展示名来自工作区 meta（原始文件名）
     src = client.get("/api/ontology/source").json()
     assert src["display_name"] == original
-    assert src["filename"] != src["display_name"]
-    assert src["filename"].endswith(src["display_name"])
+    assert src["filename"] == "source.owl"
 
 
 def test_switch_back_to_preset_restores_guide_and_graph(restore_engine):

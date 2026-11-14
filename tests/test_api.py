@@ -287,3 +287,10 @@ def test_describe_unknown_name_is_400_not_500():
     r = client.post("/api/ontology/describe", json={"iri": "definitely-not-in-ontology"})
     assert r.status_code == 400
     assert "detail" in r.json()
+
+
+def test_describe_resolves_camel_case_model_ids():
+    """草图模型 id 是小写（agent），本体里的类是 Agent：仍能描述。"""
+    r = client.post("/api/ontology/describe", json={"iri": "agent"})
+    assert r.status_code == 200, r.text
+    assert r.json()["local_name"] == "Agent"

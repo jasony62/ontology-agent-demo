@@ -129,7 +129,9 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     } catch {
       /* 非 JSON 响应 */
     }
-    throw new Error(detail);
+    const error = new Error(detail) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
   return res.json() as Promise<T>;
 }
@@ -341,8 +343,7 @@ export interface GuideRuntime {
   individuals: string[];
 }
 
-export interface GuideReconcile {
-  notes_without_capability: { capability: string; note: string }[];
+export interface GuideReconcile {  notes_without_capability: { capability: string; note: string }[];
   capabilities_without_note: string[];
   unavailable_examples: { id: string; reason: string | null }[];
 }
@@ -378,6 +379,69 @@ export interface DomainGuide {
   examples: GuideExample[];
 }
 
+// ---------------- CQ 集（#150 / #151） ----------------
+
+export interface CqCaseLocation {
+  coverage: string;
+  evidence: number;
+  anchors: number;
+}
+
+export interface CqSetCase {
+  id?: string;
+  cq: string;
+  expected_type?: string;
+  anchor_terms?: string[];
+  requirement?: string;
+  priority?: string;
+  status?: string;
+  regression?: { tool?: string; params?: Record<string, unknown>; expect?: unknown } | null;
+  coverage_cache?: { conclusion?: number; ran_at?: string; [key: string]: unknown } | null;
+  notes?: string;
+  updated_at?: string;
+  located?: boolean;
+  answerable?: boolean;
+  location?: CqCaseLocation;
+  [key: string]: unknown;
+}
+
+export interface CqSetSummary {
+  total: number;
+  by_type: Record<string, number>;
+  by_status: Record<string, number>;
+  located: number;
+  answerable: number;
+  gap: number;
+  coverage_light: number;
+  coverage_real: number;
+}
+
+export interface CqSetResponse {
+  ontology_id: string;
+  suite: string;
+  version: number;
+  updated_at?: string | null;
+  summary: CqSetSummary;
+  cases: CqSetCase[];
+}
+
+export interface CqEvidence {
+  item: string;
+  label: string;
+  field: string;
+  kind: string;
+  text: string;
+  matched: string;
+}
+
+export interface CqLocateResult {
+  anchors: string[];
+  coverage: string;
+  evidence: CqEvidence[];
+  counts: { total: number; conclusion: number; description: number };
+  hint: string;
+}
+
 export const api = {
   health: () => request<Record<string, unknown>>('/api/health'),
 
@@ -405,6 +469,41 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ iri, include_as_object: includeAsObject }),
+    }),
+
+  /** CQ 集（#150）：读当前集 + 概览 summary */
+  cqSet: () => request<CqSetResponse>('/api/domains/current/cq/set'),
+
+  /** CQ 集整集覆盖（PUT） */
+  cqPut: (payload: { suite: string; version?: number; cases: CqSetCase[] }) =>
+    request<CqSetResponse>('/api/domains/current/cq/set', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  /** CQ 集整集导入（multipart JSON） */
+  cqImport: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<{ status: string; ontology_id: string; suite: string; cases: number }>(
+      '/api/domains/current/cq/import',
+      { method: 'POST', body: form },
+    );
+  },
+
+  /** CQ 集导出地址（附件下载） */
+  cqExportUrl: () => '/api/domains/current/cq/export',
+
+  /** CQ 依据定位（#124） */
+  cqLocate: (cq: string, conclusionFields?: string[]) =>
+    request<CqLocateResult>('/api/domains/current/cq/locate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cq,
+        ...(conclusionFields ? { conclusion_fields: conclusionFields } : {}),
+      }),
     }),
 
   /**

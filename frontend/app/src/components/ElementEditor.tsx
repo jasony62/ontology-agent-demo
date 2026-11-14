@@ -184,7 +184,7 @@ function ClassForm({
     <div className="panel element-editor">
       <StatusBar />
       <h2>类 · {entity.name || '(未命名)'}</h2>
-      <NodeSource id={entity.id} />
+      <NodeSource id={entity.id} includeAsObject />
       <IssueList issues={issues} />
 
       <div className="element-section">

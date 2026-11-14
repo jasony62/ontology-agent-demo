@@ -28,7 +28,7 @@ import os
 import re
 from pathlib import Path
 
-from rdflib import URIRef
+from rdflib import Literal, URIRef
 
 from ontology_plugin_sdk import AdapterBase, SemanticConfig, local
 from ontology_plugin_sdk.protocol import validate_domain_guide
@@ -44,6 +44,13 @@ DESCRIPTION = (
 # 上传副本的文件名带 8 位 uuid 前缀（防重名用），对用户没有意义：
 # 页面显示原始文件名，哈希只留在 title / 落盘路径里（#131）。
 _UUID_PREFIX = re.compile(r"^[0-9a-fA-F]{8,}-")
+
+# 元谓词命名空间（#145）：这些不是用户写的业务属性，示例生成不拿它们出题。
+_META_NAMESPACES = (
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "http://www.w3.org/2000/01/rdf-schema#",
+    "http://www.w3.org/2002/07/owl#",
+)
 
 
 def display_filename(filename: str) -> str:
@@ -140,21 +147,32 @@ def _first_class_with_individuals(engine, classes: list[dict]) -> tuple[str, lis
     return None
 
 
-def _business_edge(engine, subject: str) -> tuple[str, str] | None:
-    """找一个「主体—业务属性—个体」的真实边，供「直接问」示例使用。
+def _business_property(engine, subject: str) -> str | None:
+    """找一个「主体—属性」的真实属性，供「直接问」示例使用（#145）。
 
-    只认可读短名的主体 / 属性 / 宾语，且属性落在默认命名空间内；RDF/RDFS/OWL
-    元谓词（type / label / subClassOf）不算业务属性。
+    与旧实现（`_business_edge`）的区别：不再要求宾语是 `URIRef`，也不再要求
+    谓词落在默认命名空间——`statement` / `threshold` 这类**字面量属性**和
+    `vocab:` 等子命名空间里的对象属性都能被示例覆盖。
+
+    仍排除 RDF/RDFS/OWL 元谓词（type / label / subClassOf 等），它们不是用户
+    写的业务属性；对象属性优先、同优先级按谓词 IRI 排序，保证同一份本体每次
+    生成同一道题。
     """
-    # #120：个体 IRI 可能带语义子目录（/instance/x），不能拿主命名空间回拼。
     iri = engine.resolve(subject)
-    ns = str(engine.NS)
+    candidates: set[tuple[bool, str]] = set()
     for graph in (engine.raw, engine.g):
         for predicate, obj in graph.predicate_objects(iri):
-            if not isinstance(obj, URIRef) or not str(predicate).startswith(ns):
+            predicate_iri = str(predicate)
+            if predicate_iri.startswith(_META_NAMESPACES):
                 continue
-            return local(predicate), local(obj)
-    return None
+            if isinstance(obj, Literal) and not str(obj).strip():
+                continue
+            candidates.add((isinstance(obj, Literal), predicate_iri))
+    if not candidates:
+        return None
+    # (字面量优先, 谓词 IRI)：先把字面量属性拿出来，正对「界面看不到文字值」的盲区；
+    # 没有字面量时再退回对象属性，最后按 IRI 稳定排序。
+    return local(URIRef(sorted(candidates, key=lambda item: (not item[0], item[1]))[0][1]))
 
 
 def _proof_hint(engine, subject: str, predicate: str, obj: str) -> str:
@@ -315,21 +333,31 @@ def build_guide(engine, *, filename: str | None = None) -> dict:
         "直接问",
     ))
 
-    if focus_individual is not None:
+    # #145：property_values 示例不再只看「焦点个体的对象属性边」——遍历个体，
+    # 找第一个真正带业务属性（对象属性或字面量）的主体；字面量也能出题。
+    property_subject = None
+    property_name = None
+    for name in individuals:
         try:
-            edge = _business_edge(engine, focus_individual)
+            property_name = _business_property(engine, name)
         except NameResolutionError:
-            edge = None
-        if edge is not None:
-            predicate, obj = edge
-            values = engine.property_values(focus_individual, predicate)
+            property_name = None
+        if property_name is not None:
+            property_subject = name
+            break
+    if property_subject is not None and property_name is not None:
+        try:
+            values = engine.property_values(property_subject, property_name)
+        except NameResolutionError:
+            values = []
+        if values:
             examples.append(_example(
                 "IMP-06",
-                f"「{focus_individual}」的「{predicate}」取值是什么？",
+                f"「{property_subject}」的「{property_name}」取值是什么？",
                 "property_values",
-                {"subject": focus_individual, "property": predicate},
+                {"subject": property_subject, "property": property_name},
                 f"{len(values)} 个：{'、'.join(values[:8])}" if values else "空集：该属性没有取值",
-                "主体—属性取值",
+                "主体—属性取值（对象属性与字面量都支持）",
                 "直接问",
             ))
 

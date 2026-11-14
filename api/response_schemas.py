@@ -489,3 +489,24 @@ class DomainActivateResponse(BaseModel):
         description="新领域声明的能力清单；未声明时为空列表。",
     )
     triples: int = Field(..., description="切换后完整图三元组数。")
+
+
+class DescribeTriple(BaseModel):
+    """describe 子图中的一条三元组（#144）。"""
+
+    subject: str = Field(..., description="主语完整 IRI。")
+    predicate: str = Field(..., description="谓词完整 IRI。")
+    object: str = Field(..., description="宾语：IRI 全文，或字面量的字面值。")
+    object_kind: str = Field(..., description="宾语类型：iri / literal。")
+    object_datatype: str | None = Field(None, description="字面量的数据类型 IRI；非字面量为空。")
+    object_language: str | None = Field(None, description="字面量的语言标签；无则为空。")
+
+
+class OntologyDescribeResponse(BaseModel):
+    """节点 / 关系的原始三元组（#144）：只读 describe 子图。"""
+
+    iri: str = Field(..., description="解析后的主语完整 IRI（短名会在此展开）。")
+    local_name: str = Field(..., description="主语的局部名，方便与 OWL 文件里的 ID 对应。")
+    count: int = Field(..., description="子图三元组条数（= triples 长度）。")
+    triples: list[DescribeTriple] = Field(..., description="结构化三元组列表，供关系精确定位。")
+    ntriples: str = Field(..., description="子图的 N-Triples 文本（含对象属性与字面量）。")

@@ -1,10 +1,40 @@
 import { useEffect, useState } from 'react';
 import { useAppStore } from '../store/appStore';
 import { api } from '../api/client';
-import type { GraphData, GraphNode, GraphEdge, ProofResponse } from '../api/client';
+import type { DescribeResponse, GraphData, GraphNode, GraphEdge, ProofResponse } from '../api/client';
 
 function findNode(graph: GraphData | null, id: string): GraphNode | null {
   return graph?.nodes.find((n) => n.id === id) ?? null;
+}
+
+/** IRI / 短名的局部名（#144）：页面身份区与边的源码定位共用。 */
+function localNameOf(value: string): string {
+  const tail = value.replace(/[#/]+$/, '').split(/[#/]/).pop() ?? value;
+  return decodeURIComponent(tail);
+}
+
+function tripleLine(subject: string, predicate: string, object: string): string {
+  return `<${subject}> <${predicate}> ${object} .`;
+}
+
+function SourceBlock({
+  text, loading, error, note,
+}: {
+  text: string;
+  loading: boolean;
+  error: boolean;
+  note?: string;
+}) {
+  if (error) {
+    return <div className="element-readonly-note">源码读取失败：该元素可能已不在当前本体中。</div>;
+  }
+  if (loading) return <div className="inspector-source-note">正在读取原始三元组…</div>;
+  return (
+    <div className="inspector-source-body">
+      {note && <div className="inspector-source-note">{note}</div>}
+      <pre className="inspector-ntriples">{text || '（没有可展示的三元组）'}</pre>
+    </div>
+  );
 }
 
 /** 图上的边 id 形如 `edge|rel--<关系 id>` 或 `edge|<source>--<label>--<target>` */
@@ -118,10 +148,76 @@ export default function Inspector({ onJump }: Props) {
     };
   }, [shouldFetchProof, edge?.source, edge?.label, edge?.target]);
 
+  // #144：源码视角——节点取它的全部三元组；边取它作主语的那一条（展开时才请求）。
+  // 短名交给后端解析成 IRI（ENGINE.resolve），前端不猜命名空间。
+  const [edgeSourceOpen, setEdgeSourceOpen] = useState(false);
+  const describeSubject = isEdge
+    ? (edgeSourceOpen ? edge?.source ?? null : null)
+    : (selectedId && !selectedId.startsWith('sketch|') ? selectedId : null);
+  const [describe, setDescribe] = useState<DescribeResponse | null>(null);
+  const [describeFailed, setDescribeFailed] = useState(false);
+  const [sourceView, setSourceView] = useState(false);
+
+  useEffect(() => {
+    setSourceView(false);
+    setEdgeSourceOpen(false);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!describeSubject) {
+      setDescribe(null);
+      setDescribeFailed(false);
+      return;
+    }
+    let cancelled = false;
+    setDescribe(null);
+    setDescribeFailed(false);
+    api.describe(describeSubject)
+      .then((data) => {
+        if (!cancelled) setDescribe(data);
+      })
+      .catch(() => {
+        if (!cancelled) setDescribeFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [describeSubject]);
+
   if (!selectedId) return null;
 
   const labelOf = (id: string) =>
     findNode(graphData, id)?.label ?? findNode(inferred, id)?.label ?? id;
+
+  const wantedPredicate = edge?.label === 'rdf:type' ? 'type' : edge?.label;
+  const edgeTriple = edge && describe
+    ? describe.triples.find((triple) =>
+      localNameOf(triple.predicate) === wantedPredicate
+      && localNameOf(triple.object).toLowerCase() === localNameOf(edge.target).toLowerCase())
+    : null;
+  const edgeSourceText = edgeTriple
+    ? tripleLine(
+      edgeTriple.subject,
+      edgeTriple.predicate,
+      edgeTriple.object_kind === 'literal' ? JSON.stringify(edgeTriple.object) : `<${edgeTriple.object}>`,
+    )
+    : edge
+      ? tripleLine(edge.source, edge.label, `<${edge.target}>`)
+      : '';
+  const edgeSourceBlock = (
+    <details
+      className="inspector-source"
+      onToggle={(event) => setEdgeSourceOpen((event.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary>源码视角（原始三元组）</summary>
+      <SourceBlock
+        text={edgeSourceText}
+        loading={!describe && !describeFailed}
+        error={describeFailed}
+        note={describe && !edgeTriple ? '当前图中未定位到完整 IRI，以下用短名表示。' : undefined}
+      />
+    </details>
+  );
 
   if (isEdge) {
     const diffNote = viewMode === 'diff'
@@ -140,6 +236,7 @@ export default function Inspector({ onJump }: Props) {
             这不是本体里写的，是推出来的；要改变它，改产生它的公理。
           </div>
           {viewMode !== 'asserted' && <EdgeProof proof={proof} failed={proofFailed} />}
+          {edgeSourceBlock}
           {diffNote}
         </div>
       );
@@ -172,6 +269,7 @@ export default function Inspector({ onJump }: Props) {
           <button type="button" className="btn" onClick={() => onJump(assertedEdge.source)}>
             {isSubClass ? '去改父类' : '去改所属类型'}
           </button>
+          {edgeSourceBlock}
         </div>
       );
     }
@@ -188,6 +286,7 @@ export default function Inspector({ onJump }: Props) {
           这条边属于个体 {labelOf(assertedEdge.source)} 的属性值 · 不直接改连线，改个体的「属性值」。
         </div>
         <button type="button" className="btn" onClick={() => onJump(assertedEdge.source)}>去改属性值</button>
+        {edgeSourceBlock}
         {diffNote}
       </div>
     );
@@ -234,6 +333,9 @@ export default function Inspector({ onJump }: Props) {
           <b>身份</b>：
           {isInferredNode ? '推理新增节点（物化产生，只读）' : '原始断言'}
         </div>
+        {/* #144：身份区补完整 IRI 与局部名，解决「界面标签和 OWL 里的 ID 对不上」 */}
+        <div><b>IRI</b>：<code className="inspector-iri">{describe?.iri ?? node.id}</code></div>
+        <div><b>局部名</b>：<code>{describe?.local_name ?? localNameOf(node.id)}</code></div>
       </div>
 
       {isInferredNode && (
@@ -254,10 +356,39 @@ export default function Inspector({ onJump }: Props) {
         </div>
       )}
 
-      {relatedEdges.length > 0 && (
-        <div className="element-section">
-          <div><b>属性 / 关联</b></div>
-          <ul className="element-related-list">
+      <div className="inspector-tabs" role="tablist" aria-label="检视视角">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!sourceView}
+          className={`inspector-tab${sourceView ? '' : ' active'}`}
+          onClick={() => setSourceView(false)}
+        >
+          属性 / 关联
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={sourceView}
+          className={`inspector-tab${sourceView ? ' active' : ''}`}
+          onClick={() => setSourceView(true)}
+        >
+          源码视角
+        </button>
+      </div>
+
+      {sourceView ? (
+        <SourceBlock
+          text={describe?.ntriples ?? ''}
+          loading={!describe && !describeFailed}
+          error={describeFailed}
+          note="以该元素作主语的全部三元组（对象属性与字面量都在）。"
+        />
+      ) : (
+        relatedEdges.length > 0 && (
+          <div className="element-section">
+            <div><b>属性 / 关联</b></div>
+            <ul className="element-related-list">
             {relatedEdges.map(({ edge: e, direction }) => (
               <li key={edgeRawId(e)}>
                 {direction === 'out' ? (
@@ -274,8 +405,9 @@ export default function Inspector({ onJump }: Props) {
                 {e.provenance === 'inferred' ? <span style={{ color: '#2f8f6b' }}> · 推理</span> : null}
               </li>
             ))}
-          </ul>
-        </div>
+            </ul>
+          </div>
+        )
       )}
     </div>
   );

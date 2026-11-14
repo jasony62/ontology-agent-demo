@@ -1383,6 +1383,12 @@ export default function DomainGuidePage({
               code={`curl -s -X POST ${window.location.origin}/api/domains/current/capabilities/query \\\n  -H 'Content-Type: application/json' \\\n  -d '${JSON.stringify(firstSafe ? { kind: firstSafe.capability, params: firstSafe.params } : { kind: '<能力名>', params: {} })}'`}
               note="可直接粘到终端运行；只读端点，不改图、不落盘"
             />
+            {/* #145：示例没覆盖到字面量时也能直接查——属性值不只有对象属性 */}
+            <h4 className="guide-subhead">直接查任意个体的属性（含字面量）</h4>
+            <CopyBlock
+              code={`curl -s -X POST ${window.location.origin}/api/property \\\n  -H 'Content-Type: application/json' \\\n  -d '{"subject":"<个体短名>","property":"<属性短名>"}'`}
+              note="对象属性与字面量属性都支持；主体 / 属性不存在时返回空列表，不是报错"
+            />
             <div className="guide-inline-links">
               <a href="/api-docs" target="_blank" rel="noreferrer">打开完整接口文档 ↗</a>
               <span>参数与错误码以 OpenAPI 为准</span>

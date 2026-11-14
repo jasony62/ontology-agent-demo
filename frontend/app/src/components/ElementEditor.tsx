@@ -12,6 +12,7 @@ import type { ValidationIssue } from '../data/validate';
 import { nextUniqueId } from '../data/sketch';
 import { assertionPropOptions } from '../data/assertionProps';
 import { CARDINALITIES, COLORS, PROPERTY_TYPES } from '../data/ontologyOptions';
+import { EdgeSource, NodeSource } from './RdfSource';
 
 export type ElementTarget =
   | { kind: 'class'; entity: EntityType }
@@ -183,6 +184,7 @@ function ClassForm({
     <div className="panel element-editor">
       <StatusBar />
       <h2>类 · {entity.name || '(未命名)'}</h2>
+      <NodeSource id={entity.id} />
       <IssueList issues={issues} />
 
       <div className="element-section">
@@ -314,6 +316,7 @@ function RelationForm({
     <div className="panel element-editor">
       <StatusBar />
       <h2>关系 · {rel.name || '(未命名)'}</h2>
+      <EdgeSource source={rel.from} predicate={rel.id} target={rel.to} />
       <IssueList issues={issues} />
 
       <div className="element-section">
@@ -462,6 +465,7 @@ function InstanceForm({ ontology, instance, issues, nameRef, onCommit, onDeleteI
     <div className="panel element-editor">
       <StatusBar />
       <h2>个体 · {instance.label || instance.id}</h2>
+      <NodeSource id={instance.id} />
       <IssueList issues={issues} />
       <p className="element-hint">
         属性名从模型已声明的对象 / 数据属性里选；属性值不画在图上，只写进导出文件。

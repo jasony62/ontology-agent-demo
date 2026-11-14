@@ -185,6 +185,16 @@ class PropertyRequest(BaseModel):
     property: str = Field(..., description="属性短名，例如 has_capability；不存在时返回空列表。")
 
 
+class DescribeRequest(BaseModel):
+    """节点 / 关系的原始三元组（#144）：按 IRI 取子图，只读、不推理。"""
+
+    iri: str = Field(..., min_length=1, description="完整 IRI 或本体里的短名（如 ruleVerifyDeadline）。")
+    include_as_object: bool = Field(
+        False,
+        description="是否同时返回以该 IRI 作宾语的三元组（默认只看它作主语的断言）。",
+    )
+
+
 class CqLocateRequest(BaseModel):
     """CQ 依据定位（#124）：题干 → 本体里承载它的条目。"""
 

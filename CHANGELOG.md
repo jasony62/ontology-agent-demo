@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-14
+
 ### Added
 
 - **CQ 单一断言格式与 schema fail-fast（#179 / #181）**：`cq_store` 写入只接受 `regression{query, expect}`，旧平铺 `tool`+`params`（以及平铺 `query`/`expect`）一律 400；`expect.type` 收敛为 `boolean / exists / count / values / set_exact / contains` 并在写入时校验配套字段。`cq_runner` 删除 `_generic_tool` 旧分支，只跑 SPARQL；预置 `agent_task` 的 20 道 CQ 全部重写为针对本体图的可答 SPARQL 断言（能力覆盖 / 依赖闭包 / 合规约束 / R5-R6 正反例），不再测智能体能力；领域包内旧的 `cq_regression.py` 一并删除，回归统一走框架 `cq/cq_runner.py`。

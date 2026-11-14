@@ -30,6 +30,9 @@ const DESCRIPTION: DescribeResponse = {
   ntriples:
     '<http://example.org/x#ruleVerifyDeadline> <http://example.org/x#statement> "5 个工作日内完成" .\n'
     + '<http://example.org/x#ruleVerifyDeadline> <http://example.org/x#appliesTo> <http://example.org/x#recordA> .',
+  rdfxml: '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:vocab="http://example.org/x#">'
+    + '<rdf:Description rdf:about="http://example.org/x#ruleVerifyDeadline">'
+    + '<vocab:statement>5 个工作日内完成</vocab:statement></rdf:Description></rdf:RDF>',
 };
 
 let root: Root | null = null;
@@ -80,9 +83,10 @@ describe('ElementEditor 的源码视角（#144）', () => {
 
     openDetails();
     await flush();
-    const source = container!.querySelector('.inspector-ntriples')!.textContent ?? '';
+    const source = container!.querySelector('.source-raw pre')!.textContent ?? '';
+    expect(source).toContain('<rdf:RDF');
     expect(source).toContain('statement');
-    expect(source).toContain('"5 个工作日内完成"');
+    expect(source).toContain('5 个工作日内完成');
   });
 
   it('关系只展示当前那一条三元组（完整 IRI）', async () => {

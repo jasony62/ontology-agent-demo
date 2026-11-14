@@ -510,3 +510,7 @@ class OntologyDescribeResponse(BaseModel):
     count: int = Field(..., description="子图三元组条数（= triples 长度）。")
     triples: list[DescribeTriple] = Field(..., description="结构化三元组列表，供关系精确定位。")
     ntriples: str = Field(..., description="子图的 N-Triples 文本（含对象属性与字面量）。")
+    rdfxml: str = Field(
+        ...,
+        description="子图的 RDF/XML 文本（与「OWL 源码」同格式，保留命名空间前缀与缩进）。",
+    )

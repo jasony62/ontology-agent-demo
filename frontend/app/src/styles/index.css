@@ -1507,3 +1507,6 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   .cq-body { grid-template-columns: 1fr; }
   .cq-detail { max-height: none; }
 }
+
+.source-raw--nested { margin-top: 6px; }
+.source-raw--nested summary { color: #8a94a6; }

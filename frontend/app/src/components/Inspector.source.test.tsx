@@ -37,6 +37,14 @@ const DESCRIPTION: DescribeResponse = {
     '<http://example.org/x#ruleVerifyDeadline> <http://example.org/x#statement> "5 个工作日内完成" .',
     '<http://example.org/x#ruleVerifyDeadline> <http://example.org/x#appliesTo> <http://example.org/x#WorkhourRecord> .',
   ].join('\n'),
+  rdfxml: [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:vocab="http://example.org/x#">',
+    '  <rdf:Description rdf:about="http://example.org/x#ruleVerifyDeadline">',
+    '    <vocab:statement>5 个工作日内完成</vocab:statement>',
+    '  </rdf:Description>',
+    '</rdf:RDF>',
+  ].join('\n'),
 };
 
 const graphData = {
@@ -106,10 +114,10 @@ describe('检视器源码视角（#144）', () => {
       .find((button) => button.textContent === '源码视角')!;
     act(() => tab.click());
 
-    const source = container!.querySelector('.inspector-ntriples')!.textContent ?? '';
+    const source = container!.querySelector('.source-raw pre')!.textContent ?? '';
+    expect(source).toContain('<rdf:RDF');
     expect(source).toContain('statement');
-    expect(source).toContain('"5 个工作日内完成"');
-    expect(source).toContain('appliesTo');
+    expect(source).toContain('5 个工作日内完成');
   });
 
   it('关系源码视角给出单条三元组（完整 IRI 形式）', async () => {

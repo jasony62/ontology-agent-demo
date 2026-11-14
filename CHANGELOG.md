@@ -13,6 +13,7 @@
 
 ### Changed
 
+- **源码视角的原始文本改为 RDF/XML（#147 收尾）**：`POST /api/ontology/describe` 额外返回 `rdfxml`（子图按原命名空间前缀与缩进序列化），检视器 / 只读编辑表单的「原始文本」默认展示与「OWL 源码」同格式的 RDF/XML，N-Triples 收进下一级折叠，仍可复制；结构化「谓词 + 取值」列表保持不变。
 - **源码视角结构化与错误分流（#147）**：`SourceBlock` 改用 `describe.triples[]` 渲染「谓词 + 取值」列表——字面量带引号与语言 / 数据类型标签，资源显示可点击局部名；原始 N-Triples 降级为可折叠、可复制的兜底文本。失败分两类：端点 404 / 网络错提示「源码接口暂不可用」，400「本体中无该元素」不再混为一谈。类节点请求 `include_as_object`，能看到实例 / 子类入边。导入态只读编辑表单复用同一套渲染。
 - **前端 API origin 可配置（#148）**：`vite.config.ts` 的 `/api`、`/openapi.json`、`/docs` 代理与「复制为 curl」默认前缀统一读 `VITE_API_ORIGIN`（缺省 `http://127.0.0.1:8000`）；新增 `frontend/app/.env.example`。REST 请求本身仍用相对路径，生产同 origin 形态不变。
 - **检视器可看原始 RDF 与源码片段（#144）**：新增只读 `POST /api/ontology/describe {iri, include_as_object?}`，按 IRI 取子图并同时返回 N-Triples 与结构化三元组（含 `object_kind: iri | literal`、数据类型 / 语言标签），短名解析失败仍是 400。检视器与只读编辑表单新增「源码视角」：节点列出以它作主语的全部三元组（对象属性与字面量都在），关系定位到当前那一条 `<主语> <谓词> <宾语> .`；身份区补完整 IRI 与局部名，解决「界面标签和 OWL 里的 ID 对不上」。字面量不塞回图谱边，布局与既有「属性 / 关联」列表不受影响。端点总数 34 → 35，文档同步。

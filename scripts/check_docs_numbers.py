@@ -103,6 +103,17 @@ CHECKS = [
 def main() -> int:
     client = TestClient(app)
     health = client.get("/api/health").json()
+    # 导入态（data/workspaces/_current.json）没有领域规则层，health.rules 为 None；
+    # 此时手册快照数字本来就对不上，继续跑只会抛 TypeError / 误报（#190）。
+    if not health.get("rules"):
+        dom = client.get("/api/domains").json()
+        name = dom.get("display_name") or dom.get("name") or "当前领域"
+        print(
+            f"当前领域是「{name}」（{dom.get('name') or 'unknown'}），没有领域规则层，"
+            "手册运行快照无法校验。"
+        )
+        print("请先切回默认领域：POST /api/domains/agent_task/activate")
+        return 2
     # 先取启动态物化统计，再调用 /api/infer：后者会重跑规则层并追加派生三元组，
     # 手册里的「物化图 − 原始断言 = 推理新增」描述的是启动态（health）口径。
     stats = client.get("/api/ontology/materialized").json()["stats"]

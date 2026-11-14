@@ -2203,19 +2203,30 @@ def describe_ontology(req: DescribeRequest):
     # 前端图谱的类 id 可能来自草图模型的小写形式（agent ↔ 本体里的 Agent）：
     # 精确 / 后缀解析失败时，再按局部名大小写不敏感找一次；多个候选仍报 400。
     key = local(req.iri).lower()
+
+    def _case_insensitive_subject() -> set:
+        # 只认 IRI：物化图里可能混入以字面量作主语的泛化三元组，不能当候选。
+        return {
+            candidate for candidate in ENGINE.g.subjects()
+            if isinstance(candidate, URIRef) and local(candidate).lower() == key
+        }
+
     try:
         subject = URIRef(ENGINE.resolve(req.iri))
     except NameResolutionError:
-        matches = {candidate for candidate in ENGINE.g.subjects() if local(candidate).lower() == key}
+        matches = _case_insensitive_subject()
         if len(matches) != 1:
             raise
         subject = next(iter(matches))
     else:
         if subject not in set(ENGINE.g.subjects()):
-            matches = {candidate for candidate in ENGINE.g.subjects() if local(candidate).lower() == key}
+            matches = _case_insensitive_subject()
             if len(matches) == 1:
                 subject = next(iter(matches))
     graph = Graph()
+    # 与 OWL 源码一致的 RDF/XML：沿用原图的命名空间前缀，避免出现 ns1/ns2。
+    for prefix, namespace in ENGINE.g.namespaces():
+        graph.bind(prefix or "", namespace, replace=True)
     for triple in ENGINE.g.triples((subject, None, None)):
         graph.add(triple)
     if req.include_as_object:
@@ -2232,12 +2243,17 @@ def describe_ontology(req: DescribeRequest):
             "object_datatype": str(o.datatype) if isinstance(o, Literal) and o.datatype else None,
             "object_language": o.language if isinstance(o, Literal) else None,
         })
+    rdfxml = graph.serialize(format="pretty-xml", encoding="utf-8")
+    if isinstance(rdfxml, bytes):
+        rdfxml = rdfxml.decode("utf-8")
     return {
         "iri": str(subject),
         "local_name": local(subject),
         "count": len(triples),
         "triples": triples,
         "ntriples": graph.serialize(format="nt"),
+        # #144 后续：与「OWL 源码」同格式，供源码视角直接展示
+        "rdfxml": rdfxml,
     }
 
 

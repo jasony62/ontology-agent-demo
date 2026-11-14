@@ -105,8 +105,12 @@ function SourceBody({
       {note && <div className="inspector-source-note">{note}</div>}
       <SourceTriples triples={data.triples} onSelect={onSelect} />
       <details className="source-raw">
-        <summary>原始文本（N-Triples，可复制）</summary>
-        <pre className="inspector-ntriples">{data.ntriples || '（没有可展示的三元组）'}</pre>
+        <summary>原始文本（RDF/XML，与 OWL 源码同格式）</summary>
+        <pre className="inspector-ntriples">{data.rdfxml || data.ntriples || '（没有可展示的三元组）'}</pre>
+        <details className="source-raw source-raw--nested">
+          <summary>N-Triples</summary>
+          <pre className="inspector-ntriples">{data.ntriples || '（没有可展示的三元组）'}</pre>
+        </details>
       </details>
     </div>
   );
@@ -181,7 +185,7 @@ export function EdgeSource({
         <SourceTriples triples={triple ? [triple] : [fallback]} />
         {triple && (
           <details className="source-raw">
-            <summary>原始文本（N-Triples，可复制）</summary>
+            <summary>原始文本（单条三元组，N-Triples）</summary>
             <pre className="inspector-ntriples">
               {`<${triple.subject}> <${triple.predicate}> ${triple.object_kind === 'literal' ? JSON.stringify(triple.object) : `<${triple.object}>`} .`}
             </pre>

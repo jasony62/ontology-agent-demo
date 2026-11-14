@@ -266,6 +266,10 @@ def test_describe_returns_literals_and_full_iri():
     literal = [t for t in body["triples"] if t["object_kind"] == "literal"]
     assert literal, "描述视图必须包含字面量"
     assert any(t["predicate"].endswith("has_risk_level") for t in literal)
+    # 与「OWL 源码」同格式：RDF/XML + 原始命名空间前缀
+    assert "<rdf:RDF" in body["rdfxml"]
+    assert "xmlns:" in body["rdfxml"]
+    assert "has_risk_level" in body["rdfxml"]
 
 
 def test_describe_can_include_incoming_and_is_read_only():

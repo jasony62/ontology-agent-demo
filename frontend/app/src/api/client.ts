@@ -77,6 +77,8 @@ export interface DescribeResponse {
   count: number;
   triples: DescribeTriple[];
   ntriples: string;
+  /** 子图 RDF/XML（与「OWL 源码」同格式；旧后端不发时回退 ntriples） */
+  rdfxml?: string;
 }
 
 export interface InferStats {

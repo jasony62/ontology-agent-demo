@@ -7,6 +7,8 @@
 
 ### Added
 
+- **CQ 单一断言格式与 schema fail-fast（#179 / #181）**：`cq_store` 写入只接受 `regression{query, expect}`，旧平铺 `tool`+`params`（以及平铺 `query`/`expect`）一律 400；`expect.type` 收敛为 `boolean / exists / count / values / set_exact / contains` 并在写入时校验配套字段。`cq_runner` 删除 `_generic_tool` 旧分支，只跑 SPARQL；预置 `agent_task` 的 20 道 CQ 全部重写为针对本体图的可答 SPARQL 断言（能力覆盖 / 依赖闭包 / 合规约束 / R5-R6 正反例），不再测智能体能力；领域包内旧的 `cq_regression.py` 一并删除，回归统一走框架 `cq/cq_runner.py`。
+- **CQ 死字段移除（#180）**：`anchor_terms` / `priority` / `note` 不再进入 CQ 存储契约与前端编辑器；`anchor_terms` 仅保留在 `cq_author(draft=...)` 的临时质检输入里（不落库）。写入这些字段会得到定向 400 提示。
 - **SPARQL ASK 支持（#177）**：`OntologyEngine.query_sparql` 现在同时支持 SELECT（`[{变量: 值}, ...]`）与 ASK（`{askAnswer: true|false}`），两段式超时路径同样适用；MCP `query_sparql`、REST `/api/query`、`scripts/query.py` 统一透传 `askAnswer`，不再把布尔结果当 SELECT 行消费（此前 `AttributeError: 'bool' object has no attribute 'asdict'`）。README「SPARQL 支持边界」同步更新。
 - **CQ MCP 定位工具 `cq_locate`（#174）**：`/mcp/cq` 新增单题定位工具，复用 `reasoner/cq_locate.py`，返回与 REST `POST /cq/locate` 同构的 `anchors / anchor_sources / coverage / evidence / counts / hint`，并附 `evidence_count`；只读、不落库，智能体可纯 MCP 完成「出题 → 定位 → 质检 → 入题」。
 - **CQ MCP 质检工具 `cq_validate`（#175）**：`/mcp/cq` 新增批量质检，逐条检查题型是否 CQ4OE 四类、锚点是否命中当前本体词表（零证据仅 warn）、是否与现有集或本批内重复；返回每条 `{ok, reasons, warnings, anchors, coverage, evidence}` 与汇总，不落库。
@@ -15,6 +17,7 @@
 
 ### Changed
 
+- **CQ 编辑器只保留 SPARQL 断言（#179）**：`#cq` 新增/编辑表单移除 `tool` + `params` 输入，只留 `query` + `expect`；详情页「回归工具」改为「回归断言」。
 - **`cq_author` 引导断链修复（#175）**：出题指引的 `next_step` 不再引用已随 #172 收敛掉的 `validate_cqs`，改为指向 `/mcp/cq` 真实存在的 `cq_validate`，形成「出题 → 质检 → `cq_case_upsert` 入题」纯 MCP 闭环。
 - **CQ 工具移出 agent_task 领域包**：`examples/agent_task/mcp.py` 删除 `guide_cq_generation` / `validate_cqs` / `validate_cqs_declared` / `guide_tbox_draft` / `validate_tbox_draft` / `cq_regression` 与 #155 的 7 个集管理工具，只保留 `validate_shapes`（依赖领域 `shapes/*.ttl`）；领域包工具数 16 → 10。
 

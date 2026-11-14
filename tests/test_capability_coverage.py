@@ -141,10 +141,16 @@ def test_reparse_replays_rules_after_mutation():
 # ---------------- CQ 回归 ----------------
 
 def test_cq_regression_still_green():
-    """12 道 CQ 全过（cq_regression 的引擎级直跑，不依赖 HTTP）。"""
+    """预置 CQ 全过（框架级 cq_runner 的引擎级直跑，不依赖 HTTP，单一下降 SPARQL 形态）。"""
+    import json
+    from pathlib import Path
+
+    from cq import cq_runner
+
     e = _pipeline_engine()
     module = domain_module()
-    adapter = make_adapter(module, e)
-    rep = submodule(module, "cq_regression").run_suite(adapter)
-    assert rep["failed"] == 0, rep["failures"]
+    bank_path = Path(module.__file__).parent / "cq_tests.json"
+    bank = json.loads(bank_path.read_text(encoding="utf-8"))
+    rep = cq_runner.run_suite(e, bank["cases"], bank["suite"])
+    assert rep["fail"] == 0, [c for c in rep["cases"] if c["state"] != "pass"]
     assert rep["total"] >= 12

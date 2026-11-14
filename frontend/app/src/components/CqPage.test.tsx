@@ -31,7 +31,7 @@ const SET = {
       located: true,
       answerable: true,
       location: { coverage: 'has_candidates', evidence: 2, anchors: 1 },
-      regression: { tool: 'capability_match' },
+      regression: { query: 'ASK { ?s ?p ?o }', expect: true },
       coverage_cache: { conclusion: 2, ran_at: '2026-11-14T09:00:00' },
     },
     {
@@ -189,6 +189,12 @@ describe('CQ 集页（#151）', () => {
       ['检索类', '推导类', '计数类', '反例类', '未分型'],
     );
     expect(selects[0].value).toBe('retrieval');
+    const labels = [...container!.querySelectorAll('.cq-editor .field-label')]
+      .map((node) => node.textContent);
+    expect(labels).toContain('SPARQL query');
+    expect(labels).toContain('expect（JSON）');
+    expect(labels).not.toContain('工具（tool）');
+    expect(labels).not.toContain('params（JSON）');
 
     const textarea = container!.querySelector('.cq-editor textarea') as HTMLTextAreaElement;
     const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;

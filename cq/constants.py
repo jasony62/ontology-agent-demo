@@ -12,10 +12,25 @@ from __future__ import annotations
 
 EXPECTED_TYPES = ("retrieval", "derived", "counting", "negative")
 EXPECTED_TYPE_UNKNOWN = "unknown"
+# 写入契约允许显式选 unknown（「未分型」是 UI 合法选项）；`set` 等历史值不再接受。
+EXPECTED_TYPE_VALUES = EXPECTED_TYPES + (EXPECTED_TYPE_UNKNOWN,)
 STATUS_VALUES = ("draft", "active", "archived")
 STATUS_UNSET = "unset"
+STATUS_CONTRACT_VALUES = STATUS_VALUES + (STATUS_UNSET,)
 
-# 历史遗留值：`set` 曾经是前端默认值，读取/写入时归为 unknown，不批量改写旧文件。
+# 回归断言（单一 SPARQL 形态，#179）允许的判分类型。
+# `contains` 只剩 SPARQL 一种语义（结果首列包含全部期望值），不再与旧的
+# set_exact/contains/exact_struct 三档工具判分并存（#181）。
+REGRESSION_EXPECT_TYPES = (
+    "boolean",
+    "exists",
+    "count",
+    "values",
+    "set_exact",
+    "contains",
+)
+
+# 历史遗留值：`set` 曾经是前端默认值；仅在读展示时归为 unknown，不再接受写入。
 EXPECTED_TYPE_ALIASES = {"set": EXPECTED_TYPE_UNKNOWN}
 
 EXPECTED_TYPE_LABELS = {

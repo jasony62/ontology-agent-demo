@@ -393,10 +393,8 @@ function CqEditor({
   const [expectedType, setExpectedType] = useState(draft.expected_type || 'retrieval');
   const [status, setStatus] = useState(draft.status || 'draft');
   const [requirement, setRequirement] = useState(draft.requirement || '');
-  const [tool, setTool] = useState(regression.tool || '');
   const [query, setQuery] = useState(regression.query || '');
-  const [params, setParams] = useState(JSON.stringify(regression.params || {}, null, 2));
-  const [expect, setExpect] = useState(JSON.stringify(regression.expect || {}, null, 2));
+  const [expect, setExpect] = useState(JSON.stringify(regression.expect ?? {}, null, 2));
   const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
@@ -409,12 +407,6 @@ function CqEditor({
     try {
       if (query.trim()) {
         normalized = { query: query.trim(), expect: expect.trim() ? JSON.parse(expect) : {} };
-      } else if (tool.trim()) {
-        normalized = {
-          tool: tool.trim(),
-          params: params.trim() ? JSON.parse(params) : {},
-          expect: expect.trim() ? JSON.parse(expect) : {},
-        };
       }
     } catch (e) {
       setError(`JSON 解析失败：${e instanceof Error ? e.message : String(e)}`);
@@ -467,20 +459,12 @@ function CqEditor({
       </div>
       <h4>回归断言</h4>
       <p className="guide-muted">
-        SPARQL 题填 query + expect；领域工具题填 tool + params + expect。两者都留空则不进入回归。
+        只支持 SPARQL：填 query + expect（ASK 填 true / false；SELECT 填 {`{type, values}`} 等判分对象）。留空则不进入回归。
       </p>
       <div className="cq-editor-grid">
-        <label className="field">
-          <span className="field-label">工具（tool）</span>
-          <input value={tool} onChange={(event) => setTool(event.target.value)} placeholder="property_values / query_sparql" />
-        </label>
         <label className="field cq-editor-wide">
           <span className="field-label">SPARQL query</span>
           <textarea value={query} onChange={(event) => setQuery(event.target.value)} rows={3} />
-        </label>
-        <label className="field cq-editor-wide">
-          <span className="field-label">params（JSON）</span>
-          <textarea value={params} onChange={(event) => setParams(event.target.value)} rows={3} />
         </label>
         <label className="field cq-editor-wide">
           <span className="field-label">expect（JSON）</span>
@@ -562,7 +546,7 @@ function CqDetail({
           <div className="cq-kv">
             <div><span>结论条数</span><b>{cache.conclusion ?? 0}</b></div>
             <div><span>时间</span><b>{cache.ran_at || '—'}</b></div>
-            <div><span>回归工具</span><b>{item.regression?.tool || '—'}</b></div>
+            <div><span>回归断言</span><b title={item.regression?.query || ''}>{item.regression?.query ? 'SPARQL' : '—'}</b></div>
           </div>
         ) : (
           <div className="guide-muted">

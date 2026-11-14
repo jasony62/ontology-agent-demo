@@ -162,18 +162,59 @@ def save_set(
 
 
 def get_set(ontology_id: str, seed_path: Path | None = None) -> dict:
-    """读当前集；工作区内没有时从领域包 `cq_tests.json` 播种。"""
+    """读当前集（纯读）；工作区内没有时从领域包 `cq_tests.json` 播种。"""
     stored = _read_json(set_path(ontology_id))
     if stored is not None:
-        cases = stored.get("cases") if isinstance(stored.get("cases"), list) else []
-        if _ensure_ids(cases):
-            stored = save_set(ontology_id, stored, mark_updated=False, actor="system")
         return stored
     seeded = _read_json(seed_path) if seed_path is not None else None
     if seeded is not None:
         save_set(ontology_id, seeded, mark_updated=False, actor="system")
         return seeded
     return empty_set()
+
+
+def identity_for(domain_name: str, seed_path: Path | None = None) -> tuple[str, Path | None]:
+    """REST 与 MCP 共用的 CQ 身份解析（#164）。
+
+    导入态优先用当前工作区 id（与网页一致）；预置领域用领域名，并把包内
+    `cq_tests.json` 作为首次播种来源。
+    """
+    current = workspaces.get_current()
+    if current and current.get("mode") == "imported":
+        workspace_id = str(current.get("current_id") or "")
+        if workspace_id and workspaces.meta_path(workspace_id).is_file():
+            return workspace_id, None
+    if seed_path is not None and not Path(seed_path).is_file():
+        seed_path = None
+    return domain_name, seed_path
+
+
+def read_audit(
+    ontology_id: str,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    case_id: str | None = None,
+) -> list[dict]:
+    """按时间倒序读取审计（#165）；坏行跳过，不阻断整个面板。"""
+    path = audit_path(ontology_id)
+    if not path.is_file():
+        return []
+    entries: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(item, dict):
+            continue
+        if case_id and str(item.get("case_id") or "") != case_id:
+            continue
+        entries.append(item)
+    entries.reverse()
+    return entries[offset:offset + max(0, limit)]
 
 
 def import_set(
@@ -434,6 +475,20 @@ def build_view(engine, data: dict) -> dict:
     }
 
 
+def _yaml_expect_lines(expect) -> list[str]:
+    """#163：ASK 布尔 / count 整数 / dict / 列表都转成合法 YAML 行。"""
+    if isinstance(expect, bool):
+        return [f"boolean: {'true' if expect else 'false'}"]
+    if isinstance(expect, (int, float)):
+        return [f"count: {expect}"]
+    if isinstance(expect, dict):
+        return [
+            f"{key}: {json.dumps(value, ensure_ascii=False)}"
+            for key, value in expect.items()
+        ]
+    return [f"value: {json.dumps(expect, ensure_ascii=False)}"]
+
+
 def export_cq_test(data: dict) -> str:
     """导出 rdf-construct `cq-test` 兼容 YAML（只导出带 SPARQL query 的题）。"""
     lines = [f"suite: {json.dumps(data.get('suite') or 'cq_set', ensure_ascii=False)}", "tests:"]
@@ -452,25 +507,25 @@ def export_cq_test(data: dict) -> str:
         for row in str(query).splitlines() or [""]:
             lines.append(f"      {row}")
         lines.append("    expect:")
-        expect = (regression or {}).get("expect") or {}
-        for key, value in expect.items():
-            lines.append(f"      {key}: {json.dumps(value, ensure_ascii=False)}")
+        for line in _yaml_expect_lines((regression or {}).get("expect")):
+            lines.append(f"      {line}")
         lines.append("")
     lines.append(f"# 共 {count} 道含 SPARQL 断言的题目；其余使用领域工具，未导出")
     return "\n".join(lines) + "\n"
 
 
 def export_junit(run: dict) -> str:
-    """把一次回归结果输出为 JUnit XML（#158）。"""
+    """把一次回归结果输出为 JUnit XML（#158 / #167）。"""
     from xml.sax.saxutils import escape, quoteattr
 
     cases = run.get("cases") or []
     failures = sum(1 for case in cases if case.get("state") == "fail")
-    errors = sum(1 for case in cases if case.get("state") in {"cannot_tell", "not_tested"})
+    errors = sum(1 for case in cases if case.get("state") == "cannot_tell")
+    skipped = sum(1 for case in cases if case.get("state") == "not_tested")
     lines = [
         '<?xml version="1.0" encoding="utf-8"?>',
         f'<testsuite name={quoteattr(str(run.get("suite") or "cq_set"))} tests="{len(cases)}" '
-        f'failures="{failures}" errors="{errors}">',
+        f'failures="{failures}" errors="{errors}" skipped="{skipped}">',
     ]
     for case in cases:
         name = escape(str(case.get("id") or "?") + " " + str(case.get("cq") or ""))
@@ -478,8 +533,10 @@ def export_junit(run: dict) -> str:
         state = case.get("state")
         if state == "fail":
             lines.append(f'    <failure message="expect/actual mismatch">{escape(json.dumps(case.get("detail") or {}, ensure_ascii=False))}</failure>')
-        elif state in {"cannot_tell", "not_tested"}:
+        elif state == "cannot_tell":
             lines.append(f'    <error message="{escape(str(case.get("hint") or state))}"/>')
+        elif state == "not_tested":
+            lines.append(f'    <skipped message="{escape(str(case.get("hint") or "尚未编写回归断言"))}"/>')
         lines.append("  </testcase>")
     lines.append("</testsuite>")
     return "\n".join(lines)

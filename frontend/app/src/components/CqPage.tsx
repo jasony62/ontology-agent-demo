@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
-import type { CqLocateResult, CqRun, CqSetCase, CqSetResponse } from '../api/client';
+import type { CqAuditEntry, CqLocateResult, CqRun, CqSetCase, CqSetResponse } from '../api/client';
 
 /**
- * CQ 集页（#151，P0）：概览看板 + 单题定位/可答卡 + 导入导出。
- *
- * 只读展示：不做单题 CRUD、不现场跑回归、不调任何模型。数据全部来自
- * `GET /api/domains/current/cq/set` 与已有的 `POST /cq/locate`。
+ * CQ 集页（#151 + #154 + #156）：概览看板 + 单题定位卡 + 单题 CRUD +
+ * 回归测试台 + 审计 + 导入导出。所有数据来自 `/api/domains/current/cq/*`，
+ * 不调任何模型。
  */
 export default function CqPage() {
   const [data, setData] = useState<CqSetResponse | null>(null);
@@ -19,6 +18,9 @@ export default function CqPage() {
   const [runs, setRuns] = useState<CqRun[]>([]);
   const [editing, setEditing] = useState<{ mode: 'create' | 'edit'; draft: CqSetCase } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [showAudit, setShowAudit] = useState(false);
+  const [audit, setAudit] = useState<CqAuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,6 +133,25 @@ export default function CqPage() {
     }
   };
 
+  const toggleAudit = async () => {
+    if (showAudit) {
+      setShowAudit(false);
+      return;
+    }
+    setShowAudit(true);
+    setAuditLoading(true);
+    setError(null);
+    try {
+      const result = await api.cqAudit();
+      setAudit(result.entries);
+    } catch (e) {
+      setError(`读取审计失败：${e instanceof Error ? e.message : String(e)}`);
+      setAudit([]);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
   const summary = data?.summary;
 
   return (
@@ -146,6 +167,9 @@ export default function CqPage() {
         <div className="cq-toolbar-actions">
           <button type="button" className="btn secondary" onClick={() => void load()} disabled={loading || busy != null}>
             刷新
+          </button>
+          <button type="button" className="btn secondary" onClick={() => void toggleAudit()}>
+            {showAudit ? '收起审计' : '审计'}
           </button>
           <button
             type="button"
@@ -177,6 +201,37 @@ export default function CqPage() {
 
       {notice && <div className="notice-banner" role="status">{notice}</div>}
       {error && <div className="error-banner">{error}</div>}
+
+      {showAudit && (
+        <section className="panel cq-audit" aria-label="CQ 变更审计">
+          <div className="cq-audit-head">
+            <h3>变更审计</h3>
+            <span className="guide-muted">最近 {audit.length} 条（新到旧）</span>
+          </div>
+          {auditLoading ? (
+            <div className="guide-muted">正在读取审计…</div>
+          ) : audit.length === 0 ? (
+            <div className="guide-empty-inline">还没有变更记录；新增 / 编辑 / 删除 / 导入后这里会出现时间线。</div>
+          ) : (
+            <ul className="cq-audit-list">
+              {audit.map((entry, index) => {
+                const summary = (entry.after?.cq || entry.before?.cq || '') as string;
+                return (
+                  <li key={`${entry.ts}-${index}`}>
+                    <span className={`cq-audit-actor ${entry.actor_type}`}>
+                      {entry.actor_type === 'agent' ? '🤖' : '🧑'}
+                    </span>
+                    <span className="cq-audit-action">{entry.action}</span>
+                    <code>{entry.case_id || '—'}</code>
+                    <span className="cq-audit-summary">{summary}</span>
+                    <span className="cq-audit-meta">{entry.actor} · {entry.ts}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
 
       {loading && !data ? (
         <div className="guide-empty">正在读取 CQ 集…</div>
@@ -289,7 +344,7 @@ export default function CqPage() {
                     <button
                       type="button"
                       className="btn secondary"
-                      disabled={busy != null}
+                      disabled={busy != null || !current.id}
                       onClick={() => setEditing({ mode: 'edit', draft: { ...current } })}
                     >
                       编辑
@@ -447,15 +502,8 @@ function CqDetail({
       <div className="cq-kv">
         <div><span>题型</span><b>{item.expected_type || '未分型'}</b></div>
         <div><span>状态</span><b>{item.status || 'unset'}</b></div>
-        <div><span>优先级</span><b>{item.priority || '—'}</b></div>
         <div><span>来源需求</span><b>{item.requirement || '—'}</b></div>
       </div>
-
-      {item.anchor_terms && item.anchor_terms.length > 0 && (
-        <div className="guide-tags">
-          {item.anchor_terms.map((term) => <span key={term} className="guide-tag">{term}</span>)}
-        </div>
-      )}
 
       <section className="cq-section">
         <h4>定位证据</h4>
@@ -467,7 +515,9 @@ function CqDetail({
           <>
             <p className="guide-muted">
               {locate.hint}
-              {locate.anchors.length > 0 && <> 锚点：{locate.anchors.join('、')}</>}
+              {locate.anchors.length > 0 && (
+                <> 锚点：{locate.anchors.map((anchor) => `${anchor}（${locate.anchor_sources?.[anchor] || 'label'}）`).join('、')}</>
+              )}
             </p>
             {locate.coverage === 'no_anchors' && (
               <div className="element-readonly-note">
@@ -505,13 +555,6 @@ function CqDetail({
           </div>
         )}
       </section>
-
-      {item.notes && (
-        <section className="cq-section">
-          <h4>备注</h4>
-          <p className="guide-muted">{item.notes}</p>
-        </section>
-      )}
     </div>
   );
 }

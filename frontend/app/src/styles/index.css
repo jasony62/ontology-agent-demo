@@ -1522,3 +1522,16 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-editor .field { display: flex; flex-direction: column; gap: 3px; }
 .cq-editor textarea { font-family: inherit; resize: vertical; }
 .cq-editor-actions { display: flex; gap: 8px; }
+
+/* #165：CQ 审计面板 */
+.cq-audit-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.cq-audit-head h3 { font-size: var(--fs-md); color: var(--heading); }
+.cq-audit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow: auto; }
+.cq-audit-list li {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; padding: 4px 6px; border-radius: 6px; background: var(--panel-2);
+}
+.cq-audit-actor { flex: 0 0 auto; }
+.cq-audit-action { font-weight: 600; color: var(--heading); min-width: 52px; }
+.cq-audit-summary { flex: 1 1 180px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.cq-audit-meta { flex: 0 0 auto; color: var(--muted); font-size: 11px; }

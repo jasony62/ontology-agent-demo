@@ -9,6 +9,7 @@
 
 ### Added
 
+- **CQ 审计可读化（#165）**：新增 `GET /api/domains/current/cq/audit?limit&offset&case_id` 与 MCP `get_cq_audit`；`#cq` 页面工具栏「审计」展开时间线，按 human/agent 图标区分操作者，空审计有正式占位。
 - **CQ 单题 CRUD 与页面编辑器（#154）**：`cq_store` 为缺 `id` 的题自动补稳定 `uuid`，新增 `POST/PATCH/DELETE /cq/cases`；`#cq` 页面支持新增 / 编辑 / 删除单题，编辑题干、题型、状态、来源需求与回归断言（`tool+params+expect` 或 SPARQL `query+expect`），保存后即时重算概览。
 - **CQ 变更审计（#157）**：所有写路径（REST 的 PUT/import/CRUD 与 MCP 写工具）统一在 `workspaces/<id>/cq_set.audit.jsonl` 追加一行 `ts / ontology_id / actor_type / actor / action / case_id / before / after`；先写集、再追加审计，重启后仍在，可直接 grep。
 - **MCP 对称写工具（#155）**：`examples/agent_task/mcp.py` 新增 `get_cq_set / add_cq / update_cq / delete_cq / save_cq_set / import_cq_set / export_cq_set`，与 REST 共用同一个 `cq_store`（含审计），智能体可闭环「读集 → 出题 → 写回 → 质检 → 回归」。
@@ -20,6 +21,7 @@
 
 ### Changed
 
+- **CQ 定位支持 local name / 分词降级词源（#161）**：无 `rdfs:label` 的导入本体不再一律 `no_anchors`——IRI 的 local name 与 camelCase/snake_case 分词进入词表（label 仍优先），`locate` 返回 `anchor_sources`（label / localname / token / enum）；仅由 local name 命中的条目也会作为「本体里有这个条目」的证据，`coverage_light` 不再恒为 0。
 - **源码视角的原始文本改为 RDF/XML（#147 收尾）**：`POST /api/ontology/describe` 额外返回 `rdfxml`（子图按原命名空间前缀与缩进序列化），检视器 / 只读编辑表单的「原始文本」默认展示与「OWL 源码」同格式的 RDF/XML，N-Triples 收进下一级折叠，仍可复制；结构化「谓词 + 取值」列表保持不变。
 - **源码视角结构化与错误分流（#147）**：`SourceBlock` 改用 `describe.triples[]` 渲染「谓词 + 取值」列表——字面量带引号与语言 / 数据类型标签，资源显示可点击局部名；原始 N-Triples 降级为可折叠、可复制的兜底文本。失败分两类：端点 404 / 网络错提示「源码接口暂不可用」，400「本体中无该元素」不再混为一谈。类节点请求 `include_as_object`，能看到实例 / 子类入边。导入态只读编辑表单复用同一套渲染。
 - **前端 API origin 可配置（#148）**：`vite.config.ts` 的 `/api`、`/openapi.json`、`/docs` 代理与「复制为 curl」默认前缀统一读 `VITE_API_ORIGIN`（缺省 `http://127.0.0.1:8000`）；新增 `frontend/app/.env.example`。REST 请求本身仍用相对路径，生产同 origin 形态不变。
@@ -32,6 +34,7 @@
 
 ### Fixed
 
+- **CQ 导出 / 身份 / 读写语义修正（#163 #164 #166 #167）**：`cq-test` 导出兼容布尔 ASK / 整数 count / 列表 expect（不再 500）；MCP 写工具与 REST 共用 `cq_store.identity_for`，导入态落到同一工作区 id；`GET /cq/set` 改回纯读，id 只在写入路径补；JUnit 把 `not_tested` 记为 `<skipped>`（不再让未写断言的题把 CI 标红），`cannot_tell` 仍是 `<error>`。
 - **dict 形态题库的查重不再静默失效（#140）**：`dedup_against_items` 只认裸数组题库，仓库内 `cq_tests.json` 的真实形态 `{suite, version, description, cases}` 走不到索引构建，`norm_bank` 恒为空——题库正常解析（`skipped: False`）、与既有题逐字相同的提交却查不出撞题，`validate_cqs` 的 dedup 形同虚设。现在先按形态归一（`_bank_case_items`：裸数组 / `{cases: [...]}` 两种法定形态），再建索引，`against_id` 仍指向条目 `id` / `case_id`；缺 `cases` 或 `cases` 非列表时返回 `skipped: True` 并说明原因，不报错也不伪造撞题。裸数组题库行为不变。
 
 ## [0.8.1] - 2026-11-13

@@ -133,6 +133,76 @@ def test_case_crud_and_audit(client):
     assert {"import", "add", "update", "delete"} <= set(actions)
 
 
+def test_get_set_is_pure_read_and_ids_assigned_on_write(tmp_path, monkeypatch):
+    """#166：读不补 id、不落盘、不写审计；写路径才规范化。"""
+    monkeypatch.setenv("ONTOLOGY_WORKSPACES_ROOT", str(tmp_path))
+    path = cq_store.set_path("pure-read")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    legacy = {"suite": "legacy", "version": 1, "cases": [{"cq": "没有 id 的旧题"}]}
+    path.write_text(json.dumps(legacy, ensure_ascii=False, indent=2), encoding="utf-8")
+    before = path.read_bytes()
+
+    data = cq_store.get_set("pure-read")
+    assert "id" not in data["cases"][0]
+    assert path.read_bytes() == before
+    assert not cq_store.audit_path("pure-read").exists()
+
+    saved = cq_store.save_set("pure-read", data)
+    assert saved["cases"][0]["id"]
+    assert cq_store.audit_path("pure-read").is_file()
+
+
+def test_export_handles_scalar_expect_and_junit_states():
+    """#163 / #167：布尔 / 整数 expect 不崩；not_tested 记 skipped 而非 error。"""
+    data = {
+        "suite": "scalar",
+        "version": 1,
+        "cases": [
+            {"id": "A", "cq": "ASK 题", "regression": {"query": "ASK { ?s ?p ?o }", "expect": True}},
+            {"id": "B", "cq": "计数题", "regression": {"query": "SELECT ?s WHERE { ?s ?p ?o }", "expect": 12}},
+            {"id": "C", "cq": "列表题", "regression": {"query": "SELECT ?s WHERE { ?s ?p ?o }", "expect": [1, 2]}},
+        ],
+    }
+    yaml = cq_store.export_cq_test(data)
+    assert "boolean: true" in yaml
+    assert "count: 12" in yaml
+    assert "value: [1, 2]" in yaml
+
+    run = {
+        "suite": "scalar",
+        "cases": [
+            {"id": "P", "cq": "通过", "state": "pass"},
+            {"id": "F", "cq": "失败", "state": "fail", "detail": {}},
+            {"id": "C", "cq": "无法判定", "state": "cannot_tell", "hint": "boom"},
+            {"id": "N", "cq": "未写断言", "state": "not_tested", "hint": "补 regression"},
+        ],
+    }
+    junit = cq_store.export_junit(run)
+    assert 'errors="1"' in junit
+    assert 'skipped="1"' in junit
+    assert "<skipped" in junit
+    assert "<error" in junit
+
+
+def test_audit_endpoint_paginates_and_filters(client):
+    client.post(
+        "/api/domains/current/cq/cases",
+        params={"actor_type": "agent", "actor": "mcp"},
+        json={"cq": "审计题", "status": "active"},
+    )
+    body = client.get("/api/domains/current/cq/audit?limit=1").json()
+    assert body["entries"]
+    latest = body["entries"][0]
+    assert latest["action"] == "add"
+    assert latest["actor_type"] == "agent"
+    assert latest["actor"] == "mcp"
+    case_id = latest["case_id"]
+
+    filtered = client.get(f"/api/domains/current/cq/audit?case_id={case_id}").json()
+    assert filtered["entries"]
+    assert all(entry["case_id"] == case_id for entry in filtered["entries"])
+
+
 def test_regression_run_history_metrics_and_exports(client):
     payload = {
         "suite": "runner",

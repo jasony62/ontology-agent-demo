@@ -79,6 +79,19 @@ function stubFetch(set = SET) {
     if (url.includes('/cq/runs')) {
       return { ok: true, status: 200, json: async () => ({ ontology_id: 'ws-1', runs: [] }) } as unknown as Response;
     }
+    if (url.includes('/cq/audit')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          ontology_id: 'ws-1',
+          entries: [{
+            ts: '2026-11-14T10:00:00', ontology_id: 'ws-1', actor_type: 'agent',
+            actor: 'mcp', action: 'add', case_id: 'Q1',
+            before: null, after: { id: 'Q1', cq: '智能体写入的题' },
+          }],
+        }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/cases') && method === 'POST') {
       const payload = JSON.parse(String(init?.body || '{}'));
       const newCase = { ...payload, id: 'NEW' };
@@ -199,5 +212,22 @@ describe('CQ 集页（#151）', () => {
     const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/cq/regression/run'));
     expect(call).toBeTruthy();
     expect(container!.textContent).toContain('评估完成：1/2 通过');
+  });
+
+  it('审计面板读取 /cq/audit 并展示 human/agent 时间线（#165）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const audit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '审计')!;
+    await act(async () => { audit.click(); });
+    await flush();
+
+    const panel = container!.querySelector('.cq-audit')!;
+    expect(panel.textContent).toContain('变更审计');
+    expect(panel.textContent).toContain('add');
+    expect(panel.textContent).toContain('智能体写入的题');
+    expect(panel.textContent).toContain('mcp');
   });
 });

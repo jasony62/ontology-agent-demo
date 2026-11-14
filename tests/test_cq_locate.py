@@ -119,6 +119,18 @@ NO_LABEL_OWL = """<?xml version="1.0"?>
 </rdf:RDF>
 """
 
+NO_LABEL_WITH_TEXT_OWL = """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://example.org/nl2#ReadOnlyCapability"/>
+  <rdf:Description rdf:about="http://example.org/nl2#capAvailableHours">
+    <rdf:type rdf:resource="http://example.org/nl2#ReadOnlyCapability"/>
+    <rdfs:comment>capAvailableHours 是 ReadOnlyCapability 的一个实例。</rdfs:comment>
+  </rdf:Description>
+</rdf:RDF>
+"""
+
 CQS = [
     "CQ-001 项目交付类与产品研发类的计费区别是什么？",
     "CQ-002 项目间隙/待岗类任务如何处理？",
@@ -252,16 +264,27 @@ def test_english_ontology_returns_no_anchors_not_500(restore_engine):
     assert "英文叫法" in body["hint"]
 
 
-def test_ontology_without_any_label_says_vocabulary_is_empty(restore_engine):
-    """#131：连 rdfs:label 都没有时，提示「词表为空」，而不是让人以为功能坏了。"""
-    assert _upload(NO_LABEL_OWL, "no-label.owl").status_code == 200
+def test_ontology_without_any_label_uses_local_name_fallback(restore_engine):
+    """#161：无 rdfs:label 时 local name / token 仍可命中，不再一律 no_anchors。"""
+    assert _upload(NO_LABEL_WITH_TEXT_OWL, "no-label-text.owl").status_code == 200
     body = client.post(
+        "/api/domains/current/cq/locate",
+        json={"cq": "ReadOnlyCapability 有哪些实例？"},
+    ).json()
+    assert body["coverage"] != "no_anchors"
+    assert "ReadOnlyCapability" in body["anchors"]
+    assert body["anchor_sources"]["ReadOnlyCapability"] == "localname"
+    assert body["counts"]["total"] > 0
+
+    # 纯中文题干 + 纯英文词表：仍然无法字面命中，但提示改成「纯英文本体」，
+    # 不再误报「词表为空」。
+    chinese = client.post(
         "/api/domains/current/cq/locate",
         json={"cq": "项目间隙类任务如何处理？"},
     ).json()
-    assert body["coverage"] == "no_anchors"
-    assert "词表为空" in body["hint"]
-    assert "补 label" in body["hint"]
+    assert chinese["coverage"] == "no_anchors"
+    assert "纯英文本体" in chinese["hint"]
+    assert "词表为空" not in chinese["hint"]
 
 
 def test_chinese_ontology_lists_real_vocabulary_samples(restore_engine):

@@ -393,9 +393,7 @@ export interface CqSetCase {
   id?: string;
   cq: string;
   expected_type?: string;
-  anchor_terms?: string[];
   requirement?: string;
-  priority?: string;
   status?: string;
   regression?: {
     tool?: string;
@@ -404,7 +402,6 @@ export interface CqSetCase {
     expect?: unknown;
   } | null;
   coverage_cache?: { conclusion?: number; ran_at?: string; [key: string]: unknown } | null;
-  notes?: string;
   updated_at?: string;
   located?: boolean;
   answerable?: boolean;
@@ -443,10 +440,22 @@ export interface CqEvidence {
 
 export interface CqLocateResult {
   anchors: string[];
+  anchor_sources?: Record<string, string>;
   coverage: string;
   evidence: CqEvidence[];
   counts: { total: number; conclusion: number; description: number };
   hint: string;
+}
+
+export interface CqAuditEntry {
+  ts: string;
+  ontology_id: string;
+  actor_type: 'human' | 'agent' | string;
+  actor: string;
+  action: string;
+  case_id?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
 }
 
 export interface CqRunCase {
@@ -560,6 +569,15 @@ export const api = {
 
   cqRuns: (limit = 20) =>
     request<{ ontology_id: string; runs: CqRun[] }>(`/api/domains/current/cq/runs?limit=${limit}`),
+
+  /** CQ 变更审计（#165） */
+  cqAudit: (limit = 50, offset = 0, caseId = '') => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (caseId) params.set('case_id', caseId);
+    return request<{ ontology_id: string; entries: CqAuditEntry[] }>(
+      `/api/domains/current/cq/audit?${params}`,
+    );
+  },
 
   /** CQ 依据定位（#124） */
   cqLocate: (cq: string, conclusionFields?: string[]) =>

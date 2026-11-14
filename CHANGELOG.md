@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-14
+
 ### Added
 
 - **导入本体的持久工作区（#149）**：导入 / 另存的本体从 `data/uploads/<uuid>-<原名>.owl` 迁到 `data/workspaces/<id>/source.owl`，`meta.json` 记录一次性分配、永不重算的 `id`（`uuid4().hex[:12]`）、原始文件名、展示名、`content_hash` 与历史；同一内容重复导入复用同一工作区，保存后保持 id 不变。`_current.json` 记录导入态，服务启动自动恢复；切回预置领域 / 重载默认本体时清除。工作区根可用 `ONTOLOGY_WORKSPACES_ROOT` 覆盖（测试隔离）。`runtime.ontology_display` 与 OWL 源码标题改为从 `meta.json` 读取原始文件名。

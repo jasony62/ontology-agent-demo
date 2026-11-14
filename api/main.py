@@ -1925,23 +1925,11 @@ def cq_locate(req: CqLocateRequest):
 
 
 def _cq_identity() -> tuple[str, Path | None]:
-    """当前 CQ 集的存储身份与领域包播种文件。
-
-    导入的本体用工作区 id（稳定，重启 / 重导不变）；预置领域用领域名，
-    首次读取时从包内 `cq_tests.json` 播种。
-    """
+    """当前 CQ 集的存储身份与领域包播种文件（与 MCP 共用同一解析）。"""
     handle = DOMAINS.current()
-    if handle.is_imported:
-        current = workspaces.get_current()
-        if current and current.get("mode") == "imported":
-            workspace_id = str(current.get("current_id") or "")
-            if workspace_id and workspaces.meta_path(workspace_id).is_file():
-                return workspace_id, None
-        # 旧上传（没有工作区）也要能读：用固定标识，不返回 500。
-        return "imported", None
     module_file = getattr(handle.module, "__file__", None)
     seed = Path(module_file).parent / "cq_tests.json" if module_file else None
-    return handle.name, seed if seed is not None and seed.is_file() else None
+    return cq_store.identity_for(handle.name, seed)
 
 
 @app.get(
@@ -2145,6 +2133,27 @@ def cq_delete_case(
         raise HTTPException(status_code=400, detail=str(exc))
     data = cq_store.get_set(ontology_id)
     return {"deleted": removed, **cq_store.build_view(ENGINE, data)}
+
+
+@app.get(
+    "/api/domains/current/cq/audit",
+    tags=["通用查询"],
+    summary="CQ 集变更审计",
+    responses={
+        200: {"model": OpenEnvelope, "description": "审计条目（新到旧），支持分页与按 case_id 过滤。"},
+    },
+)
+def cq_audit(
+    limit: int = Query(50, ge=1, le=200, description="最多返回多少条"),
+    offset: int = Query(0, ge=0, description="跳过多少条（分页）"),
+    case_id: str = Query("", description="只返回该题目的变更；空 = 全部"),
+):
+    """读取 CQ 变更审计（#165）：时间倒序、坏行跳过。"""
+    ontology_id, _ = _cq_identity()
+    entries = cq_store.read_audit(
+        ontology_id, limit=limit, offset=offset, case_id=case_id or None,
+    )
+    return {"ontology_id": ontology_id, "limit": limit, "offset": offset, "entries": entries}
 
 
 @app.post(

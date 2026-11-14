@@ -284,7 +284,7 @@ def register_tools(server: MCPServer, get_adapter) -> None:
         adapter = get_adapter()
         domain = getattr(adapter, "NAME", "domain")
         seed = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cq_tests.json")
-        return domain, seed if os.path.isfile(seed) else None
+        return cq_store.identity_for(domain, seed if os.path.isfile(seed) else None)
 
     @server.tool(description=(
         "读取当前 CQ 集（与 REST GET /cq/set 对称）：返回 suite、cases、概览 summary"
@@ -357,6 +357,17 @@ def register_tools(server: MCPServer, get_adapter) -> None:
         except ValueError as exc:
             return {"error": str(exc)}
         return {"ok": True, "deleted": removed, "ontology_id": domain}
+
+    @server.tool(description=(
+        "读取 CQ 变更审计（与 REST GET /cq/audit 对称）：按时间倒序返回 "
+        "add/update/delete/import/save 记录（actor_type=human/agent、before/after 摘要），"
+        "支持 limit / offset / case_id 过滤。"))
+    def get_cq_audit(limit: int = 50, offset: int = 0, case_id: str = "") -> dict:
+        domain, _ = _cq_identity()
+        entries = cq_store.read_audit(
+            domain, limit=limit, offset=offset, case_id=case_id or None,
+        )
+        return {"ontology_id": domain, "limit": limit, "offset": offset, "entries": entries}
 
     @server.tool(description=(
         "整集保存（与 REST PUT /cq/set 对称）：suite / cases 覆盖当前 CQ 集，"

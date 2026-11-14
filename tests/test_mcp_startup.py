@@ -85,6 +85,27 @@ def test_mcp_cq_write_tools_share_the_same_store(tmp_path, monkeypatch):
     assert {"add", "update", "delete"} <= {line["action"] for line in lines}
 
 
+def test_mcp_cq_identity_matches_rest_workspace(tmp_path, monkeypatch):
+    """#164：导入态下 MCP 与 REST 使用同一个工作区 id，而不是 workspaces/imported。"""
+    from types import SimpleNamespace
+
+    from api import workspaces
+    from cq import cq_store
+
+    monkeypatch.setenv("ONTOLOGY_WORKSPACES_ROOT", str(tmp_path))
+    meta, _ = workspaces.create(b"<rdf:RDF/>", "x.owl")
+    workspaces.set_current(meta["id"], "imported")
+
+    mod = submodule(domain_module(), "mcp")
+    server = _FakeServer()
+    mod.register_tools(mcp_server._ToolNameGuard(server), lambda: SimpleNamespace(NAME="agent_task"))
+    result = server.tools["add_cq"](cq="导入态 CQ")
+    assert result["ontology_id"] == meta["id"]
+    assert (workspaces.workspace_dir(meta["id"]) / "cq_set.json").is_file()
+    assert not workspaces.workspace_dir("imported").exists()
+    assert cq_store.identity_for("agent_task")[0] == meta["id"]
+
+
 def test_build_server_allows_domain_without_mcp_module(monkeypatch):
     """mcp.py 是可选文件：缺失时只注册通用工具，不拖垮整个 Server。"""
     monkeypatch.setattr(mcp_server, "load_domain_module", lambda name: types.SimpleNamespace())

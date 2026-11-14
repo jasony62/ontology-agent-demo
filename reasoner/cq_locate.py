@@ -68,18 +68,25 @@ def _sparql_string(text: str) -> str:
     return f'"{escaped}"'
 
 
-def build_vocabulary(engine) -> list[str]:
-    """从当前图抽取候选术语：`rdfs:label` ∪ 枚举值拆分。
+def build_vocabulary_entries(engine) -> dict[str, str]:
+    """候选术语 → 来源（label / localname / token / enum）。
 
-    - 只要字面量；去空白、去空串、去重、排序（同一输入永远同序）；
-    - 枚举值按 `,，、;；` 切，保留 `/` 等词内分隔符。
+    优先级：`rdfs:label` > IRI local name > camel/snake 分词。无 label 的导入
+    本体因此仍能被英文类名 / 属性名命中；有 label 时同名术语仍标成 label。
     """
-    terms: set[str] = set()
+    entries: dict[str, str] = {}
+
+    def add(term: str, source: str) -> None:
+        text = str(term or "").strip()
+        if not text:
+            return
+        if text not in entries:
+            entries[text] = source
+
     for label in engine.g.objects(None, RDFS.label):
         if isinstance(label, Literal):
-            text = str(label).strip()
-            if text:
-                terms.add(text)
+            add(str(label), "label")
+
     enum_predicates = {
         predicate for predicate in engine.g.predicates()
         if isinstance(predicate, URIRef) and local(predicate) in ENUM_VALUE_FIELDS
@@ -89,10 +96,55 @@ def build_vocabulary(engine) -> list[str]:
             if not isinstance(value, Literal):
                 continue
             for part in _ENUM_SPLIT.split(str(value)):
-                text = part.strip()
-                if text:
-                    terms.add(text)
-    return sorted(terms)
+                add(part, "enum")
+
+    # #161：无 rdfs:label 的导入本体——local name 与分词作为降级词源。
+    meta_prefixes = (
+        "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+        "http://www.w3.org/2000/01/rdf-schema#",
+        "http://www.w3.org/2002/07/owl#",
+    )
+    candidates: set[URIRef] = set()
+    for subject in engine.g.subjects():
+        if isinstance(subject, URIRef):
+            candidates.add(subject)
+    for predicate in engine.g.predicates():
+        if isinstance(predicate, URIRef) and not str(predicate).startswith(meta_prefixes):
+            candidates.add(predicate)
+    for iri in candidates:
+        name = local(iri)
+        if not name:
+            continue
+        add(name, "localname")
+        for token in _split_identifier(name):
+            add(token, "token")
+    return entries
+
+
+def build_vocabulary(engine) -> list[str]:
+    """词表（label > local name > 分词 token），保持既有 list[str] 契约。"""
+    return sorted(build_vocabulary_entries(engine))
+
+
+_CAMEL = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+")
+_WORD_SPLIT = re.compile(r"[^0-9A-Za-z\u4e00-\u9fff]+")
+
+
+def _split_identifier(name: str) -> set[str]:
+    """camelCase / snake_case / 命名空间前缀 → 可匹配 token。"""
+    tokens: set[str] = set()
+    for part in _WORD_SPLIT.split(name):
+        if not part:
+            continue
+        if _CJK.search(part):
+            if len(part) >= 2:
+                tokens.add(part)
+            continue
+        for token in _CAMEL.findall(part):
+            if len(token) >= 2:
+                tokens.add(token)
+    return tokens
+
 
 
 def extract_anchors(question: str, vocabulary: list[str]) -> list[str]:
@@ -193,11 +245,13 @@ def locate_cq(
         DEFAULT_CONCLUSION_FIELDS if conclusion_fields is None else conclusion_fields
     )
     vocabulary = build_vocabulary(engine)
+    entries = build_vocabulary_entries(engine)
     anchors = extract_anchors(text, vocabulary)
 
     if not anchors:
         return {
             "anchors": [],
+            "anchor_sources": {},
             "coverage": "no_anchors",
             "evidence": [],
             "counts": {"total": 0, "conclusion": 0, "description": 0},
@@ -228,6 +282,31 @@ def locate_cq(
         })
 
     total = len(evidence)
+    if total == 0:
+        # #161：无 rdfs:label 的本体里，local name / token 命中本身就是
+        # 「本体里有这个条目」的证据；否则 coverage_light 会恒为 0。
+        subjects = sorted(
+            (subject for subject in engine.g.subjects() if isinstance(subject, URIRef)),
+            key=str,
+        )
+        for anchor in anchors:
+            if entries.get(anchor) not in {"localname", "token"}:
+                continue
+            key = anchor.lower()
+            for subject in subjects:
+                name = local(subject)
+                if not name or key not in name.lower():
+                    continue
+                evidence.append({
+                    "item": name,
+                    "label": _label_for(engine, name),
+                    "field": "localname",
+                    "kind": "description",
+                    "text": name,
+                    "matched": anchor,
+                })
+                break
+        total = len(evidence)
     conclusion = sum(1 for row in evidence if row["kind"] == "conclusion")
     if total == 0:
         coverage = "gap"
@@ -238,6 +317,7 @@ def locate_cq(
 
     return {
         "anchors": anchors,
+        "anchor_sources": {anchor: entries.get(anchor, "label") for anchor in anchors},
         "coverage": coverage,
         "evidence": evidence,
         "counts": {

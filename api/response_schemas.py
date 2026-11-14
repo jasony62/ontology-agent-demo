@@ -299,6 +299,10 @@ class CqLocateResponse(BaseModel):
         default_factory=list,
         description="题干里命中的本体术语（最长匹配后，长的在前）。空列表表示未匹配到术语。",
     )
+    anchor_sources: dict[str, str] = Field(
+        default_factory=dict,
+        description="每个锚点的词源：label / localname / token / enum（#161）。",
+    )
     coverage: str = Field(
         ...,
         description=(

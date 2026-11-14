@@ -22,6 +22,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from api import workspaces
+from cq.constants import (
+    EXPECTED_TYPE_ALIASES,
+    EXPECTED_TYPE_UNKNOWN,
+    EXPECTED_TYPES,
+    STATUS_UNSET,
+    STATUS_VALUES,
+)
 from reasoner.cq_locate import locate_cq
 
 FILE_NAME = "cq_set.json"
@@ -109,6 +116,25 @@ def _ensure_ids(cases: list) -> bool:
     return changed
 
 
+def _normalize_expected_type(value) -> str:
+    raw = str(value or "").strip()
+    if raw in EXPECTED_TYPE_ALIASES:
+        return EXPECTED_TYPE_ALIASES[raw]
+    return raw if raw in EXPECTED_TYPES else EXPECTED_TYPE_UNKNOWN
+
+
+def _normalize_status(value) -> str:
+    raw = str(value or "").strip()
+    return raw if raw in STATUS_VALUES else STATUS_UNSET
+
+
+def normalize_case(case: dict) -> dict:
+    """写入路径统一受控：非法题型归 unknown，非法状态归 unset（#169）。"""
+    case["expected_type"] = _normalize_expected_type(case.get("expected_type"))
+    case["status"] = _normalize_status(case.get("status"))
+    return case
+
+
 def _validate(data: dict) -> list:
     if not isinstance(data, dict):
         raise ValueError("CQ 集必须是 JSON 对象")
@@ -120,6 +146,7 @@ def _validate(data: dict) -> list:
             raise ValueError(f"cases[{index}] 必须是对象")
         if not str(case.get("cq") or "").strip():
             raise ValueError(f"cases[{index}] 缺少非空 cq 题干")
+        normalize_case(case)
     return cases
 
 
@@ -441,14 +468,18 @@ def build_view(engine, data: dict) -> dict:
         except (TypeError, ValueError):
             conclusion = 0
         is_answerable = bool(regression) and conclusion > 0
-        by_type[str(case.get("expected_type") or "unknown")] += 1
-        by_status[str(case.get("status") or "unset")] += 1
+        expected_type = _normalize_expected_type(case.get("expected_type"))
+        status = _normalize_status(case.get("status"))
+        by_type[expected_type] += 1
+        by_status[status] += 1
         if is_located:
             located += 1
         if is_answerable:
             answerable += 1
         enriched.append({
             **case,
+            "expected_type": expected_type,
+            "status": status,
             "regression": regression,
             "located": is_located,
             "answerable": is_answerable,

@@ -21,6 +21,7 @@
 
 ### Changed
 
+- **CQ 题型 / 状态枚举定稿与中文显示（#169）**：题型收敛为 CQ4OE 四类 `retrieval / derived / counting / negative`（`unknown` 兜底），状态定为 `draft / active / archived`（`unset` 兜底）；常量集中在 `cq/constants.py`，写入路径把遗留 `set` 与非法值归一到 unknown/unset。`#cq` 列表 / 详情显示中文（检索类 / 推导类 / 草稿 / 启用…），编辑表单改为受控下拉，落盘仍是英文码；未知码原样显示便于发现新值。
 - **CQ 定位支持 local name / 分词降级词源（#161）**：无 `rdfs:label` 的导入本体不再一律 `no_anchors`——IRI 的 local name 与 camelCase/snake_case 分词进入词表（label 仍优先），`locate` 返回 `anchor_sources`（label / localname / token / enum）；仅由 local name 命中的条目也会作为「本体里有这个条目」的证据，`coverage_light` 不再恒为 0。
 - **源码视角的原始文本改为 RDF/XML（#147 收尾）**：`POST /api/ontology/describe` 额外返回 `rdfxml`（子图按原命名空间前缀与缩进序列化），检视器 / 只读编辑表单的「原始文本」默认展示与「OWL 源码」同格式的 RDF/XML，N-Triples 收进下一级折叠，仍可复制；结构化「谓词 + 取值」列表保持不变。
 - **源码视角结构化与错误分流（#147）**：`SourceBlock` 改用 `describe.triples[]` 渲染「谓词 + 取值」列表——字面量带引号与语言 / 数据类型标签，资源显示可点击局部名；原始 N-Triples 降级为可折叠、可复制的兜底文本。失败分两类：端点 404 / 网络错提示「源码接口暂不可用」，400「本体中无该元素」不再混为一谈。类节点请求 `include_as_object`，能看到实例 / 子类入边。导入态只读编辑表单复用同一套渲染。

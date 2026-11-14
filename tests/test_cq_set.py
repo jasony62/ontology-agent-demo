@@ -34,13 +34,13 @@ def test_import_then_export_roundtrips_verbatim(client):
             {
                 "id": "Q1",
                 "cq": "哪些智能体可以执行「登录模块开发」？",
-                "expected_type": "set",
+                "expected_type": "retrieval",
                 "status": "active",
             },
             {
                 "id": "Q2",
                 "cq": "这条结论凭什么成立？",
-                "expected_type": "proof",
+                "expected_type": "derived",
                 "status": "draft",
                 "regression": {"tool": "proof", "params": {}, "expect": {}},
                 "coverage_cache": {"conclusion": 2, "ran_at": "2026-11-14T00:00:00"},
@@ -58,7 +58,7 @@ def test_import_then_export_roundtrips_verbatim(client):
     view = client.get("/api/domains/current/cq/set").json()
     assert view["suite"] == "demo"
     assert view["summary"]["total"] == 2
-    assert view["summary"]["by_type"] == {"proof": 1, "set": 1}
+    assert view["summary"]["by_type"] == {"derived": 1, "retrieval": 1}
     assert view["summary"]["by_status"] == {"active": 1, "draft": 1}
     # 两档覆盖率分开计算：定位到的题数 / 有回归且上次结论 > 0 的题数
     assert 0 <= view["summary"]["coverage_light"] <= 1
@@ -108,7 +108,7 @@ def test_case_crud_and_audit(client):
     )
 
     added = client.post("/api/domains/current/cq/cases", json={
-        "cq": "新题：本体里有哪些类？", "status": "active", "expected_type": "set",
+        "cq": "新题：本体里有哪些类？", "status": "active", "expected_type": "retrieval",
     })
     assert added.status_code == 200, added.text
     new_id = added.json()["case"]["id"]
@@ -182,6 +182,36 @@ def test_export_handles_scalar_expect_and_junit_states():
     assert 'skipped="1"' in junit
     assert "<skipped" in junit
     assert "<error" in junit
+
+
+def test_expected_type_and_status_are_controlled(client):
+    """#169：非法/遗留值归一（set→unknown，乱码→unknown/unset），不静默裸存。"""
+    payload = {
+        "suite": "controlled",
+        "version": 1,
+        "cases": [
+            {"id": "L1", "cq": "遗留 set", "expected_type": "set", "status": "active"},
+            {"id": "L2", "cq": "乱码", "expected_type": "whatever", "status": "weird"},
+        ],
+    }
+    raw = json.dumps(payload, ensure_ascii=False)
+    client.post(
+        "/api/domains/current/cq/import",
+        files={"file": ("cq_set.json", raw.encode("utf-8"), "application/json")},
+    )
+    view = client.get("/api/domains/current/cq/set").json()
+    by_id = {case["id"]: case for case in view["cases"]}
+    assert by_id["L1"]["expected_type"] == "unknown"
+    assert by_id["L1"]["status"] == "active"
+    assert by_id["L2"]["expected_type"] == "unknown"
+    assert by_id["L2"]["status"] == "unset"
+    assert view["summary"]["by_type"] == {"unknown": 2}
+
+    added = client.post("/api/domains/current/cq/cases", json={
+        "cq": "合法新题", "expected_type": "counting", "status": "archived",
+    }).json()
+    assert added["case"]["expected_type"] == "counting"
+    assert added["case"]["status"] == "archived"
 
 
 def test_audit_endpoint_paginates_and_filters(client):

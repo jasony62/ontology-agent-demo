@@ -25,7 +25,7 @@ const SET = {
     {
       id: 'Q1',
       cq: '哪些智能体可以执行「登录模块开发」？',
-      expected_type: 'set',
+      expected_type: 'retrieval',
       status: 'active',
       requirement: 'REQ-1',
       located: true,
@@ -37,7 +37,7 @@ const SET = {
     {
       id: 'Q2',
       cq: '这条结论凭什么成立？',
-      expected_type: 'set',
+      expected_type: 'retrieval',
       status: 'active',
       located: false,
       answerable: false,
@@ -138,6 +138,9 @@ describe('CQ 集页（#151）', () => {
     expect(text).toContain('已定位');
     expect(text).toContain('可答');
     expect(text).toContain('缺口');
+    // #169：英文码 → 中文显示
+    expect(text).toContain('检索类');
+    expect(text).toContain('启用');
     expect(container!.querySelectorAll('.cq-row')).toHaveLength(2);
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('登录模块开发');
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('上次可答');
@@ -180,6 +183,12 @@ describe('CQ 集页（#151）', () => {
       .find((button) => button.textContent === '新增题目')!;
     act(() => add.click());
     expect(container!.querySelector('.cq-editor')).not.toBeNull();
+    const selects = [...container!.querySelectorAll<HTMLSelectElement>('.cq-editor select')];
+    expect(selects).toHaveLength(2);
+    expect([...selects[0].options].map((option) => option.textContent)).toEqual(
+      ['检索类', '推导类', '计数类', '反例类', '未分型'],
+    );
+    expect(selects[0].value).toBe('retrieval');
 
     const textarea = container!.querySelector('.cq-editor textarea') as HTMLTextAreaElement;
     const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;

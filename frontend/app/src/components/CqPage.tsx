@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { CqAuditEntry, CqLocateResult, CqRun, CqSetCase, CqSetResponse } from '../api/client';
+import { EXPECTED_TYPE_OPTIONS, STATUS_OPTIONS, expectedTypeLabel, statusLabel } from '../lib/cqLabels';
 
 /**
  * CQ 集页（#151 + #154 + #156）：概览看板 + 单题定位卡 + 单题 CRUD +
@@ -175,7 +176,7 @@ export default function CqPage() {
             type="button"
             className="btn secondary"
             disabled={busy != null}
-            onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'set' } })}
+            onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'retrieval' } })}
           >
             新增题目
           </button>
@@ -315,8 +316,8 @@ export default function CqPage() {
                           <span>{item.cq}</span>
                         </span>
                         <span className="cq-row-meta">
-                          <span>{item.expected_type || '未分型'}</span>
-                          <span>{item.status || 'unset'}</span>
+                          <span>{expectedTypeLabel(item.expected_type)}</span>
+                          <span>{statusLabel(item.status)}</span>
                           {item.answerable ? <span className="cq-badge ok">可答</span> : null}
                         </span>
                       </button>
@@ -389,7 +390,7 @@ function CqEditor({
 }) {
   const regression = draft.regression || {};
   const [cq, setCq] = useState(draft.cq || '');
-  const [expectedType, setExpectedType] = useState(draft.expected_type || '');
+  const [expectedType, setExpectedType] = useState(draft.expected_type || 'retrieval');
   const [status, setStatus] = useState(draft.status || 'draft');
   const [requirement, setRequirement] = useState(draft.requirement || '');
   const [tool, setTool] = useState(regression.tool || '');
@@ -439,11 +440,25 @@ function CqEditor({
       <div className="cq-editor-grid">
         <label className="field">
           <span className="field-label">题型</span>
-          <input value={expectedType} onChange={(event) => setExpectedType(event.target.value)} placeholder="set / proof / …" />
+          <select value={expectedType} onChange={(event) => setExpectedType(event.target.value)}>
+            {!EXPECTED_TYPE_OPTIONS.some((option) => option.value === expectedType) && (
+              <option value={expectedType}>{expectedTypeLabel(expectedType)}</option>
+            )}
+            {EXPECTED_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
         </label>
         <label className="field">
           <span className="field-label">状态</span>
-          <input value={status} onChange={(event) => setStatus(event.target.value)} placeholder="active / draft" />
+          <select value={status} onChange={(event) => setStatus(event.target.value)}>
+            {!STATUS_OPTIONS.some((option) => option.value === status) && (
+              <option value={status}>{statusLabel(status)}</option>
+            )}
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
         </label>
         <label className="field">
           <span className="field-label">来源需求</span>
@@ -500,8 +515,8 @@ function CqDetail({
       </div>
 
       <div className="cq-kv">
-        <div><span>题型</span><b>{item.expected_type || '未分型'}</b></div>
-        <div><span>状态</span><b>{item.status || 'unset'}</b></div>
+        <div><span>题型</span><b>{expectedTypeLabel(item.expected_type)}</b></div>
+        <div><span>状态</span><b>{statusLabel(item.status)}</b></div>
         <div><span>来源需求</span><b>{item.requirement || '—'}</b></div>
       </div>
 

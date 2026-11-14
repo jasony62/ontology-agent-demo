@@ -149,13 +149,13 @@ class ImportRequest(BaseModel):
 # ---------------- 通用查询接口（L1：与本体定义无关） ----------------
 
 class SparqlRequest(BaseModel):
-    """SPARQL SELECT 查询。"""
+    """SPARQL SELECT / ASK 查询。"""
 
     sparql: str = Field(
         examples=["SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 10"],
         description=(
-            "要执行的 SPARQL SELECT 查询文本；支持面见 README「SPARQL 支持边界」，"
-            "建议带 LIMIT，超时返回 408。"
+            "要执行的 SPARQL 查询文本（SELECT 返回 results，ASK 返回 askAnswer）；"
+            "支持面见 README「SPARQL 支持边界」，建议带 LIMIT，超时返回 408。"
         ),
     )
 

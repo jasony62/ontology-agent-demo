@@ -171,10 +171,17 @@ def _env_timeout_ms(name: str):
     return v if v > 0 else None
 
 
-def _consume_query(g, sparql: str) -> list[dict]:
-    """消费一次查询的全部结果行（IRI 值转短名；与原 query_sparql 体一致）。"""
+def _query_payload(result) -> list[dict] | dict:
+    """把 rdflib 查询结果转成对外载荷：SELECT → 行列表；ASK → {"askAnswer": bool}。
+
+    此前只处理 SELECT，ASK 的 `result` 是布尔（迭代得到 bool），
+    进 `row.asdict()` 直接 AttributeError——回归执行器自己分支处理 ASK，
+    所以出现「回归能跑、query_sparql 工具不能」的不一致（#177）。
+    """
+    if getattr(result, "type", None) == "ASK":
+        return {"askAnswer": bool(result.askAnswer)}
     rows = []
-    for row in g.query(sparql):
+    for row in result:
         d = {}
         for var in row.asdict():
             v = row[var]
@@ -183,7 +190,12 @@ def _consume_query(g, sparql: str) -> list[dict]:
     return rows
 
 
-def _run_query_timed(g, sparql: str, first_ms, total_ms) -> list[dict]:
+def _consume_query(g, sparql: str) -> list[dict] | dict:
+    """消费一次查询的全部结果（SELECT 行列表 / ASK 布尔载荷；IRI 值转短名）。"""
+    return _query_payload(g.query(sparql))
+
+
+def _run_query_timed(g, sparql: str, first_ms, total_ms) -> list[dict] | dict:
     """带时限执行：后台线程跑查询，主线程按两段时限放弃（结果不回灌）。
 
     demo 的查询为一次性物化整页结果（非流式）：first_ms 作用于「整批结果
@@ -621,8 +633,9 @@ class OntologyEngine:
     # ---------------- 通用查询接口（对外，与本体定义无关） ----------------
 
     def query_sparql(self, sparql: str, first_ms: int | None = None,
-                      total_ms: int | None = None) -> list[dict]:
-        """执行 SPARQL SELECT，返回 [{变量: 值}, ...]（IRI 值转短名）。
+                      total_ms: int | None = None) -> list[dict] | dict:
+        """执行 SPARQL 查询：SELECT 返回 [{变量: 值}, ...]（IRI 值转短名），
+        ASK 返回 {"askAnswer": true|false}（#177，与 cq_runner 的 ASK 分支对齐）。
 
         两段式超时（可选）：first_ms（首批结果就绪时限，非流式近似）/ total_ms
         （整体完成时限，硬上限），未传时读环境变量

@@ -83,6 +83,17 @@ def test_apply_assign_conflict():
     assert r.json()["conflict"] is not None
 
 
+def test_sparql_endpoint_supports_ask():
+    """#177：REST /api/query 与 MCP 对齐，ASK 返回 {askAnswer: bool}。"""
+    r = client.post("/api/query", json={"sparql": "ASK { ?s ?p ?o }"})
+    assert r.status_code == 200
+    assert r.json() == {"askAnswer": True}
+    r = client.post("/api/query", json={
+        "sparql": "ASK { <http://example.org/does-not-exist> ?p ?o }"})
+    assert r.status_code == 200
+    assert r.json() == {"askAnswer": False}
+
+
 def test_query_endpoint_never_mutates_graph():
     """读端点的硬约束：调用前后图规模与脏计数都不变。"""
     import api.main as M

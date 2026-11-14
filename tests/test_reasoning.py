@@ -265,6 +265,16 @@ def test_query_sparql_type_individuals(engine):
     assert {r["i"] for r in rows} >= {"req_agent", "dev_agent", "junior_dev", "test_agent", "deploy_agent"}
 
 
+def test_query_sparql_ask(engine):
+    """#177：ASK 返回结构化布尔，不再按 SELECT 行消费（此前 AttributeError）。"""
+    assert engine.query_sparql("ASK { ?s ?p ?o }") == {"askAnswer": True}
+    assert engine.query_sparql(
+        "ASK { <http://example.org/does-not-exist> ?p ?o }") == {"askAnswer": False}
+    # 超时路径同样支持 ASK（显式放宽两段时限，确保不因无 SELECT 行而异常）
+    assert engine.query_sparql("ASK { ?s ?p ?o }", first_ms=5000, total_ms=10000) == {
+        "askAnswer": True}
+
+
 def test_individuals_generic(engine):
     agents = engine.individuals("Agent")
     assert set(agents) == {"req_agent", "dev_agent", "junior_dev", "test_agent", "deploy_agent"}

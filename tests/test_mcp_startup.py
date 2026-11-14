@@ -224,6 +224,32 @@ def test_build_server_can_skip_domain_tools_for_imported():
     assert not any(name.startswith("cq_") for name in names)
 
 
+def test_mcp_query_sparql_supports_ask():
+    """#177：/mcp/ontology 的 query_sparql 对 ASK 返回结构化布尔，SELECT 保持 results。"""
+    from reasoner.engine import ONTO_PATH, OntologyEngine
+
+    engine = OntologyEngine(ONTO_PATH)
+    server = mcp_server.build_server(
+        lambda: engine, lambda: types.SimpleNamespace(NAME="minimal"),
+        "minimal", "最小领域", with_domain_tools=False,
+    )
+
+    def payload(result):
+        return (result.structured_content if result.structured_content is not None
+                else json.loads(result.content[0].text))
+
+    ask = payload(asyncio.run(server.call_tool(
+        "query_sparql", {"sparql": "ASK { ?s ?p ?o }"})))
+    assert ask == {"askAnswer": True}
+    missing = payload(asyncio.run(server.call_tool(
+        "query_sparql", {"sparql": "ASK { <http://example.org/nope> ?p ?o }"})))
+    assert missing == {"askAnswer": False}
+
+    select = payload(asyncio.run(server.call_tool(
+        "query_sparql", {"sparql": "SELECT ?s WHERE { ?s a ?o } LIMIT 1"})))
+    assert isinstance(select.get("results"), list) and select["results"]
+
+
 def test_combined_http_app_exposes_both_endpoints_with_alias():
     """#171：单进程双端点；/mcp 保留为旧路径别名，不新建第二份会话管理。"""
     adapter = types.SimpleNamespace(NAME="minimal")

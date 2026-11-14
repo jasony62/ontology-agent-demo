@@ -142,7 +142,8 @@ def local_query(kind: str, args) -> dict:
         return ad.graph_export()
     # 通用接口（L1）
     if kind == "query-sparql":
-        return {"results": eng.query_sparql(args.sparql)}
+        result = eng.query_sparql(args.sparql)
+        return result if isinstance(result, dict) else {"results": result}
     if kind == "individuals":
         return {"class": args.class_name, "individuals": eng.individuals(args.class_name)}
     if kind == "classes":

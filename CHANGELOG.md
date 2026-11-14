@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- **手册新增《09 CQ 集管理》（#185 / #186）**：补 CQ 集页在三个平级页中的位置、10 个 REST 端点、10 个 MCP 工具、题目 8 字段 / 题型与状态枚举 / 六种 `expect.type` 判分语义，以及旧 `tool`+`params` 等 7 个字段的迁移对照；README、手册首页、速查表与 FLOW 同步补入口。
+
+### Fixed
+
+- **`check_docs_numbers.py` 在导入态不再 TypeError（#190）**：当前领域没有领域规则层时返回退出码 2，并提示先 `POST /api/domains/agent_task/activate` 切回默认领域；新增导入态测试。
+
+### Changed
+
+- **运维备份章节补全 `data/` 盲区（#188）**：明确 `backup.sh` 只覆盖默认领域核心本体，题库 / 审计 / 回归历史 / 导入本体在 `data/workspaces/`，给出补齐命令、保留与清理策略；脚本注释与输出同步提示。
+- **速查表补 ASK 与 `describe`（#189）**：`/api/query`、`query.py`、MCP `query_sparql` 三处改为 SELECT / ASK；新增 `POST /api/ontology/describe` 条目。
+
 ## [0.8.3] - 2026-11-14
 
 ### Added

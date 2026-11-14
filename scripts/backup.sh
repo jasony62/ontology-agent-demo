@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # 本体备份（003 批次 REQ-07）：核心 .owl + extensions/ 增量 → backups/<时间戳>/。
 # backups/ 已被 .gitignore 忽略，不会进入 git；备份目录可按需清理。
+# 注意：本脚本只覆盖 domains/agent_task 的核心本体与 extensions/，**不含 data/**。
+#   CQ 题库 / 审计 / 回归历史 / 导入的本体原文件在 data/workspaces/，请另备
+#   （见 docs/manual/04-运维与本体管理.md §4.3）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,3 +27,4 @@ echo "    本体: $(basename "$SRC_OWL")（$(wc -c < "$SRC_OWL" | tr -d ' ') 字
 if [ -d "$DEST/extensions" ]; then
   echo "    扩展: $(ls "$DEST/extensions" | wc -l | tr -d ' ') 个文件"
 fi
+echo "[注意] 本脚本不含 data/（CQ 题库 / 审计 / 回归历史 / 导入本体），请按手册 §4.3 另备"

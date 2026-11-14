@@ -71,7 +71,7 @@ docker compose up -d mcp
 | 端点 | 工具数 | 组成 |
 |---|---|---|
 | `/mcp/ontology` | 25（agent_task） | 领域业务 10 + 引擎通用 15；导入本体时为 15（无领域包） |
-| `/mcp/cq` | 8 | CQ 集管理 / 出题质检 / TBox 校验 / 回归 / 审计（不依赖领域包） |
+| `/mcp/cq` | 10 | CQ 集管理 / 定位 / 质检 / 出题 / TBox 校验 / 回归 / 审计（不依赖领域包） |
 | `/mcp` | 同 `/mcp/ontology` | 旧路径别名，兼容既有客户端 |
 
 **通用工具**（`mcp/mcp_server.py`，与本体无关，任意 `.owl` 可用）：
@@ -118,7 +118,9 @@ docker compose up -d mcp
 | `cq_set_write(suite?, cases?, content?, ontology_id?)` | 整集覆盖：直接传 suite+cases，或传 `content`（cq_set.json 文本）走校验导入；原子写 + 审计 |
 | `cq_case_upsert(case, ontology_id?)` | 单条增改：带 id 且存在则更新，否则自动分配 id 新增 |
 | `cq_case_remove(case_id, ontology_id?)` | 按稳定 id 删除单题 |
-| `cq_author(focus?, draft?, ontology_id?)` | 出题 + 质检合一：`draft` 为空返回出题指引；非空对草稿做确定性质检 |
+| `cq_locate(cq, ontology_id?)` | 单题依据定位（只读、不落库）：anchors / coverage / evidence / counts / hint，与 REST `/cq/locate` 一致 |
+| `cq_validate(cases, ontology_id?)` | 批量质检（只读、不落库）：题型是否 CQ4OE 四类、锚点是否命中当前本体、是否与现有集/本批重复；返回每条 `{ok, reasons, warnings}` |
+| `cq_author(focus?, draft?, ontology_id?)` | 出题 + 质检合一：`draft` 为空返回出题指引（next_step 指向 `cq_validate`）；非空对草稿做确定性质检 |
 | `cq_to_schema(cqs, ttl?, ontology_id?)` | TBox 指引 + 校验合一：`ttl` 为空返回生成指令；非空做 L1–L5 校验 |
 | `cq_regression(want?, ontology_id?)` | 当前内存引擎跑回归；`want=json / junit / cq-test` |
 | `cq_audit(limit?, offset?, case_id?, ontology_id?)` | CQ 变更审计（时间倒序） |

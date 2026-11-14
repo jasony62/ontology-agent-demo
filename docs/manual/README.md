@@ -13,10 +13,10 @@
 | CLI 双通道（query.py / ontologyctl） | `scripts/` | [02 推理与查询](02-推理与查询.md) / [04 运维](04-运维与本体管理.md) |
 | 图谱工作台（三档视图 + 右侧编辑框 + 在线编辑） | `http://127.0.0.1:8000`（前端） | [03 前端与 MCP](03-前端与MCP.md) |
 | 当前领域使用视角（六问 + 示例题试跑） | `http://127.0.0.1:8000`（页头「当前领域」） | [03 前端与 MCP](03-前端与MCP.md) |
-| MCP Server（智能体接入） | `http://127.0.0.1:9000/mcp` | [03 前端与 MCP](03-前端与MCP.md) |
+| MCP Server（智能体接入） | `http://127.0.0.1:9000/mcp/ontology` / `/mcp/cq` | [03 前端与 MCP](03-前端与MCP.md) |
 | 管线质量门禁（G1–G4 过闸） | MCP `pipeline_gate` | [03 前端与 MCP](03-前端与MCP.md) / [06 二次开发](06-二次开发指南.md) |
 | Agent 调用护栏（预算/循环/缓存/审计） | MCP `guard_status` + `guard_config.json` | [03 前端与 MCP](03-前端与MCP.md) / [04 运维](04-运维与本体管理.md) |
-| CQ 自动出题与质检（LLM 出题闭环） | MCP `guide_cq_generation` / `validate_cqs` | [03 前端与 MCP](03-前端与MCP.md) / [06 二次开发](06-二次开发指南.md) |
+| CQ 集管理与出题质检（LLM 出题闭环） | MCP `/mcp/cq`：`cq_author` / `cq_to_schema` / `cq_regression` | [03 前端与 MCP](03-前端与MCP.md) / [06 二次开发](06-二次开发指南.md) |
 | 本体管理（热重载 / 编辑 / 回滚 / 备份） | API / ontologyctl / backup.sh | [04 运维与本体管理](04-运维与本体管理.md) |
 | 二次开发（新增领域 / 扩展工具） | `domains/`、`reasoner/` | [06 二次开发指南](06-二次开发指南.md) |
 
@@ -28,14 +28,14 @@
 │   领域推理 R1–R4 · 通用查询 · 本体管理 · 托管前端图谱工作台    │
 ├─────────────────────────────────────────────────────────┤
 │  mcp  :9000   MCP Server（streamable-http / stdio）       │
-│   面向智能体：31 个工具（领域业务 9 + 建模/质量 7 + 引擎通用 15）  │
+│   面向智能体：/mcp/ontology（领域 10 + 通用 15）+ /mcp/cq（CQ 8） │
 │   调用护栏、CQ 出题质检；可经豆包连接器一行配置接入             │
 └─────────────────────────────────────────────────────────┘
 ```
 
 - 核心对象：**本体**（默认 `agent_task_ontology.owl`，智能体任务编排）→ 加载 → OWL 2 RL 推理（物化）→ 查询 / 编辑 / 接入。
 - 通用引擎与领域语义分离：领域词汇外置在 `domains/` 领域包，换本体不改代码。
-- 建模质量闭环：出题（`guide_cq_generation`）→ 建模（`guide_tbox_draft` / `validate_tbox_draft`）→ **质量门禁过闸**（`pipeline_gate` G1–G4）→ 判卷（`validate_cqs`）。
+- 建模质量闭环：出题（`cq_author`）→ 建模（`cq_to_schema`）→ **质量门禁过闸**（`pipeline_gate` G1–G4）→ 判卷（`cq_regression`）。
 
 ## 三、阅读路径
 

@@ -406,21 +406,22 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
 
 ## 9. MCP 接入（智能体直接调用，端口 9000）
 
-推理服务封装为标准 **MCP Server**（`mcp/mcp_server.py`，streamable-http，路径 `/mcp`），
-共 31 个工具（领域业务 9 + 建模/质量 7 + 引擎通用 15）：
+推理服务封装为标准 **MCP Server**（`mcp/mcp_server.py`，streamable-http），同进程双端点：
+`/mcp/ontology`（领域业务 10 + 引擎通用 15）与 `/mcp/cq`（CQ 8）；`/mcp` 是 `/mcp/ontology`
+的旧路径别名。两个端点共享同一 `get_engine()` 工厂与同一份 `cq_store`，不新起进程/引擎。
 
-`mcp/mcp_server.py` 是**通用出口层**（不含领域词汇）：9 个领域业务工具与 7 个建模/质量工具随领域包走
-（`domains/<name>/mcp.py` 的 `register_tools` 注册，见 5.3），其余 15 个由引擎直接提供
-（15 个通用工具）。
+`mcp/mcp_server.py` 是**通用出口层**（不含领域词汇）：10 个领域业务工具随领域包走
+（`domains/<name>/mcp.py` 的 `register_tools` 注册，见 5.3），15 个通用工具由引擎直接提供；
+CQ 8 个工具由框架 `mcp/cq_tools.py` 独立注册，**不依赖领域包**（`--domain imported` 也可用）。
 
-- **9 个领域业务工具**（走适配器，默认 `domains/agent_task/mcp.py`）：capability_match /
+- **10 个领域业务工具**（走适配器，默认 `domains/agent_task/mcp.py`）：capability_match /
   orchestrate / assign / classify / consistency / explain / ontology（图谱）/ status（状态自检）/
-  entities（实体清单）；
-- **7 个建模 / 质量工具**（也随领域包走）：guide_tbox_draft / validate_tbox_draft / validate_shapes /
-  guide_cq_generation / validate_cqs / validate_cqs_declared / cq_regression；
+  entities（实体清单）/ validate_shapes；
 - **15 个引擎通用工具**（走引擎，任意 `.owl` 可用）：query_sparql / individuals / classes / types_of /
   property_values / infer / explain_proof / predefined_queries / run_predefined_query / active_facts /
-  guard_status / pipeline_gate / run_rules / list_rules / merge_check。
+  guard_status / pipeline_gate / run_rules / list_rules / merge_check；
+- **8 个 CQ 工具**（`/mcp/cq`）：cq_set_read / cq_set_write / cq_case_upsert / cq_case_remove /
+  cq_author / cq_to_schema / cq_regression / cq_audit。错误统一 `{ok: false, error: {code, message}}`。
 
 调用护栏在同目录 `policy.py`（语义白名单门禁）与 `tool_guard.py`（预算熔断 / 循环拦截 /
 缓存复用 / 审计留痕），均随领域包配置，未启用时逐字节向后兼容。
@@ -561,7 +562,7 @@ adapter = create_adapter_ctx(ctx)   # 领域包唯一工厂：create_adapter_ctx
 │       ├── config.json             #   语义配置（类角色映射）
 │       ├── guide.json              #   使用视角说明（契约必填，加载期校验）
 │       ├── derivation.json         #   推导链配置（文案 + 规则）
-│       ├── mcp.py                  #   领域 MCP 工具注册（16 个：业务 9 + 建模/质量 7）
+│       ├── mcp.py                  #   领域 MCP 工具注册（10 个；CQ 工具已上移框架 /mcp/cq）
 │       ├── rules/                  #   SHACL 规则层（R2 委派 / R5 / R6 / R6a 复核候选，加载流水线执行）
 │       ├── shapes/                 #   SHACL 形状（G4 与 validate_shapes 用）
 │       └── agent_task_ontology.owl #   本体定义

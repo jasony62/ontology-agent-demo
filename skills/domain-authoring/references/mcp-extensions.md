@@ -79,6 +79,6 @@ Agentic RAG 防失控共识「四道工事」中除白名单（#12 已落地）�
 demo 零 LLM 依赖：guide 生成宿主出题指令、validate 做确定性质检，补齐「出题 → 建模 → 判卷」链最前端。
 
 - 四类题型（对齐 CQ4OE 基准）：retrieval / derived / counting / negative，建议配比 10:10:5:5；题型与措辞规则放 `cq_prompts.json`（可编辑配置）；
-- `validate_cqs` 质检五件套：句式 / schema 术语锚点（拦过宽题）/ 输入内查重 + 题库查重（`cq_tests.json` 不存在如实 `skipped`，撞题指向既有 case id）/ 规则式题型预标（建议标注非权威）/ 四类覆盖度报告；
+- `cq_author`（`/mcp/cq`，框架级）质检五件套：句式 / schema 术语锚点（拦过宽题）/ 输入内查重 + 题库查重（`cq_tests.json` 不存在如实 `skipped`，撞题指向既有 case id）/ 规则式题型预标（建议标注非权威）/ 四类覆盖度报告；
 - **查重归一化**：去空白 + **全部中英文标点** + 小写——「…能力？」vs「…能力！」仅标点差异即判同题（实测踩坑：只归一空白时不判重）；
 - `focus` 参数提供全新领域描述时降级 `from_description` 模式（无 schema 对照仍可用）——无既有资产的降级路径。

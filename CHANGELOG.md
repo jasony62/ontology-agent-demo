@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- **CQ 集独立为同进程 `/mcp/cq` 端点（#171）**：`mcp/mcp_server.py` 现在同一进程内构建两个 MCPServer——`/mcp/ontology`（领域工具 + 通用工具）与 `/mcp/cq`（CQ 集管理），共享同一个 `get_engine()` 工厂与同一份 `cq_store`；CQ 回归查当前内存引擎图，身份沿用 `identity_for`（导入态与 REST 同一工作区 uuid）。`/mcp` 保留为 `/mcp/ontology` 的旧路径别名。新增 `--domain imported`：直接绑定 `workspaces/_current.json` 指向的导入本体，无领域包也可用 CQ 工具。stdio 单通道下 CQ 工具与本体工具注册在同一 server。
+- **CQ MCP 工具面收敛（#172）**：`/mcp/cq` 只暴露 8 个 `cq_` 前缀工具——`cq_set_read` / `cq_set_write` / `cq_case_upsert` / `cq_case_remove` / `cq_author`（出题 + 质检合一）/ `cq_to_schema`（TBox 指引 + 校验合一）/ `cq_regression` / `cq_audit`；错误统一为 `{ok: false, error: {code, message}}`，不再裸抛 `str(exc)`。所有工具接受可选 `ontology_id`（仅当前身份或已存在工作区）。
+
+### Changed
+
+- **CQ 工具移出 agent_task 领域包**：`examples/agent_task/mcp.py` 删除 `guide_cq_generation` / `validate_cqs` / `validate_cqs_declared` / `guide_tbox_draft` / `validate_tbox_draft` / `cq_regression` 与 #155 的 7 个集管理工具，只保留 `validate_shapes`（依赖领域 `shapes/*.ttl`）；领域包工具数 16 → 10。
+
 ## [0.8.2] - 2026-11-14
 
 ### Added

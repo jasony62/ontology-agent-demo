@@ -15,10 +15,12 @@
         ontology          本体结构（类/个体/边）
         status            本体状态（只读，REQ-02 一致性判据）
         entities          可用实体短名清单（辅助智能体正确选参）
+        validate_shapes   SHACL 数据体检（只校验断言图，不含推理闭包）
     通用工具（引擎直接提供，与本体定义无关，任意 .owl 可用）：
         query_sparql / individuals / classes / types_of / property_values / infer /
         explain_proof / predefined_queries / run_predefined_query / active_facts /
-        guard_status +（护栏启用时）全部通用工具附带预算/循环/缓存/审计防护
+        guard_status / pipeline_gate / run_rules / list_rules / merge_check
+        +（护栏启用时）全部通用工具附带预算/循环/缓存/审计防护
 
 领域包约定（domains/<name>/ 必须暴露）：
     NAME / DESCRIPTION / ONTO_FILE / create_adapter_ctx(ctx) / mcp.register_tools(server, get_adapter)
@@ -33,25 +35,37 @@
     loop.add_signal_handler()（asyncio 程序捕获信号的唯一可靠方式）。
     因此本模块不用 server.run()，而是自行 asyncio.run + add_signal_handler。
 
-传输：
-    默认 streamable-http（豆包连接器：填 http://127.0.0.1:9000/mcp）；
-    --transport stdio 供本地 MCP client / Claude Desktop 使用。
+传输与端点（#171）：
+    默认 streamable-http，同进程内构建两个 MCPServer 实例、共享同一个引擎：
+      /mcp/ontology  本体推理领域工具 + 通用工具（与旧版 /mcp 一致）
+      /mcp/cq        CQ 集管理 / 出题质检 / TBox 校验 / 回归 / 审计（#172）
+    旧客户端仍可连接 /mcp（兼容别名，指向本体推理端点）。
+    --transport stdio 供本地 MCP client / Claude Desktop 使用；stdio 只有单通道，
+    CQ 工具与本体工具注册在同一个 server 上（工具名统一 cq_ 前缀，不冲突）。
+
+导入本体（#171）：
+    --domain imported 不加载任何领域包，直接绑定当前导入工作区
+    （`api.workspaces._current.json` + `source.owl`）；CQ 身份用工作区 uuid，
+    与 REST 的 #164 解析一致。未导入任何本体时启动即报错，不静默退回预置领域。
 
 用法（在项目根执行）:
     .venv/bin/python mcp/mcp_server.py                                # 默认领域 agent_task，HTTP
     .venv/bin/python mcp/mcp_server.py --domain agent_task --port 9000
+    .venv/bin/python mcp/mcp_server.py --domain imported --port 9000  # 当前导入的本体
     .venv/bin/python mcp/mcp_server.py --watch                       # 文件监听热重载（推荐）
     .venv/bin/python mcp/mcp_server.py --transport stdio              # stdio
 """
 
 import argparse
 import asyncio
+import contextlib
 import importlib
 import os
 import signal
 import sys
 import threading
 import time
+from pathlib import Path
 
 # 项目根 = mcp/ 的父目录；加载 reasoner 包、domains 包与领域本体（领域包自包含）
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -64,6 +78,7 @@ from reasoner.pipeline_gate import run_gates
 from reasoner.proof import build_proof
 from reasoner import rules as rules_mod
 from config import load_config
+from cq import cq_store
 from domains import load_domain, load_domain_module, package_onto_path
 from mcp.server.mcpserver import MCPServer
 
@@ -81,6 +96,14 @@ _guard_spec = importlib.util.spec_from_file_location(
 _guard_mod = importlib.util.module_from_spec(_guard_spec)
 _guard_spec.loader.exec_module(_guard_mod)
 guard_mod = _guard_mod
+
+# CQ 工具面（#171/#172）同样从本目录加载：仓库的 mcp/ 与 SDK 同名，
+# `from mcp import cq_tools` 会命中 SDK 包。
+_cq_spec = importlib.util.spec_from_file_location(
+    "_mcp_cq_tools", os.path.join(os.path.dirname(os.path.abspath(__file__)), "cq_tools.py"))
+_cq_mod = importlib.util.module_from_spec(_cq_spec)
+_cq_spec.loader.exec_module(_cq_mod)
+cq_tools_mod = _cq_mod
 
 
 class _ToolNameGuard:
@@ -107,11 +130,15 @@ class _ToolNameGuard:
         return getattr(self._server, name)
 
 
-def build_server(get_engine, get_adapter, domain_name: str, description: str) -> MCPServer:
-    """组装 MCP Server：领域工具（随领域包）+ 通用工具（引擎直接提供）。
+def build_server(get_engine, get_adapter, domain_name: str, description: str,
+                 *, with_domain_tools: bool = True) -> MCPServer:
+    """组装本体推理 MCP Server：领域工具（随领域包）+ 通用工具（引擎直接提供）。
 
     get_engine / get_adapter 为无参工厂（返回当前生效实例），闭包不绑定实例，
     热重载后自动指向新引擎/适配器，无需重建 Server。
+
+    with_domain_tools=False 用于「导入的本体」（--domain imported）：没有领域包，
+    只注册通用工具；CQ 工具由 `/mcp/cq` 端点独立提供，不依赖领域包。
     """
     server = MCPServer(
         name="ontology-reasoning",
@@ -120,28 +147,45 @@ def build_server(get_engine, get_adapter, domain_name: str, description: str) ->
         version="1.3.0",
     )
 
-    # 领域工具：动态加载领域包的 MCP 注册器（领域相关代码随领域包走）
-    # 先确保领域包已按配置 root 加载，再取子模块——领域包可能在 examples/ 或外部目录
-    load_domain_module(domain_name)
-    try:
-        mod = importlib.import_module(f"domains.{domain_name}.mcp")
-    except ModuleNotFoundError as exc:
-        if exc.name != f"domains.{domain_name}.mcp":
-            raise
-        # mcp.py 是可选文件（见 examples/README.md）：没有它时只注册通用工具，
-        # 而不是让整个 MCP Server 起不来。只有该模块本身缺失才降级；模块内部
-        # 缺依赖仍原样抛出，避免把真实错误伪装成"领域没提供工具"。
-        print(
-            f"[mcp] 领域「{domain_name}」未提供 mcp.py，仅注册通用工具",
-            file=sys.stderr, flush=True,
-        )
-    else:
-        mod.register_tools(_ToolNameGuard(server), get_adapter)
+    if with_domain_tools:
+        # 领域工具：动态加载领域包的 MCP 注册器（领域相关代码随领域包走）
+        # 先确保领域包已按配置 root 加载，再取子模块——领域包可能在 examples/ 或外部目录
+        load_domain_module(domain_name)
+        try:
+            mod = importlib.import_module(f"domains.{domain_name}.mcp")
+        except ModuleNotFoundError as exc:
+            if exc.name != f"domains.{domain_name}.mcp":
+                raise
+            # mcp.py 是可选文件（见 examples/README.md）：没有它时只注册通用工具，
+            # 而不是让整个 MCP Server 起不来。只有该模块本身缺失才降级；模块内部
+            # 缺依赖仍原样抛出，避免把真实错误伪装成"领域没提供工具"。
+            print(
+                f"[mcp] 领域「{domain_name}」未提供 mcp.py，仅注册通用工具",
+                file=sys.stderr, flush=True,
+            )
+        else:
+            mod.register_tools(_ToolNameGuard(server), get_adapter)
 
     # 通用工具（L1：与本体定义无关，任意 .owl 可用）；受控语义策略与调用护栏随领域包走
     _register_generic_tools(server, get_engine,
                              policy_mod.load_policy(domain_name),
                              guard_mod.load_guard_config(domain_name))
+    return server
+
+
+def build_cq_server(get_engine, get_cq_context) -> MCPServer:
+    """组装 CQ 集 MCP Server（#171/#172），与本体推理端点共享同一引擎。
+
+    `get_cq_context()` → (ontology_id, seed_path|None)，由主进程按当前领域 /
+    导入工作区提供；本函数不读领域包，`--domain imported` 下同样可用。
+    """
+    server = MCPServer(
+        name="cq-set",
+        title="CQ 集管理（本体能力问题）",
+        description="CQ 集的读写 / 出题质检 / TBox 建模校验 / 回归 / 审计；与本体推理共享当前内存引擎",
+        version="1.0.0",
+    )
+    cq_tools_mod.register_tools(_ToolNameGuard(server), get_engine, get_cq_context)
     return server
 
 
@@ -357,10 +401,93 @@ def _run_server(server, transport: str, on_sighup, **kwargs):
         asyncio.run(_async_main(server.run_streamable_http_async(**kwargs), on_sighup))
 
 
+def combined_http_app(servers: dict[str, MCPServer], *, host: str = "127.0.0.1",
+                      aliases: dict[str, str] | None = None):
+    """把多个 MCPServer 挂到同一 ASGI 应用的不同路径（#171，单进程单引擎）。
+
+    SDK 的 `streamable_http_app()` 每次调用会为对应 server 创建并记住一个
+    session manager；这里把两个 app 的路由合并，并在同一个 lifespan 里
+    依次进入各自的 `session_manager.run()`——不能分别 `run_streamable_http_async`
+    （那会各起一个进程/端口，正是 issue 红线禁止的形态）。
+
+    aliases：旧路径兼容（如 {"/mcp": "/mcp/ontology"}）。别名复用主路由的
+    endpoint（同一个 session manager），不会创建第二份会话管理。
+
+    返回的 Starlette app 由调用方交给 uvicorn 启动；`session_manager` 在
+    `streamable_http_app()` 调用后才可读，所以这里先建 app 再取 manager。
+    """
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+
+    sub_apps = {
+        path: server.streamable_http_app(streamable_http_path=path, host=host)
+        for path, server in servers.items()
+    }
+    routes = []
+    endpoints = {}
+    for path, app in sub_apps.items():
+        routes.extend(app.routes)
+        endpoints[path] = getattr(app.routes[0], "endpoint", None)
+    for alias, primary in (aliases or {}).items():
+        endpoint = endpoints.get(primary)
+        if endpoint is not None:
+            routes.append(Route(alias, endpoint=endpoint))
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        async with contextlib.AsyncExitStack() as stack:
+            for server in servers.values():
+                await stack.enter_async_context(server.session_manager.run())
+            yield
+
+    return Starlette(routes=routes, lifespan=lifespan)
+
+
+def _run_http_app(app, host: str, port: int, on_sighup):
+    """在事件循环内运行组合后的 ASGI 应用（保留 SIGHUP 热重载）。"""
+    async def _serve():
+        import uvicorn
+
+        config = uvicorn.Config(app, host=host, port=port, log_level="info")
+        await uvicorn.Server(config).serve()
+
+    asyncio.run(_async_main(_serve(), on_sighup))
+
+
+def load_imported_runtime():
+    """加载当前导入的本体（#171）：返回 (domain 模块, 引擎, 适配器, source 路径, meta)。
+
+    `--domain imported` 不加载任何领域包：引擎直接绑定 `workspaces/_current.json`
+    指向的 `source.owl`，适配器用框架内置的 `ImportedOntologyAdapter`。
+    没有导入态工作区时抛 RuntimeError（由 main 转成 argparse 错误），
+    不静默退回某个预置领域——那会让用户以为在查导入的本体。
+    """
+    from api import workspaces
+    from domains import imported as imported_mod
+
+    current = workspaces.get_current()
+    if not current or current.get("mode") != "imported":
+        raise RuntimeError(
+            "--domain imported 需要当前存在导入态本体：请先在网页 / API 上传 .owl，"
+            "或改用 --domain <已安装领域名>"
+        )
+    workspace_id = str(current.get("current_id") or "")
+    source = workspaces.source_path(workspace_id)
+    meta = workspaces.read_meta(workspace_id)
+    if meta is None or not source.is_file():
+        raise RuntimeError(
+            f"当前导入工作区不可用（id={workspace_id or '空'}）：source.owl 或 meta.json 缺失"
+        )
+    engine = OntologyEngine(str(source), extensions_dir=None)
+    return imported_mod, engine, imported_mod.ImportedOntologyAdapter(engine), str(source), meta
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="本体推理 MCP Server（内嵌引擎，领域工具随领域包动态加载）")
+    parser = argparse.ArgumentParser(
+        description="本体推理 MCP Server（内嵌引擎；/mcp/ontology 领域工具，/mcp/cq CQ 工具）")
     parser.add_argument("--domain", default=None,
-                        help="领域包标识（缺省取配置 domains.default；未配置且 root 下唯一时自动选用）")
+                        help="领域包标识（缺省取配置 domains.default；未配置且 root 下唯一时自动选用；"
+                             "传 imported 绑定当前导入的本体）")
     parser.add_argument("--domains-root", default=None,
                         help="领域包根目录（缺省取配置 domains.root）")
     parser.add_argument("--transport", choices=["stdio", "streamable-http"], default="streamable-http",
@@ -374,38 +501,53 @@ def main() -> int:
                         help="文件监听轮询间隔（秒，默认 2）")
     args = parser.parse_args()
 
-    # 领域包自声明本体文件；领域名与 root 由配置决定（CLI 可覆盖）
-    settings = load_config(cli_root=args.domains_root, cli_domain=args.domain)
-    domain_name = settings.effective_default()
-    if domain_name is None:
-        installed = settings.installed()
-        if installed:
+    # 领域包自声明本体文件；领域名与 root 由配置决定（CLI 可覆盖）。
+    # imported 是保留名，不能走 check_domain_name，单独解析。
+    imported_mode = args.domain == "imported"
+    if imported_mode:
+        settings = load_config(cli_root=args.domains_root)
+        domain_name = "imported"
+        try:
+            domain_mod, engine0, adapter0, onto_path, imported_meta = load_imported_runtime()
+        except RuntimeError as exc:
+            parser.error(str(exc))
+        description = domain_mod.DESCRIPTION
+    else:
+        settings = load_config(cli_root=args.domains_root, cli_domain=args.domain)
+        domain_name = settings.effective_default()
+        if domain_name is None:
+            installed = settings.installed()
+            if installed:
+                parser.error(
+                    f"未确定默认领域：{settings.root} 下已安装多个领域：{', '.join(installed)}。"
+                    "请用 --domain <name> 指定，或执行 "
+                    "python scripts/ontologyctl.py domain use <name>，"
+                    "或在 config/domain.json 设置 domains.default。"
+                )
             parser.error(
-                f"未确定默认领域：{settings.root} 下已安装多个领域：{', '.join(installed)}。"
-                "请用 --domain <name> 指定，或执行 "
-                "python scripts/ontologyctl.py domain use <name>，"
-                "或在 config/domain.json 设置 domains.default。"
+                f"未确定默认领域：{settings.root} 下尚未安装任何领域包。"
+                "请执行 python scripts/ontologyctl.py domain install "
+                "--from ./examples/agent_task，或用 --domain 指定。"
             )
-        parser.error(
-            f"未确定默认领域：{settings.root} 下尚未安装任何领域包。"
-            "请执行 python scripts/ontologyctl.py domain install "
-            "--from ./examples/agent_task，或用 --domain 指定。"
-        )
-    domain_mod = load_domain_module(domain_name, settings=settings)
-    # 领域包的 ONTO_FILE 可能是相对路径（如 _minimal 的 "minimal.owl"）；
-    # 统一经 package_onto_path 解析成包内绝对路径，避免 MCP 以 CWD 为基准找本体。
-    onto_path = package_onto_path(domain_name, settings=settings)
-    if not onto_path:
-        parser.error(
-            f"领域「{domain_name}」未解析到本体文件；请在包内 config.json 声明 "
-            "onto_file，或确保包内恰好有一个 *.owl。"
-        )
+        domain_mod = load_domain_module(domain_name, settings=settings)
+        # 领域包的 ONTO_FILE 可能是相对路径（如 _minimal 的 "minimal.owl"）；
+        # 统一经 package_onto_path 解析成包内绝对路径，避免 MCP 以 CWD 为基准找本体。
+        onto_path = package_onto_path(domain_name, settings=settings)
+        if not onto_path:
+            parser.error(
+                f"领域「{domain_name}」未解析到本体文件；请在包内 config.json 声明 "
+                "onto_file，或确保包内恰好有一个 *.owl。"
+            )
+        description = domain_mod.DESCRIPTION
 
     # 运行态（引擎 / 适配器随热重载替换）：工具闭包只依赖这两个工厂
     state = {}
 
     def _load(onto_path, extensions_dir=None) -> tuple:
         engine = OntologyEngine(onto_path=onto_path, extensions_dir=extensions_dir)
+        if imported_mode:
+            # 导入的本体没有领域包 / 规则目录：只读通用适配器，不重新物化
+            return engine, domain_mod.ImportedOntologyAdapter(engine)
         # 规则层在加载路径上（与 API 的激活流水线同序）：owlrl 物化 → rules/*.ttl
         # （文件名顺序，前序产出进后续规则的前提）→ 适配器构造。少这一步，
         # 适配器的 capability_match 读不到 R2 委派边——之前靠适配器构造时
@@ -434,7 +576,23 @@ def main() -> int:
     def get_adapter():
         return state["adapter"]
 
-    state["engine"], state["adapter"] = _load(onto_path)
+    def get_cq_context() -> tuple[str, Path | None]:
+        """CQ 身份（#164/#171）：与 REST 共用 identity_for；领域名 + 包内题库播种。"""
+        adapter = state["adapter"]
+        name = getattr(adapter, "NAME", domain_name)
+        seed = None
+        if not imported_mode:
+            package_file = getattr(domain_mod, "__file__", None)
+            if package_file:
+                candidate = Path(package_file).parent / "cq_tests.json"
+                if candidate.is_file():
+                    seed = candidate
+        return cq_store.identity_for(name, seed)
+
+    if imported_mode:
+        state["engine"], state["adapter"] = engine0, adapter0
+    else:
+        state["engine"], state["adapter"] = _load(onto_path)
 
     def _reload(trigger: str) -> bool:
         """重建引擎 + 适配器（核心 + extensions/）；失败保持旧状态。SIGHUP / 文件监听共用。
@@ -490,16 +648,34 @@ def main() -> int:
         print(f"[info] 文件监听热重载已启动（间隔 {args.watch_interval}s；核心本体 + extensions/）",
               file=sys.stderr, flush=True)
 
-    server = build_server(get_engine, get_adapter, domain_name, domain_mod.DESCRIPTION)
+    ontology_server = build_server(
+        get_engine, get_adapter, domain_name, description,
+        with_domain_tools=not imported_mode,
+    )
+    cq_server = build_cq_server(get_engine, get_cq_context)
+
+    label = state["adapter"].NAME
+    if imported_mode:
+        label = f"{domain_mod.DISPLAY_NAME}（{imported_meta.get('original_filename') or Path(onto_path).name}）"
 
     if args.transport == "stdio":
-        print(f"[info] 本体推理 MCP Server（{state['adapter'].NAME} 领域）已启动（stdio）；kill -HUP / 文件监听热重载",
-              file=sys.stderr, flush=True)
-        _run_server(server, "stdio", _on_sighup)
+        # stdio 只有单通道：CQ 工具与本体工具合并到同一个 server。
+        # cq_ 前缀与领域 / 通用工具不冲突（重复注册会被 _ToolNameGuard 拦下）。
+        cq_tools_mod.register_tools(_ToolNameGuard(ontology_server), get_engine, get_cq_context)
+        print(f"[info] 本体推理 MCP Server（{label}）已启动（stdio，含 CQ 工具）；"
+              "kill -HUP / 文件监听热重载", file=sys.stderr, flush=True)
+        _run_server(ontology_server, "stdio", _on_sighup)
     else:
-        print(f"[info] 本体推理 MCP Server（{state['adapter'].NAME} 领域）已启动（streamable-http）: "
-              f"http://{args.host}:{args.port}/mcp；kill -HUP / 文件监听热重载", file=sys.stderr, flush=True)
-        _run_server(server, "streamable-http", _on_sighup, host=args.host, port=args.port)
+        app = combined_http_app(
+            {"/mcp/ontology": ontology_server, "/mcp/cq": cq_server},
+            host=args.host,
+            aliases={"/mcp": "/mcp/ontology"},   # 旧客户端兼容
+        )
+        print(f"[info] 本体推理 MCP Server（{label}）已启动（streamable-http，单进程双端点）: "
+              f"http://{args.host}:{args.port}/mcp/ontology 与 /mcp/cq"
+              "（/mcp 为旧路径别名）；kill -HUP / 文件监听热重载",
+              file=sys.stderr, flush=True)
+        _run_http_app(app, args.host, args.port, _on_sighup)
     return 0
 
 

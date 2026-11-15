@@ -7,6 +7,8 @@
 
 ### Added
 
+- **决策议程与业务化文案（#207 / #208）**：`/mcp/cq` 新增 `cq_agenda`（工具数 15 → 16），从 CQ 集现场推导未锚定题 / 质检问题 / 回归失败 / 覆盖缺口 / 冗余，每条给业务话背景、问题、选项、推荐与理由；`cq_resume` 将其合并进 `pending_decisions`（新增 `agenda` 字段，`counts.pending` 计入议程），有未决状态时不再返回空的决策面。议程编号按「类别 + 题号」稳定生成，人第一次回答时才惰性物化为 `decision_asked` 事件，读接口仍是纯读。缺口与「下一步」文案去掉 `context_gaps` / `attribution_conclusion` / `iterations/<id>.json` 等实现术语；前端 `plainCopy` 扩到决策背景、问题、选项、推荐理由、缺口与下一步，决策编号 / 类别 / 原始字段默认收进「展开看技术细节」。
+- **CQ 工作台角色模型与护栏指标（#206）**：手册新增 9.11，明确「人 = 决策责任者、智能体扛专业活」与闭环五步，并定义两条护栏：决策面填充率 ≥90%、主动决策议程覆盖率 → 100%。
 - **CQ 训练过程线上化（#194–#200）**：新增只追加事件流 `training_log.jsonl` 与读时投影 `training_state`；`/mcp/cq` 增加 `cq_decision` / `cq_resume` / `cq_timeline` / `cq_training_write` / `cq_iteration_write`（工具数 10 → 15）；REST 增加 `GET .../cq/resume`、`GET .../cq/timeline`、`POST .../cq/decision`（端点 45 → 48）。训练现场与时间线收在「CQ 集 → 训练」标签内（#203 把原先的三处入口合成一页）。
 - **用户代价（升级前请读）**：
   - **三处会拒绝旧脚本的硬校验**：① 自定义决策类别被拒（只允许 semantic / expectation / priority / term / scope）；② 通用写工具不能写决策生命周期事件；③ 推荐项必须属于选项（选项 ≥2）。

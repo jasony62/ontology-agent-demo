@@ -24,3 +24,17 @@ export function plainCopy(text?: string | null): string {
     .replace(/\s+([，。；、：])/g, '$1')
     .trim();
 }
+
+/** 决策类别（后端受控词表）→ 业务中文；未知值不硬编码，原样交给调用方。 */
+const DECISION_KIND_LABELS: Record<string, string> = {
+  semantic: '口径',
+  expectation: '预期',
+  priority: '优先级',
+  term: '术语',
+  scope: '范围',
+};
+
+export function decisionKindLabel(kind?: string | null): string {
+  if (!kind) return '待分类';
+  return DECISION_KIND_LABELS[kind] ?? (plainCopy(kind) || '待分类');
+}

@@ -12,7 +12,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 ## 2. 前置自检
 
 - 服务与 MCP 就绪（quickstart 断言链 + §3.4 握手拿到 session id）；以下工具均经 MCP `tools/call` 调用；
-- **端点**：CQ 工位都在框架级 **`/mcp/cq`**（#171/#172），不依赖领域包——切到任何预置领域、甚至 `--domain imported` 导入裸 OWL 都可用；先 `tools/list` 确认 15 个 `cq_` 工具。`validate_shapes` 因依赖领域 `shapes/*.ttl` 仍在 `/mcp/ontology`；通用闸门（`pipeline_gate` / `run_rules` / `list_rules` / `merge_check`）也在 `/mcp/ontology`；
+- **端点**：CQ 工位都在框架级 **`/mcp/cq`**（#171/#172），不依赖领域包——切到任何预置领域、甚至 `--domain imported` 导入裸 OWL 都可用；先 `tools/list` 确认 16 个 `cq_` 工具。`validate_shapes` 因依赖领域 `shapes/*.ttl` 仍在 `/mcp/ontology`；通用闸门（`pipeline_gate` / `run_rules` / `list_rules` / `merge_check`）也在 `/mcp/ontology`；
 - 分清两种模式：**schema_anchored**（默认，对照既有本体 schema 出题）与 **from_description**（传 `focus` 领域描述，全新领域降级用）；
 - 明确一个事实：`cq_author`（不传 `draft`）返回的是**给宿主 LLM 的出题指令**（题型配比、措辞规则、锚点要求），**不是题目本身**——题目由你（智能体）按指令起草。
 

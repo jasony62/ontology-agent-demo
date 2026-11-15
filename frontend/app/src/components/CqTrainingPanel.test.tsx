@@ -16,8 +16,8 @@ const RESUME = {
   last_regression: null,
   pending_decisions: [{
     decision_id: 'd-1', kind: 'expectation', question: '期望口径是什么？',
-    options: ['A', 'B'], recommended: 'A', reason: 'A 与本体重合',
-    background: '需要确认题目口径', case_id: 'Q1', status: 'pending',
+    options: ['A', 'B'], recommended: 'A', reason: 'A 与本体重合（attribution_conclusion）',
+    background: '需要确认题目口径（见 context_gaps）', case_id: 'Q1', status: 'pending',
   }],
   pending_followups: [],
   counts: { followup: 0, pending: 1 },
@@ -84,6 +84,8 @@ describe('训练现场（#198 / #203）', () => {
     expect(text).toContain('G1');
     expect(text).toContain('期望口径是什么？');
     expect(text).toContain('推荐理由');
+    expect(text).toContain('需要确认题目口径');
+    expect(text).toContain('A 与本体重合');
     // #203 A6：实现术语（括注里的字段名 / 内部对象名）不进用户文案
     for (const term of ['context_gaps', 'attribution_conclusion', 'last_regression', '自举']) {
       expect(text).not.toContain(term);
@@ -155,5 +157,27 @@ describe('训练现场（#198 / #203）', () => {
     const body = JSON.parse(String((call![1] as RequestInit).body));
     expect(body.feedback_text).toBe('需要人工确认');
     expect(body.follow_up_with).toBe('李四');
+  });
+
+  it('技术细节默认收起，展开后才出现实现标识（#208）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('预期');
+    expect(text).not.toContain('expectation');
+    expect(text).not.toContain('d-1');
+
+    const toggle = container!.querySelector<HTMLButtonElement>(
+      '.cq-training-card .cq-training-tech-toggle')!;
+    expect(toggle.textContent).toBe('展开看技术细节');
+    await act(async () => { toggle.click(); });
+    await flush();
+
+    const expanded = container!.textContent ?? '';
+    expect(expanded).toContain('d-1');
+    expect(expanded).toContain('attribution_conclusion');
+    expect(toggle.textContent).toBe('收起技术细节');
   });
 });

@@ -37,8 +37,10 @@ def test_resume_is_snapshot_and_pure_read(client):
     after = len(training_log.read_events(ontology_id))
     assert after == before
     assert body["depth"] == "snapshot"
-    assert body["counts"]["pending"] == 1
-    assert body["pending_decisions"][0]["decision_id"] == decision_id
+    ids = [item["decision_id"] for item in body["pending_decisions"]]
+    assert body["counts"]["pending"] == len(ids)
+    assert decision_id in ids
+    assert body["agenda"], "有覆盖缺口时应主动生成议程"
     assert "history" not in body
     assert body["next_suggested"]["action"]
 
@@ -50,7 +52,9 @@ def test_feedback_by_option_and_free_text(client):
     })
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "resolved"
-    assert client.get("/api/domains/current/cq/resume").json()["counts"]["pending"] == 0
+    ids = [item["decision_id"]
+           for item in client.get("/api/domains/current/cq/resume").json()["pending_decisions"]]
+    assert decision_id not in ids
 
     decision_id = _ask(client)
     r = client.post("/api/domains/current/cq/decision", json={

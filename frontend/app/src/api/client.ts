@@ -498,6 +498,7 @@ export interface CqResumeResponse {
   iterations: Array<Record<string, unknown>>;
   recent_iteration: Record<string, unknown> | null;
   intent_pending: string[];
+  agenda?: CqDecision[];
   context_gaps: CqContextGap[];
   next_suggested: { action: string; count: number; text: string };
   history?: CqTimelineItem[];

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { CqDecision, CqResumeResponse } from '../api/client';
-import { plainCopy } from '../lib/cqCopy';
+import { plainCopy, decisionKindLabel } from '../lib/cqCopy';
 import { notifyCqTrainingChanged } from '../lib/cqTrainingEvent';
 
 /**
@@ -51,7 +51,7 @@ export default function CqTrainingPanel() {
       });
       const label = result.status === 'resolved' ? '已裁决' : '待跟进';
       setLastResult(
-        `已提交反馈：${decision.question || decision.decision_id} · ${label}`
+        `已提交反馈：${plainCopy(decision.question) || '该决策'} · ${label}`
         + (result.intent_pending_marked ? ' · 题目意图待确认' : ''),
       );
       await load();
@@ -125,17 +125,20 @@ export default function CqTrainingPanel() {
             <div className="cq-training-gaps">
               <h4>本轮缺口</h4>
               <ul>
-                {gaps.map((gap) => {
-                  const object = plainCopy(gap.object);
-                  return (
-                    <li key={`${gap.gap_type}-${gap.object || ''}`}>
-                      <code>{gap.gap_type}</code>
-                      <span>{plainCopy(gap.suggestion)}</span>
-                      {object && <i>{object}</i>}
-                    </li>
-                  );
-                })}
+                {gaps.map((gap) => (
+                  <li key={`${gap.gap_type}-${gap.object || ''}`}>
+                    <code>{gap.gap_type}</code>
+                    <span>{plainCopy(gap.suggestion)}</span>
+                    {plainCopy(gap.object) && <i>{plainCopy(gap.object)}</i>}
+                  </li>
+                ))}
               </ul>
+              <TechnicalDetails
+                items={gaps.map((gap) => ({
+                  label: gap.gap_type,
+                  lines: [gap.object || '', gap.suggestion],
+                }))}
+              />
             </div>
           )}
         </>
@@ -162,12 +165,10 @@ function DecisionCard({
   return (
     <article className="cq-training-card">
       <div className="cq-training-card-head">
-        <code>{decision.decision_id}</code>
-        <span className="guide-badge muted">{decision.kind || '未分类'}</span>
-        {decision.case_id && <span className="guide-badge">{decision.case_id}</span>}
+        <span className="guide-badge muted">{decisionKindLabel(decision.kind)}</span>
       </div>
-      <p className="cq-training-bg">{decision.background || '—'}</p>
-      <h4>{decision.question || '未命名问题'}</h4>
+      <p className="cq-training-bg">{plainCopy(decision.background) || '—'}</p>
+      <h4>{plainCopy(decision.question) || '未命名问题'}</h4>
       <div className="cq-training-options">
         {(decision.options || []).map((option) => (
           <button
@@ -177,12 +178,26 @@ function DecisionCard({
             disabled={busy}
             onClick={() => void onSubmit(decision, { option })}
           >
-            {option}
+            {plainCopy(option)}
             {decision.recommended === option && <span className="cq-training-rec">推荐</span>}
           </button>
         ))}
       </div>
-      {decision.reason && <div className="guide-muted">推荐理由：{decision.reason}</div>}
+      {decision.reason && (
+        <div className="guide-muted">推荐理由：{plainCopy(decision.reason)}</div>
+      )}
+      <TechnicalDetails
+        items={[{
+          label: decisionKindLabel(decision.kind),
+          lines: [
+            `决策编号：${decision.decision_id}`,
+            decision.case_id ? `对应题目：${decision.case_id}` : '',
+            `类别：${decision.kind || ''}`,
+            `原始背景：${decision.background || ''}`,
+            `原始理由：${decision.reason || ''}`,
+          ],
+        }]}
+      />
 
       <button
         type="button"
@@ -218,5 +233,39 @@ function DecisionCard({
         </div>
       )}
     </article>
+  );
+}
+
+/**
+ * 专家核对入口（#208）：默认收起，展开前不把实现标识放进 DOM。
+ * leader 只看业务文案；需要核对时点开才看到编号 / 原始字段。
+ */
+function TechnicalDetails({
+  items,
+}: {
+  items: Array<{ label: string; lines: string[] }>;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="cq-training-tech-entry">
+      <button
+        type="button"
+        className="btn link cq-training-tech-toggle"
+        onClick={() => setOpen((value) => !value)}
+      >
+        {open ? '收起技术细节' : '展开看技术细节'}
+      </button>
+      {open && (
+        <div className="cq-training-tech">
+          {items.map((item, index) => (
+            <div key={`${item.label}-${index}`}>
+              {item.lines.filter(Boolean).map((line, lineIndex) => (
+                <div key={`${lineIndex}-${line}`}>{line}</div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

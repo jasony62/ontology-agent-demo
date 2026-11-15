@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 from api import workspaces
-from cq import cq_runner, cq_store, training_service
+from cq import agenda, cq_runner, cq_store, training_service
 from cq.constants import EXPECTED_TYPES
 from ontology_plugin_sdk.cq import gen, tbox
 from reasoner.cq_locate import locate_cq
@@ -407,8 +407,24 @@ def register_tools(server, get_engine, get_cq_context) -> None:
         return {"ok": True, "ontology_id": target, **result}
 
     @server.tool(description=(
+        "决策议程（#207）：从 CQ 集现场生成待决事项——未锚定题 / 质检问题 / "
+        "回归失败 / 覆盖缺口 / 冗余，每条含业务话背景、问题、选项、推荐项与理由。"
+        "只读、不落盘；前端只消费 cq_resume 合并后的 pending_decisions。"))
+    def cq_agenda(limit: int = agenda.AGENDA_LIMIT, ontology_id: str = "") -> dict:
+        try:
+            target, seed = resolve(ontology_id)
+            items = agenda.build_agenda(
+                get_engine(), target, seed, limit=limit,
+            )
+        except ValueError as exc:
+            return _error("invalid_ontology", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return _error("agenda_failed", str(exc))
+        return {"ok": True, "ontology_id": target, "count": len(items), "items": items}
+
+    @server.tool(description=(
         "训练现场自举（#196）：状态摘要 / 上次回归 / 待决 / 待跟进 / 熔断 / 迭代 / "
-        "意图标记 + context_gaps（G1–G6）+ next_suggested。depth=full 时附历史。"))
+        "意图标记 + 决策议程 + context_gaps（G1–G6）+ next_suggested。depth=full 时附历史。"))
     def cq_resume(depth: str = "snapshot", since: str = "",
                   kinds: list[str] | None = None, limit: int = 200,
                   ontology_id: str = "") -> dict:

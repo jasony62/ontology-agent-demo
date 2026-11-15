@@ -15,6 +15,7 @@ import {
   conclusionLabel,
 } from '../lib/cqLabels';
 import { notifyCqTrainingChanged } from '../lib/cqTrainingEvent';
+import HelpTip from './HelpTip';
 import TechDetails from './TechDetails';
 
 /**
@@ -48,10 +49,11 @@ const STAGE_ACTIONS: Record<string, string> = {
 type SortMode = 'action' | 'activity' | 'case';
 
 export default function CqTrainingPanel({
-  focusCaseId, onFocusHandled,
+  focusCaseId, onFocusHandled, onGoToCases,
 }: {
   focusCaseId?: string | null;
   onFocusHandled?: () => void;
+  onGoToCases?: () => void;
 } = {}) {
   const [resume, setResume] = useState<CqResumeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +64,7 @@ export default function CqTrainingPanel({
   const [sortMode, setSortMode] = useState<SortMode>('action');
   const [focusMode, setFocusMode] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
+  const [gapsOpen, setGapsOpen] = useState(false);
   const [openCaseId, setOpenCaseId] = useState<string | null>(null);
   const [historyStage, setHistoryStage] = useState('');
   const [caseEvents, setCaseEvents] = useState<CqTimelineItem[]>([]);
@@ -170,6 +173,33 @@ export default function CqTrainingPanel({
     resolved: resume?.counts?.resolved ?? 0,
   };
   const gaps = resume?.context_gaps ?? [];
+  const nextAction = String(resume?.next_suggested?.action || '');
+  const nextDisabled = !nextAction
+    || (nextAction === 'answer_decisions' && pendingCases.length === 0);
+  const handleNext = () => {
+    if (nextAction === 'answer_decisions') {
+      setFilter('pending');
+      setFocusMode(true);
+      return;
+    }
+    if (nextAction === 'follow_up') {
+      setFilter('followup');
+      setFocusMode(false);
+      return;
+    }
+    if (nextAction === 'close_gaps') {
+      setGapsOpen(true);
+      return;
+    }
+    if (nextAction === 'run_regression') {
+      onGoToCases?.();
+      return;
+    }
+    if (nextAction === 'handle_circuit_breaker') {
+      setFilter('pending');
+      setFocusMode(pendingCases.length > 0);
+    }
+  };
 
   return (
     <section className="guide-section cq-training">
@@ -228,14 +258,48 @@ export default function CqTrainingPanel({
               <span>待跟进题</span>
             </button>
             <div className={`cq-training-stat${summary?.circuit_breaker?.open ? ' danger' : ''}`}>
-              <b>{summary?.circuit_breaker?.open ? 1 : 0}</b>
-              <span>熔断</span>
+              <b>{summary?.circuit_breaker?.open ? '已触发' : '未触发'}</b>
+              <span>
+                熔断
+                <HelpTip text="连续多轮没有进展时暂停自动流程，等你处理；未触发表示当前流程正常。" />
+              </span>
             </div>
+          </div>
+
+          <div className="cq-training-guide">
+            <b>从这里开始</b>
+            <span>
+              {pendingCases.length > 0
+                ? `智能体已经把待决事项准备好了：先处理「待我决」的 ${pendingCases.length} 题。`
+                : '当前没有待决；可以逐题看阶段与依据，或到下方全局事件看历史。'}
+            </span>
+            <span className="guide-muted">
+              概览看总量 → 题看板看每题 → 点题卡看这道题的卷；全局事件在下方。
+            </span>
+            {pendingCases.length > 0 && (
+              <button type="button" className="btn" onClick={() => setFocusMode(true)}>
+                开始处理待决
+              </button>
+            )}
           </div>
 
           <div className="cq-training-next">
             <b>下一步</b>
             <span>{plainCopy(resume.next_suggested?.text) || '—'}</span>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={handleNext}
+              disabled={nextDisabled}
+            >
+              {nextAction === 'run_regression'
+                ? '去题目页运行评估'
+                : nextAction === 'close_gaps'
+                  ? '查看缺口'
+                  : nextAction === 'follow_up'
+                    ? '看待跟进'
+                    : '去处理'}
+            </button>
           </div>
 
           {lastResult && <div className="notice-banner cq-training-result">{lastResult}</div>}
@@ -367,7 +431,11 @@ export default function CqTrainingPanel({
           )}
 
           {gaps.length > 0 && (
-            <details className="cq-training-gaps cq-training-gaps-folded">
+            <details
+              className="cq-training-gaps cq-training-gaps-folded"
+              open={gapsOpen}
+              onToggle={(event) => setGapsOpen(event.currentTarget.open)}
+            >
               <summary>本轮缺口（{gaps.length}）</summary>
               <ul>
                 {gaps.map((gap) => (
@@ -450,22 +518,25 @@ function CaseCard({
 function StageBar({ stage, onSelect }: { stage: string; onSelect: (stage?: string) => void }) {
   const current = STAGE_BAR.indexOf(stage as (typeof STAGE_BAR)[number]);
   return (
-    <div className="cq-stage-bar" role="group" aria-label="题目阶段">
-      {STAGE_BAR.map((item, index) => {
-        const visited = current >= 0 && index <= current;
-        return (
-          <button
-            key={item}
-            type="button"
-            className={`cq-stage-step${item === stage ? ' active' : ''}${visited ? ' visited' : ''}`}
-            onClick={() => onSelect(item)}
-            title={`只看「${STAGE_LABELS[item]}」阶段的事件`}
-          >
-            {STAGE_LABELS[item]}
-          </button>
-        );
-      })}
-      {stage === 'followup' && <span className="cq-stage-step active">待跟进</span>}
+    <div className="cq-stage-bar-wrap">
+      <span className="cq-stage-caption">阶段 · 点击查看该阶段的记录（回归可能反复，阶段是当前状态）</span>
+      <div className="cq-stage-bar" role="group" aria-label="题目阶段">
+        {STAGE_BAR.map((item, index) => {
+          const visited = current >= 0 && index <= current;
+          return (
+            <button
+              key={item}
+              type="button"
+              className={`cq-stage-step${item === stage ? ' active' : ''}${visited ? ' visited' : ''}`}
+              onClick={() => onSelect(item)}
+              title={`只看「${STAGE_LABELS[item]}」阶段的事件`}
+            >
+              {STAGE_LABELS[item]}
+            </button>
+          );
+        })}
+        {stage === 'followup' && <span className="cq-stage-step active">待跟进</span>}
+      </div>
     </div>
   );
 }
@@ -589,6 +660,8 @@ function DecisionCard({
   const [conclusion, setConclusion] = useState<'adopt' | 'reject' | 'defer'>('adopt');
   const [authorized, setAuthorized] = useState(false);
   const [open, setOpen] = useState(false);
+  const [pendingChoice, setPendingChoice] = useState<{ option: string; conclusion: 'adopt' | 'reject' } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const receipt = () => ({
     basis,
@@ -596,11 +669,23 @@ function DecisionCard({
     follow_up_with: basis === 'expert' ? followUp.trim() : '',
   });
 
-  const choose = (option: string) => {
-    const nextConclusion = conclusion === 'defer'
-      ? 'reject'
-      : (conclusion === 'adopt' && option !== decision.recommended ? 'reject' : conclusion);
+  const submitChoice = (option: string, nextConclusion: 'adopt' | 'reject') => {
+    setPendingChoice(null);
+    setNotice(null);
     void onSubmit(decision, { option, conclusion: nextConclusion, ...receipt() });
+  };
+
+  const choose = (option: string) => {
+    const nextConclusion: 'adopt' | 'reject' = option === decision.recommended ? 'adopt' : 'reject';
+    if (nextConclusion !== conclusion) {
+      // #229：绝不静默改结论；先显示联动提示，由用户确认或取消。
+      setPendingChoice({ option, conclusion: nextConclusion });
+      setNotice(
+        `你选了「${plainCopy(option)}」，与当前结论不同；提交将记为「${conclusionLabel(nextConclusion)}」。`,
+      );
+      return;
+    }
+    submitChoice(option, nextConclusion);
   };
 
   const defer = () => {
@@ -616,13 +701,18 @@ function DecisionCard({
       <div className="cq-training-card-head">
         <span className="guide-badge muted">{decisionKindLabel(decision.kind)}</span>
       </div>
-      {decision.context && (
-        <p className="cq-training-context">
-          <b>现场上下文</b>
-          {plainCopy(decision.context)}
-        </p>
-      )}
-      <p className="cq-training-bg">{plainCopy(decision.background) || '—'}</p>
+      <div className="cq-training-evidence">
+        <b>为什么问你</b>
+        <p>{plainCopy(decision.background) || '—'}</p>
+        {plainCopy(decision.context)
+          && !plainCopy(decision.background).includes(plainCopy(decision.context))
+          && !plainCopy(decision.context).includes(plainCopy(decision.background)) && (
+          <>
+            <b>现场依据</b>
+            <p>{plainCopy(decision.context)}</p>
+          </>
+        )}
+      </div>
       <h4>{plainCopy(decision.question) || '未命名问题'}</h4>
 
       <div className="cq-training-receipt">
@@ -630,7 +720,11 @@ function DecisionCard({
           <span className="field-label">结论</span>
           <select
             value={conclusion}
-            onChange={(event) => setConclusion(event.target.value as 'adopt' | 'reject' | 'defer')}
+            onChange={(event) => {
+              setConclusion(event.target.value as 'adopt' | 'reject' | 'defer');
+              setPendingChoice(null);
+              setNotice(null);
+            }}
           >
             {CONCLUSION_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
@@ -667,6 +761,25 @@ function DecisionCard({
           我已确认可以按此决策执行
         </label>
       </div>
+      <p className="field-hint cq-basis-hint">
+        需要线下找专业的人确认？把「依据来源」改成「已问他人确认」并填写对方姓名；也可以补充反馈说明。
+      </p>
+
+      {pendingChoice && (
+        <div className="cq-decision-confirm" role="alert">
+          <span>{notice}</span>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => submitChoice(pendingChoice.option, pendingChoice.conclusion)}
+          >
+            确认提交
+          </button>
+          <button type="button" className="btn secondary" onClick={() => { setPendingChoice(null); setNotice(null); }}>
+            取消
+          </button>
+        </div>
+      )}
 
       <div className="cq-training-options">
         {(decision.options || []).map((option) => (
@@ -698,19 +811,6 @@ function DecisionCard({
       {decision.reason && (
         <div className="guide-muted">推荐理由：{plainCopy(decision.reason)}</div>
       )}
-      <TechDetails
-        items={[{
-          label: decisionKindLabel(decision.kind),
-          lines: [
-            `决策编号：${decision.decision_id}`,
-            decision.case_id ? `对应题目：${decision.case_id}` : '',
-            `类别：${decision.kind || ''}`,
-            `原始背景：${decision.background || ''}`,
-            `原始上下文：${decision.context || ''}`,
-            `原始理由：${decision.reason || ''}`,
-          ],
-        }]}
-      />
 
       <button
         type="button"
@@ -742,6 +842,20 @@ function DecisionCard({
           </button>
         </div>
       )}
+
+      <TechDetails
+        items={[{
+          label: decisionKindLabel(decision.kind),
+          lines: [
+            `决策编号：${decision.decision_id}`,
+            decision.case_id ? `对应题目：${decision.case_id}` : '',
+            `类别：${decision.kind || ''}`,
+            `原始背景：${decision.background || ''}`,
+            `原始上下文：${decision.context || ''}`,
+            `原始理由：${decision.reason || ''}`,
+          ],
+        }]}
+      />
     </div>
   );
 }
@@ -765,6 +879,9 @@ const EVENT_LABELS: Record<string, string> = {
   regression_run: '整轮回归',
   regression_case: '回归结果',
   iteration_archive: '迭代档案',
+  iteration_started: '迭代开始',
+  iteration_applied: '迭代应用',
+  iteration_accepted: '迭代确认',
   gate_result: '闸门检查',
   evidence_recorded: '证据记录',
   attribution_conclusion: '归因结论',
@@ -772,6 +889,37 @@ const EVENT_LABELS: Record<string, string> = {
   add: '新增',
   update: '修改',
   delete: '删除',
+};
+
+const CONTENT_LABELS: Record<string, string> = {
+  decision_id: '决策编号',
+  case_id: '题目编号',
+  question: '问题',
+  option: '所选选项',
+  feedback_text: '反馈原文',
+  follow_up_with: '需要谁确认',
+  conclusion: '结论',
+  basis: '依据来源',
+  authorized: '是否授权',
+  source: '来源',
+  kind: '类别',
+  background: '背景',
+  context: '现场依据',
+  reason: '推荐理由',
+  recommended: '推荐项',
+  options: '选项',
+  state: '评估结论',
+  detail: '明细',
+  hint: '提示',
+  run_ref: '回归记录',
+  iteration_id: '迭代编号',
+  business_translation: '业务话翻译',
+  changes: '变更清单',
+  gate_snapshot: '闸门快照',
+  status: '状态',
+  ttl: 'TTL',
+  event_id: '事件编号',
+  summary: '摘要',
 };
 
 function eventLabel(kind?: string): string {
@@ -798,10 +946,13 @@ function eventStage(event: CqTimelineItem): string {
 }
 
 function contentLines(content: Record<string, unknown>): string[] {
-  return Object.entries(content).map(([key, value]) => {
-    const text = typeof value === 'object' && value !== null
-      ? JSON.stringify(value)
-      : String(value ?? '');
-    return `${key}: ${text}`;
-  });
+  return [
+    '技术视图（业务阅读可忽略）',
+    ...Object.entries(content).map(([key, value]) => {
+      const text = typeof value === 'object' && value !== null
+        ? JSON.stringify(value)
+        : String(value ?? '');
+      return `${CONTENT_LABELS[key] || `技术字段「${key}」`}：${text}`;
+    }),
+  ];
 }

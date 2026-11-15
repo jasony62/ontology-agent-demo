@@ -77,12 +77,20 @@ const COVERAGE = {
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
-function stubFetch(set = SET) {
+const NO_ANCHORS = {
+  anchors: [],
+  coverage: 'no_anchors',
+  evidence: [],
+  counts: { total: 0, conclusion: 0, description: 0 },
+  hint: '题干中未匹配到本体术语。这份本体有 248 个中文术语（例如员工、姓名、岗位）。',
+};
+
+function stubFetch(set = SET, locate = LOCATE) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = String(init?.method || 'GET').toUpperCase();
     if (url.includes('/cq/locate')) {
-      return { ok: true, status: 200, json: async () => LOCATE } as unknown as Response;
+      return { ok: true, status: 200, json: async () => locate } as unknown as Response;
     }
     if (url.includes('/cq/coverage')) {
       return { ok: true, status: 200, json: async () => COVERAGE } as unknown as Response;
@@ -202,8 +210,13 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).toContain('检索类');
     expect(text).toContain('启用');
     expect(container!.querySelectorAll('.cq-row')).toHaveLength(2);
+    expect(container!.querySelector('.cq-row-main b')?.textContent).toBe('#1');
+    expect(container!.querySelector('.cq-row-cq')?.getAttribute('title')).toContain('登录模块开发');
+    // #223：进度条与计数同源（1/2 = 50%）
+    expect(text).toContain('50%');
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('登录模块开发');
-    expect(container!.querySelector('.cq-detail')?.textContent).toContain('上次可答');
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('上次评估');
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('通过');
     // #210：领导模式只给业务摘要，原始 SPARQL 默认收起
     const detail = container!.querySelector('.cq-detail')!;
     expect(detail.textContent).toContain('应判定为「是」');
@@ -222,6 +235,8 @@ describe('CQ 集页（#151 / #203）', () => {
     await flush();
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('这条结论凭什么成立');
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('智能体会补充');
+    expect(container!.querySelector('.cq-detail')?.textContent).not.toContain('rdfs:label');
+    expect(container!.querySelector('.cq-detail')?.textContent).not.toContain('没有命中证据（0 条）');
   });
 
   it('无集时显示正式空态而不是报错', async () => {
@@ -235,37 +250,44 @@ describe('CQ 集页（#151 / #203）', () => {
     await flush();
 
     const text = container!.textContent ?? '';
-    expect(text).toContain('还没有挂 CQ 集');
-    expect(text).toContain('导入一份');
+    expect(text).toContain('还没有 CQ 集');
+    expect(text).toContain('让智能体根据当前本体生成候选题');
     expect(container!.querySelectorAll('.cq-row')).toHaveLength(0);
 
-    // 空态下仍可直接新增第一题
-    const add = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '新增题目')!;
-    act(() => add.click());
-    expect(container!.querySelector('.cq-editor')).not.toBeNull();
+    // #231：领导模式不新建题目；空态引导切到专家模式
+    expect([...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .some((button) => button.textContent === '新增题目')).toBe(false);
+    const switchExpert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '切到专家模式')!;
+    act(() => switchExpert.click());
+    expect([...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .some((button) => button.textContent === '新增题目')).toBe(true);
   });
 
-  it('页面内可新增题目并保存（#154 / #210）', async () => {
+  it('专家模式可新增题目并保存（#154 / #210 / #231）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
+    const expert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '专家模式')!;
+    act(() => expert.click());
     const add = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '新增题目')!;
     act(() => add.click());
     expect(container!.querySelector('.cq-editor')).not.toBeNull();
     const selects = [...container!.querySelectorAll<HTMLSelectElement>('.cq-editor select')];
-    expect(selects).toHaveLength(1);
+    expect(selects).toHaveLength(2);
     expect([...selects[0].options].map((option) => option.textContent)).toEqual(
       ['检索类', '推导类', '计数类', '反例类', '未分型'],
     );
     expect(selects[0].value).toBe('retrieval');
     const labels = [...container!.querySelectorAll('.cq-editor .field-label')]
       .map((node) => node.textContent);
-    expect(labels).toContain('业务语义');
-    expect(labels).not.toContain('SPARQL query');
-    expect(labels).not.toContain('expect（JSON）');
+    expect(labels).toContain('题型');
+    expect(labels).toContain('状态');
+    expect(labels).toContain('SPARQL query');
+    expect(labels).toContain('expect（JSON）');
     expect(labels).not.toContain('工具（tool）');
     expect(labels).not.toContain('params（JSON）');
 
@@ -276,7 +298,7 @@ describe('CQ 集页（#151 / #203）', () => {
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     });
     const save = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor button')]
-      .find((button) => button.textContent === '保存题目')!;
+      .find((button) => button.textContent === '保存')!;
     await act(async () => { save.click(); });
     await flush();
 
@@ -301,10 +323,10 @@ describe('CQ 集页（#151 / #203）', () => {
     const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '编辑')!;
     act(() => edit.click());
-    const leaderLabels = [...container!.querySelectorAll('.cq-editor .field-label')]
-      .map((node) => node.textContent);
-    expect(leaderLabels).not.toContain('SPARQL query');
-    expect(container!.querySelector('.cq-editor')?.textContent).toContain('确认题目与断言');
+    expect(container!.querySelector('.cq-editor .cq-leader-question')).not.toBeNull();
+    expect(container!.querySelector('.cq-editor textarea')).toBeNull();
+    expect(container!.querySelector('.cq-editor select')).toBeNull();
+    expect(container!.querySelector('.cq-editor')?.textContent).toContain('确认题目');
 
     const expert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '专家模式')!;
@@ -369,20 +391,62 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.textContent).toContain('评估完成：1/2 通过');
   });
 
-  it('审计面板读取 /cq/audit 并展示 human/agent 时间线（#165）', async () => {
+  it('术语说明可展开，覆盖首屏行话（#233）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
-    const audit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '审计')!;
-    await act(async () => { audit.click(); });
+    const glossary = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '术语说明')!;
+    act(() => glossary.click());
+    const panel = container!.querySelector('.cq-glossary')!;
+    expect(panel.textContent).toContain('能力问题');
+    expect(panel.textContent).toContain('锚点');
+    expect(panel.textContent).toContain('可答');
+    expect(panel.textContent).toContain('熔断');
+    expect(panel.textContent).toContain('意图待确认');
+  });
+
+  it('题集与本体全部未命中时显式告警（#232）', async () => {
+    stubFetch({
+      ...SET,
+      summary: { ...SET.summary, located: 0, answerable: 0, gap: 2 },
+      cases: SET.cases.map((item) => ({ ...item, located: false, answerable: false })),
+    });
+    act(() => root!.render(<CqPage />));
     await flush();
 
-    const panel = container!.querySelector('.cq-audit')!;
-    expect(panel.textContent).toContain('变更审计');
-    expect(panel.textContent).toContain('add');
-    expect(panel.textContent).toContain('智能体写入的题');
-    expect(panel.textContent).toContain('mcp');
+    expect(container!.textContent).toContain('当前题集与加载的本体可能不是同一套');
+  });
+
+  it('英文标识符在列表中不被当成错别字（#226）', async () => {
+    stubFetch({
+      ...SET,
+      summary: { ...SET.summary, total: 3, located: 1, gap: 2 },
+      cases: [...SET.cases, {
+        id: 'Q3', cq: 'NonCompliantPackage 属于什么？', expected_type: 'retrieval',
+        status: 'active', located: true, answerable: false,
+        location: { coverage: 'has_candidates', evidence: 1, anchors: 1 },
+      }],
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.textContent).toContain('含本体标识符');
+    expect(container!.querySelector('.cq-badge.muted')?.getAttribute('title')).toContain('不是错别字');
+  });
+
+  it('未对术语时只出现一段业务提示（#224）', async () => {
+    stubFetch(SET, NO_ANCHORS);
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const detail = container!.querySelector('.cq-detail')!;
+    const text = detail.textContent ?? '';
+    expect(text).toContain('没有对上本体里的已有术语');
+    expect(text).not.toContain('rdfs:label');
+    expect(text).not.toContain('248 个中文术语');
+    expect(text).not.toContain('没有命中证据（0 条）');
+    expect(text.split('没有对上本体里的已有术语').length - 1).toBe(1);
   });
 });

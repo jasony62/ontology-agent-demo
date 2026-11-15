@@ -141,8 +141,8 @@ describe('训练现场（#198 / #203）', () => {
     expect(text).toContain('推荐理由');
     expect(text).toContain('需要确认题目口径');
     expect(text).toContain('A 与本体重合');
-    // #211：卡片自带现场上下文，不必跳到题目页
-    expect(text).toContain('现场上下文');
+    // #211 / #229：卡片自带现场依据，不必跳到题目页
+    expect(text).toContain('现场依据');
     expect(text).toContain('这题能对上本体里的「绩效等级」');
     expect(text).toContain('上次回归没通过');
     // #203 A6：实现术语（括注里的字段名 / 内部对象名）不进用户文案
@@ -365,6 +365,66 @@ describe('训练现场（#198 / #203）', () => {
     await flush();
     expect(history.textContent).toContain('反馈：就是 A');
     expect(history.textContent).not.toContain('提问：期望口径是什么？');
+  });
+
+  it('「下一步」可点直达待决处理（#228）', async () => {
+    stubFetch({
+      ...RESUME,
+      next_suggested: { action: 'answer_decisions', count: 1, text: '回答 1 个待决问题' },
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const next = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-next button')]
+      .find((button) => button.textContent === '去处理')!;
+    await act(async () => { next.click(); });
+    await flush();
+    expect(container!.querySelector('.cq-focus-mode')).not.toBeNull();
+  });
+
+  it('选非推荐项不再静默改结论，需显式确认（#229）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const authorize = container!.querySelector<HTMLInputElement>('.cq-training-authorize input')!;
+    await act(async () => { authorize.click(); });
+    const optionB = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
+      .find((button) => button.textContent === 'B')!;
+    await act(async () => { optionB.click(); });
+    await flush();
+
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) =>
+      String(url).includes('/cq/decision') && String(init?.method) === 'POST')).toBe(false);
+    const confirm = container!.querySelector('.cq-decision-confirm')!;
+    expect(confirm.textContent).toContain('与当前结论不同');
+    const submit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '确认提交')!;
+    await act(async () => { submit.click(); });
+    await flush();
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/decision') && String(init?.method) === 'POST')!;
+    const body = JSON.parse(String((call[1] as RequestInit).body));
+    expect(body).toMatchObject({ option: 'B', conclusion: 'reject' });
+  });
+
+  it('事件技术细节用中文标签并标明技术视图（#230）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const historyButton = [...container!.querySelectorAll<HTMLButtonElement>('.cq-case-card button')]
+      .find((button) => button.textContent === '看这道题的事件流')!;
+    await act(async () => { historyButton.click(); });
+    await flush();
+    const history = container!.querySelector('.cq-case-history')!;
+    const tech = [...history.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '展开看这条的技术细节')!;
+    await act(async () => { tech.click(); });
+    await flush();
+    expect(history.textContent).toContain('技术视图（业务阅读可忽略）');
+    expect(history.textContent).toContain('题目编号');
+    expect(history.textContent).not.toContain('case_id');
   });
 
   it('技术细节默认收起，展开后才出现实现标识（#208）', async () => {

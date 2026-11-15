@@ -12,7 +12,7 @@ import { CQ_TRAINING_CHANGED } from '../lib/cqTrainingEvent';
  * 三个组件都零 props：现场、时间线、迭代档案各自取数，切领域后随同一份身份一起换。
  * 现场提交反馈后广播一次窗口事件，这里用 key 让时间线重读——提交完往下滚就能看到新事件。
  */
-export default function CqTrainingPage() {
+export default function CqTrainingPage({ onGoToCases }: { onGoToCases?: () => void } = {}) {
   const [logKey, setLogKey] = useState(0);
   const [focusCaseId, setFocusCaseId] = useState<string | null>(null);
   const handleFocus = useCallback((caseId: string) => setFocusCaseId(caseId), []);
@@ -30,6 +30,7 @@ export default function CqTrainingPage() {
         <CqTrainingPanel
           focusCaseId={focusCaseId}
           onFocusHandled={clearFocus}
+          onGoToCases={onGoToCases}
         />
       </section>
       <section className="cq-training-log" aria-label="训练时间线">

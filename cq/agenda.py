@@ -170,32 +170,25 @@ def _build_item(kind: str, case: dict, run_case: dict | None) -> dict:
 
 
 def _context(case: dict, run_case: dict | None) -> str:
-    """决策卡内联现场（#211）：用业务话说明「为什么问你、这题现在卡在哪」。"""
-    location = case.get("location") or {}
-    anchors = [
-        str(item).strip()
-        for item in (location.get("anchor_terms") or [])
-        if str(item).strip()
-    ]
-    evidence = int(location.get("evidence") or 0)
-    if evidence > 0 and anchors:
-        parts = [f"这题能对上本体里的「{'、'.join(anchors[:3])}」，目前查到 {evidence} 条证据。"]
-    elif evidence > 0:
-        parts = [f"这题目前查到 {evidence} 条证据。"]
-    else:
-        parts = ["这题在本体里暂时找不到证据。"]
+    """决策卡现场依据（#211 / #229）：只补背景没说过的证据，不重复叙述。
+
+    `background` 负责「为什么问」，`context` 只放验收要求与最近回归结论；
+    避免出现「背景说找不到证据、上下文说上次回归通过」这种自相矛盾。
+    """
     state = str((run_case or {}).get("state") or "")
     summary = str(case.get("assertion_summary") or "").strip()
+    parts: list[str] = []
     if summary and summary != "还没有可自动验收的检查":
         parts.append(f"验收要求：{summary}。")
-    if state == "fail":
-        parts.append("上次回归没通过：实际结果和预期不一致。")
+    if state == "pass":
+        if not case.get("located"):
+            parts.append("上次回归通过，但题干没有对上本体术语，定位证据不足。")
+        else:
+            parts.append("上次回归通过。")
+    elif state == "fail":
+        parts.append("上次回归的实际结果与验收要求不一致。")
     elif state == "cannot_tell":
         parts.append("上次回归没能执行完，结果暂不可信。")
-    elif state == "pass":
-        parts.append("上次回归通过。")
-    elif not case.get("regression"):
-        parts.append("还没有可自动验收的检查。")
     return "".join(parts)
 
 

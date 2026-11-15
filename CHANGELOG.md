@@ -7,14 +7,15 @@
 
 ### Added
 
-- **CQ 训练过程线上化（#194–#200）**：新增只追加事件流 `training_log.jsonl` 与读时投影 `training_state`；`/mcp/cq` 增加 `cq_decision` / `cq_resume` / `cq_timeline` / `cq_training_write` / `cq_iteration_write`（工具数 10 → 15）；REST 增加 `GET .../cq/resume`、`GET .../cq/timeline`、`POST .../cq/decision`（端点 45 → 48）。当前领域页新增「训练现场」面板，页头新增「训练时间线」「迭代终审」两页。
+- **CQ 训练过程线上化（#194–#200）**：新增只追加事件流 `training_log.jsonl` 与读时投影 `training_state`；`/mcp/cq` 增加 `cq_decision` / `cq_resume` / `cq_timeline` / `cq_training_write` / `cq_iteration_write`（工具数 10 → 15）；REST 增加 `GET .../cq/resume`、`GET .../cq/timeline`、`POST .../cq/decision`（端点 45 → 48）。训练现场与时间线收在「CQ 集 → 训练」标签内（#203 把原先的三处入口合成一页）。
 - **用户代价（升级前请读）**：
   - **三处会拒绝旧脚本的硬校验**：① 自定义决策类别被拒（只允许 semantic / expectation / priority / term / scope）；② 通用写工具不能写决策生命周期事件；③ 推荐项必须属于选项（选项 ≥2）。
   - **两处能力放宽**：「挂起必填跟进对象」「代传单列备注」改为 G6 缺口提示（只提示、不阻断提交）。
   - **四处命名 / 调用方式变更**：`intent` → `expectation`；`decide` → `feedback`；`cq_ask` / `cq_decide` / `cq_withdraw_question` 合并为 `cq_decision(action=ask|feedback|withdraw)`；「挂起」不再是用户动作，反馈与状态解耦。
   - 未知事件 / 漏必填 / 额外字段一律拒绝；提问侧强制非开放题，回答侧开放（选项 / 自由文本 / 跟进对象 / 全空都可提交）。
   - 每次读现场都从事件流重放；服务端不做智能推荐 / 自动归因 / 业务话生成 / 反馈语义判断。
-  - P0 训练面板只做「状态 + 待决 + 反馈」，时间线与迭代终审是 P1 页面。
+  - P0 训练面板只做「状态 + 待决 + 反馈」，时间线与迭代档案是 P1 内容。
+  - **训练入口收进 CQ 集（#203）**：页头导航由 5 项收为 3 项，「训练时间线」「迭代终审」两个按钮消失；收藏过 `#cq-timeline` / `#cq-iterations` 深链的会落到默认页，**不做兼容跳转**。「迭代终审」不再是独立页面（也没有通过 / 驳回按钮），改为训练页时间线里的「迭代」筛选；「当前领域」页不再包含训练现场，习惯在那里找卡片的用户需改走「CQ 集 → 训练」。
 - **手册新增《09 CQ 集管理》（#185 / #186）**：补 CQ 集页在三个平级页中的位置、REST 端点、MCP 工具、题目 8 字段 / 题型与状态枚举 / 六种 `expect.type` 判分语义，以及旧 `tool`+`params` 等 7 个字段的迁移对照；README、手册首页、速查表与 FLOW 同步补入口。
 
 ### Fixed
@@ -24,6 +25,7 @@
 
 ### Changed
 
+- **训练三页合一为 CQ 集内的「训练」标签（#203）**：CQ 集页顶部新增「题目 / 训练」两个标签——「题目」保留原有题库能力，「训练」上区是训练现场（全页唯一写入口，打开标签首屏即见待决卡片）、下区是同一份事件流的只读时间线，「迭代」改为时间线的筛选按钮。训练现场移出「当前领域」页的第二段，提交反馈后时间线自动重读（滚下去即见刚追加的那条）；「下一步」与缺口文案不再显示 `context_gaps` / `attribution_conclusion` 等实现术语。后端接口、事件流结构与 `cq_set.json` 字段均无变化，前端只调 `resume` / `decision` / `timeline`。
 - **运维备份章节补全 `data/` 盲区（#188）**：明确 `backup.sh` 只覆盖默认领域核心本体，题库 / 审计 / 回归历史 / 导入本体在 `data/workspaces/`，给出补齐命令、保留与清理策略；脚本注释与输出同步提示。
 - **速查表补 ASK 与 `describe`（#189）**：`/api/query`、`query.py`、MCP `query_sparql` 三处改为 SELECT / ASK；新增 `POST /api/ontology/describe` 条目。
 

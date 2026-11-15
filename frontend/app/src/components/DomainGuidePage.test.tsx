@@ -699,8 +699,8 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(card.textContent).toContain('参考答案：不需要');
     expect(card.textContent).toContain('R6 的判据');
     expect(card.textContent).toContain('当前模型（改动前）的返回');
-    // 只发一次查询，没有任何埋点 / 上报（训练面板的 resume 读取不计）
-    expect(fetchMock.mock.calls.filter((call) => !callUrl(call).includes('/cq/resume'))).toHaveLength(1);
+    // 只发一次查询，没有任何埋点 / 上报（训练现场已移出本页，#203）
+    expect(fetchMock.mock.calls).toHaveLength(1);
 
     // 结果出来后预测锁定：不能再改选项把「先猜」变成「看完再选」
     const wrong = card.querySelector('input[value="需要"]') as HTMLInputElement;
@@ -736,7 +736,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(start).toBeTruthy();
     await act(async () => { start.click(); });
 
-    expect(fetchMock.mock.calls.filter((call) => !callUrl(call).includes('/cq/resume'))).toHaveLength(1);
+    expect(fetchMock.mock.calls).toHaveLength(1);
     expect(container!.textContent).toContain('本次真实返回');
     expect(buttons('带我试一题')).toHaveLength(0);
     expect(window.localStorage.getItem('oa.onboarding.dismissed.v1')).toBe('1');

@@ -79,6 +79,25 @@ function stubFetch(set = SET) {
     if (url.includes('/cq/runs')) {
       return { ok: true, status: 200, json: async () => ({ ontology_id: 'ws-1', runs: [] }) } as unknown as Response;
     }
+    if (url.includes('/cq/resume')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          ontology_id: 'ws-1', depth: 'snapshot',
+          summary: { ...set.summary, pending_decisions: 0 },
+          last_regression: null, pending_decisions: [], pending_followups: [],
+          counts: { followup: 0, pending: 0 }, circuit_breaker: { open: false },
+          iterations: [], recent_iteration: null, intent_pending: [],
+          context_gaps: [], next_suggested: { action: 'none', count: 0, text: '本轮没有待决' },
+        }),
+      } as unknown as Response;
+    }
+    if (url.includes('/cq/timeline')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ontology_id: 'ws-1', limit: 500, items: [] }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/audit')) {
       return {
         ok: true, status: 200,
@@ -127,7 +146,28 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('CQ 集页（#151）', () => {
+describe('CQ 集页（#151 / #203）', () => {
+  it('顶部只有「题目 / 训练」两个标签，训练标签挂训练现场与时间线', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const tabs = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['题目', '训练']);
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(container!.querySelector('.cq-overview')).not.toBeNull();
+    expect(container!.querySelector('.cq-training-page')).toBeNull();
+
+    await act(async () => { tabs[1].click(); });
+    await flush();
+
+    expect(container!.querySelector('.cq-overview')).toBeNull();
+    expect(container!.querySelector('.cq-training-live')?.textContent).toContain('训练现场');
+    expect(container!.querySelector('.cq-training-log')?.textContent).toContain('训练时间线');
+    // 训练标签没有题目侧的写入入口（新增题目 / 运行评估 / 导入导出）
+    expect(container!.querySelector('.cq-toolbar-actions')).toBeNull();
+  });
+
   it('打开即见概览看板与列表；选中题目显示定位证据与上次可答', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));

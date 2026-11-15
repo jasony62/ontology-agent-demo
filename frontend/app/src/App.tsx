@@ -19,8 +19,6 @@ import CreateElementBar from './components/CreateElementBar';
 import OntologyEditor from './components/OntologyEditor';
 import DomainGuidePage from './components/DomainGuidePage';
 import CqPage from './components/CqPage';
-import CqTimelinePage from './components/CqTimelinePage';
-import CqIterationPage from './components/CqIterationPage';
 import OverflowMenu from './components/OverflowMenu';
 import WorkspaceSplit from './components/WorkspaceSplit';
 import type { WorkspaceTab } from './components/WorkspaceSplit';
@@ -52,17 +50,15 @@ export default function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
-  // 两个平级页面：图谱工作台 / 当前领域（正式单页，不用弹框）
-  const [page, setPage] = useState<'graph' | 'guide' | 'cq' | 'cq-timeline' | 'cq-iterations'>(
-    () => {
-      const hash = window.location.hash;
-      if (hash === '#guide') return 'guide';
-      if (hash === '#cq') return 'cq';
-      if (hash === '#cq-timeline') return 'cq-timeline';
-      if (hash === '#cq-iterations') return 'cq-iterations';
-      return 'graph';
-    },
-  );
+  // 三个平级页面：图谱工作台 / 当前领域（正式单页，不用弹框）/ CQ 集。
+  // #203：训练现场与时间线收进 CQ 集页内的「训练」标签，页头导航由 5 项收敛为 3 项；
+  // 旧的 #cq-timeline / #cq-iterations 深链不做兼容跳转，一律落到默认页。
+  const [page, setPage] = useState<'graph' | 'guide' | 'cq'>(() => {
+    const hash = window.location.hash;
+    if (hash === '#guide') return 'guide';
+    if (hash === '#cq') return 'cq';
+    return 'graph';
+  });
   // #137：首次引导收敛到「当前领域」页的一个「带我试一题」入口（一次真试跑），
   // 页头不再维护第二套提示；本地记忆键沿用 oa.onboarding.dismissed.v1。
   const gotoGuide = () => {
@@ -72,14 +68,6 @@ export default function App() {
   const gotoCq = () => {
     setPage('cq');
     window.history.replaceState(null, '', '#cq');
-  };
-  const gotoCqTimeline = () => {
-    setPage('cq-timeline');
-    window.history.replaceState(null, '', '#cq-timeline');
-  };
-  const gotoCqIterations = () => {
-    setPage('cq-iterations');
-    window.history.replaceState(null, '', '#cq-iterations');
   };
   const gotoGraph = () => {
     setPage('graph');
@@ -91,8 +79,6 @@ export default function App() {
       const hash = window.location.hash;
       if (hash === '#guide') setPage('guide');
       else if (hash === '#cq') setPage('cq');
-      else if (hash === '#cq-timeline') setPage('cq-timeline');
-      else if (hash === '#cq-iterations') setPage('cq-iterations');
       else setPage('graph');
     };
     window.addEventListener('hashchange', onHashChange);
@@ -303,7 +289,7 @@ export default function App() {
           <h1>本体图谱工作台</h1>
           <span className="app-sub">OWL 2 RL 推理 API</span>
         </div>
-        {/* 两个平级入口：内容区整页替换，不弹框、不加遮罩 */}
+        {/* 三个平级入口：内容区整页替换，不弹框、不加遮罩（#203 导航 5→3） */}
         <nav className="app-nav" aria-label="页面切换">
           <button className={page === 'graph' ? 'active' : ''} onClick={gotoGraph}>
             图谱工作台
@@ -313,12 +299,6 @@ export default function App() {
           </button>
           <button className={page === 'cq' ? 'active' : ''} onClick={gotoCq}>
             CQ 集
-          </button>
-          <button className={page === 'cq-timeline' ? 'active' : ''} onClick={gotoCqTimeline}>
-            训练时间线
-          </button>
-          <button className={page === 'cq-iterations' ? 'active' : ''} onClick={gotoCqIterations}>
-            迭代终审
           </button>
         </nav>
         {/* #137 R1：页头只保留领域下拉这一个名字显示；红色徽标改为「只读」状态标签，
@@ -422,11 +402,8 @@ export default function App() {
             onSwitchDomain={(name) => void runDomainAction('切换领域', () => api.activateDomain(name))}
           />
         ) : page === 'cq' ? (
-          <CqPage />
-        ) : page === 'cq-timeline' ? (
-          <CqTimelinePage />
-        ) : page === 'cq-iterations' ? (
-          <CqIterationPage />
+          // key 跟着当前领域走：切领域后 CQ 集 / 训练现场 / 时间线一起按新身份重读，不跨领域串数据
+          <CqPage key={domainInfo?.current ?? 'domain'} />
         ) : (
           <>
             {ontologyMode === 'generic' && (

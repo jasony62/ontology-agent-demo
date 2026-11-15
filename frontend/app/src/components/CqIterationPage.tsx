@@ -12,7 +12,13 @@ interface IterationArchive {
   status?: string;
 }
 
-/** 迭代终审（#199）：只消费 timeline(kinds=iterations)，不另建过程日志。 */
+/**
+ * 迭代档案（#199 / #203）：只消费 timeline(kinds=iterations)，不另建过程日志。
+ *
+ * 它不再是独立页面，而是训练时间线里「迭代」筛选下的卡片列表：
+ * 先看业务话与变更摘要，TTL 全文折叠为附件，待人审的迭代标出状态。
+ * 取数仍归本组件（父级刷新时用 key 重新挂载）。
+ */
 export default function CqIterationPage() {
   const [items, setItems] = useState<CqTimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,15 +53,6 @@ export default function CqIterationPage() {
 
   return (
     <div className="cq-iteration-page">
-      <div className="cq-toolbar">
-        <h2>迭代终审</h2>
-        <div className="cq-toolbar-actions">
-          <button className="btn secondary" type="button" onClick={() => void load()} disabled={loading}>刷新</button>
-        </div>
-      </div>
-      <p className="guide-muted">
-        修改既有定义的草稿按迭代归档；先看业务话与变更摘要，TTL 全文折叠为附件。待人审的迭代会标出状态。
-      </p>
       {error && <div className="element-readonly-note">{error}</div>}
       {loading && archives.length === 0 && <div className="guide-muted">正在读取迭代档案…</div>}
       {!loading && archives.length === 0 && <div className="guide-empty-inline">还没有迭代档案。</div>}

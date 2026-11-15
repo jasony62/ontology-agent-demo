@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { CqAuditEntry, CqLocateResult, CqRun, CqSetCase, CqSetResponse } from '../api/client';
 import { EXPECTED_TYPE_OPTIONS, STATUS_OPTIONS, expectedTypeLabel, statusLabel } from '../lib/cqLabels';
+import CqTrainingPage from './CqTrainingPage';
+
+type CqTab = 'cases' | 'training';
 
 /**
- * CQ 集页（#151 + #154 + #156）：概览看板 + 单题定位卡 + 单题 CRUD +
- * 回归测试台 + 审计 + 导入导出。所有数据来自 `/api/domains/current/cq/*`，
- * 不调任何模型。
+ * CQ 集页（#151 + #154 + #156 + #203）：顶部两个标签。
+ *  - 「题目」：概览看板 + 单题定位卡 + 单题 CRUD + 回归测试台 + 审计 + 导入导出；
+ *  - 「训练」：训练现场（首屏）+ 下方只读时间线，见 CqTrainingPage。
+ * 标签状态只在本组件内，不进 URL。所有数据来自 `/api/domains/current/cq/*`，不调任何模型。
  */
 export default function CqPage() {
+  const [tab, setTab] = useState<CqTab>('cases');
   const [data, setData] = useState<CqSetResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -155,180 +160,124 @@ export default function CqPage() {
 
   const summary = data?.summary;
 
+  const pageRef = useRef<HTMLDivElement>(null);
+  // 切标签时回到顶部：训练标签的待决卡片必须首屏可见（#203 A2）
+  useEffect(() => {
+    if (pageRef.current) pageRef.current.scrollTop = 0;
+  }, [tab]);
+
   return (
-    <div className="cq-page">
+    <div className="cq-page" ref={pageRef}>
       <div className="cq-toolbar">
         <div>
           <h2>CQ 集</h2>
           <p className="guide-muted">
-            本体承诺回答的问题、当前能定位到几条证据，以及上次回归是否可答。
+            {tab === 'cases'
+              ? '本体承诺回答的问题、当前能定位到几条证据，以及上次回归是否可答。'
+              : '这一轮训练现在缺什么、有哪些待决问题；回答之后下方时间线会多一条只追加的记录。'}
             {data?.suite ? <> 当前集：<b>{data.suite}</b></> : null}
           </p>
         </div>
-        <div className="cq-toolbar-actions">
-          <button type="button" className="btn secondary" onClick={() => void load()} disabled={loading || busy != null}>
-            刷新
-          </button>
-          <button type="button" className="btn secondary" onClick={() => void toggleAudit()}>
-            {showAudit ? '收起审计' : '审计'}
+        <div className="cq-tabs" role="tablist" aria-label="CQ 集视图">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'cases'}
+            className={`cq-tab${tab === 'cases' ? ' active' : ''}`}
+            onClick={() => setTab('cases')}
+          >
+            题目
           </button>
           <button
             type="button"
-            className="btn secondary"
-            disabled={busy != null}
-            onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'retrieval' } })}
+            role="tab"
+            aria-selected={tab === 'training'}
+            className={`cq-tab${tab === 'training' ? ' active' : ''}`}
+            onClick={() => setTab('training')}
           >
-            新增题目
+            训练
           </button>
-          <button type="button" className="btn" onClick={() => void runRegression()} disabled={busy != null || !summary || summary.total === 0}>
-            {busy === 'run' ? '评估中…' : '运行评估'}
-          </button>
-          <label className="btn secondary cq-import">
-            导入 JSON
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={(event) => {
-                void importFile(event.target.files?.[0] ?? null);
-                event.target.value = '';
-              }}
-            />
-          </label>
-          <a className="btn secondary" href={api.cqExportUrl('json')} download>导出 JSON</a>
-          <a className="btn secondary" href={api.cqExportUrl('cq-test')} download>cq-test</a>
-          <a className="btn secondary" href={api.cqExportUrl('junit')} download>JUnit</a>
         </div>
+        {tab === 'cases' && (
+          <div className="cq-toolbar-actions">
+            <button type="button" className="btn secondary" onClick={() => void load()} disabled={loading || busy != null}>
+              刷新
+            </button>
+            <button type="button" className="btn secondary" onClick={() => void toggleAudit()}>
+              {showAudit ? '收起审计' : '审计'}
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={busy != null}
+              onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'retrieval' } })}
+            >
+              新增题目
+            </button>
+            <button type="button" className="btn" onClick={() => void runRegression()} disabled={busy != null || !summary || summary.total === 0}>
+              {busy === 'run' ? '评估中…' : '运行评估'}
+            </button>
+            <label className="btn secondary cq-import">
+              导入 JSON
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={(event) => {
+                  void importFile(event.target.files?.[0] ?? null);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+            <a className="btn secondary" href={api.cqExportUrl('json')} download>导出 JSON</a>
+            <a className="btn secondary" href={api.cqExportUrl('cq-test')} download>cq-test</a>
+            <a className="btn secondary" href={api.cqExportUrl('junit')} download>JUnit</a>
+          </div>
+        )}
       </div>
 
-      {notice && <div className="notice-banner" role="status">{notice}</div>}
-      {error && <div className="error-banner">{error}</div>}
-
-      {showAudit && (
-        <section className="panel cq-audit" aria-label="CQ 变更审计">
-          <div className="cq-audit-head">
-            <h3>变更审计</h3>
-            <span className="guide-muted">最近 {audit.length} 条（新到旧）</span>
-          </div>
-          {auditLoading ? (
-            <div className="guide-muted">正在读取审计…</div>
-          ) : audit.length === 0 ? (
-            <div className="guide-empty-inline">还没有变更记录；新增 / 编辑 / 删除 / 导入后这里会出现时间线。</div>
-          ) : (
-            <ul className="cq-audit-list">
-              {audit.map((entry, index) => {
-                const summary = (entry.after?.cq || entry.before?.cq || '') as string;
-                return (
-                  <li key={`${entry.ts}-${index}`}>
-                    <span className={`cq-audit-actor ${entry.actor_type}`}>
-                      {entry.actor_type === 'agent' ? '🤖' : '🧑'}
-                    </span>
-                    <span className="cq-audit-action">{entry.action}</span>
-                    <code>{entry.case_id || '—'}</code>
-                    <span className="cq-audit-summary">{summary}</span>
-                    <span className="cq-audit-meta">{entry.actor} · {entry.ts}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {loading && !data ? (
-        <div className="guide-empty">正在读取 CQ 集…</div>
-      ) : !summary || summary.total === 0 ? (
-        editing ? (
-          <section className="panel cq-detail">
-            <CqEditor
-              key={`${editing.mode}-${editing.draft.id ?? 'new'}`}
-              mode={editing.mode}
-              draft={editing.draft}
-              busy={busy === 'save'}
-              onCancel={() => setEditing(null)}
-              onSave={(draft) => void saveCase(draft)}
-            />
-          </section>
-        ) : (
-          <div className="cq-empty panel">
-            <h3>当前本体还没有挂 CQ 集</h3>
-            <p>
-              导入一份 <code>cq_set.json</code>，或让智能体通过 MCP 写入后点「刷新」。
-              导入后会立刻看到「承诺 N / 已定位 X / 可答 Y / 缺口 Z」。
-            </p>
-          </div>
-        )
+      {tab === 'training' ? (
+        <CqTrainingPage />
       ) : (
         <>
-          <div className="cq-overview">
-            <div className="cq-stat">
-              <span>承诺</span><b>{summary.total}</b>
-            </div>
-            <div className="cq-stat">
-              <span>已定位</span><b>{summary.located}</b>
-            </div>
-            <div className="cq-stat">
-              <span>可答</span><b className="ok">{summary.answerable}</b>
-            </div>
-            <div className="cq-stat">
-              <span>缺口</span><b className={summary.gap > 0 ? 'warn' : ''}>{summary.gap}</b>
-            </div>
-            <div className="cq-coverage">
-              <div className="cq-coverage-row">
-                <span>定位覆盖（有证据）</span>
-                <div className="cq-bar"><i style={{ width: `${Math.round(summary.coverage_light * 100)}%` }} /></div>
-                <b>{Math.round(summary.coverage_light * 100)}%</b>
+          {notice && <div className="notice-banner" role="status">{notice}</div>}
+          {error && <div className="error-banner">{error}</div>}
+
+          {showAudit && (
+            <section className="panel cq-audit" aria-label="CQ 变更审计">
+              <div className="cq-audit-head">
+                <h3>变更审计</h3>
+                <span className="guide-muted">最近 {audit.length} 条（新到旧）</span>
               </div>
-              <div className="cq-coverage-row">
-                <span>可答覆盖（有回归且上次通过）</span>
-                <div className="cq-bar real"><i style={{ width: `${Math.round(summary.coverage_real * 100)}%` }} /></div>
-                <b>{Math.round(summary.coverage_real * 100)}%</b>
-              </div>
-              {runs[0] && (
-                <div className="cq-trend">
-                  最近评估：{runs[0].pass}/{runs[0].total} 通过 · {runs[0].ran_at}
-                  {runs.length > 1 && (
-                    <> · 上次 {Math.round((runs[0].coverage_real - runs[1].coverage_real) * 100)} 个百分点</>
-                  )}
-                </div>
+              {auditLoading ? (
+                <div className="guide-muted">正在读取审计…</div>
+              ) : audit.length === 0 ? (
+                <div className="guide-empty-inline">还没有变更记录；新增 / 编辑 / 删除 / 导入后这里会出现时间线。</div>
+              ) : (
+                <ul className="cq-audit-list">
+                  {audit.map((entry, index) => {
+                    const summary = (entry.after?.cq || entry.before?.cq || '') as string;
+                    return (
+                      <li key={`${entry.ts}-${index}`}>
+                        <span className={`cq-audit-actor ${entry.actor_type}`}>
+                          {entry.actor_type === 'agent' ? '🤖' : '🧑'}
+                        </span>
+                        <span className="cq-audit-action">{entry.action}</span>
+                        <code>{entry.case_id || '—'}</code>
+                        <span className="cq-audit-summary">{summary}</span>
+                        <span className="cq-audit-meta">{entry.actor} · {entry.ts}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
-            </div>
-          </div>
-
-          <div className="cq-body">
-            <section className="panel cq-list" aria-label="CQ 列表">
-              <div className="cq-list-head">
-                <span>题目</span>
-                <span>{summary.total} 道</span>
-              </div>
-              <ul>
-                {cases.map((item, index) => {
-                  const key = caseKey(item, index);
-                  return (
-                    <li key={key}>
-                      <button
-                        type="button"
-                        className={`cq-row${selected === key ? ' active' : ''}`}
-                        onClick={() => setSelected(key)}
-                      >
-                        <span className={`cq-dot ${item.located ? 'located' : 'gap'}`} title={item.located ? '已定位到证据' : '未定位到证据'} />
-                        <span className="cq-row-main">
-                          <b>{item.id || `#${index + 1}`}</b>
-                          <span>{item.cq}</span>
-                        </span>
-                        <span className="cq-row-meta">
-                          <span>{expectedTypeLabel(item.expected_type)}</span>
-                          <span>{statusLabel(item.status)}</span>
-                          {item.answerable ? <span className="cq-badge ok">可答</span> : null}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
             </section>
+          )}
 
-            <section className="panel cq-detail" aria-label="CQ 详情">
-              {editing ? (
+          {loading && !data ? (
+            <div className="guide-empty">正在读取 CQ 集…</div>
+          ) : !summary || summary.total === 0 ? (
+            editing ? (
+              <section className="panel cq-detail">
                 <CqEditor
                   key={`${editing.mode}-${editing.draft.id ?? 'new'}`}
                   mode={editing.mode}
@@ -337,38 +286,130 @@ export default function CqPage() {
                   onCancel={() => setEditing(null)}
                   onSave={(draft) => void saveCase(draft)}
                 />
-              ) : !current ? (
-                <div className="guide-empty">左侧选一道题看定位证据。</div>
-              ) : (
-                <div className="cq-detail-body">
-                  <div className="cq-detail-actions">
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      disabled={busy != null || !current.id}
-                      onClick={() => setEditing({ mode: 'edit', draft: { ...current } })}
-                    >
-                      编辑
-                    </button>
-                    <button
-                      type="button"
-                      className="btn danger"
-                      disabled={busy != null || !current.id}
-                      onClick={() => void deleteCurrent()}
-                    >
-                      删除
-                    </button>
-                  </div>
-                  <CqDetail
-                    item={current}
-                    index={cases.indexOf(current)}
-                    locate={locate}
-                    error={locateError}
-                  />
+              </section>
+            ) : (
+              <div className="cq-empty panel">
+                <h3>当前本体还没有挂 CQ 集</h3>
+                <p>
+                  导入一份 <code>cq_set.json</code>，或让智能体通过 MCP 写入后点「刷新」。
+                  导入后会立刻看到「承诺 N / 已定位 X / 可答 Y / 缺口 Z」。
+                </p>
+              </div>
+            )
+          ) : (
+            <>
+              <div className="cq-overview">
+                <div className="cq-stat">
+                  <span>承诺</span><b>{summary.total}</b>
                 </div>
-              )}
-            </section>
-          </div>
+                <div className="cq-stat">
+                  <span>已定位</span><b>{summary.located}</b>
+                </div>
+                <div className="cq-stat">
+                  <span>可答</span><b className="ok">{summary.answerable}</b>
+                </div>
+                <div className="cq-stat">
+                  <span>缺口</span><b className={summary.gap > 0 ? 'warn' : ''}>{summary.gap}</b>
+                </div>
+                <div className="cq-coverage">
+                  <div className="cq-coverage-row">
+                    <span>定位覆盖（有证据）</span>
+                    <div className="cq-bar"><i style={{ width: `${Math.round(summary.coverage_light * 100)}%` }} /></div>
+                    <b>{Math.round(summary.coverage_light * 100)}%</b>
+                  </div>
+                  <div className="cq-coverage-row">
+                    <span>可答覆盖（有回归且上次通过）</span>
+                    <div className="cq-bar real"><i style={{ width: `${Math.round(summary.coverage_real * 100)}%` }} /></div>
+                    <b>{Math.round(summary.coverage_real * 100)}%</b>
+                  </div>
+                  {runs[0] && (
+                    <div className="cq-trend">
+                      最近评估：{runs[0].pass}/{runs[0].total} 通过 · {runs[0].ran_at}
+                      {runs.length > 1 && (
+                        <> · 上次 {Math.round((runs[0].coverage_real - runs[1].coverage_real) * 100)} 个百分点</>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="cq-body">
+                <section className="panel cq-list" aria-label="CQ 列表">
+                  <div className="cq-list-head">
+                    <span>题目</span>
+                    <span>{summary.total} 道</span>
+                  </div>
+                  <ul>
+                    {cases.map((item, index) => {
+                      const key = caseKey(item, index);
+                      return (
+                        <li key={key}>
+                          <button
+                            type="button"
+                            className={`cq-row${selected === key ? ' active' : ''}`}
+                            onClick={() => setSelected(key)}
+                          >
+                            <span className={`cq-dot ${item.located ? 'located' : 'gap'}`} title={item.located ? '已定位到证据' : '未定位到证据'} />
+                            <span className="cq-row-main">
+                              <b>{item.id || `#${index + 1}`}</b>
+                              <span>{item.cq}</span>
+                            </span>
+                            <span className="cq-row-meta">
+                              <span>{expectedTypeLabel(item.expected_type)}</span>
+                              <span>{statusLabel(item.status)}</span>
+                              {item.answerable ? <span className="cq-badge ok">可答</span> : null}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+
+                <section className="panel cq-detail" aria-label="CQ 详情">
+                  {editing ? (
+                    <CqEditor
+                      key={`${editing.mode}-${editing.draft.id ?? 'new'}`}
+                      mode={editing.mode}
+                      draft={editing.draft}
+                      busy={busy === 'save'}
+                      onCancel={() => setEditing(null)}
+                      onSave={(draft) => void saveCase(draft)}
+                    />
+                  ) : !current ? (
+                    <div className="guide-empty">左侧选一道题看定位证据。</div>
+                  ) : (
+                    <div className="cq-detail-body">
+                      <div className="cq-detail-actions">
+                        <button
+                          type="button"
+                          className="btn secondary"
+                          disabled={busy != null || !current.id}
+                          onClick={() => setEditing({ mode: 'edit', draft: { ...current } })}
+                        >
+                          编辑
+                        </button>
+                        <button
+                          type="button"
+                          className="btn danger"
+                          disabled={busy != null || !current.id}
+                          onClick={() => void deleteCurrent()}
+                        >
+                          删除
+                        </button>
+                      </div>
+                      <CqDetail
+                        item={current}
+                        index={cases.indexOf(current)}
+                        locate={locate}
+                        error={locateError}
+                      />
+                    </div>
+                  )}
+                </section>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

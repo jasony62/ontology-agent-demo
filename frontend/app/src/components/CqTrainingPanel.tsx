@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { CqDecision, CqResumeResponse } from '../api/client';
+import { plainCopy } from '../lib/cqCopy';
+import { notifyCqTrainingChanged } from '../lib/cqTrainingEvent';
 
 /**
- * 训练面板（#198）：状态摘要 + 缺口 + 待决卡片 + 通用反馈入口。
+ * 训练现场（#198 / #203）：状态摘要 + 缺口 + 待决卡片 + 通用反馈入口。
  *
  * 界面语义（11:18 定稿）：
  *  - 打开与每次反馈后自动重读现场；
  *  - 只有一个「刷新」，纯读 resume，不产生写入；
- *  - 不出现「自举」等实现术语，不提供重置 / 恢复 / 撤销。
+ *  - 不出现「自举」等实现术语，不提供重置 / 恢复 / 撤销；
+ *  - 页面顺序按「首屏即见待决卡片」排：摘要 → 下一步 → 提交结果 → 待决卡片 → 本轮缺口。
  */
 export default function CqTrainingPanel() {
   const [resume, setResume] = useState<CqResumeResponse | null>(null);
@@ -52,6 +55,8 @@ export default function CqTrainingPanel() {
         + (result.intent_pending_marked ? ' · 题目意图待确认' : ''),
       );
       await load();
+      // 反馈已追加到事件流：让下方时间线重读，滚下去就能看到刚提交的那条记录
+      notifyCqTrainingChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -64,7 +69,7 @@ export default function CqTrainingPanel() {
   const gaps = resume?.context_gaps ?? [];
 
   return (
-    <section id="guide-training" className="guide-section cq-training">
+    <section className="guide-section cq-training">
       <div className="guide-section-head">
         <span>训练</span>
         <h3>训练现场</h3>
@@ -96,23 +101,8 @@ export default function CqTrainingPanel() {
 
           <div className="cq-training-next">
             <b>下一步</b>
-            <span>{resume.next_suggested?.text || '—'}</span>
+            <span>{plainCopy(resume.next_suggested?.text) || '—'}</span>
           </div>
-
-          {gaps.length > 0 && (
-            <div className="cq-training-gaps">
-              <h4>本轮缺口</h4>
-              <ul>
-                {gaps.map((gap) => (
-                  <li key={`${gap.gap_type}-${gap.object || ''}`}>
-                    <code>{gap.gap_type}</code>
-                    <span>{gap.suggestion}</span>
-                    {gap.object && <i>{gap.object}</i>}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           {lastResult && <div className="notice-banner cq-training-result">{lastResult}</div>}
 
@@ -128,6 +118,24 @@ export default function CqTrainingPanel() {
                   onSubmit={submit}
                 />
               ))}
+            </div>
+          )}
+
+          {gaps.length > 0 && (
+            <div className="cq-training-gaps">
+              <h4>本轮缺口</h4>
+              <ul>
+                {gaps.map((gap) => {
+                  const object = plainCopy(gap.object);
+                  return (
+                    <li key={`${gap.gap_type}-${gap.object || ''}`}>
+                      <code>{gap.gap_type}</code>
+                      <span>{plainCopy(gap.suggestion)}</span>
+                      {object && <i>{object}</i>}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
         </>

@@ -25,8 +25,8 @@ const RESUME = {
   iterations: [],
   recent_iteration: null,
   intent_pending: [],
-  context_gaps: [{ gap_type: 'G1', object: 'last_regression', suggestion: '补归因结论' }],
-  next_suggested: { action: 'close_gaps', count: 1, text: '先补齐 1 项缺口' },
+  context_gaps: [{ gap_type: 'G1', object: 'last_regression', suggestion: '补一条归因结论（attribution_conclusion）' }],
+  next_suggested: { action: 'close_gaps', count: 1, text: '先补齐 1 项缺口（见 context_gaps）' },
 };
 
 let root: Root | null = null;
@@ -69,7 +69,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('训练面板（#198）', () => {
+describe('训练现场（#198 / #203）', () => {
   it('展示摘要 / 缺口 / 待决卡片，不出现实现术语与重置入口', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));
@@ -80,15 +80,31 @@ describe('训练面板（#198）', () => {
     expect(text).toContain('50%');
     expect(text).toContain('待决');
     expect(text).toContain('先补齐 1 项缺口');
+    expect(text).toContain('补一条归因结论');
     expect(text).toContain('G1');
     expect(text).toContain('期望口径是什么？');
     expect(text).toContain('推荐理由');
-    expect(text).not.toContain('自举');
+    // #203 A6：实现术语（括注里的字段名 / 内部对象名）不进用户文案
+    for (const term of ['context_gaps', 'attribution_conclusion', 'last_regression', '自举']) {
+      expect(text).not.toContain(term);
+    }
     for (const forbidden of ['重置', '恢复', '撤销']) {
       expect([...container!.querySelectorAll('button')].some((btn) => btn.textContent?.includes(forbidden)))
         .toBe(false);
     }
     expect([...container!.querySelectorAll('button')].filter((btn) => btn.textContent === '刷新')).toHaveLength(1);
+  });
+
+  it('待决卡片排在缺口之前：打开即可回答', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const cards = container!.querySelector('.cq-training-cards')!;
+    const gaps = container!.querySelector('.cq-training-gaps')!;
+    expect(cards).not.toBeNull();
+    expect(gaps).not.toBeNull();
+    expect(cards.compareDocumentPosition(gaps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('点选项即提交反馈，并自动重新读取现场', async () => {

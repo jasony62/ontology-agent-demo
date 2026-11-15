@@ -1422,6 +1422,13 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
    #151：CQ 集页（概览 / 列表 / 详情）
    ============================================================ */
 .cq-page { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+.cq-tabs { display: inline-flex; gap: 3px; background: #eef2f8; border-radius: 8px; padding: 3px; align-self: flex-start; }
+.cq-tab {
+  border: none; background: transparent; border-radius: 6px; padding: 6px 14px;
+  font-size: 12.5px; color: var(--muted); cursor: pointer;
+}
+.cq-tab:hover { color: var(--text); }
+.cq-tab.active { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
 .cq-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .cq-toolbar h2 { font-size: var(--fs-page); color: var(--heading); margin-bottom: 3px; }
 .cq-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -1591,9 +1598,26 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .cq-training-free button { align-self: flex-end; }
 
-/* 训练时间线 / 迭代终审（#199） */
-.cq-timeline-page, .cq-iteration-page { padding: 16px; max-width: 1100px; margin: 0 auto; }
-.cq-timeline-page h2, .cq-iteration-page h2 { font-size: var(--fs-xl); color: var(--heading); }
+/* 训练标签（#203）：上区训练现场首屏可见，下区时间线只读 */
+.cq-training-page { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.cq-training-live { flex: 0 0 auto; min-height: 0; }
+.cq-training-log { flex: 1 1 auto; min-height: 0; }
+
+/* 训练时间线 / 迭代档案（#199 / #203）：不再是顶层页面，挂在训练标签下方 */
+.cq-timeline-page { padding: 0; }
+.cq-timeline-bar {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 10px;
+}
+.cq-timeline-bar h3 { font-size: var(--fs-title); color: var(--heading); margin-bottom: 2px; }
+.cq-timeline-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cq-filters { display: inline-flex; gap: 3px; background: #eef2f8; border-radius: 8px; padding: 3px; flex-wrap: wrap; }
+.cq-filter {
+  border: none; background: transparent; border-radius: 6px; padding: 5px 10px;
+  font-size: 12px; color: var(--muted); cursor: pointer;
+}
+.cq-filter:hover { color: var(--text); }
+.cq-filter.active { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
 .cq-timeline-list, .cq-iteration-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .cq-timeline-item, .cq-iteration-item {
   border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px; background: var(--panel);

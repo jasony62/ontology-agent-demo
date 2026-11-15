@@ -175,6 +175,7 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
 
 
 def _decision_view(decision: dict) -> dict:
+    latest = decision.get("latest_feedback") or {}
     return {
         "decision_id": decision.get("decision_id"),
         "kind": decision.get("kind"),
@@ -189,7 +190,10 @@ def _decision_view(decision: dict) -> dict:
         "since": decision.get("since"),
         "status": decision.get("status"),
         "latest_feedback": decision.get("latest_feedback"),
-        "follow_up_with": (decision.get("latest_feedback") or {}).get("follow_up_with"),
+        "follow_up_with": latest.get("follow_up_with"),
+        "conclusion": latest.get("conclusion"),
+        "basis": latest.get("basis"),
+        "authorized": latest.get("authorized"),
     }
 
 

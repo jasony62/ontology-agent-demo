@@ -482,6 +482,9 @@ export interface CqDecision {
   status?: 'pending' | 'resolved' | 'followup' | 'withdrawn' | string;
   latest_feedback?: Record<string, unknown> | null;
   follow_up_with?: string | null;
+  conclusion?: 'adopt' | 'reject' | 'defer' | string | null;
+  basis?: 'self' | 'expert' | string | null;
+  authorized?: boolean | null;
 }
 
 export interface CqContextGap {
@@ -490,12 +493,55 @@ export interface CqContextGap {
   suggestion: string;
 }
 
+export interface CqLifecycleCase {
+  case_id: string;
+  cq: string;
+  status?: string | null;
+  expected_type?: string | null;
+  assertion_summary?: string | null;
+  located: boolean;
+  answerable: boolean;
+  stage: string;
+  stage_label: string;
+  priority: number;
+  failure_triggered: boolean;
+  activity_at?: string;
+  last_run?: { state: string; ran_at?: string } | null;
+  intent_pending: boolean;
+  decisions: CqDecision[];
+  pending_decision: CqDecision | null;
+  latest_decision: CqDecision | null;
+  iterations: Array<{
+    iteration_id?: string;
+    status?: string;
+    created_at?: string;
+    business_translation?: string;
+  }>;
+}
+
+export interface CqLifecycle {
+  summary: {
+    questions: number;
+    stages: Record<string, number>;
+    pending_questions: number;
+    resolved_questions: number;
+    followup_questions: number;
+    failed_questions: number;
+    passed_questions: number;
+    decision_counts: { pending: number; followup: number; resolved: number };
+    circuit_breaker: { open: boolean; reason?: string | null; since?: string | null };
+    coverage_real: number;
+  };
+  cases: CqLifecycleCase[];
+}
+
 export interface CqResumeResponse {
   ontology_id: string;
   depth: 'snapshot' | 'full' | string;
   summary: CqSetSummary & { pending_decisions: number };
   last_regression: CqRun | null;
   pending_decisions: CqDecision[];
+  resolved_decisions?: CqDecision[];
   pending_followups: CqDecision[];
   counts: Record<string, number>;
   circuit_breaker: { open: boolean; reason?: string | null; since?: string | null };
@@ -503,6 +549,7 @@ export interface CqResumeResponse {
   recent_iteration: Record<string, unknown> | null;
   intent_pending: string[];
   agenda?: CqDecision[];
+  lifecycle?: CqLifecycle;
   context_gaps: CqContextGap[];
   next_suggested: { action: string; count: number; text: string };
   history?: CqTimelineItem[];
@@ -539,6 +586,7 @@ export interface CqTimelineItem {
   kind?: string;
   ts?: string;
   ref?: string | null;
+  case_id?: string;
   summary: string;
   actor_type?: string;
   actor?: string;
@@ -647,6 +695,12 @@ export const api = {
 
   /** 题干提及覆盖（#215）：只读，字面口径 */
   cqCoverage: () => request<CqCoverageResponse>('/api/domains/current/cq/coverage'),
+
+  /** 单题事件流（#219）：时间正序的题卷 */
+  cqCaseEvents: (caseId: string, limit = 500) =>
+    request<{ ontology_id: string; case_id: string; items: CqTimelineItem[] }>(
+      `/api/domains/current/cq/cases/${encodeURIComponent(caseId)}/events?limit=${limit}`,
+    ),
 
   /** CQ 集整集覆盖（PUT） */
   cqPut: (payload: { suite: string; version?: number; cases: CqSetCase[] }) =>

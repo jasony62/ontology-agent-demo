@@ -183,7 +183,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
     expect(container!.querySelector('.cq-overview')).toBeNull();
     expect(container!.querySelector('.cq-training-live')?.textContent).toContain('训练现场');
-    expect(container!.querySelector('.cq-training-log')?.textContent).toContain('训练时间线');
+    expect(container!.querySelector('.cq-training-log')?.textContent).toContain('全局事件（历史）');
     // 训练标签没有题目侧的写入入口（新增题目 / 运行评估 / 导入导出）
     expect(container!.querySelector('.cq-toolbar-actions')).toBeNull();
   });

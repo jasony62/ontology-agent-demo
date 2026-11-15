@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from api import workspaces
-from cq import agenda, cq_store, training_log, training_state
+from cq import agenda, cq_store, lifecycle, training_log, training_state
 from cq.constants import (
     DECISION_ACTIONS,
     DECISION_CONCLUSIONS,
@@ -58,8 +58,10 @@ def _events(ontology_id: str) -> list[dict]:
     return training_log.read_events(ontology_id)
 
 
-def _project(ontology_id: str) -> dict:
-    return training_state.project_training_state(_events(ontology_id))
+def _project(ontology_id: str, events: list[dict] | None = None) -> dict:
+    return training_state.project_training_state(
+        events if events is not None else _events(ontology_id)
+    )
 
 
 def _append(ontology_id, event, content, *, actor_type, actor):
@@ -451,18 +453,36 @@ def resume(
         raise TrainingError("invalid_depth", "depth 只能是 snapshot / full")
     data = cq_store.get_set(ontology_id, seed_path)
     view = cq_store.build_view(engine, data)
-    state = _project(ontology_id)
+    events = _events(ontology_id)
+    state = _project(ontology_id, events)
     last_regression = (cq_store.list_runs(ontology_id, limit=1) or [None])[0]
     gaps = context_gaps(ontology_id, state, last_regression)
     # #207：议程由智能体侧的生成器推导，读接口只负责合并与透传。
     items = agenda.build_agenda(engine, ontology_id, seed_path, view=view, state=state)
     pending = list(state["pending_decisions"]) + items
+    resolved = sorted(
+        [
+            training_state._decision_view(decision)
+            for decision in state["decisions"].values()
+            if decision.get("status") == "resolved"
+        ],
+        key=lambda item: str(item.get("since") or ""),
+    )
+    board = lifecycle.build_lifecycle(
+        view=view,
+        state=state,
+        last_regression=last_regression,
+        iterations=_all_iterations(ontology_id),
+        events=events,
+        agenda_items=items,
+    )
     result = {
         "ontology_id": ontology_id,
         "depth": depth,
         "summary": view["summary"],
         "last_regression": last_regression,
         "pending_decisions": pending,
+        "resolved_decisions": resolved,
         "pending_followups": state["pending_followups"],
         "counts": {**state["counts"], "pending": len(pending)},
         "circuit_breaker": state["circuit_breaker"],
@@ -470,6 +490,7 @@ def resume(
         "recent_iteration": (state["iterations"] or [None])[-1],
         "intent_pending": state["intent_pending"],
         "agenda": items,
+        "lifecycle": board,
         "context_gaps": gaps,
         "next_suggested": _next_suggested(state, gaps, pending),
     }
@@ -542,56 +563,126 @@ def timeline(
     since: str = "",
     kinds: list[str] | None = None,
     limit: int = 200,
+    case_id: str = "",
 ) -> dict:
     limit = max(1, min(int(limit or 200), 1000))
     wanted = set(kinds or [])
+    wanted_case = str(case_id or "").strip()
     items: list[dict] = []
+    events = _events(ontology_id)
+    known_case_ids = {
+        str(case.get("id"))
+        for case in cq_store.get_set(ontology_id).get("cases") or []
+        if isinstance(case, dict) and case.get("id")
+    }
+    decision_case: dict[str, str] = {}
+    authored_ts: list[str] = []
+    for event in events:
+        content = event.get("content") or {}
+        if event.get("event") == "decision_asked":
+            did = str(content.get("decision_id") or "")
+            cid = str(content.get("case_id") or "")
+            if did and cid:
+                decision_case[did] = cid
+        if event.get("event") == "case_authored" and str(content.get("case_id") or "") == wanted_case:
+            authored_ts.append(str(event.get("ts") or ""))
 
-    for item in _events(ontology_id):
+    for item in events:
+        content = item.get("content") or {}
+        linked = str(content.get("case_id") or "") or decision_case.get(
+            str(content.get("decision_id") or ""), ""
+        )
+        if wanted_case and linked != wanted_case:
+            continue
         category = _category(item.get("event", ""))
         items.append({
             "source": "training",
             "category": category,
             "kind": item.get("event"),
             "ts": item.get("ts"),
-            "ref": (item.get("content") or {}).get("event_id"),
+            "ref": content.get("event_id"),
+            "case_id": linked,
             "summary": _event_summary(item),
             "actor_type": item.get("actor_type"),
             "actor": item.get("actor"),
-            "content": item.get("content"),
+            "content": content,
         })
 
     for entry in cq_store.read_audit(ontology_id, limit=10000):
+        entry_case = str(entry.get("case_id") or "")
+        if wanted_case and entry_case != wanted_case:
+            continue
+        # #219 / V4：网页建题会同时写 case_authored 与审计 add，题卷里只留事件。
+        if (
+            wanted_case
+            and entry.get("action") == "add"
+            and authored_ts
+            and any(abs((_parse_ts(entry.get("ts")) - _parse_ts(ts)).total_seconds()) <= 2
+                    for ts in authored_ts
+                    if _parse_ts(entry.get("ts")) and _parse_ts(ts))
+        ):
+            continue
         items.append({
             "source": "audit",
             "category": "audit",
             "kind": entry.get("action"),
             "ts": entry.get("ts"),
-            "ref": entry.get("case_id"),
-            "summary": f"{entry.get('action')} {entry.get('case_id') or ''}".strip(),
+            "ref": entry_case,
+            "case_id": entry_case,
+            "summary": f"{entry.get('action')} {entry_case}".strip(),
             "actor_type": entry.get("actor_type"),
             "actor": entry.get("actor"),
         })
 
     for run in cq_store.list_runs(ontology_id, limit=1000):
-        items.append({
-            "source": "regression",
-            "category": "regression",
-            "kind": "regression_run",
-            "ts": run.get("ran_at"),
-            "ref": run.get("ran_at"),
-            "summary": f"回归：{run.get('pass', 0)}/{run.get('total', 0)} pass",
-            "actor_type": run.get("actor_type") or "human",
-            "actor": run.get("actor") or "web",
-        })
+        if wanted_case:
+            case_result = next(
+                (case for case in run.get("cases") or []
+                 if isinstance(case, dict) and str(case.get("id") or "") == wanted_case),
+                None,
+            )
+            if case_result is None:
+                continue
+            state = str(case_result.get("state") or "")
+            items.append({
+                "source": "regression",
+                "category": "regression",
+                "kind": "regression_case",
+                "ts": run.get("ran_at"),
+                "ref": run.get("ran_at"),
+                "case_id": wanted_case,
+                "summary": f"回归：{'通过' if state == 'pass' else '未通过' if state == 'fail' else state}",
+                "actor_type": run.get("actor_type") or "human",
+                "actor": run.get("actor") or "web",
+                "content": case_result,
+            })
+        else:
+            items.append({
+                "source": "regression",
+                "category": "regression",
+                "kind": "regression_run",
+                "ts": run.get("ran_at"),
+                "ref": run.get("ran_at"),
+                "case_id": "",
+                "summary": f"回归：{run.get('pass', 0)}/{run.get('total', 0)} pass",
+                "actor_type": run.get("actor_type") or "human",
+                "actor": run.get("actor") or "web",
+            })
 
     for archive in _all_iterations(ontology_id):
+        linked_ids = [
+            cid for cid in known_case_ids
+            if lifecycle._changes_contain(archive.get("changes"), cid)
+        ]
+        if wanted_case and wanted_case not in linked_ids:
+            continue
         items.append({
             "source": "iteration",
             "category": "iterations",
             "kind": "iteration_archive",
             "ts": archive.get("created_at") or archive.get("started_at"),
             "ref": archive.get("iteration_id"),
+            "case_id": wanted_case or (linked_ids[0] if len(linked_ids) == 1 else ""),
             "summary": str(archive.get("business_translation") or archive.get("iteration_id") or ""),
             "actor_type": "human",
             "actor": "web",
@@ -697,12 +788,21 @@ def iteration_write(
 # ---------------- 服务端自动留痕（#197） ----------------
 
 
-def auto_case_event(ontology_id: str, case_id: str, *, added: bool, status: str) -> None:
+def auto_case_event(
+    ontology_id: str,
+    case_id: str,
+    *,
+    added: bool,
+    status: str,
+    actor_type: str = "agent",
+    actor: str = "mcp",
+) -> None:
     try:
         event = "case_authored" if added else "case_released"
         if not added and status != "active":
             return
-        _append(ontology_id, event, {"case_id": case_id}, actor_type="agent", actor="mcp")
+        _append(ontology_id, event, {"case_id": case_id},
+                actor_type=actor_type, actor=actor)
     except Exception:  # noqa: BLE001 —— 留痕失败不拖垮主写入
         return
 

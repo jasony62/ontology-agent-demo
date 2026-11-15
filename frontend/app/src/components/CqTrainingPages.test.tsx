@@ -42,11 +42,32 @@ const RESUME = {
     background: '需要确认题目口径', case_id: 'Q1', status: 'pending',
   }],
   pending_followups: [],
-  counts: { followup: 0, pending: 1 },
+  counts: { followup: 0, pending: 1, resolved: 0 },
   circuit_breaker: { open: false },
   iterations: [],
   recent_iteration: null,
   intent_pending: [],
+  lifecycle: {
+    summary: {
+      questions: 1,
+      stages: { authored: 0, regression: 0, pending: 1, resolved: 0, fixing: 0, passed: 0, followup: 0 },
+      pending_questions: 1, resolved_questions: 0, followup_questions: 0,
+      failed_questions: 0, passed_questions: 0,
+      decision_counts: { pending: 1, followup: 0, resolved: 0 },
+      circuit_breaker: { open: false }, coverage_real: 0.5,
+    },
+    cases: [{
+      case_id: 'Q1', cq: '期望口径是什么？', status: 'active', expected_type: 'expectation',
+      assertion_summary: '应判定为「是」', located: true, answerable: true,
+      stage: 'pending', stage_label: '待我决', priority: 1, failure_triggered: false,
+      activity_at: '2026-11-15T00:00:00+00:00', last_run: null, intent_pending: false,
+      decisions: [], pending_decision: {
+        decision_id: 'd-1', kind: 'expectation', question: '期望口径是什么？',
+        options: ['A', 'B'], recommended: 'A', reason: 'A 与本体重合',
+        background: '需要确认题目口径', case_id: 'Q1', status: 'pending',
+      }, latest_decision: null, iterations: [],
+    }],
+  },
   context_gaps: [],
   next_suggested: { action: 'answer_decisions', count: 1, text: '回答 1 个待决问题' },
 };
@@ -108,7 +129,7 @@ describe('训练标签（#203）', () => {
     const log = container!.querySelector('.cq-training-log')!;
     expect(live.textContent).toContain('训练现场');
     expect(live.textContent).toContain('期望口径是什么？');
-    expect(log.textContent).toContain('训练时间线');
+    expect(log.textContent).toContain('全局事件（历史）');
     expect(live.compareDocumentPosition(log) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const text = container!.textContent ?? '';

@@ -1445,9 +1445,62 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-tab:hover { color: var(--text); }
 .cq-tab.active { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
 .cq-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cq-toolbar-main { min-width: 260px; flex: 1 1 420px; }
 .cq-toolbar h2 { font-size: var(--fs-page); color: var(--heading); margin-bottom: 3px; }
+.cq-abbr { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--muted); }
+.cq-intro { margin: 2px 0 4px; font-size: 13px; color: var(--text); line-height: 1.65; }
+.cq-meta { margin: 4px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+.cq-meta-tech { margin-left: 4px; color: var(--muted); }
 .cq-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cq-toolbar-actions .btn { text-decoration: none; display: inline-flex; align-items: center; }
+.cq-mode-note {
+  margin: 8px 0 0; padding: 7px 10px; border-radius: 6px;
+  background: var(--panel-2); font-size: 12px; color: var(--muted);
+}
+.cq-role-strip { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.cq-role {
+  display: inline-flex; align-items: center; gap: 6px; flex: 1 1 280px;
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); font-size: 12px; color: var(--text);
+}
+.cq-role b { color: var(--heading); white-space: nowrap; }
+.cq-role.agent { border-left: 3px solid #4b6cb7; }
+.cq-role.human { border-left: 3px solid #2f8f6b; }
+.cq-role .btn.link { margin-left: auto; }
+.cq-start-guide {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 10px 0; padding: 9px 12px; border: 1px dashed var(--border-strong);
+  border-radius: 8px; background: var(--panel-2); font-size: 12.5px; color: var(--text);
+}
+.cq-start-guide b { color: var(--heading); white-space: nowrap; }
+.cq-start-guide .btn { margin-left: auto; }
+.cq-help {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-left: 4px; border-radius: 50%;
+  border: 1px solid var(--border-strong); color: var(--muted);
+  font-size: 10px; line-height: 1; cursor: help; vertical-align: 1px;
+}
+.cq-dimension-note { margin: 4px 0; font-size: 11px; }
+.cq-inline-note {
+  margin: 6px 0; padding: 6px 9px; border-left: 2px solid var(--border-strong);
+  background: var(--panel-2); font-size: 12px; color: var(--muted); line-height: 1.6;
+}
+.cq-leader-question {
+  margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: #fff; font-size: 13px; color: var(--text); line-height: 1.7;
+}
+.cq-glossary {
+  margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius); background: var(--panel);
+}
+.cq-glossary-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cq-glossary-head h3 { font-size: var(--fs-title); color: var(--heading); }
+.cq-glossary dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 16px; margin: 8px 0 0; }
+.cq-glossary dl > div { border-top: 1px solid var(--border); padding-top: 6px; }
+.cq-glossary dt { font-size: 12.5px; font-weight: 600; color: var(--heading); }
+.cq-glossary dd { margin: 2px 0 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.cq-row-cq { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cq-badge.muted { color: var(--muted); border-color: var(--border); background: var(--panel-2); }
 .cq-import { cursor: pointer; }
 .cq-import input { display: none; }
 .cq-overview {
@@ -1584,6 +1637,30 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   background: var(--panel-2); font-size: 12.5px; color: var(--text);
 }
 .cq-training-next b { color: var(--heading); }
+.cq-training-next .btn { margin-left: auto; }
+.cq-training-guide {
+  display: flex; flex-direction: column; gap: 4px; margin: 8px 0;
+  padding: 9px 12px; border: 1px dashed var(--border-strong);
+  border-radius: 8px; background: var(--panel-2); font-size: 12.5px; color: var(--text);
+}
+.cq-training-guide b { color: var(--heading); }
+.cq-training-guide .btn { align-self: flex-start; margin-top: 2px; }
+.cq-stage-bar-wrap { display: flex; flex-direction: column; gap: 3px; }
+.cq-stage-caption { font-size: 10.5px; color: var(--muted); }
+.cq-training-evidence {
+  display: flex; flex-direction: column; gap: 2px; padding: 7px 9px;
+  border-left: 2px solid var(--border-strong); background: var(--panel-2);
+  font-size: 12px; color: var(--text); line-height: 1.6;
+}
+.cq-training-evidence b { font-size: 11px; color: var(--muted); font-weight: 600; }
+.cq-training-evidence p { margin: 0 0 3px; }
+.cq-basis-hint { margin: -2px 0 2px; }
+.cq-decision-confirm {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 7px 9px; border: 1px solid #e6b36b; border-radius: 6px;
+  background: #fff4e5; font-size: 12px; color: #8a5a00;
+}
+.cq-decision-confirm .btn { padding: 0 10px; height: var(--control-h-sm); }
 .cq-training-gaps { margin: 10px 0; }
 .cq-training-gaps h4 { font-size: var(--fs-md); color: var(--heading); margin-bottom: 4px; }
 .cq-training-gaps ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }

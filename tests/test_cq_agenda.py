@@ -90,7 +90,7 @@ def test_answering_agenda_item_materializes_decision_event(ws):
     result = training_service.decide("agent_task", "feedback", {
         "decision_id": item["decision_id"],
         "option": "调整问法后保留",
-        "context": item["context"],
+        "context": "测试现场依据：这题目前没有可用证据。",
     }, source="direct")
     assert result["status"] == "resolved"
 
@@ -100,7 +100,7 @@ def test_answering_agenda_item_materializes_decision_event(ws):
     assert asked["content"]["decision_id"] == item["decision_id"]
     assert asked["content"]["question"] == item["question"]
     assert asked["content"]["background"] == item["background"]
-    assert asked["content"]["context"] == item["context"]
+    assert asked["content"]["context"] == "测试现场依据：这题目前没有可用证据。"
 
     remaining = [entry["decision_id"]
                  for entry in training_service.resume(_engine(), "agent_task")["pending_decisions"]]
@@ -143,13 +143,18 @@ def test_existing_check_without_run_does_not_ask_for_another(ws):
 
 
 def test_decision_card_context_is_self_contained(ws):
-    """#211：卡片自带「为什么问、现在卡在哪」，不要求跳题目页读 SPARQL。"""
+    """#211 / #229：背景与现场依据合起来自包含，且不重复/不矛盾。"""
     items = agenda.build_agenda(_engine(), "agent_task")
-    assert all(str(item.get("context") or "").strip() for item in items)
-    q1 = _by_case(items, "Q1")["context"]
-    assert "证据" in q1
-    assert "检查" in q1
-    text = json.dumps([item["context"] for item in items], ensure_ascii=False)
+    assert all(str(item.get("background") or "").strip() for item in items)
+    q1 = _by_case(items, "Q1")
+    assert "检查" in q1["background"] or "检查" in str(q1.get("context") or "")
+    q2 = _by_case(items, "Q2")
+    assert "定位不到" in q2["background"]
+    assert "上次回归通过" not in str(q2.get("context") or "")
+    text = json.dumps(
+        [(item.get("background") or "") + (item.get("context") or "") for item in items],
+        ensure_ascii=False,
+    )
     for token in ("SPARQL", "SELECT", "WHERE", "query", "expect"):
         assert token not in text
 

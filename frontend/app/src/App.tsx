@@ -332,15 +332,15 @@ export default function App() {
               <option value="">—</option>
             )}
           </select>
-          {/* #137 R1：红色徽标改成「只读」能力标签，不再复述领域名 */}
+          {/* #137 R1 / #227：本体只读范围要说清；CQ 题集是独立可编辑面 */}
           {(ontologyMode === 'generic' || ontologyMode === 'imported') && (
             <span
               className="mode-badge"
               title={ontologyMode === 'imported'
-                ? '当前本体是导入的只读副本：可查看、可推理，编辑请先导出'
-                : '通用模式：领域专属推理不可用'}
+                ? '本体是导入的只读副本：本体结构不可改；CQ 题集仍可编辑、评估与导出'
+                : '通用模式：领域专属推理不可用；CQ 题集仍可编辑'}
             >
-              {ontologyMode === 'imported' ? '只读' : '通用模式'}
+              {ontologyMode === 'imported' ? '本体只读' : '通用模式'}
             </span>
           )}
           <button

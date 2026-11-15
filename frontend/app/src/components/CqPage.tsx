@@ -541,12 +541,31 @@ function CqDetail({
       </section>
 
       <section className="cq-section">
+        <h4>回归断言</h4>
+        {item.regression?.query ? (
+          <>
+            <div className="cq-assertion-label">查询（query）</div>
+            <pre className="cq-code">{item.regression.query}</pre>
+            <div className="cq-assertion-label">期望（expect）</div>
+            <pre className="cq-code">
+              {item.regression.expect === undefined
+                ? '—'
+                : JSON.stringify(item.regression.expect, null, 2)}
+            </pre>
+          </>
+        ) : (
+          <div className="guide-muted">
+            该题没有回归断言；编辑后可补 SPARQL query 与 expect。
+          </div>
+        )}
+      </section>
+
+      <section className="cq-section">
         <h4>上次可答</h4>
         {cache ? (
           <div className="cq-kv">
             <div><span>结论条数</span><b>{cache.conclusion ?? 0}</b></div>
             <div><span>时间</span><b>{cache.ran_at || '—'}</b></div>
-            <div><span>回归断言</span><b title={item.regression?.query || ''}>{item.regression?.query ? 'SPARQL' : '—'}</b></div>
           </div>
         ) : (
           <div className="guide-muted">

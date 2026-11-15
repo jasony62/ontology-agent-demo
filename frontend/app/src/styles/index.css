@@ -1482,6 +1482,22 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-kv b { font-size: 12.5px; color: var(--text); }
 .cq-section { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 8px; }
 .cq-section h4 { font-size: var(--fs-md); color: var(--heading); margin-bottom: 5px; }
+.cq-assertion-label { font-size: 11px; color: var(--muted); margin: 6px 0 3px; }
+.cq-code {
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  background: var(--panel-2, #f8fafc);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 180px;
+  overflow: auto;
+}
 .cq-evidence { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .cq-evidence li {
   display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; line-height: 1.6;

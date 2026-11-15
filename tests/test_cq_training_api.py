@@ -29,6 +29,33 @@ def _ask(client):
     return r.json()["decision_id"]
 
 
+def test_web_case_create_and_release_are_attributed_to_human(client):
+    """#219 / R7：网页建题 / 发题补留事件，且操作者是人，不是 agent。"""
+    ontology_id, _ = M._cq_identity()
+    authored = [
+        event for event in training_log.read_events(ontology_id)
+        if event["event"] == "case_authored"
+    ][-1]
+    assert authored["actor_type"] == "human"
+    assert authored["actor"] == "web"
+
+    created = client.post("/api/domains/current/cq/cases", json={
+        "cq": "任务依赖有哪些？", "expected_type": "retrieval", "status": "draft",
+    }).json()["case"]
+    updated = client.patch(
+        f"/api/domains/current/cq/cases/{created['id']}",
+        json={"status": "active"},
+    )
+    assert updated.status_code == 200, updated.text
+    released = [
+        event for event in training_log.read_events(ontology_id)
+        if event["event"] == "case_released"
+        and event["content"].get("case_id") == created["id"]
+    ][-1]
+    assert released["actor_type"] == "human"
+    assert released["actor"] == "web"
+
+
 def test_resume_is_snapshot_and_pure_read(client):
     ontology_id, _ = M._cq_identity()
     decision_id = _ask(client)

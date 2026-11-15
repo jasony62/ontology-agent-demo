@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import CqTrainingPanel from './CqTrainingPanel';
 import CqTimelinePage from './CqTimelinePage';
 import { CQ_TRAINING_CHANGED } from '../lib/cqTrainingEvent';
@@ -14,6 +14,9 @@ import { CQ_TRAINING_CHANGED } from '../lib/cqTrainingEvent';
  */
 export default function CqTrainingPage() {
   const [logKey, setLogKey] = useState(0);
+  const [focusCaseId, setFocusCaseId] = useState<string | null>(null);
+  const handleFocus = useCallback((caseId: string) => setFocusCaseId(caseId), []);
+  const clearFocus = useCallback(() => setFocusCaseId(null), []);
 
   useEffect(() => {
     const onChanged = () => setLogKey((key) => key + 1);
@@ -24,10 +27,13 @@ export default function CqTrainingPage() {
   return (
     <div className="cq-training-page">
       <section className="cq-training-live" aria-label="训练现场">
-        <CqTrainingPanel />
+        <CqTrainingPanel
+          focusCaseId={focusCaseId}
+          onFocusHandled={clearFocus}
+        />
       </section>
       <section className="cq-training-log" aria-label="训练时间线">
-        <CqTimelinePage key={logKey} />
+        <CqTimelinePage key={logKey} onOpenCase={handleFocus} />
       </section>
     </div>
   );

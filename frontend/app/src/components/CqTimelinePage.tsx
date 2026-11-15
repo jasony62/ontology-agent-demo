@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { CqTimelineItem } from '../api/client';
-import { conclusionLabel } from '../lib/cqLabels';
+import { conclusionLabel, actorIcon, actorLabel } from '../lib/cqLabels';
 import CqIterationPage from './CqIterationPage';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -35,7 +35,11 @@ const KINDS = [
  * 「迭代」只是一个筛选按钮，按下后显示迭代档案卡片（业务话 / 变更清单 / 闸门快照 / TTL 全文），
  * 不是第三个标签、也不是独立页面。
  */
-export default function CqTimelinePage() {
+export default function CqTimelinePage({
+  onOpenCase,
+}: {
+  onOpenCase?: (caseId: string) => void;
+} = {}) {
   const [items, setItems] = useState<CqTimelineItem[]>([]);
   const [kinds, setKinds] = useState('');
   const [loading, setLoading] = useState(true);
@@ -74,9 +78,9 @@ export default function CqTimelinePage() {
     <div className="cq-timeline-page">
       <div className="cq-timeline-bar">
         <div>
-          <h3>训练时间线</h3>
+          <h3>全局事件（历史）</h3>
           <p className="guide-muted">
-            训练事件 + 变更审计 + 回归历史 + 迭代档案，新到旧；只读，不产生写入。
+            整轮跑分 / 整库保存 / 迭代归档等全局事件，新到旧；单题轨迹在题卡的「看这道题的事件流」。
           </p>
         </div>
         <div className="cq-timeline-actions">
@@ -114,7 +118,20 @@ export default function CqTimelinePage() {
                   <code>{SOURCE_LABELS[item.source] ?? item.source}</code>
                   <span className="guide-badge muted">{CATEGORY_LABELS[item.category] ?? item.category}</span>
                   <time>{item.ts || '—'}</time>
-                  {item.actor && <span className="guide-muted">{item.actor_type}/{item.actor}</span>}
+                  {item.actor && (
+                    <span className="guide-muted">
+                      {actorIcon(item.actor_type)} {actorLabel(item.actor_type)}/{item.actor}
+                    </span>
+                  )}
+                  {item.case_id && onOpenCase && (
+                    <button
+                      type="button"
+                      className="btn link"
+                      onClick={() => onOpenCase(item.case_id as string)}
+                    >
+                      看涉题 {item.case_id}
+                    </button>
+                  )}
                 </div>
                 <p>{item.summary}</p>
                 {item.content && Boolean(item.content.conclusion || item.content.basis) && (

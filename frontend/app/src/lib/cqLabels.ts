@@ -45,6 +45,26 @@ export function conclusionLabel(value?: string | null): string {
   return CONCLUSION_LABELS[raw] ?? '';
 }
 
+/** #219 / R6：执行主体中文标签，避免 leader UI 出现 human / agent / system 裸值。 */
+const ACTOR_LABELS: Record<string, string> = {
+  human: '人',
+  agent: '智能体',
+  system: '系统',
+};
+
+export function actorLabel(value?: string | null): string {
+  const raw = String(value || '').trim();
+  if (!raw) return '系统';
+  return ACTOR_LABELS[raw] ?? raw;
+}
+
+export function actorIcon(value?: string | null): string {
+  const raw = String(value || '').trim();
+  if (raw === 'human') return '🧑';
+  if (raw === 'agent') return '🤖';
+  return '⚙️';
+}
+
 export function expectedTypeLabel(value?: string | null): string {
   const raw = String(value || '').trim();
   if (!raw || raw === 'set') return '未分型';

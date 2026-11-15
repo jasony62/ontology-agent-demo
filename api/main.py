@@ -2084,6 +2084,11 @@ def cq_add_case(
         item = cq_store.add_case(ontology_id, case, actor_type=actor_type, actor=actor)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    training_service.auto_case_event(
+        ontology_id, str(item.get("id") or ""),
+        added=True, status=str(item.get("status") or ""),
+        actor_type=actor_type, actor=actor,
+    )
     data = cq_store.get_set(ontology_id)
     return {"case": item, **cq_store.build_view(ENGINE, data)}
 
@@ -2106,12 +2111,26 @@ def cq_update_case(
     """修改一道 CQ：按稳定 id 合并字段，写回受管存储并追加审计。"""
     ontology_id, _ = _cq_identity()
     actor_type, actor = _cq_actor(actor_type, actor)
+    previous = next(
+        (case for case in cq_store.get_set(ontology_id).get("cases") or []
+         if isinstance(case, dict) and str(case.get("id") or "") == case_id),
+        None,
+    )
     try:
         item = cq_store.update_case(
             ontology_id, case_id, patch, actor_type=actor_type, actor=actor,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    if (
+        item
+        and str(item.get("status") or "") == "active"
+        and str((previous or {}).get("status") or "") != "active"
+    ):
+        training_service.auto_case_event(
+            ontology_id, case_id, added=False, status="active",
+            actor_type=actor_type, actor=actor,
+        )
     data = cq_store.get_set(ontology_id)
     return {"case": item, **cq_store.build_view(ENGINE, data)}
 
@@ -2262,6 +2281,37 @@ def cq_resume(
     except training_service.TrainingError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"ontology_id": ontology_id, **result}
+
+
+@app.get(
+    "/api/domains/current/cq/cases/{case_id}/events",
+    tags=["通用查询"],
+    summary="单题事件流（题卷）",
+    responses={
+        200: {"model": OpenEnvelope, "description": "该题的训练事件 + 审计 + 逐题回归 + 迭代线索，时间正序。"},
+        **ERROR_400,
+    },
+)
+def cq_case_events(
+    case_id: str = ApiPath(..., description="题目稳定 id"),
+    limit: int = Query(500, ge=1, le=1000, description="最多返回多少条"),
+):
+    """题卡「这道题的卷」（#219 / R4）：只读、按时间正序。"""
+    ontology_id, _ = _cq_identity()
+    data = cq_store.get_set(ontology_id)
+    known = {
+        str(case.get("id"))
+        for case in data.get("cases") or []
+        if isinstance(case, dict) and case.get("id")
+    }
+    if case_id not in known:
+        raise HTTPException(status_code=404, detail=f"题目不存在：{case_id}")
+    result = training_service.timeline(ontology_id, case_id=case_id, limit=limit)
+    return {
+        "ontology_id": ontology_id,
+        "case_id": case_id,
+        "items": list(reversed(result["items"])),
+    }
 
 
 @app.get(

@@ -7,6 +7,21 @@ import CqTrainingPanel from './CqTrainingPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const DECISION = {
+  decision_id: 'd-1', kind: 'expectation', question: '期望口径是什么？',
+  options: ['A', 'B'], recommended: 'A', reason: 'A 与本体重合（attribution_conclusion）',
+  background: '需要确认题目口径（见 context_gaps）',
+  context: '这题能对上本体里的「绩效等级」，目前查到 0 条证据。上次回归没通过。',
+  case_id: 'Q1', status: 'pending',
+};
+
+const RESOLVED = {
+  decision_id: 'd-2', kind: 'expectation', question: '已决题怎么处理？',
+  options: ['A', 'B'], recommended: 'A', reason: '理由', background: '背景',
+  case_id: 'Q2', status: 'resolved', conclusion: 'adopt', basis: 'self', authorized: true,
+  latest_feedback: { option: 'A', conclusion: 'adopt', basis: 'self', authorized: true },
+};
+
 const RESUME: CqResumeResponse = {
   ontology_id: 'ws-1',
   depth: 'snapshot',
@@ -15,19 +30,43 @@ const RESUME: CqResumeResponse = {
     coverage_light: 0.5, coverage_real: 0.5, pending_decisions: 1,
   },
   last_regression: null,
-  pending_decisions: [{
-    decision_id: 'd-1', kind: 'expectation', question: '期望口径是什么？',
-    options: ['A', 'B'], recommended: 'A', reason: 'A 与本体重合（attribution_conclusion）',
-    background: '需要确认题目口径（见 context_gaps）',
-    context: '这题能对上本体里的「绩效等级」，目前查到 0 条证据。上次回归没通过。',
-    case_id: 'Q1', status: 'pending',
-  }],
+  pending_decisions: [DECISION],
+  resolved_decisions: [RESOLVED],
   pending_followups: [],
-  counts: { followup: 0, pending: 1 },
+  counts: { followup: 0, pending: 1, resolved: 1 },
   circuit_breaker: { open: false },
   iterations: [],
   recent_iteration: null,
   intent_pending: [],
+  lifecycle: {
+    summary: {
+      questions: 2,
+      stages: { authored: 0, regression: 0, pending: 1, resolved: 1, fixing: 0, passed: 0, followup: 0 },
+      pending_questions: 1,
+      resolved_questions: 1,
+      followup_questions: 0,
+      failed_questions: 0,
+      passed_questions: 0,
+      decision_counts: { pending: 1, followup: 0, resolved: 1 },
+      circuit_breaker: { open: false },
+      coverage_real: 0.5,
+    },
+    cases: [{
+      case_id: 'Q1', cq: '期望口径是什么？', status: 'active', expected_type: 'expectation',
+      assertion_summary: '应判定为「是」', located: true, answerable: true,
+      stage: 'pending', stage_label: '待我决', priority: 1, failure_triggered: false,
+      activity_at: '2026-11-15T00:00:00+00:00', last_run: null, intent_pending: false,
+      decisions: [DECISION], pending_decision: DECISION, latest_decision: DECISION,
+      iterations: [],
+    }, {
+      case_id: 'Q2', cq: '已决题怎么处理？', status: 'active', expected_type: 'expectation',
+      assertion_summary: '应判定为「是」', located: true, answerable: true,
+      stage: 'resolved', stage_label: '已决', priority: 4, failure_triggered: false,
+      activity_at: '2026-11-15T00:01:00+00:00', last_run: null, intent_pending: false,
+      decisions: [RESOLVED], pending_decision: null, latest_decision: RESOLVED,
+      iterations: [],
+    }],
+  },
   context_gaps: [{ gap_type: 'G1', object: 'last_regression', suggestion: '补一条归因结论（attribution_conclusion）' }],
   next_suggested: { action: 'close_gaps', count: 1, text: '先补齐 1 项缺口（见 context_gaps）' },
 };
@@ -43,6 +82,19 @@ function stubFetch(resume: CqResumeResponse = RESUME) {
       return {
         ok: true, status: 200,
         json: async () => ({ ontology_id: 'ws-1', action: 'feedback', decision_id: 'd-1', status: 'resolved' }),
+      } as unknown as Response;
+    }
+    if (url.includes('/cq/cases/Q1/events')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ontology_id: 'ws-1', case_id: 'Q1', items: [
+          { source: 'training', category: 'decisions', kind: 'decision_asked',
+            ts: '2026-11-15T00:01:00+00:00', case_id: 'Q1', summary: '提问：期望口径是什么？',
+            actor_type: 'agent', actor: 'mcp', content: { decision_id: 'd-1', case_id: 'Q1' } },
+          { source: 'training', category: 'decisions', kind: 'feedback_received',
+            ts: '2026-11-15T00:02:00+00:00', case_id: 'Q1', summary: '反馈：就是 A',
+            actor_type: 'human', actor: 'web', content: { feedback_text: '就是 A', conclusion: 'adopt' } },
+        ] }),
       } as unknown as Response;
     }
     if (url.includes('/cq/resume')) {
@@ -104,12 +156,12 @@ describe('训练现场（#198 / #203）', () => {
     expect([...container!.querySelectorAll('button')].filter((btn) => btn.textContent === '刷新')).toHaveLength(1);
   });
 
-  it('待决卡片排在缺口之前：打开即可回答', async () => {
+  it('题卡排在缺口之前：打开即可回答', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
 
-    const cards = container!.querySelector('.cq-training-cards')!;
+    const cards = container!.querySelector('.cq-case-board')!;
     const gaps = container!.querySelector('.cq-training-gaps')!;
     expect(cards).not.toBeNull();
     expect(gaps).not.toBeNull();
@@ -213,15 +265,31 @@ describe('训练现场（#198 / #203）', () => {
   });
 
   it('暂缓后的决策进入待跟进区，仍可继续提交结论（#212）', async () => {
+    const followup = {
+      ...RESUME.pending_decisions[0],
+      decision_id: 'd-2', status: 'followup',
+      latest_feedback: { conclusion: 'defer', basis: 'self', authorized: true },
+    };
     stubFetch({
       ...RESUME,
       pending_decisions: [],
-      pending_followups: [{
-        ...RESUME.pending_decisions[0],
-        decision_id: 'd-2', status: 'followup',
-        latest_feedback: { conclusion: 'defer', basis: 'self', authorized: true },
-      }],
-      counts: { followup: 1, pending: 0 },
+      pending_followups: [followup],
+      counts: { followup: 1, pending: 0, resolved: 0 },
+      lifecycle: {
+        ...RESUME.lifecycle!,
+        summary: {
+          ...RESUME.lifecycle!.summary,
+          stages: { ...RESUME.lifecycle!.summary.stages, pending: 0, followup: 1 },
+          pending_questions: 0,
+          followup_questions: 1,
+          decision_counts: { pending: 0, followup: 1, resolved: 0 },
+        },
+        cases: [{
+          ...RESUME.lifecycle!.cases[0],
+          stage: 'followup', stage_label: '待跟进',
+          decisions: [followup], pending_decision: null, latest_decision: followup,
+        }],
+      },
     });
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
@@ -229,7 +297,74 @@ describe('训练现场（#198 / #203）', () => {
     const text = container!.textContent ?? '';
     expect(text).toContain('待跟进');
     expect(text).toContain('期望口径是什么？');
-    expect(container!.querySelectorAll('.cq-training-followups .cq-training-card')).toHaveLength(1);
+    expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(1);
+  });
+
+  it('概览按题 roll-up，点已决筛到已决题卡（#219 / V9）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('1待决题 · 1 条决策');
+    expect(text).toContain('1已决题 · 1 条决策');
+    expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(2);
+
+    const resolvedStat = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-stat')]
+      .find((button) => button.textContent?.includes('已决题'))!;
+    await act(async () => { resolvedStat.click(); });
+    await flush();
+
+    const cards = [...container!.querySelectorAll('.cq-case-card')];
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toContain('已决题怎么处理？');
+  });
+
+  it('从待决直达「待我处理」，首题即答题卡（#219 / V11）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const pendingStat = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-stat')]
+      .find((button) => button.textContent?.includes('待决题'))!;
+    await act(async () => { pendingStat.click(); });
+    await flush();
+
+    const focus = container!.querySelector('.cq-focus-mode')!;
+    expect(focus).not.toBeNull();
+    expect(focus.textContent).toContain('待我处理');
+    expect(focus.textContent).toContain('第 1 / 1 题');
+    expect(focus.querySelector('.cq-training-authorize input')).not.toBeNull();
+    expect(focus.querySelectorAll('.cq-case-card')).toHaveLength(1);
+  });
+
+  it('题卡可下钻「这道题的卷」，主体与阶段可筛（#219 / V12）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const historyButton = [...container!.querySelectorAll<HTMLButtonElement>('.cq-case-card button')]
+      .find((button) => button.textContent === '看这道题的事件流')!;
+    await act(async () => { historyButton.click(); });
+    await flush();
+
+    const history = container!.querySelector('.cq-case-history')!;
+    expect(history).not.toBeNull();
+    expect(history.textContent).toContain('这道题的卷');
+    expect(history.textContent).toContain('提问：期望口径是什么？');
+    expect(history.textContent).toContain('反馈：就是 A');
+    expect(history.textContent).toContain('智能体');
+    expect(history.textContent).toContain('人');
+
+    const selects = [...history.querySelectorAll<HTMLSelectElement>('.cq-case-history-filters select')];
+    const setSelect = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
+    act(() => {
+      setSelect.call(selects[0], 'human');
+      selects[0].dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+    expect(history.textContent).toContain('反馈：就是 A');
+    expect(history.textContent).not.toContain('提问：期望口径是什么？');
   });
 
   it('技术细节默认收起，展开后才出现实现标识（#208）', async () => {

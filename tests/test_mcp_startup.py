@@ -120,6 +120,7 @@ def test_cq_mcp_surface_is_consolidated_and_prefixed():
         "cq_author",
         "cq_case_remove",
         "cq_case_upsert",
+        "cq_coverage",
         "cq_decision",
         "cq_iteration_write",
         "cq_locate",

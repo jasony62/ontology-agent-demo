@@ -16,6 +16,7 @@ from pathlib import Path
 
 from api import workspaces
 from cq import agenda, cq_runner, cq_store, training_service
+from cq import coverage as cq_mention_coverage
 from cq.constants import EXPECTED_TYPES
 from ontology_plugin_sdk.cq import gen, tbox
 from reasoner.cq_locate import locate_cq
@@ -414,6 +415,20 @@ def register_tools(server, get_engine, get_cq_context) -> None:
             return _error("invalid_event", str(exc))
         except Exception as exc:  # noqa: BLE001
             return _error("decision_failed", str(exc))
+        return {"ok": True, "ontology_id": target, **result}
+
+    @server.tool(description=(
+        "题干提及覆盖（#215）：哪些类/属性被至少一道 CQ 题干字面提到、哪些从未"
+        "被提到；返回 elements / uncovered / unmatched_anchors。只读、不落盘，"
+        "只统计字面提及，不代表解答依赖（公理级 provenance 不在本工具范围）。"))
+    def cq_coverage(ontology_id: str = "") -> dict:
+        try:
+            target, seed = resolve(ontology_id)
+            result = cq_mention_coverage.coverage(get_engine(), target, seed)
+        except ValueError as exc:
+            return _error("invalid_ontology", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return _error("coverage_failed", str(exc))
         return {"ok": True, "ontology_id": target, **result}
 
     @server.tool(description=(

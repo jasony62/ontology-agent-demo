@@ -508,6 +508,31 @@ export interface CqResumeResponse {
   history?: CqTimelineItem[];
 }
 
+export interface CqCoverageElement {
+  name: string;
+  label: string;
+  kind: 'class' | 'property' | string;
+  mentioned: boolean;
+  case_ids: string[];
+}
+
+export interface CqCoverageResponse {
+  ontology_id: string;
+  summary: {
+    cases: number;
+    elements: number;
+    mentioned: number;
+    uncovered: number;
+    mention_coverage: number;
+    cases_without_anchor: number;
+    locate_errors: number;
+    unmatched_anchors: number;
+  };
+  elements: CqCoverageElement[];
+  uncovered: CqCoverageElement[];
+  unmatched_anchors: Array<{ term: string; source: string }>;
+}
+
 export interface CqTimelineItem {
   source: 'training' | 'audit' | 'regression' | 'iteration' | string;
   category: string;
@@ -619,6 +644,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     }),
+
+  /** 题干提及覆盖（#215）：只读，字面口径 */
+  cqCoverage: () => request<CqCoverageResponse>('/api/domains/current/cq/coverage'),
 
   /** CQ 集整集覆盖（PUT） */
   cqPut: (payload: { suite: string; version?: number; cases: CqSetCase[] }) =>

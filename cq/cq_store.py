@@ -333,6 +333,19 @@ def get_set(ontology_id: str, seed_path: Path | None = None) -> dict:
     return empty_set()
 
 
+def read_set(ontology_id: str, seed_path: Path | None = None) -> dict:
+    """纯读：不播种、不写盘；没有存储时回落到 seed 内容或空集。
+
+    与 `get_set` 的区别只有一个：首次访问**不会**把 seed 写进工作区。
+    「题干提及覆盖」等只读分析用它，保证读接口零写入。
+    """
+    stored = _read_json(set_path(ontology_id))
+    if stored is not None:
+        return stored
+    seeded = _read_json(seed_path) if seed_path is not None else None
+    return seeded if seeded is not None else empty_set()
+
+
 def identity_for(domain_name: str, seed_path: Path | None = None) -> tuple[str, Path | None]:
     """REST 与 MCP 共用的 CQ 身份解析（#164）。
 
@@ -724,6 +737,7 @@ __all__ = [
     "import_set",
     "list_runs",
     "metrics_path",
+    "read_set",
     "record_metric",
     "record_run_cache",
     "runs_dir",

@@ -193,7 +193,7 @@ export default function CqPage() {
           <p className="guide-muted">
             {tab === 'cases'
               ? '本体承诺回答的问题、当前能定位到几条证据，以及上次回归是否可答。'
-              : '这一轮训练现在缺什么、有哪些待决问题；回答之后下方时间线会多一条只追加的记录。'}
+              : '每题走到生命周期哪一段、需要你做什么；待决卡直接回答，题卡内可下钻完整轨迹，下区是全局历史。'}
             {data?.suite ? <> 当前集：<b>{data.suite}</b></> : null}
           </p>
         </div>

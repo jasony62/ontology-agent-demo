@@ -228,3 +228,22 @@ def test_case_events_endpoint_returns_ascending_case_track(ws):
     )
     assert missing.status_code == 404
 
+
+def test_case_events_includes_current_agenda_item(monkeypatch, tmp_path):
+    """#219：议程是读时推导，题卷也要能看到「当前待决」，不能是空卷。"""
+    from fastapi.testclient import TestClient
+    import api.main as M
+
+    monkeypatch.setenv("ONTOLOGY_WORKSPACES_ROOT", str(tmp_path))
+    cq_store.save_set("agent_task", {
+        "suite": "t", "version": 1,
+        "cases": [{
+            "id": "Q9", "cq": "火星殖民地的氧气配额是多少？",
+            "expected_type": "retrieval", "status": "active",
+        }],
+    })
+    response = TestClient(M.app).get("/api/domains/current/cq/cases/Q9/events")
+    assert response.status_code == 200, response.text
+    kinds = [item["kind"] for item in response.json()["items"]]
+    assert "decision_agenda" in kinds
+

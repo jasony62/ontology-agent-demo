@@ -11,6 +11,7 @@
 
 ### Fixed
 
+- **CQ 只读详情补全回归断言（#192）**：`#cq` 单题详情新增「回归断言」区块，用代码块原样展示 `regression.query`（SPARQL）与 `regression.expect`（JSON）；无断言时给出引导文案，不再只显示一个 `SPARQL` / `—` 标签。
 - **`check_docs_numbers.py` 在导入态不再 TypeError（#190）**：当前领域没有领域规则层时返回退出码 2，并提示先 `POST /api/domains/agent_task/activate` 切回默认领域；新增导入态测试。
 
 ### Changed

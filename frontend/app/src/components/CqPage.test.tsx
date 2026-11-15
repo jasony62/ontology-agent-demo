@@ -144,12 +144,18 @@ describe('CQ 集页（#151）', () => {
     expect(container!.querySelectorAll('.cq-row')).toHaveLength(2);
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('登录模块开发');
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('上次可答');
+    // #192：只读详情展示完整 query / expect，而不是只给一个 SPARQL 标签
+    const detail = container!.querySelector('.cq-detail')!;
+    expect(detail.textContent).toContain('查询（query）');
+    expect(detail.querySelectorAll('.cq-code')[0]?.textContent).toContain('ASK { ?s ?p ?o }');
+    expect(detail.querySelectorAll('.cq-code')[1]?.textContent).toContain('true');
 
     act(() => {
       (container!.querySelectorAll<HTMLButtonElement>('.cq-row')[1]).click();
     });
     await flush();
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('这条结论凭什么成立');
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('该题没有回归断言');
   });
 
   it('无集时显示正式空态而不是报错', async () => {

@@ -448,7 +448,25 @@ def register_tools(server, get_engine, get_cq_context) -> None:
         return {"ok": True, "ontology_id": target, "count": len(items), "items": items}
 
     @server.tool(description=(
-        "训练现场自举（#196）：状态摘要 / 上次回归 / 待决 / 待跟进 / 熔断 / 迭代 / "
+        "标记决策回写的机器行动完成（#238）：action_id + status=done/failed；"
+        "完成后该行动从 cq_resume.next_actions 消失，形成闭环④⑤。"))
+    def cq_action_complete(action_id: str, status: str = "done", note: str = "",
+                           ontology_id: str = "") -> dict:
+        try:
+            target, _ = resolve(ontology_id)
+            result = training_service.training_write(
+                target, "action_completed",
+                {"action_id": action_id, "status": status, "note": note},
+                actor_type="agent", actor="mcp",
+            )
+        except training_service.TrainingError as exc:
+            return _error(exc.code, str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return _error("action_complete_failed", str(exc))
+        return {"ok": True, "ontology_id": target, **result}
+
+    @server.tool(description=(
+        "训练现场自举（#196）：状态摘要 / 上次回归 / 待决 / 待跟进 / 待跟进行动 / 熔断 / 迭代 / "
         "意图标记 + 决策议程 + context_gaps（G1–G6）+ next_suggested。depth=full 时附历史。"))
     def cq_resume(depth: str = "snapshot", since: str = "",
                   kinds: list[str] | None = None, limit: int = 200,

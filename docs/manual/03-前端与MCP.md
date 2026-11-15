@@ -127,9 +127,10 @@ docker compose up -d mcp
 | `cq_regression(want?, ontology_id?)` | 当前内存引擎跑回归；`want=json / junit / cq-test` |
 | `cq_audit(limit?, offset?, case_id?, ontology_id?)` | CQ 变更审计（时间倒序） |
 | `cq_coverage(ontology_id?)` | 题干提及覆盖（只读）：哪些类/属性被 CQ 题干提到、哪些从未提到；字面口径，不代表解答依赖 |
+| `cq_action_complete(action_id, status?, note?, ontology_id?)` | 标记决策回写的机器行动完成；完成后从 `cq_resume.next_actions` 消失 |
 | `cq_decision(action, ...)` | **唯一决策入口**：`ask` 提问 / `feedback` 反馈 / `withdraw` 自答撤问；反馈可带结构化结论（adopt / reject / defer）、依据来源（self / expert）与授权确认，状态由事件流投影 |
 | `cq_agenda(limit?, ontology_id?)` | 决策议程：从 CQ 集现场推导未锚定 / 质检 / 回归失败 / 覆盖缺口 / 冗余，业务话给背景、选项、推荐与理由；只读，前端经 `cq_resume` 消费 |
-| `cq_resume(depth?, since?, kinds?, limit?)` | 训练现场：摘要 / 上次回归 / 待决（含议程）/ 待跟进 / 熔断 / 迭代 / 意图标记 + `context_gaps`（G1–G6）+ `next_suggested` |
+| `cq_resume(depth?, since?, kinds?, limit?)` | 训练现场：摘要 / 上次回归 / 待决（含议程）/ 待跟进 / 机器行动 `next_actions` / 熔断 / 迭代 / 意图标记 + `context_gaps`（G1–G6）+ `next_suggested` |
 | `cq_timeline(since?, kinds?, limit?)` | 训练事件 + 审计 + 回归历史 + 迭代档案四源聚合，只读 |
 | `cq_training_write(event, content?, evidence?)` | 观测 / 证据族留痕；大体积证据落 `evidence/<id>.json`，事件只存引用；决策事件请走 `cq_decision` |
 | `cq_iteration_write(business_translation, ...)` | 迭代档案 + 业务话翻译 / 闸门快照 / TTL，连带记 `iteration_*` 事件 |

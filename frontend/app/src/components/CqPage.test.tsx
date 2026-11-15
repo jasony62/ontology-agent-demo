@@ -95,6 +95,23 @@ function stubFetch(set = SET, locate = LOCATE) {
     if (url.includes('/cq/coverage')) {
       return { ok: true, status: 200, json: async () => COVERAGE } as unknown as Response;
     }
+    if (url.includes('/cq/metrics')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          ontology_id: 'ws-1', decision_fill_rate: 1.0, adoption_rate: 1.0,
+          round_trips_median: 1, decision_latency_median_seconds: 30,
+          cqm: 0.1, quality: { anchored: 1, graduated: 2 },
+          counts: {}, guardrails: {}, sources: {},
+        }),
+      } as unknown as Response;
+    }
+    if (url.includes('/cq/cases/request') && method === 'POST') {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ok: true, action: { action_id: 'a1', action: 'generate_cases', status: 'pending' } }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/regression/run')) {
       return {
         ok: true, status: 200, json: async () => ({
@@ -116,6 +133,19 @@ function stubFetch(set = SET, locate = LOCATE) {
           last_regression: null, pending_decisions: [], pending_followups: [],
           counts: { followup: 0, pending: 0 }, circuit_breaker: { open: false },
           iterations: [], recent_iteration: null, intent_pending: [],
+          lifecycle: {
+            summary: {
+              questions: 2, stages: {}, pending_questions: 0,
+              resolved_questions: 0, followup_questions: 0,
+              failed_questions: 0, passed_questions: 0,
+              decision_counts: { pending: 0, followup: 0, resolved: 0 },
+              circuit_breaker: { open: false }, coverage_real: 0.5,
+              graduated_questions: 2, target_questions: 20, cqm: 0.1,
+              quality: { anchored: 1, validated: 1, answerable: 1, retained: 2, graduated: 2 },
+            },
+            cases: [],
+          },
+          next_actions: [],
           context_gaps: [], next_suggested: { action: 'none', count: 0, text: '本轮没有待决' },
         }),
       } as unknown as Response;
@@ -436,6 +466,20 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-badge.muted')?.getAttribute('title')).toContain('不是错别字');
   });
 
+  it('展示 CQM、协同指标与默认题集名（#237 / #239 / #243）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('已毕业 2 / 目标 20');
+    expect(text).toContain('10%');
+    expect(text).toContain('协同指标');
+    expect(text).toContain('决策面填充率');
+    expect(text).toContain('默认题集');
+    expect(container!.querySelector('.cq-meta b')?.getAttribute('title')).toContain('demo_cq');
+  });
+
   it('未对术语时只出现一段业务提示（#224）', async () => {
     stubFetch(SET, NO_ANCHORS);
     act(() => root!.render(<CqPage />));
@@ -448,5 +492,20 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).not.toContain('248 个中文术语');
     expect(text).not.toContain('没有命中证据（0 条）');
     expect(text.split('没有对上本体里的已有术语').length - 1).toBe(1);
+  });
+
+  it('领导模式可请求智能体生成候选题（#243 / G11）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const request = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '请求智能体生成候选题')!;
+    await act(async () => { request.click(); });
+    await flush();
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/cases/request') && String(init?.method) === 'POST');
+    expect(call).toBeTruthy();
+    expect(container!.textContent).toContain('已请求智能体生成候选题');
   });
 });

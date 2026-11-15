@@ -284,7 +284,8 @@ def test_training_view_fields_are_read_time_only(client):
     }, source="direct")
 
     view = client.get("/api/domains/current/cq/set").json()
-    assert view["summary"]["pending_decisions"] == 0
+    # 已决的人工决策不再计入 pending；无回归断言的题会由议程生成 1 条覆盖缺口
+    assert view["summary"]["pending_decisions"] == 1
     target = next(case for case in view["cases"] if case["id"] == added["id"])
     assert target["intent_pending"] is True
 

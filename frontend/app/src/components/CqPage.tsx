@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { CqAuditEntry, CqCoverageResponse, CqLocateResult, CqResumeResponse, CqRun, CqSetCase, CqSetResponse } from '../api/client';
+import type { CqAuditEntry, CqCoverageResponse, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse } from '../api/client';
 import { EXPECTED_TYPE_OPTIONS, STATUS_OPTIONS, assertionSummaryText, expectedTypeLabel, statusLabel } from '../lib/cqLabels';
 import { plainCopy } from '../lib/cqCopy';
 import CqTrainingPage from './CqTrainingPage';
@@ -38,6 +38,7 @@ export default function CqPage() {
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [resumePreview, setResumePreview] = useState<CqResumeResponse | null>(null);
   const [recentAudit, setRecentAudit] = useState<CqAuditEntry[]>([]);
+  const [metrics, setMetrics] = useState<CqMetricsResponse | null>(null);
   const [showGlossary, setShowGlossary] = useState(false);
 
   const load = useCallback(async () => {
@@ -47,12 +48,14 @@ export default function CqPage() {
       const next = await api.cqSet();
       setData(next);
       setSelected((current) => current ?? (next.cases[0] ? caseKey(next.cases[0], 0) : null));
-      const [healthResult, resumeResult, auditResult] = await Promise.allSettled([
-        api.health(), api.cqResume(), api.cqAudit(5),
+      const [healthResult, resumeResult, auditResult, metricsResult, coverageResult] = await Promise.allSettled([
+        api.health(), api.cqResume(), api.cqAudit(5), api.cqMetrics(), api.cqCoverage(),
       ]);
       if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
       if (resumeResult.status === 'fulfilled') setResumePreview(resumeResult.value);
       if (auditResult.status === 'fulfilled') setRecentAudit(auditResult.value.entries);
+      if (metricsResult.status === 'fulfilled') setMetrics(metricsResult.value);
+      if (coverageResult.status === 'fulfilled') setCoverage(coverageResult.value);
       try {
         const history = await api.cqRuns();
         setRuns(history.runs);
@@ -182,10 +185,20 @@ export default function CqPage() {
   const agentText = agentEntry
     ? `最近${auditActionLabel(agentEntry.action)}${agentEntry.case_id ? ` ${agentEntry.case_id}` : ''} · ${agentEntry.ts || ''}`
     : `已准备 ${summary?.total ?? 0} 道题，等待你确认或运行评估`;
-  const mismatch = Boolean(summary && summary.total > 0 && summary.located === 0);
+  const mismatch = Boolean(
+    coverage?.summary?.likely_mismatch
+    || (summary && summary.total > 0 && summary.located === 0),
+  );
   const ontologyName = String(health?.ontology || '');
   const ontologyLoadedAt = String(health?.loaded_at || '');
   const domainName = String(health?.domain || '');
+  const suiteDisplay = data?.suite ? '默认题集' : '未命名题集';
+  const lifecycleSummary = resumePreview?.lifecycle?.summary;
+  const cqm = lifecycleSummary?.cqm ?? null;
+  const graduatedQuestions = lifecycleSummary?.graduated_questions ?? 0;
+  const targetQuestions = lifecycleSummary?.target_questions ?? data?.summary?.target_questions ?? 20;
+  const quality = lifecycleSummary?.quality ?? {};
+  const cqmAvailable = !mismatch && typeof cqm === 'number' && targetQuestions > 0;
   const locatedPct = summary?.total ? Math.round((summary.located / summary.total) * 100) : 0;
   const answerablePct = summary?.total ? Math.round((summary.answerable / summary.total) * 100) : 0;
   const trend = runs.length > 1
@@ -202,6 +215,16 @@ export default function CqPage() {
       setCoverage(null);
     } finally {
       setCoverageLoading(false);
+    }
+  };
+
+  const requestCases = async () => {
+    setError(null);
+    try {
+      await api.cqRequestCases({ note: '请根据当前本体生成候选题' });
+      setNotice('已请求智能体生成候选题；生成后点「刷新」查看，你只需确认或驳回。');
+    } catch (e) {
+      setError(`请求生成失败：${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -228,7 +251,7 @@ export default function CqPage() {
               : '每题走到生命周期哪一段、需要你做什么；待决卡直接回答，题卡内可下钻完整轨迹，下区是全局历史。'}
           </p>
           <p className="cq-meta">
-            当前题集：<b>{data?.suite || '未命名题集'}</b>
+            当前题集：<b title={data?.suite ? `系统标识：${data.suite}` : ''}>{suiteDisplay}</b>
             {data?.updated_at ? `（更新于 ${data.updated_at}）` : ''}
             {domainName ? <> · 当前领域：<b>{domainName}</b></> : null}
             {ontologyLoadedAt ? <> · 本体加载于 {ontologyLoadedAt}</> : null}
@@ -280,6 +303,11 @@ export default function CqPage() {
             <button type="button" className="btn secondary" onClick={() => setShowGlossary((value) => !value)}>
               {showGlossary ? '收起术语说明' : '术语说明'}
             </button>
+            {mode === 'leader' && (
+              <button type="button" className="btn secondary" onClick={() => void requestCases()}>
+                请求智能体生成候选题
+              </button>
+            )}
             <button type="button" className="btn secondary" onClick={() => void load()} disabled={loading || busy != null}>
               刷新
             </button>
@@ -378,6 +406,44 @@ export default function CqPage() {
                     </button>
                   )}
                 </div>
+              )}
+
+              {lifecycleSummary && (
+                <section className="cq-maturity" aria-label="成熟度">
+                  <div className="cq-maturity-main">
+                    <span>成熟度 CQM</span>
+                    <b>{cqmAvailable ? `${Math.round((cqm ?? 0) * 100)}%` : '不可用'}</b>
+                    <span className="guide-muted">
+                      已毕业 {graduatedQuestions} / 目标 {targetQuestions} 题
+                    </span>
+                  </div>
+                  <p className="guide-muted">
+                    目标题量 = 本体关键术语数（当前 {data?.summary?.schema_terms ?? '—'} 个）× 0.5（最低 20），不随删题变化；毕业 = 已锚定 + 已分型 + 有断言 + 回归通过 + 未归档。
+                    {!cqmAvailable && mismatch ? ' 当前题集与本体可能不匹配，CQM 暂不可用。' : ''}
+                  </p>
+                  <div className="cq-quality-grid">
+                    <span>已锚定 {quality.anchored ?? 0}</span>
+                    <span>已分型 {quality.validated ?? 0}</span>
+                    <span>可答 {quality.answerable ?? 0}</span>
+                    <span>留存 {quality.retained ?? 0}</span>
+                    <span>毕业 {quality.graduated ?? 0}</span>
+                  </div>
+                </section>
+              )}
+
+              {metrics && (
+                <details className="cq-metrics-panel">
+                  <summary>协同指标（产品观测）</summary>
+                  <div className="cq-metrics-grid">
+                    <span>决策面填充率：{percentOrNA(metrics.decision_fill_rate)}</span>
+                    <span>智能体建议采纳率：{percentOrNA(metrics.adoption_rate)}</span>
+                    <span>单题往返轮次中位数：{metrics.round_trips_median ?? '—'}</span>
+                    <span>决策时延中位数：{delayOrNA(metrics.decision_latency_median_seconds)}</span>
+                  </div>
+                  <p className="guide-muted">
+                    护栏三项（毕业留存 / 工具报错 / cq-test 纳入 CI）当前无独立数据源，未伪造数值。
+                  </p>
+                </details>
               )}
             </>
           )}
@@ -570,6 +636,7 @@ export default function CqPage() {
                               {hasLatinIdentifier(item.cq) && (
                                 <span className="cq-badge muted" title="题干里的英文是本体的类/属性/个体标识符，不是错别字">含本体标识符</span>
                               )}
+                              {item.graduated && <span className="cq-badge ok">已毕业</span>}
                               {item.answerable ? <span className="cq-badge ok">可答</span> : null}
                             </span>
                           </button>
@@ -637,6 +704,16 @@ function caseKey(item: CqSetCase, index: number): string {
 
 function hasLatinIdentifier(text?: string | null): boolean {
   return /[A-Za-z][A-Za-z0-9_-]{2,}/.test(String(text || ''));
+}
+
+function percentOrNA(value?: number | null): string {
+  return typeof value === 'number' ? `${Math.round(value * 100)}%` : '—';
+}
+
+function delayOrNA(value?: number | null): string {
+  if (typeof value !== 'number') return '—';
+  if (value < 60) return `${Math.round(value)} 秒`;
+  return `${Math.round(value / 60)} 分钟`;
 }
 
 function lastRunLabel(earl?: unknown, conclusion?: unknown): string {

@@ -115,6 +115,7 @@ def test_cq_mcp_surface_is_consolidated_and_prefixed():
     server = mcp_server.build_cq_server(lambda: None, lambda: ("agent_task", None))
     names = sorted(tool.name for tool in asyncio.run(server.list_tools()))
     assert names == [
+        "cq_action_complete",
         "cq_agenda",
         "cq_audit",
         "cq_author",

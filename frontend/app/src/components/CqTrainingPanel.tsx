@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type {
   CqDecision,
@@ -70,12 +70,19 @@ export default function CqTrainingPanel({
   const [caseEvents, setCaseEvents] = useState<CqTimelineItem[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
+  const viewReported = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setResume(await api.cqResume());
+      const next = await api.cqResume();
+      setResume(next);
+      if (!viewReported.current) {
+        viewReported.current = true;
+        const pending = (next.lifecycle?.summary?.pending_questions ?? 0) > 0;
+        void api.cqTelemetryView({ pending }).catch(() => undefined);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -481,13 +488,22 @@ function CaseCard({
   return (
     <article className={`cq-case-card stage-${item.stage}${focus ? ' focus' : ''}`}>
       <div className="cq-case-card-head">
-        <span className="cq-case-id">{item.case_id}</span>
+        <span className="cq-case-id" title={`题目 ID：${item.case_id}`}>#{item.ordinal ?? item.case_id}</span>
         <h4>{plainCopy(item.cq) || '未命名题目'}</h4>
         <span className={`cq-stage-badge stage-${item.stage}`}>{item.stage_label}</span>
+        {item.graduated && <span className="cq-badge ok">已毕业</span>}
         {item.failure_triggered && <span className="cq-stage-alert">回归失败</span>}
         {item.intent_pending && <span className="guide-badge">意图待确认</span>}
       </div>
       <StageBar stage={item.stage} onSelect={onHistory} />
+      {!item.graduated && (item.blockers?.length ?? 0) > 0 && (
+        <div className="cq-case-blockers">还差：{item.blockers?.join(' / ')}</div>
+      )}
+      {(item.pending_actions?.length ?? 0) > 0 && (
+        <div className="cq-case-action-pending">
+          智能体下一步：{item.pending_actions?.map((action) => ACTION_LABELS[action.action] || action.action).join('、')}
+        </div>
+      )}
       {decision ? (
         <DecisionCard
           decision={decision}
@@ -867,6 +883,16 @@ function runStateLabel(state: string): string {
   if (state === 'not_tested') return '未测试';
   return state || '—';
 }
+
+const ACTION_LABELS: Record<string, string> = {
+  update_expectation: '改预期',
+  update_ontology: '补本体/术语',
+  revise_case: '改问法',
+  delete_case: '删题',
+  rerun_regression: '重跑回归',
+  lock_graduation: '锁定毕业',
+  generate_cases: '生成候选题',
+};
 
 const EVENT_LABELS: Record<string, string> = {
   decision_asked: '提问',

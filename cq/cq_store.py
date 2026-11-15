@@ -34,6 +34,7 @@ from cq.constants import (
     STATUS_UNSET,
 )
 from reasoner.cq_locate import locate_cq
+from ontology_plugin_sdk.cq import tbox
 
 FILE_NAME = "cq_set.json"
 AUDIT_FILE = "cq_set.audit.jsonl"
@@ -620,6 +621,17 @@ def build_view(engine, data: dict) -> dict:
         is_answerable = bool(regression) and conclusion > 0
         expected_type = _display_expected_type(case.get("expected_type"))
         status = _display_status(case.get("status"))
+        blockers = []
+        if not is_located:
+            blockers.append("未锚定")
+        if expected_type == EXPECTED_TYPE_UNKNOWN:
+            blockers.append("未分型")
+        if not regression:
+            blockers.append("缺断言")
+        if not is_answerable:
+            blockers.append("未通过")
+        if status == "archived":
+            blockers.append("已归档")
         by_type[expected_type] += 1
         by_status[status] += 1
         if is_located:
@@ -633,12 +645,20 @@ def build_view(engine, data: dict) -> dict:
             "regression": regression,
             "located": is_located,
             "answerable": is_answerable,
+            "graduated": not blockers,
+            "blockers": blockers,
             "location": location,
             "assertion_summary": assertion_summary(regression),
         })
 
     total = len(enriched)
     gap = total - located
+    try:
+        schema = tbox.schema_map(engine)
+        term_count = len(schema.get("classes") or []) + len(schema.get("properties") or [])
+    except Exception:  # noqa: BLE001 —— 目标题量是展示口径，失败不拖垮概览
+        term_count = 0
+    target_questions = max(20, round(term_count * 0.5)) if term_count else 20
     return {
         "suite": data.get("suite") or "",
         "version": data.get("version", 1),
@@ -652,6 +672,8 @@ def build_view(engine, data: dict) -> dict:
             "gap": gap,
             "coverage_light": round(located / total, 3) if total else 0.0,
             "coverage_real": round(answerable / total, 3) if total else 0.0,
+            "target_questions": target_questions,
+            "schema_terms": term_count,
         },
         "cases": enriched,
     }

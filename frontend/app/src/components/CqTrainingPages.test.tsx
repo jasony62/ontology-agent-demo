@@ -209,7 +209,8 @@ describe('训练标签（#203）', () => {
     expect(timelineCalls()).toBeGreaterThan(before);
     const writes = vi.mocked(fetch).mock.calls
       .filter(([, init]) => String(init?.method || 'GET').toUpperCase() !== 'GET')
-      .filter(([url]) => !String(url).includes('/cq/decision'));
+      .filter(([url]) => !String(url).includes('/cq/decision'))
+      .filter(([url]) => !String(url).includes('/cq/telemetry/view'));
     expect(writes).toHaveLength(0);
   });
 

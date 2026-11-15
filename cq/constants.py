@@ -58,6 +58,12 @@ DECISION_CONCLUSIONS = ("adopt", "reject", "defer")
 # 依据来源：自己判断 / 已问他人确认（人名放 follow_up_with）。
 FEEDBACK_BASES = ("self", "expert")
 FEEDBACK_SOURCES = ("direct", "agent_relay")
+# 决策回写的机器行动（#238）：状态与允许的动作名。
+ACTION_STATUSES = ("done", "failed")
+ACTION_NAMES = (
+    "update_expectation", "update_ontology", "revise_case", "delete_case",
+    "rerun_regression", "lock_graduation", "generate_cases",
+)
 
 # 状态翻转族：只能经 cq_decision 写入，通用写工具拒绝。
 TRAINING_STATE_EVENTS = (
@@ -78,6 +84,9 @@ TRAINING_OBSERVATION_EVENTS = (
     "iteration_accepted",
     "attribution_conclusion",
     "circuit_breaker",
+    "action_requested",
+    "action_completed",
+    "workbench_viewed",
 )
 TRAINING_EVENTS = TRAINING_STATE_EVENTS + TRAINING_OBSERVATION_EVENTS
 
@@ -151,5 +160,21 @@ TRAINING_EVENT_SCHEMAS: dict[str, dict[str, tuple[type, bool, tuple | None]]] = 
     "circuit_breaker": {
         "reason": (str, True, None),
         "decision_id": (str, False, None),
+    },
+    "action_requested": {
+        "action_id": (str, True, None),
+        "action": (str, True, ACTION_NAMES),
+        "decision_id": (str, False, None),
+        "case_id": (str, False, None),
+        "conclusion": (str, False, DECISION_CONCLUSIONS),
+        "note": (str, False, None),
+    },
+    "action_completed": {
+        "action_id": (str, True, None),
+        "status": (str, True, ACTION_STATUSES),
+        "note": (str, False, None),
+    },
+    "workbench_viewed": {
+        "pending": (bool, True, None),
     },
 }

@@ -866,6 +866,21 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 
+/* 次级动作按钮：白底描边、文字居中；避免继承主按钮的蓝色实心与左偏内边距 */
+.btn.link {
+  background: #fff;
+  border-color: var(--border);
+  color: var(--primary);
+  height: var(--control-h);
+  padding: 0 14px;
+  justify-content: center;
+  text-align: center;
+  white-space: normal;
+  font-weight: 500;
+}
+.btn.link:hover { background: var(--primary-soft); border-color: var(--border-strong); }
+.btn.link:active { transform: none; }
+
 .btn.secondary {
   background: #fff;
   color: var(--primary);
@@ -1592,6 +1607,24 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-board-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .cq-board-head h4 { font-size: var(--fs-title); color: var(--heading); margin-bottom: 2px; }
 .cq-board-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cq-board-controls select {
+  height: var(--control-h);
+  padding: 0 26px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: #fff;
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%235a6b7f' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+.cq-board-controls select:hover { border-color: var(--border-strong); }
+.cq-board-controls select:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
 .cq-stage-filters { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
 .cq-case-board { display: flex; flex-direction: column; gap: 10px; }
 .cq-case-card {
@@ -1675,7 +1708,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   font-size: 12px; color: var(--text); padding-bottom: 6px;
 }
 .cq-tech-entry { margin-top: 2px; }
-.cq-tech-toggle { align-self: flex-start; padding-left: 0; }
+.cq-tech-toggle { align-self: flex-start; }
 .cq-tech-body {
   margin-top: 4px; padding: 6px 8px; border-radius: 6px; background: var(--panel-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -1707,7 +1740,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   margin-left: 6px; padding: 0 5px; border-radius: 3px;
   background: rgba(255, 255, 255, .24); font-size: 10px;
 }
-.cq-training-more { align-self: flex-start; padding-left: 0; }
+.cq-training-more { align-self: flex-start; }
 .cq-training-free { display: flex; flex-direction: column; gap: 6px; }
 .cq-training-free textarea, .cq-training-free input {
   width: 100%; border: 1px solid var(--border); border-radius: 6px;

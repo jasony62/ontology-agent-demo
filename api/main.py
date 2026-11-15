@@ -45,7 +45,7 @@ import shutil
 import tempfile
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Path as ApiPath, Body
@@ -90,6 +90,7 @@ from domains import DomainManager, DomainContractError, DomainNotFoundError
 from domains.imported import display_filename
 from . import workspaces
 from cq import cq_runner, cq_store, training_service
+from cq import agenda as cq_agenda
 from cq import coverage as cq_coverage
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
@@ -2297,7 +2298,7 @@ def cq_case_events(
     limit: int = Query(500, ge=1, le=1000, description="最多返回多少条"),
 ):
     """题卡「这道题的卷」（#219 / R4）：只读、按时间正序。"""
-    ontology_id, _ = _cq_identity()
+    ontology_id, seed = _cq_identity()
     data = cq_store.get_set(ontology_id)
     known = {
         str(case.get("id"))
@@ -2307,10 +2308,30 @@ def cq_case_events(
     if case_id not in known:
         raise HTTPException(status_code=404, detail=f"题目不存在：{case_id}")
     result = training_service.timeline(ontology_id, case_id=case_id, limit=limit)
+    items = list(reversed(result["items"]))
+    # #219：议程是读时推导、尚未物化的当前待决，也应在题卷里可见。
+    agenda_item = next(
+        (item for item in cq_agenda.build_agenda(ENGINE, ontology_id, seed)
+         if item.get("case_id") == case_id),
+        None,
+    )
+    if agenda_item is not None:
+        items.append({
+            "source": "training",
+            "category": "decisions",
+            "kind": "decision_agenda",
+            "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "ref": agenda_item.get("decision_id"),
+            "case_id": case_id,
+            "summary": f"待决：{agenda_item.get('question') or ''}",
+            "actor_type": "agent",
+            "actor": "mcp",
+            "content": agenda_item,
+        })
     return {
         "ontology_id": ontology_id,
         "case_id": case_id,
-        "items": list(reversed(result["items"])),
+        "items": items,
     }
 
 

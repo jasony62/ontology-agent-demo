@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type {
   CqDecision,
@@ -102,6 +102,8 @@ export default function CqTrainingPanel({
 
   useEffect(() => {
     if (focusCaseId) {
+      setFilter('all');
+      setFocusMode(false);
       void openHistory(focusCaseId);
       onFocusHandled?.();
     }
@@ -162,7 +164,6 @@ export default function CqTrainingPanel({
     return rows;
   }, [cases, filter, sortMode]);
   const focusCase = pendingCases[Math.min(focusIndex, Math.max(0, pendingCases.length - 1))];
-  const openCase = cases.find((item) => item.case_id === openCaseId) ?? null;
   const decisionCounts = summary?.decision_counts ?? {
     pending: resume?.counts?.pending ?? 0,
     followup: resume?.counts?.followup ?? 0,
@@ -261,6 +262,18 @@ export default function CqTrainingPanel({
                     onHistory={(stage) => void openHistory(focusCase.case_id, stage)}
                     focus
                   />
+                  {openCaseId === focusCase.case_id && (
+                    <CaseHistory
+                      key={`${focusCase.case_id}-${historyStage}`}
+                      caseId={focusCase.case_id}
+                      title={focusCase.cq}
+                      items={caseEvents}
+                      loading={eventsLoading}
+                      error={eventsError}
+                      initialStage={historyStage}
+                      onClose={() => setOpenCaseId(null)}
+                    />
+                  )}
                   <div className="cq-focus-actions">
                     <button
                       type="button"
@@ -327,30 +340,30 @@ export default function CqTrainingPanel({
             ) : (
               <div className="cq-case-board">
                 {filtered.map((item) => (
-                  <CaseCard
-                    key={item.case_id}
-                    item={item}
-                    busy={busy}
-                    onSubmit={submit}
-                    onHistory={(stage) => void openHistory(item.case_id, stage)}
-                  />
+                  <Fragment key={item.case_id}>
+                    <CaseCard
+                      item={item}
+                      busy={busy}
+                      onSubmit={submit}
+                      onHistory={(stage) => void openHistory(item.case_id, stage)}
+                    />
+                    {openCaseId === item.case_id && (
+                      <CaseHistory
+                        key={`${item.case_id}-${historyStage}`}
+                        caseId={item.case_id}
+                        title={item.cq}
+                        items={caseEvents}
+                        loading={eventsLoading}
+                        error={eventsError}
+                        initialStage={historyStage}
+                        onClose={() => setOpenCaseId(null)}
+                      />
+                    )}
+                  </Fragment>
                 ))}
               </div>
             )}
           </section>
-          )}
-
-          {openCaseId && (
-            <CaseHistory
-              key={`${openCaseId}-${historyStage}`}
-              caseId={openCaseId}
-              title={openCase?.cq || openCaseId}
-              items={caseEvents}
-              loading={eventsLoading}
-              error={eventsError}
-              initialStage={historyStage}
-              onClose={() => setOpenCaseId(null)}
-            />
           )}
 
           {gaps.length > 0 && (
@@ -743,6 +756,7 @@ function runStateLabel(state: string): string {
 
 const EVENT_LABELS: Record<string, string> = {
   decision_asked: '提问',
+  decision_agenda: '待决议程',
   feedback_received: '反馈',
   decision_resolved_by_self: '智能体自行处理',
   intent_pending_marked: '意图待确认',
@@ -773,7 +787,7 @@ function eventStage(event: CqTimelineItem): string {
     return state === 'pass' ? 'passed' : 'regression';
   }
   if (kind === 'iteration_archive' || kind === 'gate_result') return 'fixing';
-  if (kind === 'decision_asked' || kind === 'intent_pending_marked') return 'pending';
+  if (kind === 'decision_asked' || kind === 'decision_agenda' || kind === 'intent_pending_marked') return 'pending';
   if (kind === 'feedback_received') {
     return (event.content as Record<string, unknown> | undefined)?.conclusion === 'defer'
       ? 'followup'

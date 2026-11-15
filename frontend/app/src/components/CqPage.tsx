@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { CqAuditEntry, CqLocateResult, CqRun, CqSetCase, CqSetResponse } from '../api/client';
+import type { CqAuditEntry, CqCoverageResponse, CqLocateResult, CqRun, CqSetCase, CqSetResponse } from '../api/client';
 import { EXPECTED_TYPE_OPTIONS, STATUS_OPTIONS, assertionSummaryText, expectedTypeLabel, statusLabel } from '../lib/cqLabels';
 import CqTrainingPage from './CqTrainingPage';
 import TechDetails from './TechDetails';
@@ -30,6 +30,9 @@ export default function CqPage() {
   const [showAudit, setShowAudit] = useState(false);
   const [audit, setAudit] = useState<CqAuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [coverage, setCoverage] = useState<CqCoverageResponse | null>(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [coverageError, setCoverageError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,6 +165,19 @@ export default function CqPage() {
   };
 
   const summary = data?.summary;
+
+  const loadCoverage = async () => {
+    setCoverageLoading(true);
+    setCoverageError(null);
+    try {
+      setCoverage(await api.cqCoverage());
+    } catch (e) {
+      setCoverageError(`检查覆盖失败：${e instanceof Error ? e.message : String(e)}`);
+      setCoverage(null);
+    } finally {
+      setCoverageLoading(false);
+    }
+  };
 
   const pageRef = useRef<HTMLDivElement>(null);
   // 切标签时回到顶部：训练标签的待决卡片必须首屏可见（#203 A2）
@@ -354,6 +370,61 @@ export default function CqPage() {
                   )}
                 </div>
               </div>
+
+              {mode === 'expert' && (
+                <section className="panel cq-mention-coverage" aria-label="题干提及覆盖">
+                  <div className="cq-mention-head">
+                    <div>
+                      <h3>质量盲区（题干提及）</h3>
+                      <p className="guide-muted">
+                        只统计题干字面提到的类/属性，不代表解答依赖；个体与枚举值单列。
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={() => void loadCoverage()}
+                      disabled={coverageLoading}
+                    >
+                      {coverageLoading ? '检查中…' : '检查覆盖'}
+                    </button>
+                  </div>
+                  {coverageError && <div className="element-readonly-note">{coverageError}</div>}
+                  {coverage && (
+                    <>
+                      <p className="guide-muted">
+                        共 {coverage.summary.elements} 个类/属性，题干提到 {coverage.summary.mentioned} 个
+                        （{Math.round(coverage.summary.mention_coverage * 100)}%），未提到 {coverage.summary.uncovered} 个。
+                        {coverage.summary.locate_errors > 0
+                          ? ` ${coverage.summary.locate_errors} 道题定位失败，结果不完整。`
+                          : ''}
+                      </p>
+                      {coverage.uncovered.length === 0 ? (
+                        <div className="guide-empty-inline">所有类/属性都已被题干提到。</div>
+                      ) : (
+                        <div className="cq-mention-list">
+                          {coverage.uncovered.map((item) => (
+                            <span
+                              key={`${item.kind}-${item.name}`}
+                              className="cq-mention-chip"
+                              title={`${item.kind === 'class' ? '类' : '属性'}：${item.name}`}
+                            >
+                              {item.label || item.name}
+                              <i>{item.kind === 'class' ? '类' : '属性'}</i>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {coverage.unmatched_anchors.length > 0 && (
+                        <details className="cq-mention-extra">
+                          <summary>未匹配到类/属性的词（个体 / 枚举 / 分词，共 {coverage.summary.unmatched_anchors} 个）</summary>
+                          <span>{coverage.unmatched_anchors.map((item) => item.term).join('、')}</span>
+                        </details>
+                      )}
+                    </>
+                  )}
+                </section>
+              )}
 
               <div className="cq-body">
                 <section className="panel cq-list" aria-label="CQ 列表">

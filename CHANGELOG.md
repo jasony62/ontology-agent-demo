@@ -7,6 +7,7 @@
 
 ### Added
 
+- **题干提及覆盖只读视图（#215 / #159-A）**：新增 `GET /api/domains/current/cq/coverage` 与 MCP `cq_coverage`（工具数 16 → 17）。用 `tbox.schema_map` 的元素全集 + `cq_locate` 锚点，返回类/属性的题干提及覆盖、未覆盖列表与未匹配锚点；明确标注「题干提及（字面）」，不代表解答依赖。不改 CQ schema、不落盘；前端只在专家模式提供「质量盲区（题干提及）」按需检查。#159 同时拆成 A/B/C：B（语义 provenance）与 C（多集）标记 deferred。
 - **题目页领导模式与结构化决策回收（#210 / #211 / #212）**：
   - **#210 零 SPARQL**：CQ 题目页默认「领导模式」，隐藏 SPARQL `query` / `expect` 与 `expected_type` / `status` 下拉，只展示业务语义与 `assertion_summary`；确认后有断言自动启用、无断言保持草稿，驳回退回智能体；「专家模式」显式切换后才出现原始查询。
   - **#211 决策卡自包含**：议程生成的决策卡新增 `context` 现场上下文（定位证据 + 回归结论的业务话）；智能体经 `cq_decision ask` 也可传 `context`，读卡即可决策，不必跳题目页。

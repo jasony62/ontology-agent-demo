@@ -90,6 +90,7 @@ from domains import DomainManager, DomainContractError, DomainNotFoundError
 from domains.imported import display_filename
 from . import workspaces
 from cq import cq_runner, cq_store, training_service
+from cq import coverage as cq_coverage
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
@@ -2214,6 +2215,25 @@ def cq_regression_runs(limit: int = Query(20, ge=1, le=100, description="最多�
     ontology_id, _ = _cq_identity()
     runs = cq_store.list_runs(ontology_id, limit=limit)
     return {"ontology_id": ontology_id, "runs": runs}
+
+
+@app.get(
+    "/api/domains/current/cq/coverage",
+    tags=["通用查询"],
+    summary="CQ 题干提及覆盖（只读）",
+    responses={
+        200: {"model": OpenEnvelope, "description": "类/属性的题干提及覆盖、未覆盖列表与未匹配锚点；字面口径，不代表解答依赖。"},
+        **ERROR_400,
+    },
+)
+def cq_mention_coverage():
+    """哪些类/属性从未被任何 CQ 题干提到（#215，字面口径、纯读）。"""
+    ontology_id, seed = _cq_identity()
+    try:
+        result = cq_coverage.coverage(ENGINE, ontology_id, seed)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ontology_id": ontology_id, **result}
 
 
 @app.get(

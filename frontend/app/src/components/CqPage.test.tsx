@@ -57,6 +57,23 @@ const LOCATE = {
   hint: '命中 1 条证据（结论性 0 条）。',
 };
 
+const COVERAGE = {
+  ontology_id: 'ws-1',
+  summary: {
+    cases: 2, elements: 2, mentioned: 1, uncovered: 1,
+    mention_coverage: 0.5, cases_without_anchor: 0,
+    locate_errors: 0, unmatched_anchors: 1,
+  },
+  elements: [
+    { name: 'Agent', label: '智能体', kind: 'class', mentioned: true, case_ids: ['Q1'] },
+    { name: 'Certification', label: '资质认证', kind: 'class', mentioned: false, case_ids: [] },
+  ],
+  uncovered: [
+    { name: 'Certification', label: '资质认证', kind: 'class', mentioned: false, case_ids: [] },
+  ],
+  unmatched_anchors: [{ term: '登录模块开发', source: 'label' }],
+};
+
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
@@ -66,6 +83,9 @@ function stubFetch(set = SET) {
     const method = String(init?.method || 'GET').toUpperCase();
     if (url.includes('/cq/locate')) {
       return { ok: true, status: 200, json: async () => LOCATE } as unknown as Response;
+    }
+    if (url.includes('/cq/coverage')) {
+      return { ok: true, status: 200, json: async () => COVERAGE } as unknown as Response;
     }
     if (url.includes('/cq/regression/run')) {
       return {
@@ -299,6 +319,39 @@ describe('CQ 集页（#151 / #203）', () => {
     act(() => leader.click());
     expect([...container!.querySelectorAll('.cq-editor .field-label')]
       .map((node) => node.textContent)).not.toContain('SPARQL query');
+  });
+
+  it('专家模式可检查题干提及覆盖，领导模式不出现（#215）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelector('.cq-mention-coverage')).toBeNull();
+
+    const expert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '专家模式')!;
+    act(() => expert.click());
+    const panel = container!.querySelector('.cq-mention-coverage');
+    expect(panel).not.toBeNull();
+    expect(panel!.textContent).toContain('质量盲区（题干提及）');
+    expect(panel!.textContent).toContain('不代表解答依赖');
+
+    const check = [...panel!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '检查覆盖')!;
+    await act(async () => { check.click(); });
+    await flush();
+
+    const text = panel!.textContent ?? '';
+    expect(text).toContain('共 2 个类/属性');
+    expect(text).toContain('题干提到 1 个');
+    expect(text).toContain('资质认证');
+    expect(text).toContain('未匹配到类/属性的词');
+    expect(text).toContain('登录模块开发');
+
+    const leader = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '领导模式')!;
+    act(() => leader.click());
+    expect(container!.querySelector('.cq-mention-coverage')).toBeNull();
   });
 
   it('工具栏「运行评估」调用回归端点并提示通过数（#156）', async () => {

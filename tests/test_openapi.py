@@ -48,16 +48,17 @@ MOVED_PATHS = {
 
 
 def test_domain_endpoints_are_namespaced_under_current():
-    """领域端点统一前缀：25 个挂在 /api/domains/current/，旧路径一个不留。
+    """领域端点统一前缀：26 个挂在 /api/domains/current/，旧路径一个不留。
 
-    路径总数 25 域内 + 21 其余 = 46（#55 新增 /api/ontology/proof，
+    路径总数 26 域内 + 21 其余 = 47（#55 新增 /api/ontology/proof，
     #103 新增 /api/domains/current/guide，#115 新增 simulate，
     #124 新增 /api/domains/current/cq/locate，
-        #144 新增 /api/ontology/describe，
-        #150 新增 3 个 /api/domains/current/cq/set|import|export，
-        #154/#156 新增 cases / regression / runs，
-        #165 新增 /api/domains/current/cq/audit，
-        #198 新增 resume / timeline / decision），变的只是 key。旧路径必须从
+    #144 新增 /api/ontology/describe，
+    #150 新增 3 个 /api/domains/current/cq/set|import|export，
+    #154/#156 新增 cases / regression / runs，
+    #165 新增 /api/domains/current/cq/audit，
+    #198 新增 resume / timeline / decision，
+    #215 新增 /api/domains/current/cq/coverage），变的只是 key。旧路径必须从
     `spec["paths"]` 里彻底消失——不做别名、deprecated 或重定向。
     """
     spec = client.get("/openapi.json").json()
@@ -65,11 +66,11 @@ def test_domain_endpoints_are_namespaced_under_current():
     prefixed = {
         path for path in paths if path.startswith("/api/domains/current/")
     }
-    assert len(prefixed) == 25
+    assert len(prefixed) == 26
     assert not MOVED_PATHS & set(paths), (
         f"旧路径仍在 OpenAPI 中：{sorted(MOVED_PATHS & set(paths))}"
     )
-    assert len(paths) == 46
+    assert len(paths) == 47
 
 
 def test_every_operation_is_tagged_and_summarised():

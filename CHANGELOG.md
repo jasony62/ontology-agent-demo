@@ -7,7 +7,15 @@
 
 ### Added
 
-- **手册新增《09 CQ 集管理》（#185 / #186）**：补 CQ 集页在三个平级页中的位置、10 个 REST 端点、10 个 MCP 工具、题目 8 字段 / 题型与状态枚举 / 六种 `expect.type` 判分语义，以及旧 `tool`+`params` 等 7 个字段的迁移对照；README、手册首页、速查表与 FLOW 同步补入口。
+- **CQ 训练过程线上化（#194–#200）**：新增只追加事件流 `training_log.jsonl` 与读时投影 `training_state`；`/mcp/cq` 增加 `cq_decision` / `cq_resume` / `cq_timeline` / `cq_training_write` / `cq_iteration_write`（工具数 10 → 15）；REST 增加 `GET .../cq/resume`、`GET .../cq/timeline`、`POST .../cq/decision`（端点 45 → 48）。当前领域页新增「训练现场」面板，页头新增「训练时间线」「迭代终审」两页。
+- **用户代价（升级前请读）**：
+  - **三处会拒绝旧脚本的硬校验**：① 自定义决策类别被拒（只允许 semantic / expectation / priority / term / scope）；② 通用写工具不能写决策生命周期事件；③ 推荐项必须属于选项（选项 ≥2）。
+  - **两处能力放宽**：「挂起必填跟进对象」「代传单列备注」改为 G6 缺口提示（只提示、不阻断提交）。
+  - **四处命名 / 调用方式变更**：`intent` → `expectation`；`decide` → `feedback`；`cq_ask` / `cq_decide` / `cq_withdraw_question` 合并为 `cq_decision(action=ask|feedback|withdraw)`；「挂起」不再是用户动作，反馈与状态解耦。
+  - 未知事件 / 漏必填 / 额外字段一律拒绝；提问侧强制非开放题，回答侧开放（选项 / 自由文本 / 跟进对象 / 全空都可提交）。
+  - 每次读现场都从事件流重放；服务端不做智能推荐 / 自动归因 / 业务话生成 / 反馈语义判断。
+  - P0 训练面板只做「状态 + 待决 + 反馈」，时间线与迭代终审是 P1 页面。
+- **手册新增《09 CQ 集管理》（#185 / #186）**：补 CQ 集页在三个平级页中的位置、REST 端点、MCP 工具、题目 8 字段 / 题型与状态枚举 / 六种 `expect.type` 判分语义，以及旧 `tool`+`params` 等 7 个字段的迁移对照；README、手册首页、速查表与 FLOW 同步补入口。
 
 ### Fixed
 

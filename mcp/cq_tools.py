@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 from api import workspaces
-from cq import cq_runner, cq_store
+from cq import cq_runner, cq_store, training_service
 from cq.constants import EXPECTED_TYPES
 from ontology_plugin_sdk.cq import gen, tbox
 from reasoner.cq_locate import locate_cq
@@ -67,8 +67,10 @@ def register_tools(server, get_engine, get_cq_context) -> None:
                     "content": cq_store.export_cq_test(data)}
         if format != "json":
             return _error("bad_format", f"不支持的格式：{format}")
+        # #194：pending_decisions / cases[].intent_pending 只在读接口层合并；
+        # 原始 cq_set.json 不写这两个视图字段。
         return {"ok": True, "ontology_id": target,
-                **cq_store.build_view(get_engine(), data)}
+                **training_service.set_view(get_engine(), target, seed)}
 
     @server.tool(description=(
         "CQ 依据定位（只读、不落库）：基于当前本体词表做最长字典匹配，返回"
@@ -148,6 +150,11 @@ def register_tools(server, get_engine, get_cq_context) -> None:
             return _error("invalid_case", str(exc))
         except Exception as exc:  # noqa: BLE001
             return _error("write_failed", str(exc))
+        # #197：服务端可见的出题 / 放行动作自动留痕（技能侧不必上报）
+        training_service.auto_case_event(
+            target, str(item.get("id") or ""),
+            added=not exists, status=str(item.get("status") or ""),
+        )
         return {"ok": True, "ontology_id": target, "case": item,
                 "action": "update" if exists else "add"}
 
@@ -307,8 +314,11 @@ def register_tools(server, get_engine, get_cq_context) -> None:
             )
             run["actor_type"] = "agent"
             run["actor"] = "mcp"
-            cq_store.save_run(target, run)
+            run_path = cq_store.save_run(target, run)
             cq_store.record_run_cache(target, run)
+            # #197：回归落盘自动留痕
+            training_service.auto_regression_event(
+                target, run, f"runs/{run_path.name}")
             if run["total"] > 0:
                 cq_store.record_metric(target, "cq_evaluated_real", {
                     "actor_type": "agent", "actor": "mcp",
@@ -343,6 +353,146 @@ def register_tools(server, get_engine, get_cq_context) -> None:
         except Exception as exc:  # noqa: BLE001
             return _error("audit_failed", str(exc))
         return {"ok": True, "ontology_id": target, "entries": entries}
+
+    @server.tool(description=(
+        "唯一决策入口（#195）：action=ask 提问 / feedback 反馈 / withdraw 自答撤问。"
+        "反馈不设状态参数，状态由事件流读时投影；ask 类别固定五类，选项≥2 且推荐项属于选项。"))
+    def cq_decision(
+        action: str,
+        kind: str = "",
+        question: str = "",
+        options: list[str] | None = None,
+        recommended: str = "",
+        reason: str = "",
+        background: str = "",
+        case_id: str = "",
+        decision_id: str = "",
+        feedback_text: str = "",
+        option: str = "",
+        follow_up_with: str = "",
+        method: str = "",
+        ontology_id: str = "",
+    ) -> dict:
+        try:
+            target, _ = resolve(ontology_id)
+            if action == "ask":
+                payload = {
+                    "kind": kind, "question": question, "options": options or [],
+                    "recommended": recommended, "reason": reason,
+                    "background": background,
+                }
+                if case_id:
+                    payload["case_id"] = case_id
+            elif action == "feedback":
+                payload = {
+                    "decision_id": decision_id,
+                    "feedback_text": feedback_text,
+                    "option": option,
+                    "follow_up_with": follow_up_with,
+                }
+            elif action == "withdraw":
+                payload = {"decision_id": decision_id, "method": method}
+            else:
+                return _error("invalid_action", f"未知动作 {action!r}")
+            result = training_service.decide(
+                target, action, payload,
+                actor_type="agent", actor="mcp", source="agent_relay",
+            )
+        except training_service.TrainingError as exc:
+            return _error(exc.code, str(exc))
+        except ValueError as exc:
+            return _error("invalid_event", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return _error("decision_failed", str(exc))
+        return {"ok": True, "ontology_id": target, **result}
+
+    @server.tool(description=(
+        "训练现场自举（#196）：状态摘要 / 上次回归 / 待决 / 待跟进 / 熔断 / 迭代 / "
+        "意图标记 + context_gaps（G1–G6）+ next_suggested。depth=full 时附历史。"))
+    def cq_resume(depth: str = "snapshot", since: str = "",
+                  kinds: list[str] | None = None, limit: int = 200,
+                  ontology_id: str = "") -> dict:
+        try:
+            target, seed = resolve(ontology_id)
+            result = training_service.resume(
+                get_engine(), target, seed,
+                depth=depth, since=since, kinds=kinds, limit=limit,
+            )
+        except training_service.TrainingError as exc:
+            return _error(exc.code, str(exc))
+        except ValueError as exc:
+            return _error("invalid_ontology", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return _error("resume_failed", str(exc))
+        return {"ok": True, "ontology_id": target, **result}
+
+    @server.tool(description=(
+        "训练时间线（#197）：聚合训练事件 + 变更审计 + 回归历史 + 迭代档案，"
+        "支持 since / kinds / limit（默认 200，上限 1000）。只读、不落盘。"))
+    def cq_timeline(since: str = "", kinds: list[str] | None = None,
+                    limit: int = 200, ontology_id: str = "") -> dict:
+        try:
+            target, _ = resolve(ontology_id)
+            result = training_service.timeline(
+                target, since=since, kinds=kinds, limit=limit,
+            )
+        except training_service.TrainingError as exc:
+            return _error(exc.code, str(exc))
+        except ValueError as exc:
+            return _error("invalid_ontology", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return _error("timeline_failed", str(exc))
+        return {"ok": True, "ontology_id": target, **result}
+
+    @server.tool(description=(
+        "通用训练留痕（#197）：写观测 / 证据族事件；大体积 evidence 先落 "
+        "evidence/<事件编号>.json，事件行只含引用。决策生命周期事件请走 cq_decision。"))
+    def cq_training_write(event: str, content: dict | None = None,
+                          evidence: dict | None = None,
+                          ontology_id: str = "") -> dict:
+        try:
+            target, _ = resolve(ontology_id)
+            result = training_service.training_write(
+                target, event, content, evidence,
+                actor_type="agent", actor="mcp",
+            )
+        except training_service.TrainingError as exc:
+            return _error(exc.code, str(exc))
+        except ValueError as exc:
+            return _error("invalid_event", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return _error("write_failed", str(exc))
+        return {"ok": True, "ontology_id": target, **result}
+
+    @server.tool(description=(
+        "迭代档案写入（#199）：iterations/<id>.json 含业务话翻译 / 变更清单 / "
+        "闸门快照 / TTL；同时记 iteration_started / gate_result / applied / accepted。"))
+    def cq_iteration_write(
+        business_translation: str,
+        changes: list | None = None,
+        gate_snapshot: dict | None = None,
+        ttl: str = "",
+        status: str = "applied",
+        ontology_id: str = "",
+    ) -> dict:
+        try:
+            target, _ = resolve(ontology_id)
+            result = training_service.iteration_write(
+                target,
+                business_translation=business_translation,
+                changes=changes or [],
+                gate_snapshot=gate_snapshot or {},
+                ttl=ttl,
+                status=status,
+                actor_type="agent", actor="mcp",
+            )
+        except training_service.TrainingError as exc:
+            return _error(exc.code, str(exc))
+        except ValueError as exc:
+            return _error("invalid_event", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return _error("iteration_failed", str(exc))
+        return {"ok": True, "ontology_id": target, **result}
 
 
 __all__ = ["register_tools"]

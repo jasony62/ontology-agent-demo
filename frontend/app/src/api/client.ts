@@ -464,6 +464,72 @@ export interface CqRunCase {
   hint?: string;
 }
 
+export interface CqDecision {
+  decision_id: string;
+  kind?: string;
+  question?: string;
+  options?: string[];
+  recommended?: string;
+  reason?: string;
+  background?: string;
+  case_id?: string | null;
+  asked_at?: string;
+  since?: string;
+  status?: 'pending' | 'resolved' | 'followup' | 'withdrawn' | string;
+  latest_feedback?: Record<string, unknown> | null;
+  follow_up_with?: string | null;
+}
+
+export interface CqContextGap {
+  gap_type: 'G1' | 'G2' | 'G3' | 'G4' | 'G5' | 'G6' | string;
+  object?: string | null;
+  suggestion: string;
+}
+
+export interface CqResumeResponse {
+  ontology_id: string;
+  depth: 'snapshot' | 'full' | string;
+  summary: CqSetSummary & { pending_decisions: number };
+  last_regression: CqRun | null;
+  pending_decisions: CqDecision[];
+  pending_followups: CqDecision[];
+  counts: Record<string, number>;
+  circuit_breaker: { open: boolean; reason?: string | null; since?: string | null };
+  iterations: Array<Record<string, unknown>>;
+  recent_iteration: Record<string, unknown> | null;
+  intent_pending: string[];
+  context_gaps: CqContextGap[];
+  next_suggested: { action: string; count: number; text: string };
+  history?: CqTimelineItem[];
+}
+
+export interface CqTimelineItem {
+  source: 'training' | 'audit' | 'regression' | 'iteration' | string;
+  category: string;
+  kind?: string;
+  ts?: string;
+  ref?: string | null;
+  summary: string;
+  actor_type?: string;
+  actor?: string;
+  content?: Record<string, unknown>;
+}
+
+export interface CqTimelineResponse {
+  ontology_id: string;
+  items: CqTimelineItem[];
+  limit: number;
+}
+
+export interface CqDecisionResponse {
+  ontology_id: string;
+  action: string;
+  decision_id?: string;
+  status?: string;
+  intent_pending_marked?: boolean;
+  summary?: Record<string, unknown>;
+}
+
 export interface CqRun {
   suite: string;
   ran_at: string;
@@ -509,6 +575,41 @@ export const api = {
 
   /** CQ 集（#150）：读当前集 + 概览 summary */
   cqSet: () => request<CqSetResponse>('/api/domains/current/cq/set'),
+
+  /** 训练现场自举（#196）：状态 / 待决 / 待跟进 / 缺口 / 下一步 */
+  cqResume: (depth: 'snapshot' | 'full' = 'snapshot') =>
+    request<CqResumeResponse>(`/api/domains/current/cq/resume?${new URLSearchParams({ depth })}`),
+
+  /** 训练时间线（#197）：四源聚合，只读 */
+  cqTimeline: (params: { since?: string; kinds?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.since) query.set('since', params.since);
+    if (params.kinds) query.set('kinds', params.kinds);
+    if (params.limit) query.set('limit', String(params.limit));
+    return request<CqTimelineResponse>(`/api/domains/current/cq/timeline?${query}`);
+  },
+
+  /** 决策反馈（#198）：来源与操作者由服务端注入，不接受状态参数 */
+  cqDecision: (payload: {
+    action: 'ask' | 'feedback' | 'withdraw';
+    kind?: string;
+    question?: string;
+    options?: string[];
+    recommended?: string;
+    reason?: string;
+    background?: string;
+    case_id?: string;
+    decision_id?: string;
+    feedback_text?: string;
+    option?: string;
+    follow_up_with?: string;
+    method?: string;
+  }) =>
+    request<CqDecisionResponse>('/api/domains/current/cq/decision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
 
   /** CQ 集整集覆盖（PUT） */
   cqPut: (payload: { suite: string; version?: number; cases: CqSetCase[] }) =>

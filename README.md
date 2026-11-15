@@ -27,9 +27,9 @@
 | ---- | ---- | ---- |
 | **OWL 2 RL 推理引擎** | 加载 OWL 本体并物化推理；SPARQL / 类层次 / 个体 / 属性查询 | `scripts/query.py classes --local` |
 | **业务规则 R1 / R2 / R2a / R2b / R5 / R6** | 能力匹配、任务委派、认证有效期、担责判定、人工介入、双人复核与复核候选；R4 合规冲突由适配器在分配时校验。规则层可审查、可改口径，输出可解释推导链 | `make demo` |
-| **REST API** | 45 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / CQ 集管理与依据定位 / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
-| **MCP Server** | 同进程双端点：`/mcp/ontology`（领域业务 10 + 引擎通用 15）与 `/mcp/cq`（CQ 10），智能体（豆包等）一行配置接入 | `make mcp` |
-| **当前领域单页** | 六问导航：定位 / 能问什么 / 能做什么 / 凭什么可信 / 怎么接入 / 现在跑的是哪一份；示例题按「看一次编排 / 预测一次变化 / 其余示例」分组，预测题在断言图副本上做只读推演、并排展示改动前后 | 页头「当前领域」 |
+| **REST API** | 48 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / CQ 集管理与依据定位 / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
+| **MCP Server** | 同进程双端点：`/mcp/ontology`（领域业务 10 + 引擎通用 15）与 `/mcp/cq`（CQ 15），智能体（豆包等）一行配置接入 | `make mcp` |
+| **当前领域单页** | 六问导航：定位 / 能问什么 / 能做什么 / 凭什么可信 / 怎么接入 / 现在跑的是哪一份；另有「训练现场」面板（待决问题、缺口、点选项 / 自由文本反馈）；示例题按「看一次编排 / 预测一次变化 / 其余示例」分组 | 页头「当前领域」 |
 | **CQ 集页** | 题库总览（承诺 / 已定位 / 可答 / 缺口 + 两档覆盖率）、逐题增删改（题干 / 题型 / 状态 / SPARQL 断言）、变更审计、运行评估、导入导出（JSON / cq-test / JUnit） | 页头「CQ 集」 |
 | **图谱工作台** | React 工作台：三档视图图谱、OWL 源码查看、导入导出、图谱右侧编辑框（草图预览）+ 在线编辑（写盘） | `npm run dev` |
 | **CLI 双通道** | HTTP 优先、失败回退内嵌引擎（`--local` 零依赖） | `python scripts/query.py -h` |
@@ -122,13 +122,15 @@ make demo                                  # 按顺序跑一遍核心接口（�
 bash scripts/backup.sh        # 核心 .owl + extensions/ → backups/<时间戳>/（已被 .gitignore 忽略）
 ```
 
-## 前端应用（三个页面）
+## 前端应用（五个页面）
 
 `frontend/app/` 是基于 [Microsoft Ontology-Playground](https://github.com/microsoft/Ontology-Playground)（MIT）代码实现的功能完整前端：
 
 - **图谱工作台**：Cytoscape.js 交互图谱，三档视图——只看原始的 / 显示推理全貌（默认）/ 只看新推出的；推理新增边以虚线+独立色标注
 - **当前领域单页**：与图谱工作台平级的正式页面，按六问回答「这个包能替我做什么」——定位 / 覆盖范围 / 明确不做什么 / 能力用途（来自 `guide.json`）+ 运行态实测 + 对账；示例题可直接试跑（只读）或给出写盘请求预览，全部数据来自 `GET /api/domains/current/guide`；导入自定义本体后本页整体切成「导入的本体」的只读说明
 - **CQ 集页**：与上两页平级，回答「这份本体答得上什么」——题库总览（承诺 / 已定位 / 可答 / 缺口 + 两档覆盖率）、逐题增删改（题干 / 题型 / 状态 / SPARQL 断言）、变更审计、运行评估、导入导出（JSON / cq-test / JUnit）；REST 与 MCP `/mcp/cq` 共用同一份数据，字段规格见 [09 CQ 集管理](docs/manual/09-CQ集管理.md)
+- **训练时间线**：训练事件 + 审计 + 回归历史 + 迭代档案四源聚合，按类别过滤，反馈原文可回溯；只读
+- **迭代终审**：迭代档案的业务话翻译 / 变更摘要 / 闸门快照；TTL 全文折叠为附件，待人审状态可见
 - **OWL 源码**：RDF/XML 源码语法高亮只读查看，可下载原始文件；编辑请用「在线编辑本体定义」
 - **导入 / 导出**：拖拽上传 `.owl`/`.rdf` 解析展示，导入即切换为「导入的本体」只读领域（说明 / 能力 / 示例题 / 页头一起换）；导出当前模型（RDF/XML）或物化后本体（Turtle / RDF/XML）
 - **图谱右侧编辑框（草图预览）**：点图谱上的类 / 关系 / 个体，右侧同一块 panel 直接改；结构边按父类 / 所属类型字段重算；顶部常驻「仅预览 · 不写入系统、不进查询与推理结果」；画布工具栏可新建类 / 关系，或「添加事实」（先定短名与类型，属性值只写进导出文件）。要写入本体定义请用「在线编辑本体定义」
@@ -415,9 +417,10 @@ adapter = AgentTaskAdapter(get_engine(), DEFAULT_CONFIG.update(
   - **引擎通用工具 15 个**任意 `.owl` 可用：`query_sparql` / `individuals` / `classes` / `types_of` /
     `property_values` / `infer` / `explain_proof` / `predefined_queries` / `run_predefined_query` /
     `active_facts` / `guard_status` / `pipeline_gate` / `run_rules` / `list_rules` / `merge_check`
-- `/mcp/cq`——CQ 集全生命周期（框架级，**不依赖领域包**，导入裸 OWL 也可用）：
+- `/mcp/cq`——CQ 集全生命周期 + 训练过程（框架级，**不依赖领域包**，导入裸 OWL 也可用）：
   `cq_set_read` / `cq_set_write` / `cq_case_upsert` / `cq_case_remove` / `cq_locate` /
-  `cq_validate` / `cq_author` / `cq_to_schema` / `cq_regression` / `cq_audit`
+  `cq_validate` / `cq_author` / `cq_to_schema` / `cq_regression` / `cq_audit` /
+  `cq_decision` / `cq_resume` / `cq_timeline` / `cq_training_write` / `cq_iteration_write`
 
 CQ 工具与本体端点共享同一个 `get_engine()` 工厂和同一份 `cq_store`：回归跑的是当前
 内存引擎图，不会吃到过期图；身份沿用 `workspaces` 的 `ontology_id`（导入态与 REST 同一个

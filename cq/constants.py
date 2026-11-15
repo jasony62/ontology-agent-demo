@@ -46,3 +46,102 @@ STATUS_LABELS = {
     "archived": "归档",
     "unset": "未分型",
 }
+
+# ---------------- 训练过程事件流（#194-#200） ----------------
+
+# 动作受控词表（#195）：P0 只有 ask / feedback；withdraw 在 P1（本批已交付）。
+DECISION_ACTIONS = ("ask", "feedback", "withdraw")
+# 五类决策固定词表，调用方不得自定义；原 intent 已改名 expectation。
+DECISION_KINDS = ("semantic", "expectation", "priority", "term", "scope")
+FEEDBACK_SOURCES = ("direct", "agent_relay")
+
+# 状态翻转族：只能经 cq_decision 写入，通用写工具拒绝。
+TRAINING_STATE_EVENTS = (
+    "decision_asked",
+    "feedback_received",
+    "decision_resolved_by_self",
+    "intent_pending_marked",
+)
+# 观测 / 证据族：可经 cq_training_write 写入；大体积证据落 evidence/。
+TRAINING_OBSERVATION_EVENTS = (
+    "case_authored",
+    "case_released",
+    "regression_run",
+    "gate_result",
+    "evidence_recorded",
+    "iteration_started",
+    "iteration_applied",
+    "iteration_accepted",
+    "attribution_conclusion",
+    "circuit_breaker",
+)
+TRAINING_EVENTS = TRAINING_STATE_EVENTS + TRAINING_OBSERVATION_EVENTS
+
+# 每类事件的 content 字段规格：字段名 → (类型, 是否必填, 允许的枚举/约束)。
+# 额外字段一律拒绝（extra=forbid 语义）；event_id 由服务端注入，全局允许。
+TRAINING_EVENT_SCHEMAS: dict[str, dict[str, tuple[type, bool, tuple | None]]] = {
+    "decision_asked": {
+        "decision_id": (str, True, None),
+        "kind": (str, True, DECISION_KINDS),
+        "question": (str, True, None),
+        "options": (list, True, None),
+        "recommended": (str, True, None),
+        "reason": (str, True, None),
+        "background": (str, True, None),
+        "case_id": (str, False, None),
+    },
+    "feedback_received": {
+        "decision_id": (str, True, None),
+        "feedback_text": (str, False, None),
+        "option": (str, False, None),
+        "follow_up_with": (str, False, None),
+        "source": (str, True, FEEDBACK_SOURCES),
+        "superseded_by": (str, False, None),
+    },
+    "decision_resolved_by_self": {
+        "decision_id": (str, True, None),
+        "method": (str, True, None),
+    },
+    "intent_pending_marked": {
+        "case_id": (str, True, None),
+        "decision_id": (str, True, None),
+    },
+    "case_authored": {"case_id": (str, True, None)},
+    "case_released": {"case_id": (str, True, None)},
+    "regression_run": {
+        "run_ref": (str, True, None),
+        "total": (int, True, None),
+        "pass": (int, True, None),
+        "fail": (int, True, None),
+        "cannot_tell": (int, True, None),
+        "not_tested": (int, True, None),
+    },
+    "gate_result": {
+        "gate": (str, True, None),
+        "status": (str, True, None),
+        "evidence_ref": (str, False, None),
+    },
+    "evidence_recorded": {
+        "evidence_ref": (str, True, None),
+        "kind": (str, True, None),
+        "summary": (str, False, None),
+    },
+    "iteration_started": {
+        "iteration_id": (str, True, None),
+        "translation_ref": (str, True, None),
+        "gate_ref": (str, False, None),
+    },
+    "iteration_applied": {
+        "iteration_id": (str, True, None),
+        "translation_ref": (str, False, None),
+    },
+    "iteration_accepted": {"iteration_id": (str, True, None)},
+    "attribution_conclusion": {
+        "conclusion": (str, True, None),
+        "run_ref": (str, False, None),
+    },
+    "circuit_breaker": {
+        "reason": (str, True, None),
+        "decision_id": (str, False, None),
+    },
+}

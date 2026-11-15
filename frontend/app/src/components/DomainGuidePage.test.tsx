@@ -4,6 +4,8 @@ import type { Root } from 'react-dom/client';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DomainGuidePage from './DomainGuidePage';
+
+const callUrl = (call: unknown) => String((call as unknown as [string])[0]);
 import type { DomainGuide } from '../api/client';
 
 /** React 19 的 act 环境标记 */
@@ -321,7 +323,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
       run.click();
     });
 
-    const [url, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, options] = fetchMock.mock.calls.find((call) => callUrl(call).includes('/capabilities/query')) as unknown as [string, RequestInit];
     expect(url).toBe('/api/domains/current/capabilities/query');
     expect(JSON.parse(String(options.body))).toEqual({
       kind: 'capability_match',
@@ -458,7 +460,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
       run.click();
     });
 
-    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url] = fetchMock.mock.calls.find((call) => callUrl(call).includes('/api/ontology/proof')) as unknown as [string, RequestInit];
     expect(url).toBe(expectedUrl);
     expect(card.textContent).toContain('本次真实返回');
     expect(card.textContent).toContain('asserted');
@@ -509,7 +511,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
       run.click();
     });
 
-    const [url, options] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, options] = fetchMock.mock.calls.find((call) => callUrl(call) === '/api/query') as unknown as [string, RequestInit];
     expect(url).toBe('/api/query');
     expect(JSON.parse(String(options.body))).toEqual({ sparql });
   });
@@ -697,8 +699,8 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(card.textContent).toContain('参考答案：不需要');
     expect(card.textContent).toContain('R6 的判据');
     expect(card.textContent).toContain('当前模型（改动前）的返回');
-    // 只发一次查询，没有任何埋点 / 上报
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // 只发一次查询，没有任何埋点 / 上报（训练面板的 resume 读取不计）
+    expect(fetchMock.mock.calls.filter((call) => !callUrl(call).includes('/cq/resume'))).toHaveLength(1);
 
     // 结果出来后预测锁定：不能再改选项把「先猜」变成「看完再选」
     const wrong = card.querySelector('input[value="需要"]') as HTMLInputElement;
@@ -734,7 +736,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(start).toBeTruthy();
     await act(async () => { start.click(); });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.filter((call) => !callUrl(call).includes('/cq/resume'))).toHaveLength(1);
     expect(container!.textContent).toContain('本次真实返回');
     expect(buttons('带我试一题')).toHaveLength(0);
     expect(window.localStorage.getItem('oa.onboarding.dismissed.v1')).toBe('1');
@@ -896,7 +898,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
       run.click();
     });
 
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls.find((call) => callUrl(call).includes('/simulate')) as unknown as [string, RequestInit];
     expect(url).toBe('/api/domains/current/simulate');
     const body = JSON.parse(String(init.body));
     expect(body.capability).toBe('property_values');
@@ -906,7 +908,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(card.textContent).toContain('改动前（当前模型）');
     expect(card.textContent).toContain('改动后（只读推演，不写入系统）');
     expect(card.textContent).toContain('true');
-    // 只发一次请求，无额外写操作
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // 只发一次推演请求，无额外写操作
+    expect(fetchMock.mock.calls.filter((call) => callUrl(call).includes('/simulate'))).toHaveLength(1);
   });
 });

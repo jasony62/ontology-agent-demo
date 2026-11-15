@@ -1551,3 +1551,61 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-audit-action { font-weight: 600; color: var(--heading); min-width: 52px; }
 .cq-audit-summary { flex: 1 1 180px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .cq-audit-meta { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
+
+/* CQ 训练面板（#198） */
+.cq-training-refresh { margin-left: auto; }
+.cq-training-stats { margin: 8px 0; }
+.cq-training-next {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; margin: 8px 0;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel-2); font-size: 12.5px; color: var(--text);
+}
+.cq-training-next b { color: var(--heading); }
+.cq-training-gaps { margin: 10px 0; }
+.cq-training-gaps h4 { font-size: var(--fs-md); color: var(--heading); margin-bottom: 4px; }
+.cq-training-gaps ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cq-training-gaps li { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--text); }
+.cq-training-gaps code { color: var(--warning); font-size: 11px; }
+.cq-training-gaps i { color: var(--muted); font-style: normal; font-size: 11px; }
+.cq-training-result { margin: 8px 0; }
+.cq-training-cards { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.cq-training-card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; background: var(--panel); display: flex; flex-direction: column; gap: 6px;
+}
+.cq-training-card-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cq-training-card-head code { font-size: 11px; color: var(--muted); }
+.cq-training-card h4 { font-size: var(--fs-md); color: var(--text); line-height: 1.5; }
+.cq-training-bg { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.cq-training-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.cq-training-rec {
+  margin-left: 6px; padding: 0 5px; border-radius: 3px;
+  background: rgba(255, 255, 255, .24); font-size: 10px;
+}
+.cq-training-more { align-self: flex-start; padding-left: 0; }
+.cq-training-free { display: flex; flex-direction: column; gap: 6px; }
+.cq-training-free textarea, .cq-training-free input {
+  width: 100%; border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 9px; font-size: 12.5px; font-family: inherit; color: var(--text); background: var(--panel);
+}
+.cq-training-free button { align-self: flex-end; }
+
+/* 训练时间线 / 迭代终审（#199） */
+.cq-timeline-page, .cq-iteration-page { padding: 16px; max-width: 1100px; margin: 0 auto; }
+.cq-timeline-page h2, .cq-iteration-page h2 { font-size: var(--fs-xl); color: var(--heading); }
+.cq-timeline-list, .cq-iteration-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cq-timeline-item, .cq-iteration-item {
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px; background: var(--panel);
+}
+.cq-timeline-head, .cq-iteration-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cq-timeline-head time, .cq-iteration-head time { margin-left: auto; font-size: 11px; color: var(--muted); }
+.cq-timeline-item p, .cq-iteration-business { margin: 5px 0 0; font-size: 12.5px; color: var(--text); line-height: 1.6; }
+.cq-timeline-feedback {
+  margin: 6px 0 0; padding: 6px 9px; border-left: 3px solid var(--border-strong);
+  background: var(--panel-2); font-size: 12px; color: var(--text); white-space: pre-wrap;
+}
+.cq-iteration-changes { margin-top: 6px; }
+.cq-iteration-changes b { font-size: 12px; color: var(--heading); }
+.cq-iteration-ttl { margin-top: 6px; font-size: 12px; }
+.cq-iteration-ttl summary { cursor: pointer; color: var(--link); }

@@ -89,11 +89,12 @@ from reasoner.protocol import (
 from domains import DomainManager, DomainContractError, DomainNotFoundError
 from domains.imported import display_filename
 from . import workspaces
-from cq import cq_runner, cq_store
+from cq import cq_runner, cq_store, training_service
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
     DescribeRequest, SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
+    CqDecisionRequest,
 )
 from .response_schemas import (
     ClassesResponse,
@@ -1954,8 +1955,9 @@ def _cq_identity() -> tuple[str, Path | None]:
 def cq_set():
     """读 CQ 集：无集时返回空骨架，不 500。"""
     ontology_id, seed = _cq_identity()
-    data = cq_store.get_set(ontology_id, seed)
-    return {"ontology_id": ontology_id, **cq_store.build_view(ENGINE, data)}
+    # #194：pending_decisions / cases[].intent_pending 只在这里合并为视图字段
+    return {"ontology_id": ontology_id,
+            **training_service.set_view(ENGINE, ontology_id, seed)}
 
 
 @app.put(
@@ -2182,8 +2184,10 @@ def cq_regression_run(payload: dict | None = Body(None)):
     run = cq_runner.run_suite(ENGINE, cases, suite=str(data.get("suite") or ""))
     run["actor_type"] = actor_type
     run["actor"] = actor
-    cq_store.save_run(ontology_id, run)
+    run_path = cq_store.save_run(ontology_id, run)
     cq_store.record_run_cache(ontology_id, run)
+    training_service.auto_regression_event(
+        ontology_id, run, f"runs/{run_path.name}")
     trend = round(run["coverage_real"] - float(previous[0].get("coverage_real") or 0), 3) if previous else None
     if run["total"] > 0:
         cq_store.record_metric(ontology_id, "cq_evaluated_real", {
@@ -2210,6 +2214,81 @@ def cq_regression_runs(limit: int = Query(20, ge=1, le=100, description="最多�
     ontology_id, _ = _cq_identity()
     runs = cq_store.list_runs(ontology_id, limit=limit)
     return {"ontology_id": ontology_id, "runs": runs}
+
+
+@app.get(
+    "/api/domains/current/cq/resume",
+    tags=["通用查询"],
+    summary="CQ 训练现场自举",
+    responses={
+        200: {"model": OpenEnvelope, "description": "状态摘要 / 上次回归 / 待决 / 待跟进 / 熔断 / 迭代 / 缺口 / 下一步建议。"},
+        **ERROR_400,
+    },
+)
+def cq_resume(
+    depth: str = Query("snapshot", description="snapshot（默认）或 full（附历史）"),
+    since: str = Query("", description="full 时历史的时间下界（UTC ISO 秒）"),
+    kinds: str = Query("", description="full 时历史类别过滤，逗号分隔"),
+    limit: int = Query(200, ge=1, le=1000, description="full 时历史条数上限"),
+):
+    """训练现场自举（#196）：实时聚合、不落快照。"""
+    ontology_id, seed = _cq_identity()
+    try:
+        result = training_service.resume(
+            ENGINE, ontology_id, seed, depth=depth, since=since,
+            kinds=[item for item in kinds.split(",") if item.strip()] or None,
+            limit=limit,
+        )
+    except training_service.TrainingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ontology_id": ontology_id, **result}
+
+
+@app.get(
+    "/api/domains/current/cq/timeline",
+    tags=["通用查询"],
+    summary="CQ 训练时间线",
+    responses={
+        200: {"model": OpenEnvelope, "description": "训练事件 + 审计 + 回归历史 + 迭代档案聚合，新到旧。"},
+    },
+)
+def cq_timeline(
+    since: str = Query("", description="时间下界（UTC ISO 秒）"),
+    kinds: str = Query("", description="类别 / 事件名过滤，逗号分隔（如 decisions）"),
+    limit: int = Query(200, ge=1, le=1000, description="最多返回多少条"),
+):
+    """只读聚合四源时间线（#197），不改任何来源。"""
+    ontology_id, _ = _cq_identity()
+    return {"ontology_id": ontology_id, **training_service.timeline(
+        ontology_id, since=since,
+        kinds=[item for item in kinds.split(",") if item.strip()] or None,
+        limit=limit,
+    )}
+
+
+@app.post(
+    "/api/domains/current/cq/decision",
+    tags=["通用查询"],
+    summary="CQ 决策反馈",
+    responses={
+        200: {"model": OpenEnvelope, "description": "决策动作结果；反馈状态由事件流投影判定。"},
+        **ERROR_400,
+    },
+)
+def cq_decision(req: CqDecisionRequest):
+    """人提交反馈 / 提问 / 撤问（#195 / #198）：来源固定 direct，不接受状态参数。"""
+    ontology_id, _ = _cq_identity()
+    payload = req.model_dump()
+    action = payload.pop("action")
+    payload = {key: value for key, value in payload.items() if value not in ("", None)}
+    try:
+        result = training_service.decide(
+            ontology_id, action, payload,
+            actor_type="human", actor="web", source="direct",
+        )
+    except training_service.TrainingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ontology_id": ontology_id, **result}
 
 
 # ---------------- 本体管理（v1.3.0：加载 / 物化 / 源码 / 导出） ----------------

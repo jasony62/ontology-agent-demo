@@ -212,6 +212,26 @@ class CqLocateRequest(BaseModel):
     )
 
 
+class CqDecisionRequest(BaseModel):
+    """CQ 决策入口（#195）：提问 / 反馈 / 自答撤问。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: str = Field(..., description="ask / feedback / withdraw")
+    kind: str = Field("", description="ask 专用：semantic / expectation / priority / term / scope")
+    question: str = Field("", description="ask 专用：问题")
+    options: list[str] | None = Field(None, description="ask 专用：至少 2 个选项")
+    recommended: str = Field("", description="ask 专用：推荐项，必须属于 options")
+    reason: str = Field("", description="ask 专用：推荐理由")
+    background: str = Field("", description="ask 专用：背景话术")
+    case_id: str = Field("", description="ask 专用：可选的关联题目 id")
+    decision_id: str = Field("", description="feedback / withdraw 专用：决策编号")
+    feedback_text: str = Field("", description="feedback 专用：反馈原文")
+    option: str = Field("", description="feedback 专用：所选选项")
+    follow_up_with: str = Field("", description="feedback 专用：需要谁确认")
+    method: str = Field("", description="withdraw 专用：自答方法")
+
+
 # ---------------- 在线编辑（v1.4.0：编辑模型 / 保存写回） ----------------
 
 class EditModelClass(BaseModel):

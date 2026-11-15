@@ -9,7 +9,7 @@
 |---|---|---|
 | OWL 2 RL 推理引擎 | REST API / CLI / MCP | [02 推理与查询](02-推理与查询.md) |
 | 业务规则 R1–R4 + 可解释推导链 / 结构化证明 | `/api/domains/current/capabilities/query`、`/api/domains/current/capabilities/apply`、`explain`、MCP | [02 推理与查询](02-推理与查询.md) |
-| REST API（45 个端点） | `http://127.0.0.1:8000/api-docs`（在线文档）/ `/docs`（Swagger UI） | [02 推理与查询](02-推理与查询.md) |
+| REST API（48 个端点） | `http://127.0.0.1:8000/api-docs`（在线文档）/ `/docs`（Swagger UI） | [02 推理与查询](02-推理与查询.md) |
 | CLI 双通道（query.py / ontologyctl） | `scripts/` | [02 推理与查询](02-推理与查询.md) / [04 运维](04-运维与本体管理.md) |
 | 图谱工作台（三档视图 + 右侧编辑框 + 在线编辑） | `http://127.0.0.1:8000`（前端） | [03 前端与 MCP](03-前端与MCP.md) |
 | 当前领域使用视角（六问 + 示例题试跑） | `http://127.0.0.1:8000`（页头「当前领域」） | [03 前端与 MCP](03-前端与MCP.md) |
@@ -17,6 +17,7 @@
 | 管线质量门禁（G1–G4 过闸） | MCP `pipeline_gate` | [03 前端与 MCP](03-前端与MCP.md) / [06 二次开发](06-二次开发指南.md) |
 | Agent 调用护栏（预算/循环/缓存/审计） | MCP `guard_status` + `guard_config.json` | [03 前端与 MCP](03-前端与MCP.md) / [04 运维](04-运维与本体管理.md) |
 | CQ 集管理与出题质检（LLM 出题闭环） | 页头「CQ 集」/ MCP `/mcp/cq`：`cq_author` / `cq_to_schema` / `cq_regression` | [09 CQ 集管理](09-CQ集管理.md) / [03 前端与 MCP](03-前端与MCP.md) |
+| 训练过程线上化（决策 / 现场 / 时间线 / 迭代） | 当前领域页「训练现场」/ 页头「训练时间线」「迭代终审」/ MCP `cq_decision` / `cq_resume` / `cq_timeline` | [09 CQ 集管理](09-CQ集管理.md) |
 | 本体管理（热重载 / 编辑 / 回滚 / 备份） | API / ontologyctl / backup.sh | [04 运维与本体管理](04-运维与本体管理.md) |
 | 二次开发（新增领域 / 扩展工具） | `domains/`、`reasoner/` | [06 二次开发指南](06-二次开发指南.md) |
 
@@ -28,7 +29,7 @@
 │   领域推理 R1–R4 · 通用查询 · 本体管理 · 托管前端图谱工作台    │
 ├─────────────────────────────────────────────────────────┤
 │  mcp  :9000   MCP Server（streamable-http / stdio）       │
-│   面向智能体：/mcp/ontology（领域 10 + 通用 15）+ /mcp/cq（CQ 10） │
+│   面向智能体：/mcp/ontology（领域 10 + 通用 15）+ /mcp/cq（CQ 15） │
 │   调用护栏、CQ 出题质检；可经豆包连接器一行配置接入             │
 └─────────────────────────────────────────────────────────┘
 ```

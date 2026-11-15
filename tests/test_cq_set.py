@@ -251,6 +251,32 @@ def test_expect_type_is_validated(client):
     assert ok.status_code == 200, ok.text
 
 
+def test_training_view_fields_are_read_time_only(client):
+    """#194：pending_decisions / intent_pending 只在读接口合并，不写原始文件。"""
+    from cq import training_service
+
+    added = client.post("/api/domains/current/cq/cases", json={
+        "cq": "本体里有哪些类？", "expected_type": "retrieval", "status": "active",
+    }).json()["case"]
+    ontology_id, _ = M._cq_identity()
+    asked = training_service.decide(ontology_id, "ask", {
+        "kind": "expectation", "question": "期望口径？", "options": ["A", "B"],
+        "recommended": "A", "reason": "A", "background": "B", "case_id": added["id"],
+    }, source="direct")
+    training_service.decide(ontology_id, "feedback", {
+        "decision_id": asked["decision_id"], "option": "A",
+    }, source="direct")
+
+    view = client.get("/api/domains/current/cq/set").json()
+    assert view["summary"]["pending_decisions"] == 0
+    target = next(case for case in view["cases"] if case["id"] == added["id"])
+    assert target["intent_pending"] is True
+
+    raw = json.loads(cq_store.set_path(ontology_id).read_text(encoding="utf-8"))
+    assert "pending_decisions" not in json.dumps(raw)
+    assert "intent_pending" not in json.dumps(raw)
+
+
 def test_audit_endpoint_paginates_and_filters(client):
     client.post(
         "/api/domains/current/cq/cases",

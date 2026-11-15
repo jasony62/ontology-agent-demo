@@ -119,11 +119,16 @@ def test_cq_mcp_surface_is_consolidated_and_prefixed():
         "cq_author",
         "cq_case_remove",
         "cq_case_upsert",
+        "cq_decision",
+        "cq_iteration_write",
         "cq_locate",
         "cq_regression",
+        "cq_resume",
         "cq_set_read",
         "cq_set_write",
+        "cq_timeline",
         "cq_to_schema",
+        "cq_training_write",
         "cq_validate",
     ]
     assert all(name.startswith("cq_") for name in names)

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { DomainGuide, GuideCapabilitySlot, GuideExample, GuideRuntime } from '../api/client';
 import { GlossaryProvider, TermText } from './TermText';
+import CqTrainingPanel from './CqTrainingPanel';
 
 interface Props {
   guide: DomainGuide | null;
@@ -1064,6 +1065,8 @@ export default function DomainGuidePage({
               </div>
             )}
           </section>
+
+          <CqTrainingPanel />
 
           <section id="guide-examples" className="guide-section">
             <div className="guide-section-head"><span>02</span><h3>能问它什么</h3></div>

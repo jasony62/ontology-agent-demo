@@ -12,7 +12,7 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 ## 2. 前置自检
 
 - 服务与 MCP 就绪（quickstart 断言链 + §3.4 握手拿到 session id）；以下工具均经 MCP `tools/call` 调用；
-- **端点**：CQ 工位都在框架级 **`/mcp/cq`**（#171/#172），不依赖领域包——切到任何预置领域、甚至 `--domain imported` 导入裸 OWL 都可用；先 `tools/list` 确认 10 个 `cq_` 工具。`validate_shapes` 因依赖领域 `shapes/*.ttl` 仍在 `/mcp/ontology`；通用闸门（`pipeline_gate` / `run_rules` / `list_rules` / `merge_check`）也在 `/mcp/ontology`；
+- **端点**：CQ 工位都在框架级 **`/mcp/cq`**（#171/#172），不依赖领域包——切到任何预置领域、甚至 `--domain imported` 导入裸 OWL 都可用；先 `tools/list` 确认 15 个 `cq_` 工具。`validate_shapes` 因依赖领域 `shapes/*.ttl` 仍在 `/mcp/ontology`；通用闸门（`pipeline_gate` / `run_rules` / `list_rules` / `merge_check`）也在 `/mcp/ontology`；
 - 分清两种模式：**schema_anchored**（默认，对照既有本体 schema 出题）与 **from_description**（传 `focus` 领域描述，全新领域降级用）；
 - 明确一个事实：`cq_author`（不传 `draft`）返回的是**给宿主 LLM 的出题指令**（题型配比、措辞规则、锚点要求），**不是题目本身**——题目由你（智能体）按指令起草。
 
@@ -92,7 +92,25 @@ description: CQ 建模工位链：出题指令、质检、TBox 草稿、分级�
 
 断言：通过 X/Y + 失败清单（每条附期望 vs 实际对照与按 rule 的退化定位 hint）。**题库为空时 total=0、coverage_real=0，不返回假成功；旧格式题标 not_tested。**
 
-### 3.6 配套质量闸门（按需）
+### 3.6 训练过程线上化
+
+- **会话启动 / 状态不明**：先调 `cq_resume`（不要自己拼上下文）；返回摘要、待决、待跟进、熔断、缺口与下一步。
+- **决策只用 `cq_decision`**：`ask`（五类：semantic / expectation / priority / term / scope；选项 ≥2 且推荐项属于选项）/ `feedback`（反馈原文、所选选项、跟进对象可任意组合，**可全空**）/ `withdraw`（自答方法）。不要传状态参数，状态由服务端投影。
+- **反馈原文逐字保留**：代传时人的原话就是 `feedback_text`；不要改写、不要补「备注」。
+- **观测结论走 `cq_training_write`**：归因结论、闸门快照、TTL / 证据等；大体积内容放 `evidence`，事件行只留引用。决策生命周期事件不能走这里。
+- **迭代走 `cq_iteration_write`**：写业务话翻译 + 变更清单 + 闸门快照，连带记 `iteration_*` 事件。
+- **每轮动作写回服务**：不要只留在会话里；`cq_timeline` 可按 `kinds=decisions` 回看历史反馈。
+- 技能侧只负责 3 项业务结论：**归因结论、业务话翻译、熔断升级判断**；不做四路归因、闸门业务校验、智能推荐或反馈语义判断。
+
+| 技能侧义务（压到 3 + 2） | 动作 |
+|---|---|
+| 归因结论 | `cq_training_write(event="attribution_conclusion", content={"conclusion": "..."})` |
+| 业务话翻译 | `cq_iteration_write(business_translation="...")` |
+| 熔断升级判断 | `cq_training_write(event="circuit_breaker", content={"reason": "..."})` |
+| 通用纪律：会话启动 / 状态不明 | 先调 `cq_resume` |
+| 通用纪律：每轮动作写回服务 | 用 `cq_decision` / `cq_training_write` 留痕，不只留在会话里 |
+
+### 3.7 配套质量闸门（按需）
 
 - 数据体检：`validate_shapes`（SHACL，形状文件随领域包 `shapes/*.ttl`）——管「数据合不合格」；**只校验断言图，不含推理闭包**（给派生谓词写形状需显式对物化图执行，结果会不同）；
 - 业务规则：`run_rules` / `list_rules`（SHACL 规则，`rules/*.ttl` 随领域包）——管「推出新结论」，与校验同语言；

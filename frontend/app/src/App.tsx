@@ -19,6 +19,8 @@ import CreateElementBar from './components/CreateElementBar';
 import OntologyEditor from './components/OntologyEditor';
 import DomainGuidePage from './components/DomainGuidePage';
 import CqPage from './components/CqPage';
+import CqTimelinePage from './components/CqTimelinePage';
+import CqIterationPage from './components/CqIterationPage';
 import OverflowMenu from './components/OverflowMenu';
 import WorkspaceSplit from './components/WorkspaceSplit';
 import type { WorkspaceTab } from './components/WorkspaceSplit';
@@ -51,8 +53,15 @@ export default function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   // 两个平级页面：图谱工作台 / 当前领域（正式单页，不用弹框）
-  const [page, setPage] = useState<'graph' | 'guide' | 'cq'>(
-    () => (window.location.hash === '#guide' ? 'guide' : window.location.hash === '#cq' ? 'cq' : 'graph'),
+  const [page, setPage] = useState<'graph' | 'guide' | 'cq' | 'cq-timeline' | 'cq-iterations'>(
+    () => {
+      const hash = window.location.hash;
+      if (hash === '#guide') return 'guide';
+      if (hash === '#cq') return 'cq';
+      if (hash === '#cq-timeline') return 'cq-timeline';
+      if (hash === '#cq-iterations') return 'cq-iterations';
+      return 'graph';
+    },
   );
   // #137：首次引导收敛到「当前领域」页的一个「带我试一题」入口（一次真试跑），
   // 页头不再维护第二套提示；本地记忆键沿用 oa.onboarding.dismissed.v1。
@@ -64,6 +73,14 @@ export default function App() {
     setPage('cq');
     window.history.replaceState(null, '', '#cq');
   };
+  const gotoCqTimeline = () => {
+    setPage('cq-timeline');
+    window.history.replaceState(null, '', '#cq-timeline');
+  };
+  const gotoCqIterations = () => {
+    setPage('cq-iterations');
+    window.history.replaceState(null, '', '#cq-iterations');
+  };
   const gotoGraph = () => {
     setPage('graph');
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -72,7 +89,11 @@ export default function App() {
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash;
-      setPage(hash === '#guide' ? 'guide' : hash === '#cq' ? 'cq' : 'graph');
+      if (hash === '#guide') setPage('guide');
+      else if (hash === '#cq') setPage('cq');
+      else if (hash === '#cq-timeline') setPage('cq-timeline');
+      else if (hash === '#cq-iterations') setPage('cq-iterations');
+      else setPage('graph');
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
@@ -293,6 +314,12 @@ export default function App() {
           <button className={page === 'cq' ? 'active' : ''} onClick={gotoCq}>
             CQ 集
           </button>
+          <button className={page === 'cq-timeline' ? 'active' : ''} onClick={gotoCqTimeline}>
+            训练时间线
+          </button>
+          <button className={page === 'cq-iterations' ? 'active' : ''} onClick={gotoCqIterations}>
+            迭代终审
+          </button>
         </nav>
         {/* #137 R1：页头只保留领域下拉这一个名字显示；红色徽标改为「只读」状态标签，
             不再复述「导入的本体」，两处 title 也只留短提示。 */}
@@ -396,6 +423,10 @@ export default function App() {
           />
         ) : page === 'cq' ? (
           <CqPage />
+        ) : page === 'cq-timeline' ? (
+          <CqTimelinePage />
+        ) : page === 'cq-iterations' ? (
+          <CqIterationPage />
         ) : (
           <>
             {ontologyMode === 'generic' && (

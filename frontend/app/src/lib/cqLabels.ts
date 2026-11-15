@@ -24,6 +24,27 @@ const STATUS_LABELS: Record<string, string> = Object.fromEntries(
   STATUS_OPTIONS.map((option) => [option.value, option.label]),
 );
 
+/** #212：决策回收的结论与依据来源。 */
+export const CONCLUSION_OPTIONS = [
+  { value: 'adopt', label: '采纳推荐' },
+  { value: 'reject', label: '驳回 / 改选' },
+  { value: 'defer', label: '暂缓' },
+] as const;
+
+export const BASIS_OPTIONS = [
+  { value: 'self', label: '自己判断' },
+  { value: 'expert', label: '已问他人确认' },
+] as const;
+
+const CONCLUSION_LABELS: Record<string, string> = Object.fromEntries(
+  CONCLUSION_OPTIONS.map((option) => [option.value, option.label]),
+);
+
+export function conclusionLabel(value?: string | null): string {
+  const raw = String(value || '').trim();
+  return CONCLUSION_LABELS[raw] ?? '';
+}
+
 export function expectedTypeLabel(value?: string | null): string {
   const raw = String(value || '').trim();
   if (!raw || raw === 'set') return '未分型';
@@ -34,4 +55,32 @@ export function statusLabel(value?: string | null): string {
   const raw = String(value || '').trim();
   if (!raw) return '未分型';
   return STATUS_LABELS[raw] ?? raw;
+}
+
+/** #210：没有后端摘要时的前端兜底；只描述业务结果，不出现判分类型名。 */
+export function assertionSummaryText(item: {
+  assertion_summary?: string;
+  regression?: { expect?: unknown } | null;
+}): string {
+  if (item.assertion_summary) return item.assertion_summary;
+  const expect = item.regression?.expect;
+  if (expect === undefined || expect === null) return '还没有可自动验收的检查';
+  if (typeof expect === 'boolean') return `应判定为「${expect ? '是' : '否'}」`;
+  if (typeof expect === 'number') return `应正好查到 ${expect} 条`;
+  if (typeof expect === 'object' && !Array.isArray(expect)) {
+    const record = expect as Record<string, unknown>;
+    const kind = String(record.type || '');
+    if (kind === 'boolean') return `应判定为「${record.value === false ? '否' : '是'}」`;
+    if (kind === 'exists') return `应判定为「${record.value === false ? '不存在' : '存在'}」`;
+    if (kind === 'count') return `应正好查到 ${Number(record.value || 0)} 条`;
+    if (kind === 'values' || kind === 'set_exact') {
+      const values = (record.values || record.set || []) as unknown[];
+      return `结果应正好是：${values.map(String).join('、') || '（空）'}`;
+    }
+    if (kind === 'contains') {
+      const values = (record.values || record.contains || []) as unknown[];
+      return `结果应包含：${values.map(String).join('、') || '（空）'}`;
+    }
+  }
+  return '已有一条自动检查';
 }

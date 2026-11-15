@@ -13,7 +13,13 @@ from pathlib import Path
 
 from api import workspaces
 from cq import agenda, cq_store, training_log, training_state
-from cq.constants import DECISION_ACTIONS, DECISION_KINDS, FEEDBACK_SOURCES
+from cq.constants import (
+    DECISION_ACTIONS,
+    DECISION_CONCLUSIONS,
+    DECISION_KINDS,
+    FEEDBACK_BASES,
+    FEEDBACK_SOURCES,
+)
 
 G3_ROUNDS = 3
 
@@ -104,7 +110,8 @@ def _reject_extra(payload: dict, allowed: set[str]) -> None:
 
 def _ask(ontology_id: str, payload: dict, *, actor_type: str, actor: str) -> dict:
     _reject_extra(payload, {
-        "kind", "question", "options", "recommended", "reason", "background", "case_id",
+        "kind", "question", "options", "recommended", "reason", "background",
+        "context", "case_id",
     })
     kind = str(payload.get("kind") or "")
     if kind not in DECISION_KINDS:
@@ -114,6 +121,7 @@ def _ask(ontology_id: str, payload: dict, *, actor_type: str, actor: str) -> dic
     recommended = str(payload.get("recommended") or "").strip()
     reason = str(payload.get("reason") or "").strip()
     background = str(payload.get("background") or "").strip()
+    context = str(payload.get("context") or "").strip()
     if not question:
         raise TrainingError("invalid_question", "问题不能为空")
     if not isinstance(options, list) or len(options) < 2 or any(
@@ -138,6 +146,7 @@ def _ask(ontology_id: str, payload: dict, *, actor_type: str, actor: str) -> dic
         "recommended": recommended,
         "reason": reason,
         "background": background,
+        **({"context": context} if context else {}),
         **({"case_id": case_id} if case_id else {}),
     }, actor_type=actor_type, actor=actor)
     return {"action": "ask", "decision_id": decision_id, "event": line}
@@ -146,10 +155,12 @@ def _ask(ontology_id: str, payload: dict, *, actor_type: str, actor: str) -> dic
 def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, source: str) -> dict:
     _reject_extra(payload, {
         "decision_id", "feedback_text", "option", "follow_up_with",
+        "conclusion", "basis", "authorized", "context",
     })
     decision_id = str(payload.get("decision_id") or "").strip()
     if not decision_id:
         raise TrainingError("invalid_decision", "decision_id 不能为空")
+    context = str(payload.get("context") or "").strip()
     state = _project(ontology_id)
     decision = state["decisions"].get(decision_id)
     if decision is None:
@@ -165,6 +176,9 @@ def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, s
         }
         if item.get("case_id"):
             content["case_id"] = item["case_id"]
+        context_text = context or str(item.get("context") or "").strip()
+        if context_text:
+            content["context"] = context_text
         _append(ontology_id, "decision_asked", content,
                 actor_type="agent", actor="mcp")
         state = _project(ontology_id)
@@ -176,6 +190,21 @@ def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, s
     feedback_text = str(payload.get("feedback_text") or "")
     option = str(payload.get("option") or "")
     follow_up_with = str(payload.get("follow_up_with") or "")
+    conclusion = str(payload.get("conclusion") or "")
+    basis = str(payload.get("basis") or "")
+    authorized = payload.get("authorized")
+    if conclusion and conclusion not in DECISION_CONCLUSIONS:
+        raise TrainingError(
+            "invalid_conclusion",
+            f"未知结论 {conclusion!r}；允许：{' / '.join(DECISION_CONCLUSIONS)}",
+        )
+    if basis and basis not in FEEDBACK_BASES:
+        raise TrainingError(
+            "invalid_basis",
+            f"未知依据来源 {basis!r}；允许：{' / '.join(FEEDBACK_BASES)}",
+        )
+    if authorized is not None and not isinstance(authorized, bool):
+        raise TrainingError("invalid_authorized", "authorized 必须是布尔值")
     previous = decision.get("latest_feedback") or {}
     content = {
         "decision_id": decision_id,
@@ -184,6 +213,12 @@ def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, s
         "follow_up_with": follow_up_with,
         "source": source,
     }
+    if conclusion:
+        content["conclusion"] = conclusion
+    if basis:
+        content["basis"] = basis
+    if authorized is not None:
+        content["authorized"] = authorized
     if previous.get("event_id"):
         content["superseded_by"] = str(previous["event_id"])
     line = _append(ontology_id, "feedback_received", content,
@@ -193,24 +228,36 @@ def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, s
     if (
         decision.get("kind") == "expectation"
         and decision.get("case_id")
-        and (option.strip() or feedback_text.strip())
+        and (option.strip() or feedback_text.strip() or conclusion)
     ):
         _append(ontology_id, "intent_pending_marked", {
             "case_id": decision["case_id"], "decision_id": decision_id,
         }, actor_type=actor_type, actor=actor)
         intent_marked = True
 
-    status = "resolved" if (option.strip() or feedback_text.strip()) else "followup"
+    # #212：暂缓 / 未授权 → 待跟进；采纳 / 驳回 → 已裁决；无结论时沿用旧口径。
+    if conclusion == "defer" or authorized is False:
+        status = "followup"
+    elif conclusion in {"adopt", "reject"}:
+        status = "resolved"
+    else:
+        status = "resolved" if (option.strip() or feedback_text.strip()) else "followup"
     return {
         "action": "feedback",
         "decision_id": decision_id,
         "status": status,
+        "conclusion": conclusion or None,
+        "basis": basis or None,
+        "authorized": authorized,
         "intent_pending_marked": intent_marked,
         "event": line,
         "summary": {
             "option": option,
             "feedback_text": feedback_text,
             "follow_up_with": follow_up_with,
+            "conclusion": conclusion,
+            "basis": basis,
+            "authorized": authorized,
         },
     }
 
@@ -304,7 +351,7 @@ def context_gaps(ontology_id: str, state: dict, last_regression: dict | None) ->
         if not attributed:
             gaps.append({
                 "gap_type": "G1", "object": "last_regression",
-                "suggestion": "补一条归因结论，说明这次回归失败的原因",
+                "suggestion": "这次回归失败还没有处理结论，先在议程里拍板处理方式",
             })
 
     # G2：迭代已应用，但档案没有业务话翻译
@@ -465,9 +512,10 @@ def _event_summary(item: dict) -> str:
     if event == "decision_asked":
         return f"提问：{content.get('question', '')}"
     if event == "feedback_received":
-        return f"反馈：{content.get('feedback_text') or content.get('option') or '（空）'}"
+        answer = content.get("feedback_text") or content.get("option") or "（空）"
+        return f"反馈：{answer}"
     if event == "decision_resolved_by_self":
-        return f"撤问：{content.get('method', '')}"
+        return "该项已由智能体自行处理"
     if event == "intent_pending_marked":
         return f"题目意图待确认：{content.get('case_id', '')}"
     if event == "regression_run":

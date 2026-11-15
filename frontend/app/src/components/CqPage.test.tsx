@@ -184,18 +184,24 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelectorAll('.cq-row')).toHaveLength(2);
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('登录模块开发');
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('上次可答');
-    // #192：只读详情展示完整 query / expect，而不是只给一个 SPARQL 标签
+    // #210：领导模式只给业务摘要，原始 SPARQL 默认收起
     const detail = container!.querySelector('.cq-detail')!;
-    expect(detail.textContent).toContain('查询（query）');
-    expect(detail.querySelectorAll('.cq-code')[0]?.textContent).toContain('ASK { ?s ?p ?o }');
-    expect(detail.querySelectorAll('.cq-code')[1]?.textContent).toContain('true');
+    expect(detail.textContent).toContain('应判定为「是」');
+    expect(detail.textContent).not.toContain('查询（query）');
+    expect(detail.querySelectorAll('.cq-code')).toHaveLength(0);
+    const tech = detail.querySelector<HTMLButtonElement>('.cq-tech-toggle')!;
+    expect(tech.textContent).toBe('展开看技术细节');
+    await act(async () => { tech.click(); });
+    await flush();
+    expect(detail.textContent).toContain('查询（SPARQL）');
+    expect(detail.textContent).toContain('ASK { ?s ?p ?o }');
 
     act(() => {
       (container!.querySelectorAll<HTMLButtonElement>('.cq-row')[1]).click();
     });
     await flush();
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('这条结论凭什么成立');
-    expect(container!.querySelector('.cq-detail')?.textContent).toContain('该题没有回归断言');
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('智能体会补充');
   });
 
   it('无集时显示正式空态而不是报错', async () => {
@@ -220,7 +226,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-editor')).not.toBeNull();
   });
 
-  it('页面内可新增题目并保存（#154）', async () => {
+  it('页面内可新增题目并保存（#154 / #210）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
@@ -230,15 +236,16 @@ describe('CQ 集页（#151 / #203）', () => {
     act(() => add.click());
     expect(container!.querySelector('.cq-editor')).not.toBeNull();
     const selects = [...container!.querySelectorAll<HTMLSelectElement>('.cq-editor select')];
-    expect(selects).toHaveLength(2);
+    expect(selects).toHaveLength(1);
     expect([...selects[0].options].map((option) => option.textContent)).toEqual(
       ['检索类', '推导类', '计数类', '反例类', '未分型'],
     );
     expect(selects[0].value).toBe('retrieval');
     const labels = [...container!.querySelectorAll('.cq-editor .field-label')]
       .map((node) => node.textContent);
-    expect(labels).toContain('SPARQL query');
-    expect(labels).toContain('expect（JSON）');
+    expect(labels).toContain('业务语义');
+    expect(labels).not.toContain('SPARQL query');
+    expect(labels).not.toContain('expect（JSON）');
     expect(labels).not.toContain('工具（tool）');
     expect(labels).not.toContain('params（JSON）');
 
@@ -249,15 +256,49 @@ describe('CQ 集页（#151 / #203）', () => {
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     });
     const save = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor button')]
-      .find((button) => button.textContent === '保存')!;
+      .find((button) => button.textContent === '保存题目')!;
     await act(async () => { save.click(); });
     await flush();
 
     const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
       String(url).includes('/cq/cases') && String(init?.method).toUpperCase() === 'POST');
     expect(call).toBeTruthy();
-    expect(JSON.parse(String((call![1] as RequestInit).body)).cq).toContain('新增：本体里有哪些类');
+    const body = JSON.parse(String((call![1] as RequestInit).body));
+    expect(body.cq).toContain('新增：本体里有哪些类');
+    expect(body.status).toBe('draft');
+    expect(body.regression).toBeUndefined();
     expect(container!.querySelector('.cq-editor')).toBeNull();
+  });
+
+  it('领导模式零 SPARQL，专家模式显式切换后才出现（#210）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.textContent).toContain('领导模式');
+    expect(container!.textContent).not.toContain('查询（query）');
+
+    const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '编辑')!;
+    act(() => edit.click());
+    const leaderLabels = [...container!.querySelectorAll('.cq-editor .field-label')]
+      .map((node) => node.textContent);
+    expect(leaderLabels).not.toContain('SPARQL query');
+    expect(container!.querySelector('.cq-editor')?.textContent).toContain('确认题目与断言');
+
+    const expert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '专家模式')!;
+    act(() => expert.click());
+    const expertLabels = [...container!.querySelectorAll('.cq-editor .field-label')]
+      .map((node) => node.textContent);
+    expect(expertLabels).toContain('SPARQL query');
+    expect(expertLabels).toContain('expect（JSON）');
+
+    const leader = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '领导模式')!;
+    act(() => leader.click());
+    expect([...container!.querySelectorAll('.cq-editor .field-label')]
+      .map((node) => node.textContent)).not.toContain('SPARQL query');
   });
 
   it('工具栏「运行评估」调用回归端点并提示通过数（#156）', async () => {

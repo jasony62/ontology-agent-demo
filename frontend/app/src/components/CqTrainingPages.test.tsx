@@ -11,7 +11,11 @@ const ITEMS = [
   {
     source: 'training', category: 'decisions', kind: 'feedback_received',
     ts: '2026-11-15T00:02:00+00:00', ref: 'e1', summary: '反馈：就是 A',
-    actor_type: 'human', actor: 'web', content: { feedback_text: '就是 A' },
+    actor_type: 'human', actor: 'web',
+    content: {
+      feedback_text: '就是 A', conclusion: 'adopt', basis: 'expert',
+      follow_up_with: '王工', authorized: true,
+    },
   },
   {
     source: 'iteration', category: 'iterations', kind: 'iteration_archive',
@@ -110,6 +114,12 @@ describe('训练标签（#203）', () => {
     const text = container!.textContent ?? '';
     expect(text).toContain('反馈：就是 A');
     expect(text).toContain('就是 A');
+    // #212：时间线保留结构化授权回执，且不出现实现词
+    expect(text).toContain('结论：采纳推荐');
+    expect(text).toContain('依据：已问王工确认');
+    expect(text).toContain('已授权');
+    expect(text).not.toContain('withdraw');
+    expect(text).not.toContain('自答');
   });
 
   it('「迭代」是时间线的筛选按钮，不是第三个标签', async () => {
@@ -167,6 +177,8 @@ describe('训练标签（#203）', () => {
       .filter(([url]) => String(url).includes('/cq/timeline')).length;
     const before = timelineCalls();
 
+    const authorize = container!.querySelector<HTMLInputElement>('.cq-training-authorize input')!;
+    await act(async () => { authorize.click(); });
     const option = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((btn) => btn.textContent?.startsWith('A'))!;
     await act(async () => { option.click(); });

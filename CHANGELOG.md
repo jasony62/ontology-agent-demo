@@ -7,6 +7,10 @@
 
 ### Added
 
+- **题目页领导模式与结构化决策回收（#210 / #211 / #212）**：
+  - **#210 零 SPARQL**：CQ 题目页默认「领导模式」，隐藏 SPARQL `query` / `expect` 与 `expected_type` / `status` 下拉，只展示业务语义与 `assertion_summary`；确认后有断言自动启用、无断言保持草稿，驳回退回智能体；「专家模式」显式切换后才出现原始查询。
+  - **#211 决策卡自包含**：议程生成的决策卡新增 `context` 现场上下文（定位证据 + 回归结论的业务话）；智能体经 `cq_decision ask` 也可传 `context`，读卡即可决策，不必跳题目页。
+  - **#212 结构化回收**：`feedback_received` 新增 `conclusion`（adopt / reject / defer）、`basis`（self / expert）、`authorized`；决策卡按「结论 → 依据来源 → 授权确认」回收，未授权不可提交；回归失败 / 覆盖缺口自动框成三选一决策卡，失败题 100% 出卡且不被议程名额截断；时间线展示结构化回执，`withdraw` / 自答方法不再出现在 leader 文案；`cq_resume.counts.structured_feedback` 直接给出结构化填充口径。
 - **决策议程与业务化文案（#207 / #208）**：`/mcp/cq` 新增 `cq_agenda`（工具数 15 → 16），从 CQ 集现场推导未锚定题 / 质检问题 / 回归失败 / 覆盖缺口 / 冗余，每条给业务话背景、问题、选项、推荐与理由；`cq_resume` 将其合并进 `pending_decisions`（新增 `agenda` 字段，`counts.pending` 计入议程），有未决状态时不再返回空的决策面。议程编号按「类别 + 题号」稳定生成，人第一次回答时才惰性物化为 `decision_asked` 事件，读接口仍是纯读。缺口与「下一步」文案去掉 `context_gaps` / `attribution_conclusion` / `iterations/<id>.json` 等实现术语；前端 `plainCopy` 扩到决策背景、问题、选项、推荐理由、缺口与下一步，决策编号 / 类别 / 原始字段默认收进「展开看技术细节」。
 - **CQ 工作台角色模型与护栏指标（#206）**：手册新增 9.11，明确「人 = 决策责任者、智能体扛专业活」与闭环五步，并定义两条护栏：决策面填充率 ≥90%、主动决策议程覆盖率 → 100%。
 - **CQ 训练过程线上化（#194–#200）**：新增只追加事件流 `training_log.jsonl` 与读时投影 `training_state`；`/mcp/cq` 增加 `cq_decision` / `cq_resume` / `cq_timeline` / `cq_training_write` / `cq_iteration_write`（工具数 10 → 15）；REST 增加 `GET .../cq/resume`、`GET .../cq/timeline`、`POST .../cq/decision`（端点 45 → 48）。训练现场与时间线收在「CQ 集 → 训练」标签内（#203 把原先的三处入口合成一页）。

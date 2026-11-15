@@ -387,6 +387,7 @@ export interface CqCaseLocation {
   coverage: string;
   evidence: number;
   anchors: number;
+  anchor_terms?: string[];
 }
 
 export interface CqSetCase {
@@ -404,6 +405,8 @@ export interface CqSetCase {
   located?: boolean;
   answerable?: boolean;
   location?: CqCaseLocation;
+  /** #210：机器断言的业务话摘要（读视图字段，不落盘）。 */
+  assertion_summary?: string;
 }
 
 export interface CqSetSummary {
@@ -472,6 +475,7 @@ export interface CqDecision {
   recommended?: string;
   reason?: string;
   background?: string;
+  context?: string;
   case_id?: string | null;
   asked_at?: string;
   since?: string;
@@ -604,6 +608,10 @@ export const api = {
     feedback_text?: string;
     option?: string;
     follow_up_with?: string;
+    conclusion?: 'adopt' | 'reject' | 'defer';
+    basis?: 'self' | 'expert';
+    authorized?: boolean;
+    context?: string;
     method?: string;
   }) =>
     request<CqDecisionResponse>('/api/domains/current/cq/decision', {

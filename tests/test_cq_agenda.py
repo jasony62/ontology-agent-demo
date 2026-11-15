@@ -90,6 +90,7 @@ def test_answering_agenda_item_materializes_decision_event(ws):
     result = training_service.decide("agent_task", "feedback", {
         "decision_id": item["decision_id"],
         "option": "调整问法后保留",
+        "context": item["context"],
     }, source="direct")
     assert result["status"] == "resolved"
 
@@ -99,6 +100,7 @@ def test_answering_agenda_item_materializes_decision_event(ws):
     assert asked["content"]["decision_id"] == item["decision_id"]
     assert asked["content"]["question"] == item["question"]
     assert asked["content"]["background"] == item["background"]
+    assert asked["content"]["context"] == item["context"]
 
     remaining = [entry["decision_id"]
                  for entry in training_service.resume(_engine(), "agent_task")["pending_decisions"]]
@@ -138,6 +140,39 @@ def test_existing_check_without_run_does_not_ask_for_another(ws):
         }],
     })
     assert agenda.build_agenda(_engine(), "agent_task") == []
+
+
+def test_decision_card_context_is_self_contained(ws):
+    """#211：卡片自带「为什么问、现在卡在哪」，不要求跳题目页读 SPARQL。"""
+    items = agenda.build_agenda(_engine(), "agent_task")
+    assert all(str(item.get("context") or "").strip() for item in items)
+    q1 = _by_case(items, "Q1")["context"]
+    assert "证据" in q1
+    assert "检查" in q1
+    text = json.dumps([item["context"] for item in items], ensure_ascii=False)
+    for token in ("SPARQL", "SELECT", "WHERE", "query", "expect"):
+        assert token not in text
+
+
+def test_all_regression_failures_become_decision_cards(ws):
+    """#212：回归失败题 100% 框成决策卡，且是「改预期 / 补本体 / 删题」三选一。"""
+    cq_store.save_run("agent_task", {
+        "suite": "t", "ran_at": "2026-11-15T00:00:00+00:00",
+        "total": 4, "pass": 2, "fail": 2, "cannot_tell": 0, "not_tested": 0,
+        "coverage_real": 0.5,
+        "cases": [
+            {"id": "Q1", "cq": "哪些智能体可以执行「登录模块开发」？", "state": "fail"},
+            {"id": "Q2", "cq": UNLOCATED, "state": "fail"},
+        ],
+    })
+    items = agenda.build_agenda(_engine(), "agent_task", limit=1)
+    failed = [item for item in items if item.get("case_id") in {"Q1", "Q2"}]
+    assert {item["case_id"] for item in failed} == {"Q1", "Q2"}
+    for item in failed:
+        assert item["kind"] == "expectation"
+        assert item["options"] == [
+            "改预期以匹配新结果", "补本体后保持原预期", "删除该题",
+        ]
 
 
 def test_item_for_rebuilds_only_known_agenda_ids(ws):

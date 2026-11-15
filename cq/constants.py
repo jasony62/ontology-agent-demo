@@ -53,6 +53,10 @@ STATUS_LABELS = {
 DECISION_ACTIONS = ("ask", "feedback", "withdraw")
 # 五类决策固定词表，调用方不得自定义；原 intent 已改名 expectation。
 DECISION_KINDS = ("semantic", "expectation", "priority", "term", "scope")
+# 反馈结论（#212）：采纳推荐 / 驳回或改选 / 暂缓；缺省时沿用旧口径（有内容即裁决）。
+DECISION_CONCLUSIONS = ("adopt", "reject", "defer")
+# 依据来源：自己判断 / 已问他人确认（人名放 follow_up_with）。
+FEEDBACK_BASES = ("self", "expert")
 FEEDBACK_SOURCES = ("direct", "agent_relay")
 
 # 状态翻转族：只能经 cq_decision 写入，通用写工具拒绝。
@@ -88,6 +92,7 @@ TRAINING_EVENT_SCHEMAS: dict[str, dict[str, tuple[type, bool, tuple | None]]] = 
         "recommended": (str, True, None),
         "reason": (str, True, None),
         "background": (str, True, None),
+        "context": (str, False, None),
         "case_id": (str, False, None),
     },
     "feedback_received": {
@@ -96,6 +101,9 @@ TRAINING_EVENT_SCHEMAS: dict[str, dict[str, tuple[type, bool, tuple | None]]] = 
         "option": (str, False, None),
         "follow_up_with": (str, False, None),
         "source": (str, True, FEEDBACK_SOURCES),
+        "conclusion": (str, False, DECISION_CONCLUSIONS),
+        "basis": (str, False, FEEDBACK_BASES),
+        "authorized": (bool, False, None),
         "superseded_by": (str, False, None),
     },
     "decision_resolved_by_self": {

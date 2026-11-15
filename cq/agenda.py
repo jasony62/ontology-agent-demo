@@ -11,9 +11,9 @@
 
 状态来源与优先级（每题最多一条，按下列顺序取第一个成立项）：
   1. 冗余：与前面某题问法重复；
-  2. 未锚定：本体里找不到承载术语（或术语在、数据不在）；
-  3. 质检：题型未分型；
-  4. 回归失败：上次回归未通过 / 没能执行；
+  2. 回归失败：上次回归未通过 / 没能执行；
+  3. 未锚定：本体里找不到承载术语（或术语在、数据不在）；
+  4. 质检：题型未分型；
   5. 覆盖缺口：能定位但没有可自动验收的检查。
 """
 
@@ -33,9 +33,9 @@ _AGENDA_ID = re.compile(r"^ag-(semantic|expectation|priority|term|scope)-(.+)$")
 
 _PRIORITY = {
     "冗余": 0,
-    "未锚定": 1,
-    "质检": 2,
-    "回归失败": 3,
+    "回归失败": 1,
+    "未锚定": 2,
+    "质检": 3,
     "覆盖缺口": 4,
 }
 
@@ -135,10 +135,10 @@ def _expectation_item(case: dict, run_case: dict | None) -> dict:
         return _item(
             "expectation", case_id,
             background=f"上次回归里，「{title}」没有通过：本体能给出结果，但和之前确认的预期不一致。",
-            question="这次的预期要怎么处理？",
-            options=["按新结果更新预期", "改回原预期并检查本体", "暂时搁置"],
-            recommended="按新结果更新预期",
-            reason="如果新结果符合业务事实，更新预期最快；如果是本体改动带来的偏差，应改回原预期并检查本体。",
+            question="这道失败的题要怎么处理？",
+            options=["改预期以匹配新结果", "补本体后保持原预期", "删除该题"],
+            recommended="改预期以匹配新结果",
+            reason="如果新结果符合业务事实，更新预期最快；如果是本体改动带来的偏差，应补本体后保持原预期。",
         )
     if state == "cannot_tell":
         return _item(
@@ -152,10 +152,10 @@ def _expectation_item(case: dict, run_case: dict | None) -> dict:
     return _item(
         "expectation", case_id,
         background=f"「{title}」已经能对上本体里的证据，但还没有一道可自动验收的检查，无法确认它真的答得上。",
-        question="现在要给它补验收检查吗？",
-        options=["补验收检查", "暂时不补"],
-        recommended="补验收检查",
-        reason="只有补上验收检查，这道题才会进入可答统计，覆盖率才是真的。",
+        question="这道题要怎么处理？",
+        options=["补本体或数据后保留", "改问法后保留", "删除该题"],
+        recommended="补本体或数据后保留",
+        reason="先让题目有可用证据，再补一条验收检查，它才会进入可答统计。",
     )
 
 
@@ -169,19 +169,50 @@ def _build_item(kind: str, case: dict, run_case: dict | None) -> dict:
     return _term_item(case)
 
 
+def _context(case: dict, run_case: dict | None) -> str:
+    """决策卡内联现场（#211）：用业务话说明「为什么问你、这题现在卡在哪」。"""
+    location = case.get("location") or {}
+    anchors = [
+        str(item).strip()
+        for item in (location.get("anchor_terms") or [])
+        if str(item).strip()
+    ]
+    evidence = int(location.get("evidence") or 0)
+    if evidence > 0 and anchors:
+        parts = [f"这题能对上本体里的「{'、'.join(anchors[:3])}」，目前查到 {evidence} 条证据。"]
+    elif evidence > 0:
+        parts = [f"这题目前查到 {evidence} 条证据。"]
+    else:
+        parts = ["这题在本体里暂时找不到证据。"]
+    state = str((run_case or {}).get("state") or "")
+    summary = str(case.get("assertion_summary") or "").strip()
+    if summary and summary != "还没有可自动验收的检查":
+        parts.append(f"验收要求：{summary}。")
+    if state == "fail":
+        parts.append("上次回归没通过：实际结果和预期不一致。")
+    elif state == "cannot_tell":
+        parts.append("上次回归没能执行完，结果暂不可信。")
+    elif state == "pass":
+        parts.append("上次回归通过。")
+    elif not case.get("regression"):
+        parts.append("还没有可自动验收的检查。")
+    return "".join(parts)
+
+
 def _classify(
     case: dict, run_case: dict | None, duplicate_of: str | None,
 ) -> tuple[str, str] | None:
     """返回该题最需要人拍板的「类别 + 状态组」；没有未决状态时返回 None。"""
     if duplicate_of:
         return "scope", "冗余"
+    state = str((run_case or {}).get("state") or "")
+    # #212：系统已经发现的回归失败优先框成决策卡，避免「补归因」被当成 agent 私活。
+    if state in {"fail", "cannot_tell"}:
+        return "expectation", "回归失败"
     if not case.get("located"):
         return "term", "未锚定"
     if str(case.get("expected_type") or "") == EXPECTED_TYPE_UNKNOWN:
         return "semantic", "质检"
-    state = str((run_case or {}).get("state") or "")
-    if state in {"fail", "cannot_tell"}:
-        return "expectation", "回归失败"
     # 有检查但尚未跑过回归，属于智能体该执行的动作，不该变成人的决策；
     # 只有「连检查都没有」才是需要人拍板的覆盖缺口。
     if not case.get("answerable") and not case.get("regression"):
@@ -247,10 +278,18 @@ def build_agenda(
         if (kind, case_id) in covered:
             continue
         item = _build_item(kind, case, run_cases.get(case_id))
+        # #211：卡片自包含，leader 不必跳到题目页读 SPARQL。
+        item["context"] = _context(case, run_cases.get(case_id))
         ranked.append((_PRIORITY.get(group, 9), case_id, item))
 
     ranked.sort(key=lambda row: (row[0], row[1]))
-    return [item for _, _, item in ranked[:limit]]
+    # #212：回归失败必须 100% 框成决策卡，不能被名额截断；其余类别按名额上限。
+    failure_rank = _PRIORITY["回归失败"]
+    failures = [row for row in ranked if row[0] == failure_rank]
+    others = [row for row in ranked if row[0] != failure_rank]
+    selected = failures + others[: max(0, limit - len(failures))]
+    selected.sort(key=lambda row: (row[0], row[1]))
+    return [item for _, _, item in selected]
 
 
 def item_for(ontology_id: str, decision_id: str) -> dict | None:

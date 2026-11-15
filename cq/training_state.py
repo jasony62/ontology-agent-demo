@@ -15,11 +15,24 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 
-def _has_conclusion(content: dict) -> bool:
-    """反馈是否形成可采纳结论：选了选项或写了反馈原文。"""
-    return bool(str(content.get("option") or "").strip()) or bool(
-        str(content.get("feedback_text") or "").strip()
-    )
+def _feedback_status(content: dict) -> str:
+    """反馈形成的状态（#212）：结论优先，其次旧口径（有选项 / 原文即裁决）。
+
+    - 暂缓 / 未授权 → 待跟进（还没形成可执行结论）；
+    - 采纳 / 驳回 → 已裁决（人已拍板，智能体按结论行动）；
+    - 无结论时保持 #195 口径：有选项或原文 → 已裁决，否则待跟进。
+    """
+    conclusion = str(content.get("conclusion") or "")
+    if conclusion == "defer":
+        return "followup"
+    if content.get("authorized") is False:
+        return "followup"
+    if conclusion in {"adopt", "reject"}:
+        return "resolved"
+    return "resolved" if (
+        str(content.get("option") or "").strip()
+        or str(content.get("feedback_text") or "").strip()
+    ) else "followup"
 
 
 def _now() -> str:
@@ -36,6 +49,7 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
     now = now or _now()
     decisions: dict[str, dict] = {}
     feedback = 0
+    structured_feedback = 0
     iterations: dict[str, dict] = {}
     breaker = None
     breaker_answered = False
@@ -63,6 +77,12 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
             }
         elif event == "feedback_received":
             feedback += 1
+            if (
+                content.get("conclusion")
+                and content.get("basis")
+                and content.get("authorized") is not None
+            ):
+                structured_feedback += 1
             decision_id = str(content.get("decision_id") or "")
             decision = decisions.get(decision_id)
             if decision is None:
@@ -70,7 +90,7 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
             decision["feedback"].append({**content, "ts": ts})
             decision["latest_feedback"] = {**content, "ts": ts}
             decision["since"] = ts
-            decision["status"] = "resolved" if _has_conclusion(content) else "followup"
+            decision["status"] = _feedback_status(content)
         elif event == "decision_resolved_by_self":
             decision = decisions.get(str(content.get("decision_id") or ""))
             if decision is not None:
@@ -115,11 +135,7 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
         if decision["withdrawn"]:
             decision["status"] = "withdrawn"
         elif decision.get("feedback"):
-            decision["status"] = (
-                "resolved"
-                if _has_conclusion(decision["feedback"][-1])
-                else "followup"
-            )
+            decision["status"] = _feedback_status(decision["feedback"][-1])
         else:
             decision["status"] = "pending"
 
@@ -133,6 +149,7 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
     counts = {
         "asked": len(decisions),
         "feedback": feedback,
+        "structured_feedback": structured_feedback,
         "pending": len(pending_decisions),
         "followup": len(pending_followups),
         "resolved": sum(1 for item in decisions.values() if item["status"] == "resolved"),
@@ -166,6 +183,7 @@ def _decision_view(decision: dict) -> dict:
         "recommended": decision.get("recommended"),
         "reason": decision.get("reason"),
         "background": decision.get("background"),
+        "context": decision.get("context"),
         "case_id": decision.get("case_id"),
         "asked_at": decision.get("asked_at"),
         "since": decision.get("since"),

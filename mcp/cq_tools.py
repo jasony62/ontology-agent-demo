@@ -355,8 +355,10 @@ def register_tools(server, get_engine, get_cq_context) -> None:
         return {"ok": True, "ontology_id": target, "entries": entries}
 
     @server.tool(description=(
-        "唯一决策入口（#195）：action=ask 提问 / feedback 反馈 / withdraw 自答撤问。"
-        "反馈不设状态参数，状态由事件流读时投影；ask 类别固定五类，选项≥2 且推荐项属于选项。"))
+        "唯一决策入口（#195 / #212）：action=ask 提问 / feedback 反馈 / withdraw 自答撤问。"
+        "反馈可带结构化结论（adopt / reject / defer）、依据来源（self / expert）与授权确认"
+        "（authorized），不设状态参数，状态由事件流读时投影；ask 类别固定五类，"
+        "选项≥2 且推荐项属于选项。"))
     def cq_decision(
         action: str,
         kind: str = "",
@@ -365,11 +367,15 @@ def register_tools(server, get_engine, get_cq_context) -> None:
         recommended: str = "",
         reason: str = "",
         background: str = "",
+        context: str = "",
         case_id: str = "",
         decision_id: str = "",
         feedback_text: str = "",
         option: str = "",
         follow_up_with: str = "",
+        conclusion: str = "",
+        basis: str = "",
+        authorized: bool | None = None,
         method: str = "",
         ontology_id: str = "",
     ) -> dict:
@@ -379,7 +385,7 @@ def register_tools(server, get_engine, get_cq_context) -> None:
                 payload = {
                     "kind": kind, "question": question, "options": options or [],
                     "recommended": recommended, "reason": reason,
-                    "background": background,
+                    "background": background, "context": context,
                 }
                 if case_id:
                     payload["case_id"] = case_id
@@ -389,7 +395,11 @@ def register_tools(server, get_engine, get_cq_context) -> None:
                     "feedback_text": feedback_text,
                     "option": option,
                     "follow_up_with": follow_up_with,
+                    "conclusion": conclusion,
+                    "basis": basis,
                 }
+                if authorized is not None:
+                    payload["authorized"] = authorized
             elif action == "withdraw":
                 payload = {"decision_id": decision_id, "method": method}
             else:

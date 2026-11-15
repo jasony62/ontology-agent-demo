@@ -2221,7 +2221,7 @@ def cq_regression_runs(limit: int = Query(20, ge=1, le=100, description="最多�
     tags=["通用查询"],
     summary="CQ 训练现场自举",
     responses={
-        200: {"model": OpenEnvelope, "description": "状态摘要 / 上次回归 / 待决 / 待跟进 / 熔断 / 迭代 / 缺口 / 下一步建议。"},
+        200: {"model": OpenEnvelope, "description": "状态摘要 / 上次回归 / 待决（含决策议程）/ 待跟进 / 熔断 / 迭代 / 缺口 / 下一步建议。"},
         **ERROR_400,
     },
 )
@@ -2231,7 +2231,7 @@ def cq_resume(
     kinds: str = Query("", description="full 时历史类别过滤，逗号分隔"),
     limit: int = Query(200, ge=1, le=1000, description="full 时历史条数上限"),
 ):
-    """训练现场自举（#196）：实时聚合、不落快照。"""
+    """训练现场自举（#196）：实时聚合、不落快照；议程由 #207 生成器推导后合并。"""
     ontology_id, seed = _cq_identity()
     try:
         result = training_service.resume(

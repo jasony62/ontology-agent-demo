@@ -133,6 +133,39 @@ def _display_status(value) -> str:
     return raw if raw in STATUS_CONTRACT_VALUES else STATUS_UNSET
 
 
+def assertion_summary(regression: dict | None) -> str:
+    """把机器断言翻译成一句业务话（#210 读视图字段，不落盘）。
+
+    只描述「应该看到什么」，不出现 SPARQL / 判分类型名；未识别时给诚实兜底。
+    """
+    if not isinstance(regression, dict) or not regression:
+        return "还没有可自动验收的检查"
+    expect = regression.get("expect")
+    if isinstance(expect, bool):
+        return f"应判定为「{'是' if expect else '否'}」"
+    if isinstance(expect, int):
+        return f"应正好查到 {expect} 条"
+    if isinstance(expect, dict):
+        kind = str(expect.get("type") or "")
+        if kind == "boolean":
+            value = expect.get("value", True)
+            return f"应判定为「{'是' if value else '否'}」"
+        if kind == "exists":
+            value = expect.get("value", True)
+            return f"应判定为「{'存在' if value else '不存在'}」"
+        if kind == "count":
+            return f"应正好查到 {int(expect.get('value') or 0)} 条"
+        if kind in {"values", "set_exact"}:
+            values = expect.get("values") or expect.get("set") or []
+            joined = "、".join(str(item) for item in values)
+            return f"结果应正好是：{joined or '（空）'}"
+        if kind == "contains":
+            values = expect.get("values") or expect.get("contains") or []
+            joined = "、".join(str(item) for item in values)
+            return f"结果应包含：{joined or '（空）'}"
+    return "已有一条自动检查"
+
+
 # CQ 题目的合法字段（#180/#181）：只保留真正被消费的字段。
 _CASE_FIELDS = {
     "id", "cq", "expected_type", "status", "requirement",
@@ -549,7 +582,8 @@ def build_view(engine, data: dict) -> dict:
         if not isinstance(case, dict):
             continue
         cq = str(case.get("cq") or "").strip()
-        location = {"coverage": "no_anchors", "evidence": 0, "anchors": 0}
+        location = {"coverage": "no_anchors", "evidence": 0, "anchors": 0,
+                    "anchor_terms": []}
         if cq:
             try:
                 hit = locate_cq(engine, cq)
@@ -557,9 +591,12 @@ def build_view(engine, data: dict) -> dict:
                     "coverage": hit["coverage"],
                     "evidence": hit["counts"]["total"],
                     "anchors": len(hit["anchors"]),
+                    # #211：保留锚点词本身，供决策卡生成「现场上下文」。
+                    "anchor_terms": list(hit["anchors"])[:6],
                 }
             except Exception:  # noqa: BLE001 —— 单题定位失败不影响整集
-                location = {"coverage": "error", "evidence": 0, "anchors": 0}
+                location = {"coverage": "error", "evidence": 0, "anchors": 0,
+                            "anchor_terms": []}
         is_located = location["evidence"] > 0
         cache = case.get("coverage_cache") if isinstance(case.get("coverage_cache"), dict) else {}
         regression = _regression(case)
@@ -584,6 +621,7 @@ def build_view(engine, data: dict) -> dict:
             "located": is_located,
             "answerable": is_answerable,
             "location": location,
+            "assertion_summary": assertion_summary(regression),
         })
 
     total = len(enriched)

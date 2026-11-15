@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { plainCopy } from './cqCopy';
+import { decisionKindLabel, plainCopy } from './cqCopy';
 
 describe('训练现场文案消毒（#203 A6）', () => {
   it('删掉含实现术语的括注，保留业务主词', () => {
@@ -25,5 +25,19 @@ describe('训练现场文案消毒（#203 A6）', () => {
     expect(plainCopy('G1')).toBe('G1');
     expect(plainCopy('it-20261115000101-abc123')).toBe('it-20261115000101-abc123');
     expect(plainCopy(null)).toBe('');
+  });
+
+  it('决策背景 / 推荐理由同样去黑话（#208）', () => {
+    expect(plainCopy('这道题问的「绩效等级」在本体里还没对应术语（见 context_gaps）'))
+      .toBe('这道题问的「绩效等级」在本体里还没对应术语');
+    expect(plainCopy('按新结果更新预期（attribution_conclusion）'))
+      .toBe('按新结果更新预期');
+  });
+
+  it('决策类别转业务中文，未知类别兜底', () => {
+    expect(decisionKindLabel('expectation')).toBe('预期');
+    expect(decisionKindLabel('term')).toBe('术语');
+    expect(decisionKindLabel('')).toBe('待分类');
+    expect(decisionKindLabel(null)).toBe('待分类');
   });
 });

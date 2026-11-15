@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cq import cq_store, training_service
+from cq import cq_store, training_service, training_state
 from cq.training_log import read_events
 
 
@@ -46,6 +46,15 @@ def test_ask_validates_non_open_question(ws):
     assert read_events("agent_task")[-1]["event"] == "decision_asked"
 
 
+def test_ask_stores_optional_context(ws):
+    """#211：智能体提问时可注入业务话现场，前端卡片直接展示。"""
+    result = _ask(context="这题能对上本体术语，目前查到 0 条证据。")
+    assert result["event"]["content"]["context"] == "这题能对上本体术语，目前查到 0 条证据。"
+    state = training_state.project_training_state(read_events("agent_task"))
+    decision = state["decisions"][result["decision_id"]]
+    assert decision["context"] == "这题能对上本体术语，目前查到 0 条证据。"
+
+
 def test_feedback_four_forms_and_status(ws):
     decision_id = _ask()["decision_id"]
     forms = [
@@ -77,6 +86,62 @@ def test_feedback_rejects_status_and_extra_fields(ws):
             "agent_task", "feedback",
             {"decision_id": decision_id, "status": "answered"}, source="direct",
         )
+
+
+def test_structured_feedback_conclusion_basis_and_authorization(ws):
+    """#212：结论 / 依据来源 / 授权确认结构化落库，并决定读时状态。"""
+    cases = [
+        ({"conclusion": "adopt", "option": "A"}, "resolved"),
+        ({"conclusion": "reject", "option": "B"}, "resolved"),
+        ({"conclusion": "defer"}, "followup"),
+        ({"conclusion": "adopt", "option": "A", "authorized": False}, "followup"),
+    ]
+    for extra, expected in cases:
+        decision_id = _ask()["decision_id"]
+        result = training_service.decide(
+            "agent_task", "feedback",
+            {"decision_id": decision_id, "basis": "self", "authorized": True, **extra},
+            source="direct",
+        )
+        assert result["status"] == expected
+        feedback = result["event"]
+        assert feedback["event"] == "feedback_received"
+        assert feedback["content"]["conclusion"] == extra["conclusion"]
+        assert feedback["content"]["basis"] == "self"
+        assert "authorized" in feedback["content"]
+    state = training_state.project_training_state(read_events("agent_task"))
+    assert state["counts"]["feedback"] == 4
+    assert state["counts"]["structured_feedback"] == 4
+
+
+def test_structured_feedback_rejects_unknown_values(ws):
+    decision_id = _ask()["decision_id"]
+    for payload, match in [
+        ({"conclusion": "maybe"}, "未知结论"),
+        ({"basis": "boss"}, "未知依据"),
+        ({"authorized": "yes"}, "必须是布尔"),
+    ]:
+        with pytest.raises(training_service.TrainingError, match=match):
+            training_service.decide(
+                "agent_task", "feedback",
+                {"decision_id": decision_id, **payload}, source="direct",
+            )
+
+
+def test_timeline_hides_withdraw_implementation_words(ws):
+    decision_id = _ask()["decision_id"]
+    training_service.decide(
+        "agent_task", "withdraw",
+        {"decision_id": decision_id, "method": "自己查了本体"},
+        source="agent_relay",
+    )
+    summary = next(
+        item["summary"] for item in training_service.timeline("agent_task")["items"]
+        if item["kind"] == "decision_resolved_by_self"
+    )
+    assert "撤问" not in summary
+    assert "自答" not in summary
+    assert "智能体" in summary
 
 
 def test_expectation_conclusion_marks_intent(ws):

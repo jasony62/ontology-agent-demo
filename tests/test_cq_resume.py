@@ -131,6 +131,32 @@ def test_g3_stale_followup(ws):
     assert "G3" in [gap["gap_type"] for gap in gaps]
 
 
+def test_gap_and_next_copy_have_no_internal_identifiers(ws):
+    """#208：缺口与下一步文案不出现事件名 / 内部路径 / 工具名。"""
+    import json
+
+    cq_store.save_run("agent_task", {
+        "suite": "t", "ran_at": "2026-11-15T00:00:00+00:00",
+        "total": 2, "pass": 1, "fail": 1, "cannot_tell": 0, "not_tested": 0,
+        "coverage_real": 0.5, "cases": [],
+    })
+    training_service.training_write("agent_task", "circuit_breaker", {
+        "reason": "连续两轮无进展",
+    })
+    training_service.training_write("agent_task", "iteration_started", {
+        "iteration_id": "it-1", "translation_ref": "iterations/it-1.json",
+    })
+    result = training_service.resume(_engine(), "agent_task")
+    text = json.dumps(
+        [gap["suggestion"] for gap in result["context_gaps"]]
+        + [result["next_suggested"]["text"]],
+        ensure_ascii=False,
+    )
+    for token in ("context_gaps", "attribution_conclusion", "business_translation",
+                  "iterations/", "cq_decision", ".json"):
+        assert token not in text
+
+
 def test_training_write_evidence_is_referenced(ws):
     result = training_service.training_write(
         "agent_task", "evidence_recorded", {"summary": "干跑自检"},

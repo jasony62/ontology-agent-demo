@@ -1,7 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { CqTimelineItem } from '../api/client';
+import { conclusionLabel } from '../lib/cqLabels';
 import CqIterationPage from './CqIterationPage';
+
+const CATEGORY_LABELS: Record<string, string> = {
+  decisions: '决策',
+  observations: '观测 / 证据',
+  regression: '回归',
+  iterations: '迭代',
+  audit: '审计',
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  training: '训练',
+  audit: '审计',
+  regression: '回归',
+  iteration: '迭代',
+};
 
 const KINDS = [
   { value: '', label: '全部' },
@@ -95,12 +111,30 @@ export default function CqTimelinePage() {
             {items.map((item, index) => (
               <li key={`${item.source}-${item.ref || ''}-${index}`} className="cq-timeline-item">
                 <div className="cq-timeline-head">
-                  <code>{item.source}</code>
-                  <span className="guide-badge muted">{item.category}</span>
+                  <code>{SOURCE_LABELS[item.source] ?? item.source}</code>
+                  <span className="guide-badge muted">{CATEGORY_LABELS[item.category] ?? item.category}</span>
                   <time>{item.ts || '—'}</time>
                   {item.actor && <span className="guide-muted">{item.actor_type}/{item.actor}</span>}
                 </div>
                 <p>{item.summary}</p>
+                {item.content && Boolean(item.content.conclusion || item.content.basis) && (
+                  <div className="cq-timeline-receipt">
+                    {item.content.conclusion ? (
+                      <span>结论：{conclusionLabel(String(item.content.conclusion))}</span>
+                    ) : null}
+                    {item.content.basis ? (
+                      <span>
+                        依据：
+                        {item.content.basis === 'expert'
+                          ? `已问${String(item.content.follow_up_with || '他人')}确认`
+                          : '自己判断'}
+                      </span>
+                    ) : null}
+                    {item.content.authorized === false
+                      ? <span>未授权</span>
+                      : <span>已授权</span>}
+                  </div>
+                )}
                 {item.content && typeof item.content.feedback_text === 'string' && item.content.feedback_text && (
                   <blockquote className="cq-timeline-feedback">{item.content.feedback_text}</blockquote>
                 )}

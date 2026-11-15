@@ -1585,6 +1585,29 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-training-card-head code { font-size: 11px; color: var(--muted); }
 .cq-training-card h4 { font-size: var(--fs-md); color: var(--text); line-height: 1.5; }
 .cq-training-bg { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.cq-training-context {
+  margin: 0; padding: 6px 8px; border-left: 2px solid var(--border-strong);
+  background: var(--panel-2); font-size: 12px; color: var(--text); line-height: 1.6;
+}
+.cq-training-context b { display: block; font-size: 11px; color: var(--muted); font-weight: 600; }
+.cq-training-receipt { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 4px 0; }
+.cq-training-receipt .field { min-width: 140px; }
+.cq-training-authorize {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text); padding-bottom: 6px;
+}
+.cq-tech-entry { margin-top: 2px; }
+.cq-tech-toggle { align-self: flex-start; padding-left: 0; }
+.cq-tech-body {
+  margin-top: 4px; padding: 6px 8px; border-radius: 6px; background: var(--panel-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; color: var(--muted); white-space: pre-wrap; word-break: break-word;
+}
+.cq-mode-toggle { display: inline-flex; gap: 3px; background: #eef2f8; border-radius: 8px; padding: 3px; }
+.cq-timeline-receipt {
+  display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px;
+  font-size: 11.5px; color: var(--muted);
+}
 .cq-training-options { display: flex; flex-wrap: wrap; gap: 6px; }
 .cq-training-rec {
   margin-left: 6px; padding: 0 5px; border-radius: 3px;

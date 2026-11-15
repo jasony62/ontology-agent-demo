@@ -16,6 +16,22 @@ def client(tmp_path, monkeypatch):
     return TestClient(M.app)
 
 
+def test_assertion_summary_speaks_business_language():
+    """#210：断言读视图用「是 / 否 / 几条 / 列举」表达，不暴露判分类型名。"""
+    assert cq_store.assertion_summary(None) == "还没有可自动验收的检查"
+    assert "是" in cq_store.assertion_summary({"query": "ASK {}", "expect": True})
+    assert "3 条" in cq_store.assertion_summary(
+        {"query": "SELECT {}", "expect": {"type": "count", "value": 3}})
+    values = cq_store.assertion_summary(
+        {"query": "SELECT {}", "expect": {"type": "values", "values": ["甲", "乙"]}})
+    assert "甲、乙" in values
+    contains = cq_store.assertion_summary(
+        {"query": "SELECT {}", "expect": {"type": "contains", "values": ["甲"]}})
+    assert "包含" in contains
+    for summary in (values, contains):
+        assert "type" not in summary and "values" not in summary
+
+
 def test_empty_set_is_a_formal_skeleton(tmp_path, monkeypatch):
     monkeypatch.setenv("ONTOLOGY_WORKSPACES_ROOT", str(tmp_path))
     data = cq_store.get_set("no-such-workspace")

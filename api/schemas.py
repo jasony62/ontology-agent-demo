@@ -224,11 +224,15 @@ class CqDecisionRequest(BaseModel):
     recommended: str = Field("", description="ask 专用：推荐项，必须属于 options")
     reason: str = Field("", description="ask 专用：推荐理由")
     background: str = Field("", description="ask 专用：背景话术")
+    context: str = Field("", description="ask 专用：现场上下文（#211，业务话，不写 SPARQL）")
     case_id: str = Field("", description="ask 专用：可选的关联题目 id")
     decision_id: str = Field("", description="feedback / withdraw 专用：决策编号")
     feedback_text: str = Field("", description="feedback 专用：反馈原文")
     option: str = Field("", description="feedback 专用：所选选项")
     follow_up_with: str = Field("", description="feedback 专用：需要谁确认")
+    conclusion: str = Field("", description="feedback 专用：adopt / reject / defer（#212）")
+    basis: str = Field("", description="feedback 专用：self（自判）/ expert（已问他人）")
+    authorized: bool | None = Field(None, description="feedback 专用：是否已确认授权执行（#212）")
     method: str = Field("", description="withdraw 专用：自答方法")
 
 

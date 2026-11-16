@@ -15,6 +15,7 @@ import {
   conclusionLabel,
 } from '../lib/cqLabels';
 import { notifyCqTrainingChanged } from '../lib/cqTrainingEvent';
+import { formatLocalTime } from '../lib/time';
 import HelpTip from './HelpTip';
 import TechDetails from './TechDetails';
 
@@ -639,7 +640,7 @@ function CaseHistory({
           >
             <div className="cq-case-event-head">
               <span className="cq-actor">{actorIcon(event.actor_type)} {actorLabel(event.actor_type)}</span>
-              <time>{event.ts || '—'}</time>
+              <time>{formatLocalTime(event.ts)}</time>
               <span className="guide-badge muted">{eventLabel(event.kind)}</span>
             </div>
             <p>{plainCopy(event.summary)}</p>

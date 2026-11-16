@@ -45,6 +45,14 @@ def _short(text: str, limit: int = 42) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _quote(text: str) -> str:
+    """题干强调：自带书名号时不再加外层，避免「「…」」嵌套（#249）。"""
+    text = str(text or "")
+    if "「" in text or "」" in text:
+        return text
+    return f"「{text}」"
+
+
 def _case_id(case: dict) -> str:
     return str(case.get("id") or "").strip()
 
@@ -98,7 +106,7 @@ def _term_item(case: dict, run_case: dict | None = None) -> dict:
         return _item(
             "term", case_id,
             background=(
-                f"「{title}」这次能算出结果，但题干没有对上本体术语，"
+                f"{_quote(title)}这次能算出结果，但题干没有对上本体术语，"
                 "能答属于碰巧命中；长期看会误导，需要你决定改问法、补术语还是保留。"
             ),
             question="这道题长期要不要保留？",
@@ -108,7 +116,7 @@ def _term_item(case: dict, run_case: dict | None = None) -> dict:
         )
     return _item(
         "term", case_id,
-        background=f"「{title}」目前定位不到可用的本体证据：可能缺对应术语，也可能缺数据。",
+        background=f"{_quote(title)}目前定位不到可用的本体证据：可能缺对应术语，也可能缺数据。",
         question="这道题要怎么处理？",
         options=["调整问法后保留", "补充术语或数据后保留", "删除该题"],
         recommended="调整问法后保留",
@@ -120,7 +128,7 @@ def _semantic_item(case: dict) -> dict:
     case_id = _case_id(case)
     return _item(
         "semantic", case_id,
-        background=f"「{_short(case.get('cq'))}」还没有标注它属于哪一类问题，评估时无法判断它答没答上。",
+        background=f"{_quote(_short(case.get('cq')))}还没有标注它属于哪一类问题，评估时无法判断它答没答上。",
         question="这道题应该归为哪一类？",
         options=["检索类", "推导类", "计数类", "反例类"],
         recommended="检索类",
@@ -132,7 +140,7 @@ def _scope_item(case: dict) -> dict:
     case_id = _case_id(case)
     return _item(
         "scope", case_id,
-        background=f"「{_short(case.get('cq'))}」与另一道题问的是同一件事，重复保留会让覆盖率虚高。",
+        background=f"{_quote(_short(case.get('cq')))}与另一道题问的是同一件事，重复保留会让覆盖率虚高。",
         question="这道重复的题要怎么处理？",
         options=["删除这道", "保留并改写问法"],
         recommended="删除这道",
@@ -147,7 +155,7 @@ def _expectation_item(case: dict, run_case: dict | None) -> dict:
     if state == "fail":
         return _item(
             "expectation", case_id,
-            background=f"上次回归里，「{title}」没有通过：本体能给出结果，但和之前确认的预期不一致。",
+            background=f"上次回归里，{_quote(title)}没有通过：本体能给出结果，但和之前确认的预期不一致。",
             question="这道失败的题要怎么处理？",
             options=["改预期以匹配新结果", "补本体后保持原预期", "删除该题"],
             recommended="改预期以匹配新结果",
@@ -156,7 +164,7 @@ def _expectation_item(case: dict, run_case: dict | None) -> dict:
     if state == "cannot_tell":
         return _item(
             "expectation", case_id,
-            background=f"上次回归里，「{title}」的检查没能执行完，结果不可信。",
+            background=f"上次回归里，{_quote(title)}的检查没能执行完，结果不可信。",
             question="这道题的检查要怎么处理？",
             options=["修正检查后重跑", "暂时搁置"],
             recommended="修正检查后重跑",
@@ -164,7 +172,7 @@ def _expectation_item(case: dict, run_case: dict | None) -> dict:
         )
     return _item(
         "expectation", case_id,
-        background=f"「{title}」已经能对上本体里的证据，但还没有一道可自动验收的检查，无法确认它真的答得上。",
+        background=f"{_quote(title)}已经能对上本体里的证据，但还没有一道可自动验收的检查，无法确认它真的答得上。",
         question="这道题要怎么处理？",
         options=["补本体或数据后保留", "改问法后保留", "删除该题"],
         recommended="补本体或数据后保留",

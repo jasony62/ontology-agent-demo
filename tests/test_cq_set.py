@@ -5,7 +5,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from cq import cq_store
+from cq import cq_store, training_log, training_service
 import api.main as M
 
 
@@ -368,3 +368,70 @@ def test_regression_run_history_metrics_and_exports(client):
     junit = client.get("/api/domains/current/cq/export?format=junit")
     assert junit.status_code == 200
     assert "<testsuite" in junit.text and 'failures="1"' in junit.text
+
+
+def test_regression_event_actor_comes_from_run_not_hardcoded(client):
+    """#248：人在网页点回归，事件主体必须是 human/web，不能记成 agent/mcp。"""
+    payload = {
+        "suite": "actor",
+        "version": 1,
+        "cases": [{
+            "id": "A1",
+            "cq": "本体里有任何三元组吗？",
+            "regression": {
+                "query": "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1",
+                "expect": {"type": "exists", "value": True},
+            },
+        }],
+    }
+    raw = json.dumps(payload, ensure_ascii=False)
+    client.post(
+        "/api/domains/current/cq/import",
+        files={"file": ("cq_set.json", raw.encode("utf-8"), "application/json")},
+    )
+    run = client.post(
+        "/api/domains/current/cq/regression/run",
+        json={"actor_type": "human", "actor": "web-tester"},
+    )
+    assert run.status_code == 200, run.text
+
+    ontology_id, _ = M._cq_identity()
+    events = [event for event in training_log.read_events(ontology_id)
+              if event.get("event") == "regression_run"]
+    assert events
+    assert events[-1]["actor_type"] == "human"
+    assert events[-1]["actor"] == "web-tester"
+
+
+def test_regression_event_without_actor_is_unknown_not_forged(client):
+    """#248：拿不到身份时显式标 unknown，不替任何一方代签。"""
+    ontology_id, _ = M._cq_identity()
+    training_service.auto_regression_event(ontology_id, {
+        "ran_at": "2026-11-16T00:00:00+00:00",
+        "total": 1, "pass": 1, "fail": 0, "cannot_tell": 0, "not_tested": 0,
+    }, "runs/manual.json")
+    events = [event for event in training_log.read_events(ontology_id)
+              if event.get("event") == "regression_run"]
+    assert events[-1]["actor_type"] == "unknown"
+    assert events[-1]["actor"] == "unknown"
+
+
+def test_cq_api_telemetry_records_calls_and_errors(client):
+    """#247：成功的 CQ 接口记 cq_api_call，失败再记 cq_api_error（报错率分母只数调用）。"""
+    assert client.get("/api/domains/current/cq/set").status_code == 200
+    assert client.get("/api/domains/current/cq/export?format=bogus").status_code == 400
+
+    ontology_id, _ = M._cq_identity()
+    events = cq_store.read_metrics(ontology_id)
+    calls = [event for event in events if event.get("event") == "cq_api_call"]
+    errors = [event for event in events if event.get("event") == "cq_api_error"]
+    assert calls
+    assert errors
+    assert any(
+        event["endpoint"].endswith("/cq/export") and event["status"] == 400
+        for event in calls
+    )
+    assert any(
+        event["error_code"] == "http_400" and event["endpoint"].endswith("/cq/export")
+        for event in errors
+    )

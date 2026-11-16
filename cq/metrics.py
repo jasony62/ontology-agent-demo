@@ -8,8 +8,9 @@
   - 决策时延：decision_asked → 第一条 feedback 的秒数中位数；
   - 质量/CQM：直接用 lifecycle 投影的题数，不重复计算。
 
-护栏三项（毕业留存率 / 工具报错率 / cq-test 纳入 CI 率）当前没有独立数据源，
-返回 available=false 与原因；不伪造 0% 或 100%。
+护栏三项（毕业留存率 / 工具报错率 / cq-test 纳入 CI 率）的计算只在
+`cq/guardrails.py` 一处，本模块只做透传；无数据源时如实 available=false，
+不伪造 0% 或 100%。
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 from statistics import median
+
+from cq import guardrails as cq_guardrails
 
 
 def _num(value) -> float:
@@ -35,6 +38,10 @@ def compute_metrics(
     *,
     lifecycle_summary: dict | None = None,
     view_summary: dict | None = None,
+    cases: list[dict] | None = None,
+    audit: list[dict] | None = None,
+    metrics_events: list[dict] | None = None,
+    guardrails_snapshot: dict | None = None,
 ) -> dict:
     decisions: dict[str, dict] = {}
     feedback: dict[str, list[dict]] = {}
@@ -105,20 +112,12 @@ def compute_metrics(
             "agent_decisions": len(agent_options),
             "feedback": sum(len(items) for items in feedback.values()),
         },
-        "guardrails": {
-            "graduation_retention": {
-                "available": False,
-                "reason": "尚无毕业后的留存观察窗口",
-            },
-            "tool_error_rate": {
-                "available": False,
-                "reason": "工具错误尚未写入训练事件流",
-            },
-            "cq_test_ci_rate": {
-                "available": False,
-                "reason": "尚无 CI 执行结果事件",
-            },
-        },
+        # #247：三项护栏统一由 guardrails.snapshot 计算（读接口与 CI 门禁同源）
+        "guardrails": guardrails_snapshot or cq_guardrails.snapshot(
+            metrics_events or [],
+            cases or [],
+            audit or [],
+        ),
         "sources": {
             "target_questions": view_summary.get("target_questions"),
             "schema_terms": view_summary.get("schema_terms"),

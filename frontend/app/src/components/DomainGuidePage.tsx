@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { DomainGuide, GuideCapabilitySlot, GuideExample, GuideRuntime } from '../api/client';
+import { formatLocalTime } from '../lib/time';
 import { GlossaryProvider, TermText } from './TermText';
 
 interface Props {
@@ -1419,7 +1420,7 @@ export default function DomainGuidePage({
               <div className="guide-kv"><span>领域</span><b>{profile.display_name || guide.display_name || guide.domain}</b></div>
               <div className="guide-kv"><span>已加载本体</span><b title={runtime.ontology}>{runtime.ontology_display ?? runtime.ontology}</b></div>
               <div className="guide-kv"><span>模式</span><b>{imported ? '导入的本体（只读）' : generic ? '通用（自定义本体）' : '领域'}</b></div>
-              <div className="guide-kv"><span>加载时刻</span><b>{guide.loaded_at}</b></div>
+              <div className="guide-kv"><span>加载时刻</span><b>{formatLocalTime(guide.loaded_at)}</b></div>
               <div className="guide-kv"><span>说明文件</span><b>guide_version {guide.guide_version} · 契约通过</b></div>
               <div className="guide-kv"><span>三元组</span><b>{runtime.counts.triples}（推理新增 {runtime.counts.inferred}）</b></div>
               <div className="guide-kv"><span>图谱分组</span><b>{runtime.graph_groups.length} 组</b></div>

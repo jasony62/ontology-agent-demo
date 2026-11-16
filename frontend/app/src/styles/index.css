@@ -1451,8 +1451,35 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-intro { margin: 2px 0 4px; font-size: 13px; color: var(--text); line-height: 1.65; }
 .cq-meta { margin: 4px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.6; }
 .cq-meta-tech { margin-left: 4px; color: var(--muted); }
-.cq-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cq-toolbar-actions { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .cq-toolbar-actions .btn { text-decoration: none; display: inline-flex; align-items: center; }
+/* #250 R1：视图 / 视角 / 只读工具 / 写操作四组，组标签常驻；写操作单独描边。 */
+.cq-tool-group {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 4px 8px 5px; border-radius: 8px; border: 1px solid transparent;
+}
+.cq-tool-group-label {
+  flex-basis: 100%; font-size: 10.5px; color: var(--muted);
+  letter-spacing: .04em; margin-bottom: -2px;
+}
+.cq-tool-group.readonly { background: var(--panel-2); border-color: var(--border); }
+.cq-tool-group.writes { background: #fff7ed; border-color: #f0c9a0; }
+.cq-export-menu { position: relative; }
+.cq-export-menu > summary { list-style: none; cursor: pointer; }
+.cq-export-menu > summary::-webkit-details-marker { display: none; }
+.cq-export-menu[open] > summary { border-color: var(--border-strong); }
+.cq-export-list {
+  position: absolute; z-index: 20; top: calc(100% + 4px); right: 0; min-width: 168px;
+  display: flex; flex-direction: column; padding: 4px;
+  background: #fff; border: 1px solid var(--border-strong); border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .12);
+}
+.cq-export-list a {
+  padding: 7px 9px; border-radius: 6px; color: var(--text);
+  font-size: 12.5px; text-decoration: none; white-space: nowrap;
+}
+.cq-export-list a:hover { background: var(--panel-2); }
+.cq-run-preflight { flex-basis: 100%; max-width: 360px; font-size: 11px; color: var(--muted); line-height: 1.55; }
 .cq-mode-note {
   margin: 8px 0 0; padding: 7px 10px; border-radius: 6px;
   background: var(--panel-2); font-size: 12px; color: var(--muted);
@@ -1492,11 +1519,41 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   font-size: 11.5px; color: var(--text);
 }
 .cq-help {
+  position: relative;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 14px; height: 14px; margin-left: 4px; border-radius: 50%;
-  border: 1px solid var(--border-strong); color: var(--muted);
+  width: 14px; height: 14px; margin-left: 4px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: transparent; color: var(--muted);
   font-size: 10px; line-height: 1; cursor: help; vertical-align: 1px;
 }
+.cq-help:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+/* #250 R4：自带浮层，hover 与键盘 focus 都显示，不再依赖浏览器原生 tooltip。 */
+.cq-help-pop {
+  position: absolute; z-index: 30; left: 50%; bottom: calc(100% + 6px);
+  width: max-content; max-width: 260px; transform: translateX(-50%);
+  padding: 6px 8px; border-radius: 6px; background: #1f2933; color: #fff;
+  font-size: 11.5px; line-height: 1.55; text-align: left; white-space: normal;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .2);
+  opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .12s;
+}
+.cq-help:hover .cq-help-pop, .cq-help:focus .cq-help-pop {
+  opacity: 1; visibility: visible;
+}
+.cq-gap-stats {
+  margin: 8px 0 10px; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel);
+}
+.cq-gap-stats-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cq-gap-stats-head b { font-size: 12.5px; color: var(--heading); }
+.cq-gap-stats-head .guide-muted { font-size: 11px; }
+.cq-gap-stats-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.cq-gap-stat {
+  padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border-strong);
+  background: #fff; color: var(--text); font-size: 12px; cursor: pointer;
+}
+.cq-gap-stat b { color: var(--heading); }
+.cq-gap-stat:hover { border-color: var(--link); }
+.cq-gap-stat.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.cq-gap-stat.active b { color: #fff; }
 .cq-dimension-note { margin: 4px 0; font-size: 11px; }
 .cq-inline-note {
   margin: 6px 0; padding: 6px 9px; border-left: 2px solid var(--border-strong);

@@ -3,11 +3,15 @@ import { api } from '../api/client';
 import type { CqAuditEntry, CqCoverageResponse, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse } from '../api/client';
 import { EXPECTED_TYPE_OPTIONS, STATUS_OPTIONS, assertionSummaryText, expectedTypeLabel, statusLabel } from '../lib/cqLabels';
 import { plainCopy } from '../lib/cqCopy';
+import { formatLocalTime } from '../lib/time';
 import CqTrainingPage from './CqTrainingPage';
 import HelpTip from './HelpTip';
 import TechDetails from './TechDetails';
 
 type CqTab = 'cases' | 'training';
+
+// #250 R6：与 cq/lifecycle.py 题卡 blockers 同一组词、同一顺序。
+const BLOCKER_ORDER = ['未锚定', '未分型', '缺断言', '未通过', '已归档'];
 
 /**
  * CQ 集页（#151 + #154 + #156 + #203）：顶部两个标签。
@@ -40,6 +44,8 @@ export default function CqPage() {
   const [recentAudit, setRecentAudit] = useState<CqAuditEntry[]>([]);
   const [metrics, setMetrics] = useState<CqMetricsResponse | null>(null);
   const [showGlossary, setShowGlossary] = useState(false);
+  // #250 R6：点击整体缺口统计，把下方题目列表筛到对应题
+  const [gapFilter, setGapFilter] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,6 +83,33 @@ export default function CqPage() {
     if (!selected) return null;
     return cases.find((item, index) => caseKey(item, index) === selected) ?? null;
   }, [cases, selected]);
+
+  // #250 R6：与训练页题卡 blockers 同一组词，逐项计数、可点击筛题。
+  const blockerCounts = useMemo(() => {
+    const counts: Record<string, number> = Object.fromEntries(
+      BLOCKER_ORDER.map((label) => [label, 0]),
+    );
+    for (const item of cases) {
+      for (const blocker of item.blockers ?? []) {
+        if (blocker in counts) counts[blocker] += 1;
+      }
+    }
+    return counts;
+  }, [cases]);
+  const visibleCases = useMemo(
+    () => cases
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => !gapFilter || (item.blockers ?? []).includes(gapFilter)),
+    [cases, gapFilter],
+  );
+  // #250 R3：运行评估前的预检口径，必须与后端「全量跑」一致。
+  const preflight = useMemo(() => ({
+    total: cases.length,
+    noAssertion: cases.filter((item) => !item.regression).length,
+    unconfirmed: cases.filter(
+      (item) => !['active', 'archived'].includes(String(item.status || '')),
+    ).length,
+  }), [cases]);
 
   useEffect(() => {
     if (!current) {
@@ -145,6 +178,15 @@ export default function CqPage() {
   };
 
   const runRegression = async () => {
+    // #250 R3：写操作先讲后果，确认后再生效。
+    const confirmed = window.confirm(
+      `跑一轮评估会：\n`
+      + `· 跑全部 ${preflight.total} 道题\n`
+      + '· 写本轮记录到评估历史\n'
+      + '· 更新每题「可答」与可答覆盖\n\n'
+      + '不改本体，也不改题干和断言。继续？',
+    );
+    if (!confirmed) return;
     setBusy('run');
     setError(null);
     setNotice(null);
@@ -172,7 +214,7 @@ export default function CqPage() {
       const result = await api.cqAudit();
       setAudit(result.entries);
     } catch (e) {
-      setError(`读取审计失败：${e instanceof Error ? e.message : String(e)}`);
+      setError(`读取变更记录失败：${e instanceof Error ? e.message : String(e)}`);
       setAudit([]);
     } finally {
       setAuditLoading(false);
@@ -183,12 +225,17 @@ export default function CqPage() {
   const pendingQuestions = resumePreview?.lifecycle?.summary?.pending_questions ?? 0;
   const agentEntry = recentAudit.find((entry) => entry.actor_type === 'agent');
   const agentText = agentEntry
-    ? `最近${auditActionLabel(agentEntry.action)}${agentEntry.case_id ? ` ${agentEntry.case_id}` : ''} · ${agentEntry.ts || ''}`
+    ? `最近${auditActionLabel(agentEntry.action)}${agentEntry.case_id ? ` ${agentEntry.case_id}` : ''} · ${formatLocalTime(agentEntry.ts)}`
     : `已准备 ${summary?.total ?? 0} 道题，等待你确认或运行评估`;
+  const provenance = data?.provenance;
   const mismatch = Boolean(
-    coverage?.summary?.likely_mismatch
+    provenance?.stale
+    || coverage?.summary?.likely_mismatch
     || (summary && summary.total > 0 && summary.located === 0),
   );
+  const mismatchText = provenance?.stale
+    ? `这份题集是从「${provenance.seed_ontology || '另一个本体'}」播种的，当前加载的是「${provenance.current_ontology || '另一个本体'}」，不能作为成熟度依据。请让智能体按当前本体重新生成题目。`
+    : '当前题集与加载的本体可能不是同一套：所有题目都没有命中本体术语。请先确认「当前题集 / 当前领域」是否匹配，或让智能体按当前本体重新生成题目。';
   const ontologyName = String(health?.ontology || '');
   const ontologyLoadedAt = String(health?.loaded_at || '');
   const domainName = String(health?.domain || '');
@@ -252,99 +299,127 @@ export default function CqPage() {
           </p>
           <p className="cq-meta">
             当前题集：<b title={data?.suite ? `系统标识：${data.suite}` : ''}>{suiteDisplay}</b>
-            {data?.updated_at ? `（更新于 ${data.updated_at}）` : ''}
+            {data?.updated_at ? `（更新于 ${formatLocalTime(data.updated_at)}）` : ''}
             {domainName ? <> · 当前领域：<b>{domainName}</b></> : null}
-            {ontologyLoadedAt ? <> · 本体加载于 {ontologyLoadedAt}</> : null}
+            {ontologyLoadedAt ? <> · 本体加载于 {formatLocalTime(ontologyLoadedAt)}</> : null}
             {ontologyName ? <span className="cq-meta-tech" title={ontologyName}>（本体文件见技术细节）</span> : null}
           </p>
         </div>
-        <div className="cq-tabs" role="tablist" aria-label="CQ 集视图">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'cases'}
-            className={`cq-tab${tab === 'cases' ? ' active' : ''}`}
-            onClick={() => setTab('cases')}
-          >
-            题目
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'training'}
-            className={`cq-tab${tab === 'training' ? ' active' : ''}`}
-            onClick={() => setTab('training')}
-          >
-            训练
-          </button>
-        </div>
-        {tab === 'cases' && (
-          <div className="cq-toolbar-actions">
-            <div className="cq-mode-toggle" role="group" aria-label="操作模式">
+        <div className="cq-toolbar-actions">
+          <div className="cq-tool-group">
+            <span className="cq-tool-group-label">视图</span>
+            <div className="cq-tabs" role="tablist" aria-label="CQ 集视图">
               <button
                 type="button"
-                className={`cq-filter${mode === 'leader' ? ' active' : ''}`}
-                aria-pressed={mode === 'leader'}
-                title="领导模式：只看业务语义与待决事项，不写题干/专业分类"
-                onClick={() => setMode('leader')}
+                role="tab"
+                aria-selected={tab === 'cases'}
+                className={`cq-tab${tab === 'cases' ? ' active' : ''}`}
+                onClick={() => setTab('cases')}
               >
-                领导模式
+                题目
               </button>
               <button
                 type="button"
-                className={`cq-filter${mode === 'expert' ? ' active' : ''}`}
-                aria-pressed={mode === 'expert'}
-                title="专家模式：查看/编辑 SPARQL、题干与专业分类"
-                onClick={() => setMode('expert')}
+                role="tab"
+                aria-selected={tab === 'training'}
+                className={`cq-tab${tab === 'training' ? ' active' : ''}`}
+                onClick={() => setTab('training')}
               >
-                专家模式
+                训练
               </button>
             </div>
-            <button type="button" className="btn secondary" onClick={() => setShowGlossary((value) => !value)}>
-              {showGlossary ? '收起术语说明' : '术语说明'}
-            </button>
-            {mode === 'leader' && (
-              <button type="button" className="btn secondary" onClick={() => void requestCases()}>
-                请求智能体生成候选题
-              </button>
-            )}
-            <button type="button" className="btn secondary" onClick={() => void load()} disabled={loading || busy != null}>
-              刷新
-            </button>
-            <button type="button" className="btn secondary" onClick={() => void toggleAudit()}>
-              {showAudit ? '收起审计' : '审计'}
-            </button>
-            {mode === 'expert' && (
-              <button
-                type="button"
-                className="btn secondary"
-                disabled={busy != null}
-                onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'retrieval' } })}
-              >
-                新增题目
-              </button>
-            )}
-            <button type="button" className="btn" onClick={() => void runRegression()} disabled={busy != null || !summary || summary.total === 0}>
-              {busy === 'run' ? '评估中…' : '运行评估'}
-            </button>
-            {mode === 'expert' && (
-              <label className="btn secondary cq-import">
-                导入 JSON
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={(event) => {
-                    void importFile(event.target.files?.[0] ?? null);
-                    event.target.value = '';
-                  }}
-                />
-              </label>
-            )}
-            <a className="btn secondary" href={api.cqExportUrl('json')} download>导出 JSON</a>
-            <a className="btn secondary" href={api.cqExportUrl('cq-test')} download>cq-test</a>
-            <a className="btn secondary" href={api.cqExportUrl('junit')} download>JUnit</a>
           </div>
-        )}
+          {tab === 'cases' && (
+            <>
+              <div className="cq-tool-group">
+                <span className="cq-tool-group-label">视角</span>
+                <div className="cq-mode-toggle" role="group" aria-label="操作模式">
+                  <button
+                    type="button"
+                    className={`cq-filter${mode === 'leader' ? ' active' : ''}`}
+                    aria-pressed={mode === 'leader'}
+                    title="领导模式：只看业务语义与待决事项，不写题干/专业分类"
+                    onClick={() => setMode('leader')}
+                  >
+                    领导模式
+                  </button>
+                  <button
+                    type="button"
+                    className={`cq-filter${mode === 'expert' ? ' active' : ''}`}
+                    aria-pressed={mode === 'expert'}
+                    title="专家模式：查看/编辑 SPARQL、题干与专业分类"
+                    onClick={() => setMode('expert')}
+                  >
+                    专家模式
+                  </button>
+                </div>
+                <button type="button" className="btn secondary" onClick={() => setShowGlossary((value) => !value)}>
+                  {showGlossary ? '收起术语说明' : '术语说明'}
+                </button>
+              </div>
+              <div className="cq-tool-group readonly">
+                <span className="cq-tool-group-label">只读工具</span>
+                <button type="button" className="btn secondary" onClick={() => void load()} disabled={loading || busy != null}>
+                  刷新
+                </button>
+                <button type="button" className="btn secondary" onClick={() => void toggleAudit()}>
+                  {showAudit ? '收起变更记录' : '变更记录'}
+                </button>
+                <details className="cq-export-menu">
+                  <summary className="btn secondary">导出 ▾</summary>
+                  <div className="cq-export-list">
+                    <a href={api.cqExportUrl('json')} download>导出 JSON</a>
+                    <a href={api.cqExportUrl('cq-test')} download>cq-test（CI）</a>
+                    <a href={api.cqExportUrl('junit')} download>JUnit（测试报告）</a>
+                  </div>
+                </details>
+              </div>
+              <div className="cq-tool-group writes">
+                <span className="cq-tool-group-label">写操作</span>
+                {mode === 'leader' && (
+                  <button type="button" className="btn secondary" onClick={() => void requestCases()}>
+                    请求智能体生成候选题
+                  </button>
+                )}
+                {mode === 'expert' && (
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={busy != null}
+                    onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'retrieval' } })}
+                  >
+                    新增题目
+                  </button>
+                )}
+                {mode === 'expert' && (
+                  <label className="btn secondary cq-import">
+                    导入 JSON
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={(event) => {
+                        void importFile(event.target.files?.[0] ?? null);
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void runRegression()}
+                  disabled={busy != null || !summary || summary.total === 0}
+                >
+                  {busy === 'run' ? '评估中…' : '跑一轮评估'}
+                </button>
+                <span className="cq-run-preflight">
+                  预检：{preflight.total} 题，无断言 {preflight.noAssertion}、未确认 {preflight.unconfirmed}；
+                  会跑全部题、写本轮记录并更新可答覆盖，不改本体和题干。
+                </span>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {tab === 'cases' && (
@@ -384,9 +459,7 @@ export default function CqPage() {
                 </span>
               </div>
               {mismatch && (
-                <div className="error-banner" role="alert">
-                  当前题集与加载的本体可能不是同一套：所有题目都没有命中本体术语。请先确认「当前题集 / 当前领域」是否匹配，或让智能体按当前本体重新生成题目。
-                </div>
+                <div className="error-banner" role="alert">{mismatchText}</div>
               )}
               {summary && summary.total > 0 && (
                 <div className="cq-start-guide">
@@ -440,8 +513,20 @@ export default function CqPage() {
                     <span>单题往返轮次中位数：{metrics.round_trips_median ?? '—'}</span>
                     <span>决策时延中位数：{delayOrNA(metrics.decision_latency_median_seconds)}</span>
                   </div>
+                  <div className="cq-metrics-grid">
+                    {Object.entries(GUARDRAIL_LABELS).map(([key, label]) => {
+                      const item = metrics.guardrails[key];
+                      return (
+                        <span key={key}>
+                          {label}：{item?.available
+                            ? percentOrNA(item.rate)
+                            : `不可用${item?.reason ? `（${item.reason}）` : ''}`}
+                        </span>
+                      );
+                    })}
+                  </div>
                   <p className="guide-muted">
-                    护栏三项（毕业留存 / 工具报错 / cq-test 纳入 CI）当前无独立数据源，未伪造数值。
+                    护栏与 CI 门禁同源（metrics.jsonl / 变更记录 / 题集）；无样本时明确标注不可用，不伪造数值。
                   </p>
                 </details>
               )}
@@ -451,7 +536,10 @@ export default function CqPage() {
           {showAudit && (
             <section className="panel cq-audit" aria-label="CQ 变更审计">
               <div className="cq-audit-head">
-                <h3>变更审计</h3>
+                <div>
+                  <h3>变更记录</h3>
+                  <p className="guide-muted">谁在什么时候增删改了哪道题；只读，不会改动题集。</p>
+                </div>
                 <span className="guide-muted">最近 {audit.length} 条（新到旧）</span>
               </div>
               {auditLoading ? (
@@ -470,7 +558,7 @@ export default function CqPage() {
                         <span className="cq-audit-action">{entry.action}</span>
                         <code>{entry.case_id || '—'}</code>
                         <span className="cq-audit-summary">{summary}</span>
-                        <span className="cq-audit-meta">{entry.actor} · {entry.ts}</span>
+                        <span className="cq-audit-meta">{entry.actor} · {formatLocalTime(entry.ts)}</span>
                       </li>
                     );
                   })}
@@ -543,7 +631,7 @@ export default function CqPage() {
                   </p>
                   {runs[0] && (
                     <div className="cq-trend">
-                      最近评估：{runs[0].pass}/{runs[0].total} 通过 · {runs[0].ran_at}
+                      最近评估：{runs[0].pass}/{runs[0].total} 通过 · {formatLocalTime(runs[0].ran_at)}
                       {trend === null
                         ? ' · 暂无上次对比'
                         : trend === 0
@@ -553,6 +641,32 @@ export default function CqPage() {
                   )}
                 </div>
               </div>
+
+              {/* #250 R6：与训练页题卡 blockers 一一对应的缺口统计，可点击筛题。 */}
+              <section className="cq-gap-stats" aria-label="缺口统计">
+                <div className="cq-gap-stats-head">
+                  <b>还差什么</b>
+                  <span className="guide-muted">与训练页题卡「还差」同一组词；点一项筛出对应题目。</span>
+                </div>
+                <div className="cq-gap-stats-actions">
+                  {BLOCKER_ORDER.map((label) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className={`cq-gap-stat${gapFilter === label ? ' active' : ''}`}
+                      aria-pressed={gapFilter === label}
+                      onClick={() => setGapFilter(gapFilter === label ? null : label)}
+                    >
+                      {label} <b>{blockerCounts[label] ?? 0}</b>
+                    </button>
+                  ))}
+                  {gapFilter && (
+                    <button type="button" className="btn link" onClick={() => setGapFilter(null)}>
+                      显示全部
+                    </button>
+                  )}
+                </div>
+              </section>
 
               {mode === 'expert' && (
                 <section className="panel cq-mention-coverage" aria-label="题干提及覆盖">
@@ -612,11 +726,11 @@ export default function CqPage() {
               <div className="cq-body">
                 <section className="panel cq-list" aria-label="CQ 列表">
                   <div className="cq-list-head">
-                    <span>题目</span>
-                    <span>{summary.total} 道</span>
+                    <span>{gapFilter ? `题目 · 还差「${gapFilter}」` : '题目'}</span>
+                    <span>{visibleCases.length} 道</span>
                   </div>
                   <ul>
-                    {cases.map((item, index) => {
+                    {visibleCases.map(({ item, index }) => {
                       const key = caseKey(item, index);
                       return (
                         <li key={key}>
@@ -644,6 +758,11 @@ export default function CqPage() {
                       );
                     })}
                   </ul>
+                  {visibleCases.length === 0 && (
+                    <div className="guide-empty-inline">
+                      没有还差「{gapFilter}」的题目；再点一次统计项可取消筛选。
+                    </div>
+                  )}
                 </section>
 
                 <section className="panel cq-detail" aria-label="CQ 详情">
@@ -705,6 +824,12 @@ function caseKey(item: CqSetCase, index: number): string {
 function hasLatinIdentifier(text?: string | null): boolean {
   return /[A-Za-z][A-Za-z0-9_-]{2,}/.test(String(text || ''));
 }
+
+const GUARDRAIL_LABELS: Record<string, string> = {
+  tool_error_rate: '工具报错率',
+  graduation_retention: '毕业留存率',
+  cq_test_ci_rate: 'cq-test 纳入 CI 率',
+};
 
 function percentOrNA(value?: number | null): string {
   return typeof value === 'number' ? `${Math.round(value * 100)}%` : '—';
@@ -1081,7 +1206,7 @@ function CqDetail({
                 {lastRunLabel(cache.earl, cache.conclusion)}
               </b>
             </div>
-            <div><span>时间</span><b>{cache.ran_at || '—'}</b></div>
+            <div><span>时间</span><b>{formatLocalTime(cache.ran_at)}</b></div>
           </div>
         ) : (
           <div className="guide-muted">

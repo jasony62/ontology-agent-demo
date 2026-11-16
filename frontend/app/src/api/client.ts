@@ -424,11 +424,24 @@ export interface CqSetSummary {
   schema_terms?: number;
 }
 
+export interface CqProvenance {
+  known: boolean;
+  stale: boolean;
+  seed_domain?: string | null;
+  seed_ontology?: string | null;
+  seed_base_iri?: string | null;
+  seeded_at?: string | null;
+  current_ontology?: string | null;
+  current_base_iri?: string | null;
+}
+
 export interface CqSetResponse {
   ontology_id: string;
   suite: string;
   version: number;
   updated_at?: string | null;
+  /** #245：播种来源与当前本体的对照；stale 时页面告警且 CQM 不可用。 */
+  provenance?: CqProvenance;
   summary: CqSetSummary;
   cases: CqSetCase[];
 }
@@ -616,7 +629,12 @@ export interface CqMetricsResponse {
   cqm: number | null;
   quality: Record<string, number>;
   counts: Record<string, number>;
-  guardrails: Record<string, { available: boolean; reason?: string }>;
+  guardrails: Record<string, {
+    available: boolean;
+    rate?: number | null;
+    reason?: string | null;
+    counts?: Record<string, number>;
+  }>;
   sources?: Record<string, unknown>;
 }
 

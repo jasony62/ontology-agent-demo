@@ -40,6 +40,11 @@ def _extra_terms(engine) -> set[str] | None:
 def register_tools(server, get_engine, get_cq_context) -> None:
     """注册 CQ 工具；get_cq_context() → (ontology_id, seed_path|None)。"""
 
+    # #245：播种来源指纹由宿主注入；MCP 进程与 REST 各注册一次，互不依赖。
+    cq_store.set_fingerprint_provider(
+        lambda: cq_store.ontology_fingerprint(get_engine())
+    )
+
     def resolve(ontology_id: str = "") -> tuple[str, Path | None]:
         """解析目标身份；显式覆盖必须落在已知工作区或当前身份上。"""
         default_id, seed = get_cq_context()
@@ -467,7 +472,7 @@ def register_tools(server, get_engine, get_cq_context) -> None:
 
     @server.tool(description=(
         "训练现场自举（#196）：状态摘要 / 上次回归 / 待决 / 待跟进 / 待跟进行动 / 熔断 / 迭代 / "
-        "意图标记 + 决策议程 + context_gaps（G1–G6）+ next_suggested。depth=full 时附历史。"))
+        "意图标记 + 决策议程 + context_gaps（G1–G7）+ next_suggested。depth=full 时附历史。"))
     def cq_resume(depth: str = "snapshot", since: str = "",
                   kinds: list[str] | None = None, limit: int = 200,
                   ontology_id: str = "") -> dict:

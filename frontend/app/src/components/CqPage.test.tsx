@@ -34,7 +34,7 @@ const SET = {
       location: { coverage: 'has_candidates', evidence: 2, anchors: 1 },
       regression: { query: 'ASK { ?s ?p ?o }', expect: true },
       coverage_cache: { conclusion: 2, ran_at: '2026-11-14T09:00:00' },
-      blockers: [],
+      blockers: [] as string[],
     },
     {
       id: 'Q2',
@@ -101,6 +101,7 @@ function stubFetch(
     pending?: number;
     auditEntries?: boolean;
     agentActions?: Array<Record<string, unknown>>;
+    patchError?: Record<string, unknown>;
   } = {},
 ) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -124,6 +125,12 @@ function stubFetch(
       } as unknown as Response;
     }
     if (url.includes('/cq/cases/') && !url.endsWith('/request') && method === 'PATCH') {
+      if (options.patchError) {
+        return {
+          ok: false, status: 400,
+          json: async () => ({ detail: options.patchError }),
+        } as unknown as Response;
+      }
       const caseId = decodeURIComponent(url.split('/cq/cases/')[1] || '');
       const payload = JSON.parse(String(init?.body || '{}'));
       const updated = {
@@ -592,6 +599,80 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-editor')).toBeNull();
   });
 
+  it('待审核题有徽章、统计与预检拦截（#280）', async () => {
+    const set = {
+      ...SET,
+      cases: SET.cases.map((item, index) => (index === 1 ? {
+        ...item,
+        review: { required: true, state: 'pending' },
+        blockers: [...(item.blockers || []), '待审核'],
+      } : item)),
+    };
+    stubFetch(set);
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const row = [...container!.querySelectorAll('.cq-row')]
+      .find((node) => node.textContent?.includes('这条结论凭什么成立？'))!;
+    expect(row.textContent).toContain('待审核');
+
+    const gapStat = [...container!.querySelectorAll<HTMLButtonElement>('.cq-gap-stats-actions button')]
+      .find((btn) => btn.textContent?.includes('待审核'))!;
+    expect(gapStat.textContent).toContain('1');
+
+    const run = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((btn) => btn.textContent === '跑一轮评估')!;
+    expect(run.disabled).toBe(true);
+    expect(run.getAttribute('title')).toContain('待审核');
+    expect(container!.textContent).toContain('待审核 1（会拦住本次评估）');
+  });
+
+  it('详情 kv 显示审核状态与审核人 / 时间（#280）', async () => {
+    const set = {
+      ...SET,
+      cases: SET.cases.map((item, index) => (index === 0 ? {
+        ...item,
+        review: {
+          required: true, state: 'approved',
+          by: '杨工', at: '2026-11-16T14:10:00+00:00',
+        },
+      } : item)),
+    };
+    stubFetch(set);
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('审核');
+    expect(text).toContain('已通过 · 杨工');
+  });
+
+  it('服务端返回结构化 review_pending 时给出可操作的错误（#280）', async () => {
+    stubFetch(SET, LOCATE, {
+      patchError: {
+        code: 'review_pending',
+        message: '有题待审核',
+        total_pending: 2,
+        blocking: [{ id: 'Q1', state: 'pending' }, { id: 'Q2', state: 'pending' }],
+      },
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '编辑')!;
+    act(() => edit.click());
+    const save = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor button')]
+      .find((button) => ['确认题目与断言', '保存题目'].includes(button.textContent || ''))!;
+    await act(async () => { save.click(); });
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('有 2 道题还没有审核结论');
+    expect(text).toContain('#Q1、#Q2');
+    expect(text).not.toContain('保存失败：有题待审核');
+  });
+
   it('编辑保存只回传落盘白名单字段，不再必然 400（#278）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
@@ -698,7 +779,7 @@ describe('CQ 集页（#151 / #203）', () => {
     await act(async () => { run.click(); });
     await flush();
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('跑全部 2 道题'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('跑 2 道题'));
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('不改本体，也不改题干和断言'));
     const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/cq/regression/run'));
     expect(call).toBeTruthy();
@@ -772,7 +853,7 @@ describe('CQ 集页（#151 / #203）', () => {
     const labels = [...stats.querySelectorAll('.cq-gap-stat')]
       .map((node) => node.textContent?.replace(/\s+/g, ' ').trim());
     expect(labels).toEqual([
-      '未锚定 1', '未分型 0', '缺断言 1', '未通过 0', '已归档 0',
+      '未锚定 1', '未分型 0', '缺断言 1', '未通过 0', '待审核 0', '已归档 0',
     ]);
 
     const unattached = [...stats.querySelectorAll<HTMLButtonElement>('.cq-gap-stat')]

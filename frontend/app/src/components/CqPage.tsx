@@ -14,6 +14,7 @@ import {
   statusLabel,
 } from '../lib/cqLabels';
 import { plainCopy } from '../lib/cqCopy';
+import { ApiError } from '../api/client';
 import { formatLocalTime } from '../lib/time';
 import CqTrainingPage from './CqTrainingPage';
 import HelpTip from './HelpTip';
@@ -22,7 +23,7 @@ import TechDetails from './TechDetails';
 type CqTab = 'cases' | 'training';
 
 // #250 R6：与 cq/lifecycle.py 题卡 blockers 同一组词、同一顺序。
-const BLOCKER_ORDER = ['未锚定', '未分型', '缺断言', '未通过', '已归档'];
+const BLOCKER_ORDER = ['未锚定', '未分型', '缺断言', '未通过', '待审核', '已归档'];
 
 // #278：与 cq/cq_store.py `_CASE_FIELDS` 对齐的落盘白名单。
 // 读视图字段（located / answerable / graduated / blockers / location /
@@ -182,6 +183,8 @@ export default function CqPage() {
     unconfirmed: cases.filter(
       (item) => !['active', 'archived'].includes(String(item.status || '')),
     ).length,
+    // #280：必审未过的题会拦住整轮回归，预检必须先说清楚
+    pendingReview: cases.filter(isReviewBlocking).length,
   }), [cases]);
 
   useEffect(() => {
@@ -227,6 +230,19 @@ export default function CqPage() {
       setData(saved);
       setSelected(saved.case?.id ? caseKey(saved.case, saved.cases.findIndex((c) => c.id === saved.case.id)) : selected);
     } catch (e) {
+      // #280：结构化错误码优先——让「待审核」一类门禁错误可定向处理
+      if (e instanceof ApiError && e.code === 'review_pending') {
+        const detail = (e.detail || {}) as {
+          blocking?: Array<{ id?: string }>;
+          total_pending?: number;
+        };
+        const ids = (detail.blocking || []).map((item) => `#${item.id || '?'}`).join('、');
+        setError(
+          `有 ${detail.total_pending ?? (detail.blocking?.length || 0)} 道题还没有审核结论`
+          + (ids ? `：${ids}` : '') + '。请先处理审核，再保存。',
+        );
+        return;
+      }
       setError(`保存失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(null);
@@ -255,7 +271,9 @@ export default function CqPage() {
     // #250 R3：写操作先讲后果，确认后再生效。
     const confirmed = window.confirm(
       `跑一轮评估会：\n`
-      + `· 跑全部 ${preflight.total} 道题\n`
+      + `· 跑 ${preflight.total - preflight.pendingReview} 道题`
+      + (preflight.pendingReview > 0 ? `（${preflight.pendingReview} 道待审核会被拦住）` : '')
+      + '\n'
       + '· 写本轮记录到评估历史\n'
       + '· 更新每题「可答」与可答覆盖\n\n'
       + '不改本体，也不改题干和断言。继续？',
@@ -529,13 +547,20 @@ export default function CqPage() {
                   type="button"
                   className="btn"
                   onClick={() => void runRegression()}
-                  disabled={busy != null || !summary || summary.total === 0}
+                  disabled={busy != null || !summary || summary.total === 0
+                    || preflight.pendingReview > 0}
+                  title={preflight.pendingReview > 0
+                    ? `有 ${preflight.pendingReview} 道题待审核，会拦住本轮评估；先在题目详情里处理审核`
+                    : ''}
                 >
                   {busy === 'run' ? '评估中…' : '跑一轮评估'}
                 </button>
                 <span className="cq-run-preflight">
-                  预检：{preflight.total} 题，无断言 {preflight.noAssertion}、未确认 {preflight.unconfirmed}；
-                  会跑全部题、写本轮记录并更新可答覆盖，不改本体和题干。
+                  预检：{preflight.total} 题，无断言 {preflight.noAssertion}、未确认 {preflight.unconfirmed}
+                  {preflight.pendingReview > 0
+                    ? `、待审核 ${preflight.pendingReview}（会拦住本次评估）`
+                    : ''}；
+                  会写本轮记录并更新可答覆盖，不改本体和题干。
                 </span>
               </div>
             </>
@@ -983,6 +1008,11 @@ export default function CqPage() {
                               {hasLatinIdentifier(item.cq) && (
                                 <span className="cq-badge muted" title="题干里的英文是本体的类/属性/个体标识符，不是错别字">含本体标识符</span>
                               )}
+                              {isReviewBlocking(item) && (
+                                <span className="cq-badge warn" title="题干或断言改动后需重新确认">
+                                  待审核
+                                </span>
+                              )}
                               {item.graduated && <span className="cq-badge ok">已毕业</span>}
                               {item.answerable ? <span className="cq-badge ok">可答</span> : null}
                             </span>
@@ -1063,6 +1093,29 @@ const GUARDRAIL_LABELS: Record<string, string> = {
   graduation_retention: '毕业留存率',
   cq_test_ci_rate: 'cq-test 纳入 CI 率',
 };
+
+/** #280：必审未过（pending / none / rejected）会拦住回归与翻批。 */
+function isReviewBlocking(item: CqSetCase): boolean {
+  const review = item.review;
+  if (!review?.required) return false;
+  const state = String(review.state || 'none');
+  return state !== 'approved';
+}
+
+function reviewLabel(review?: CqSetCase['review'] | null): string {
+  if (!review?.required) return '未要求';
+  const state = String(review.state || 'none');
+  if (state === 'pending' || state === 'none') return '待审核';
+  if (state === 'rejected') return '已驳回';
+  if (state === 'approved') {
+    const by = String(review.by || '').trim();
+    const at = review.at ? formatLocalTime(String(review.at)) : '';
+    const who = by ? ` · ${by}` : '';
+    const when = at ? ` · ${at}` : '';
+    return `已通过${who}${when}`;
+  }
+  return '待审核';
+}
 
 /** #268：领导模式下的一句话定位结论，不含工程术语，长度 ≤ 30 字。 */
 function locateSummary(locate: CqLocateResult): string {
@@ -1334,6 +1387,7 @@ function CqDetail({
         <div><span>题型</span><b>{expectedTypeLabel(item.expected_type)}</b></div>
         <div><span>状态</span><b>{statusLabel(item.status)}</b></div>
         <div><span>来自哪个需求</span><b>{item.requirement || '—'}</b></div>
+        <div><span>审核</span><b>{reviewLabel(item.review)}</b></div>
       </div>
 
       <section className="cq-section">

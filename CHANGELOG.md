@@ -7,6 +7,8 @@
 
 ### Added
 
+- **CQ 页面显示「待审核」并拦截未审核回归（#280）**：题目列表徽章、详情「审核」栏、「还差什么」统计（`待审核` 加入 blocker 序）与筛选、回归预检都会显示待审核题；预检发现待审题时「跑一轮评估」置灰并说明会被拦住；训练页新增独立「待审核题」统计与「有 M 题在等审核结论」提示，与「待决题」分开命名。前端 `request()` 新增 `ApiError` 保留结构化 `detail`，服务端返回 `review_pending` 时显示「有 N 道题还没有审核结论：#…」，不再是一句「保存失败」。
+- **审核门控需求评估定稿（#279）**：新增 `docs/CQ_REVIEW_GATE_EVALUATION.md`，明确门按写入 diff 判定、`review` 整对象强校验且禁止单键 patch、翻批覆盖五条写路径、`active + pending` 视为非法、`seed/import` 豁免、`rejected` 不参与回归、审计补 `review` 等口径。
 - **页面切换领域后 MCP 同步跟随（#277）**：MCP 侧新增 `POST /control/switch-domain`（运行中重建引擎 / 适配器并重挂领域工具，不重建 server、不断会话，失败回滚旧状态）与 `GET /control/status`，并新增通用自省工具 `mcp_status`；换域后 `/mcp/cq` 的 CQ 身份自动跟随。API 侧新增 `GET/POST /api/domains/current/mcp-sync`，领域切换、导入本体、退出导入都会通知 MCP，响应新增 `mcp_synced` / `mcp_error`（MCP 不可达不影响领域切换）。页面页头显示「MCP 已同步 / 未同步 · 立即同步」，说明页显示 MCP 实际领域与工具数。
 - **前端可退出 / 清理导入的本体（#276）**：新增 `GET /api/ontology/workspaces`、`GET /api/ontology/workspaces/{id}`、`POST /api/ontology/exit-imported`、`DELETE /api/ontology/workspaces/{id}/source`、`DELETE /api/ontology/workspaces/{id}?cascade_cq=true`。页头导入态显示「清除导入的本体」：默认只退出导入态（可逆、不删文件），也可按粒度清理——默认只删 `source.owl` + `meta.json`，CQ 题集 / 跑分 / 审计 / 训练日志保留；全删必须显式 `cascade_cq=true` 并二次确认。删除 / 退出写 CQ 审计，路径穿越返回 404。`ImportModal` 不再提示「重启服务可回到默认领域」。
 

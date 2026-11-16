@@ -172,6 +172,11 @@ export default function CqTrainingPanel({
   const pendingCases = cases.filter(
     (item) => item.stage === 'pending' && item.pending_decision,
   );
+  // #280：审核是另一条队列——与「待决」同页但含义不同，统一叫「待审核」。
+  const reviewPending = cases.filter(
+    (item) => item.review?.required
+      && String(item.review.state || 'none') !== 'approved',
+  ).length;
   const filtered = useMemo(() => {
     const rows = filter === 'all' ? [...cases] : cases.filter((item) => item.stage === filter);
     if (sortMode === 'activity') {
@@ -240,6 +245,11 @@ export default function CqTrainingPanel({
           {(resume?.next_actions ?? []).map((item) => actionLabel(item.action)).join('、')}
         </p>
       )}
+      {reviewPending > 0 && (
+        <p className="guide-section-hint cq-training-todo">
+          有 {reviewPending} 题在等审核结论；先处理「待审核」再跑回归。
+        </p>
+      )}
 
       {error && (
         <div className="element-readonly-note">
@@ -283,6 +293,15 @@ export default function CqTrainingPanel({
               <b>{summary?.followup_questions ?? 0}</b>
               <span>待跟进题</span>
             </button>
+            {reviewPending > 0 && (
+              <div className="cq-training-stat review">
+                <b>{reviewPending}</b>
+                <span>
+                  待审核题
+                  <HelpTip text="必审的题在题干或断言改动后需要重新确认；未通过审核会拦住回归。" />
+                </span>
+              </div>
+            )}
             {summary?.circuit_breaker?.open && (
               <div className="cq-training-stat danger">
                 <b>已触发</b>

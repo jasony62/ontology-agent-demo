@@ -157,6 +157,21 @@ export interface DomainInfo {
   triples?: number;
 }
 
+/** #276：导入工作区摘要（附带 CQ 题集 / 跑分 / 日志计数） */
+export interface OntologyWorkspaceSummary {
+  id: string;
+  display_name: string;
+  original_filename?: string | null;
+  imported_at?: string | null;
+  current: boolean;
+  source_bytes: number;
+  cq_cases: number;
+  runs: number;
+  audit_lines: number;
+  metrics_lines: number;
+  training_log_lines: number;
+}
+
 /** 切换 / 重载领域的返回（activate 带 capabilities，reload 不带） */
 export interface DomainSwitchResult {
   status: string;
@@ -904,6 +919,31 @@ export const api = {
 
   /** 重新推理统计 */
   infer: () => request<InferStats>('/api/infer'),
+
+  /** #276：导入工作区清单 / 详情 / 退出导入 / 分级清理 */
+  listOntologyWorkspaces: () =>
+    request<{ current: string | null; workspaces: OntologyWorkspaceSummary[] }>(
+      '/api/ontology/workspaces',
+    ),
+  ontologyWorkspace: (workspaceId: string) =>
+    request<OntologyWorkspaceSummary>(
+      `/api/ontology/workspaces/${encodeURIComponent(workspaceId)}`,
+    ),
+  exitImported: () =>
+    request<{ status: string; exited: boolean; domain: string; workspace?: string }>(
+      '/api/ontology/exit-imported',
+      { method: 'POST' },
+    ),
+  deleteWorkspaceSource: (workspaceId: string) =>
+    request<{ status: string; exited: boolean; workspace: string }>(
+      `/api/ontology/workspaces/${encodeURIComponent(workspaceId)}/source`,
+      { method: 'DELETE' },
+    ),
+  deleteWorkspace: (workspaceId: string, cascadeCq = true) =>
+    request<{ status: string; exited: boolean; workspace: string }>(
+      `/api/ontology/workspaces/${encodeURIComponent(workspaceId)}?cascade_cq=${cascadeCq}`,
+      { method: 'DELETE' },
+    ),
 
   /** 导出物化本体（Turtle 或 RDF/XML），返回 Blob */
   async exportMaterialized(format: 'turtle' | 'rdfxml'): Promise<Blob> {

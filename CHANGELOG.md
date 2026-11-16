@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **前端可退出 / 清理导入的本体（#276）**：新增 `GET /api/ontology/workspaces`、`GET /api/ontology/workspaces/{id}`、`POST /api/ontology/exit-imported`、`DELETE /api/ontology/workspaces/{id}/source`、`DELETE /api/ontology/workspaces/{id}?cascade_cq=true`。页头导入态显示「清除导入的本体」：默认只退出导入态（可逆、不删文件），也可按粒度清理——默认只删 `source.owl` + `meta.json`，CQ 题集 / 跑分 / 审计 / 训练日志保留；全删必须显式 `cascade_cq=true` 并二次确认。删除 / 退出写 CQ 审计，路径穿越返回 404。`ImportModal` 不再提示「重启服务可回到默认领域」。
+
 ### Fixed
 
 - **旧格式题集种子不再把 CQ 页打成 500（#275）**：领域包 `cq_tests.json` 还是 #179 之前的 `tool` + `params` 时，`get_set()` 抛 `SeedFormatError`，`/cq/set` 与 `/cq/resume` 返回 **422** 并给出具体字段定位（如 `cases[0].tool`）与修复方式（覆盖 `domains/<domain>/cq_tests.json` 或重装领域包）；失败路径不写半截 `cq_set.json`。`domain install` 在安装期就校验包内种子，坏种子直接拒绝安装。

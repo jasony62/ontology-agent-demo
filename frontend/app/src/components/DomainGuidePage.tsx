@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { DomainGuide, GuideCapabilitySlot, GuideExample, GuideRuntime } from '../api/client';
+import type { DomainGuide, GuideCapabilitySlot, GuideExample, GuideRuntime, McpSyncStatus } from '../api/client';
 import { formatLocalTime } from '../lib/time';
 import { GlossaryProvider, TermText } from './TermText';
 
@@ -15,6 +15,8 @@ interface Props {
   onReloadDomain?: () => void;
   /** #139：切换领域包（target 由后端给） */
   onSwitchDomain?: (domain: string) => void;
+  /** #277：MCP 实时同步状态（由 App 统一读取，本页只展示） */
+  mcpSync?: McpSyncStatus | null;
 }
 
 /*
@@ -573,7 +575,7 @@ function ExamplePanel({
 }
 
 export default function DomainGuidePage({
-  guide, error, loading, onRetry, onImport, onReloadDomain, onSwitchDomain,
+  guide, error, loading, onRetry, onImport, onReloadDomain, onSwitchDomain, mcpSync,
 }: Props) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState<SectionId>('overview');
@@ -581,6 +583,7 @@ export default function DomainGuidePage({
   const [openExample, setOpenExample] = useState<string | null>(null);
   // #135：滚动定位请求「排到 DOM 提交之后」再执行，token 让重复请求也能触发一次 effect。
   const [pendingReveal, setPendingReveal] = useState<{ id: string; token: number } | null>(null);
+
   const [drafts, setDrafts] = useState<Record<string, Record<string, unknown>>>({});
   // #137 R5：首次引导只剩这一处「带我试一题」，一次真跑；用本地记忆保证只出现一次。
   const [showFirstRun, setShowFirstRun] = useState(() => {
@@ -1329,11 +1332,22 @@ export default function DomainGuidePage({
             <h4 className="guide-subhead">MCP 接入（智能体自动发现工具）</h4>
             <p className="guide-section-hint">
               <TermText
-                text="MCP Server 自带引擎，不需要先启动 REST API；工具随当前领域注册。MCP 不做领域热切换，换领域请用 --domain 重启。"
+                text="MCP Server 自带引擎，不需要先启动 REST API；工具随当前领域注册。页面切换领域后会自动通知 MCP 同步，未同步时页头会提示并可一键修复。"
                 scope="integrations"
                 site="mcp-hint"
               />
             </p>
+            {mcpSync?.running ? (
+              <p className={mcpSync.synced ? 'guide-muted' : 'guide-muted mcp-warn-text'}>
+                MCP 当前领域：<b>{mcpSync.mcp_domain || '未知'}</b>
+                {' · '}工具 {mcpSync.tools ?? '—'} 个（领域专属 {mcpSync.domain_tools ?? 0} 个）
+                {mcpSync.synced
+                  ? ' · 与页面一致'
+                  : ` · 与页面不一致（页面为 ${mcpSync.api_domain}）`}
+              </p>
+            ) : (
+              <p className="guide-muted">未检测到 MCP 服务；启动后这里会显示它实际绑定的领域与工具数。</p>
+            )}
             {runtime.mcp.note && (
               <p className="guide-muted">
                 <TermText text={runtime.mcp.note} scope="integrations" site="mcp-note" />

@@ -157,6 +157,20 @@ export interface DomainInfo {
   triples?: number;
 }
 
+/** #277：MCP 领域同步状态 */
+export interface McpSyncStatus {
+  running: boolean;
+  synced: boolean;
+  api_domain: string;
+  mcp_domain?: string | null;
+  tools?: number | null;
+  domain_tools?: number | null;
+  loaded_at?: string | null;
+  reason?: string | null;
+  mcp_synced?: boolean;
+  mcp_error?: string | null;
+}
+
 /** #276：导入工作区摘要（附带 CQ 题集 / 跑分 / 日志计数） */
 export interface OntologyWorkspaceSummary {
   id: string;
@@ -179,6 +193,9 @@ export interface DomainSwitchResult {
   loaded_at: string;
   capabilities?: string[];
   triples: number;
+  /** #277：切换后 MCP 是否已跟随；未运行时为 false + 原因 */
+  mcp_synced?: boolean;
+  mcp_error?: string | null;
 }
 
 /** guide.json 里的示例题声明（不含框架判定的 safe / endpoint） */
@@ -919,6 +936,11 @@ export const api = {
 
   /** 重新推理统计 */
   infer: () => request<InferStats>('/api/infer'),
+
+  /** #277：MCP 领域同步状态 / 立即同步 */
+  mcpSyncStatus: () => request<McpSyncStatus>('/api/domains/current/mcp-sync'),
+  syncMcpDomain: () =>
+    request<McpSyncStatus>('/api/domains/current/mcp-sync', { method: 'POST' }),
 
   /** #276：导入工作区清单 / 详情 / 退出导入 / 分级清理 */
   listOntologyWorkspaces: () =>

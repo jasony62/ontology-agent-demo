@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from './store/appStore';
 import { api } from './api/client';
+import type { McpSyncStatus } from './api/client';
 import type { DomainGuide, DomainInfo, GraphData } from './api/client';
 import { parseRDF } from './lib/rdf/parser';
 import { sameLegendFocus } from './lib/graphGroups';
@@ -95,6 +96,9 @@ export default function App() {
   const [editorMounted, setEditorMounted] = useState(false);
   // 领域包切换器：清单来自 /api/domains（切换不落盘，进程重启回默认领域）
   const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null);
+  // #277：MCP 实际领域与 API 是否一致（未运行时不显示误导性的「已同步」）
+  const [mcpSync, setMcpSync] = useState<McpSyncStatus | null>(null);
+  const [mcpWarning, setMcpWarning] = useState<string | null>(null);
   const [domainBusy, setDomainBusy] = useState(false);
   const [domainNote, setDomainNote] = useState<string | null>(null);
   // #20：本体模式（default=默认本体/generic=通用模式），存 store 以便导入同步后即时刷新
@@ -206,6 +210,12 @@ export default function App() {
     } catch {
       setDomainInfo(null);
     }
+    // #277：MCP 领域同步状态；读不到就当作未运行，不显示「已同步」
+    try {
+      setMcpSync(await api.mcpSyncStatus());
+    } catch {
+      setMcpSync(null);
+    }
     // 当前领域说明：声明 + 实测 + 对账一次拿到。失败时清空而不是拿上一次
     // 缓存当现状——换包后若接口不可用，页面必须明确说"读不到"。
     setGuideLoading(true);
@@ -247,7 +257,7 @@ export default function App() {
    * 后端把「失败保持原状」做在了 activate 里（400 + 旧领域继续服务），
    * 所以这里失败只提示、不回滚任何前端状态——回滚反而会把正确的现状改坏。
    */
-  const runDomainAction = async (label: string, action: () => Promise<{ domain: string; triples?: number }>) => {
+  const runDomainAction = async (label: string, action: () => Promise<{ domain: string; triples?: number; mcp_synced?: boolean; mcp_error?: string | null }>) => {
     if (domainBusy) return;
     // 内存改动不会跟着领域走：切走就没了，先拦一道
     if (editorDirty && !window.confirm(`在线编辑器有未保存的修改，${label}会丢掉这些修改。继续？`)) return;
@@ -264,9 +274,34 @@ export default function App() {
       await loadWorkspace();
       setDomainNote(`${label}完成：${res.domain}${typeof res.triples === 'number' ? ` · ${res.triples} 三元组` : ''}`);
       window.setTimeout(() => setDomainNote(null), 4000);
+      // #277 R12：领域切换成功、MCP 未跟上时给 warning（不是错误）
+      if (res.mcp_synced === false) {
+        setMcpWarning(`领域已切换，但 MCP 服务未同步：${res.mcp_error || '未知原因'}。智能体暂时还在用旧领域。`);
+      } else {
+        setMcpWarning(null);
+      }
     } catch (e) {
       setDomainNote(null);
       setError(`${label}失败（后端保证当前领域仍可用）：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setDomainBusy(false);
+    }
+  };
+
+  const syncMcpNow = async () => {
+    setDomainBusy(true);
+    try {
+      const res = await api.syncMcpDomain();
+      setMcpSync(res);
+      if (res.mcp_synced === false) {
+        setMcpWarning(`MCP 同步失败：${res.mcp_error || res.reason || '未知原因'}`);
+      } else {
+        setMcpWarning(null);
+        setDomainNote(`MCP 已同步：${res.mcp_domain || res.api_domain} · ${res.tools ?? '—'} 个工具`);
+        window.setTimeout(() => setDomainNote(null), 4000);
+      }
+    } catch (e) {
+      setMcpWarning(`MCP 同步失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setDomainBusy(false);
     }
@@ -353,6 +388,27 @@ export default function App() {
           >
             重载
           </button>
+          {/* #277 R11：MCP 实际领域；未运行时不渲染，避免误导 */}
+          {mcpSync?.running && (
+            mcpSync.synced ? (
+              <span
+                className="mode-badge mcp-ok"
+                title={`MCP 已同步（${mcpSync.mcp_domain}）· ${mcpSync.domain_tools ?? 0} 个领域工具 / ${mcpSync.tools ?? 0} 个总数`}
+              >
+                MCP 已同步
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="mode-badge mcp-warn"
+                disabled={domainBusy}
+                title={mcpSync.reason || 'MCP 仍是旧领域'}
+                onClick={() => void syncMcpNow()}
+              >
+                MCP 未同步 · 立即同步
+              </button>
+            )
+          )}
           {domainNote && <span className="domain-note">{domainNote}</span>}
         </div>
         <div className="app-header-right">
@@ -386,6 +442,15 @@ export default function App() {
       </header>
 
       <main className="app-main">
+        {mcpWarning && (
+          <div className="notice-banner warn" role="status">
+            <span>{mcpWarning}</span>
+            <button type="button" className="btn link" onClick={() => void syncMcpNow()} disabled={domainBusy}>
+              立即同步
+            </button>
+            <button type="button" className="btn link" onClick={() => setMcpWarning(null)}>知道了</button>
+          </div>
+        )}
         {notice && (
           <div className="notice-banner app-notice" role="status">
             <span className="app-notice-text">{notice}</span>
@@ -410,6 +475,7 @@ export default function App() {
             onImport={() => setImportOpen(true)}
             onReloadDomain={() => void runDomainAction('重载领域', () => api.reloadDomain())}
             onSwitchDomain={(name) => void runDomainAction('切换领域', () => api.activateDomain(name))}
+            mcpSync={mcpSync}
           />
         ) : page === 'cq' ? (
           // key 跟着当前领域走：切领域后 CQ 集 / 训练现场 / 时间线一起按新身份重读，不跨领域串数据

@@ -13,7 +13,6 @@ import {
   lastRunLabel,
   statusLabel,
 } from '../lib/cqLabels';
-import { plainCopy } from '../lib/cqCopy';
 import { ApiError } from '../api/client';
 import { formatLocalTime } from '../lib/time';
 import CqTrainingPage from './CqTrainingPage';
@@ -67,8 +66,22 @@ export default function CqPage() {
   const [tab, setTab] = useState<CqTabName>(initialHash.tab);
   // #292：题目列表搜索（短号 / 状态词 / 题干关键词），与筛选叠加。
   const [query, setQuery] = useState(initialHash.query);
-  // #210：领导模式默认，隐藏 SPARQL 与内部枚举；专家模式显式切换。
-  const [mode, setMode] = useState<'leader' | 'expert'>('leader');
+  // #293：不再要求用户先选「模式」——技术细节是一层可折叠信息，不是身份。
+  const [showTech, setShowTech] = useState(() => {
+    try {
+      return window.localStorage.getItem('oa.cq.tech.v1') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleTech = (next: boolean) => {
+    setShowTech(next);
+    try {
+      window.localStorage.setItem('oa.cq.tech.v1', next ? '1' : '0');
+    } catch {
+      /* 本地存储不可用时只影响记忆，不影响本次展示 */
+    }
+  };
   const [data, setData] = useState<CqSetResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -413,6 +426,8 @@ export default function CqPage() {
   const domainName = String(health?.domain || domainInfo?.name || '');
   const domainLabel = domainInfo?.display_name || domainName;
   const domainCode = String(domainInfo?.name || health?.domain || '');
+  const evaluation = resumePreview?.evaluation ?? null;
+  const evaluationFresh = evaluation?.state === 'fresh';
   const pendingActions = resumePreview?.next_actions ?? [];
   const waitingHours = pendingActions.reduce((max, item) => {
     const started = Date.parse(String(item.requested_at || ''));
@@ -524,28 +539,16 @@ export default function CqPage() {
           {tab === 'cases' && (
             <>
               <div className="cq-tool-group">
-                <span className="cq-tool-group-label">视角</span>
-                <div className="cq-mode-toggle" role="group" aria-label="操作模式">
-                  <button
-                    type="button"
-                    className={`cq-filter${mode === 'leader' ? ' active' : ''}`}
-                    aria-pressed={mode === 'leader'}
-                    title="领导模式：只看业务语义与待决事项，不写题干/专业分类"
-                    onClick={() => setMode('leader')}
-                  >
-                    领导模式
-                  </button>
-                  <button
-                    type="button"
-                    className={`cq-filter${mode === 'expert' ? ' active' : ''}`}
-                    aria-pressed={mode === 'expert'}
-                    title="专家模式：查看/编辑 SPARQL、题干与专业分类"
-                    onClick={() => setMode('expert')}
-                  >
-                    专家模式
-                  </button>
-                </div>
-                <button type="button" className="btn secondary" onClick={() => setShowGlossary((value) => !value)}>
+                <span className="cq-tool-group-label">技术</span>
+                <label className="cq-tech-switch" title="显示 SPARQL、内部枚举与证据原文；状态会记住">
+                  <input
+                    type="checkbox"
+                    checked={showTech}
+                    onChange={(event) => toggleTech(event.target.checked)}
+                  />
+                  显示技术细节
+                </label>
+                <button type="button" className="btn link" onClick={() => setShowGlossary((value) => !value)}>
                   {showGlossary ? '收起术语说明' : '术语说明'}
                 </button>
               </div>
@@ -577,23 +580,18 @@ export default function CqPage() {
               </div>
               <div className="cq-tool-group writes">
                 <span className="cq-tool-group-label">写操作</span>
-                {mode === 'leader' && (
-                  <button type="button" className="btn secondary" onClick={() => void requestCases()}>
-                    请求智能体生成候选题
-                  </button>
-                )}
-                {mode === 'expert' && (
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    disabled={busy != null}
-                    onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'retrieval' } })}
-                  >
-                    新增题目
-                  </button>
-                )}
-                {mode === 'expert' && (
-                  <label className="btn secondary cq-import">
+                <button type="button" className="btn" onClick={() => void requestCases()}>
+                  请求智能体生成候选题
+                </button>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  disabled={busy != null}
+                  onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'retrieval' } })}
+                >
+                  新增题目
+                </button>
+                <label className="btn secondary cq-import">
                     导入 JSON
                     <input
                       type="file"
@@ -603,40 +601,40 @@ export default function CqPage() {
                         event.target.value = '';
                       }}
                     />
-                  </label>
+                </label>
+                {!evaluationFresh && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => void runRegression()}
+                      disabled={busy != null || !summary || summary.total === 0
+                        || preflight.pendingReview > 0}
+                      title={preflight.pendingReview > 0
+                        ? `有 ${preflight.pendingReview} 道题待审核，会拦住本轮评估；先在题目详情里处理审核`
+                        : ''}
+                    >
+                      {busy === 'run' ? '评估中…' : '跑一轮评估'}
+                    </button>
+                    <span className="cq-run-preflight">
+                      预检：{preflight.total} 题，无断言 {preflight.noAssertion}、未确认 {preflight.unconfirmed}
+                      {preflight.pendingReview > 0
+                        ? `、待审核 ${preflight.pendingReview}（会拦住本次评估）`
+                        : ''}；
+                      会写本轮记录并更新可答覆盖，不改本体和题干。
+                    </span>
+                  </>
                 )}
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => void runRegression()}
-                  disabled={busy != null || !summary || summary.total === 0
-                    || preflight.pendingReview > 0}
-                  title={preflight.pendingReview > 0
-                    ? `有 ${preflight.pendingReview} 道题待审核，会拦住本轮评估；先在题目详情里处理审核`
-                    : ''}
-                >
-                  {busy === 'run' ? '评估中…' : '跑一轮评估'}
-                </button>
-                <span className="cq-run-preflight">
-                  预检：{preflight.total} 题，无断言 {preflight.noAssertion}、未确认 {preflight.unconfirmed}
-                  {preflight.pendingReview > 0
-                    ? `、待审核 ${preflight.pendingReview}（会拦住本次评估）`
-                    : ''}；
-                  会写本轮记录并更新可答覆盖，不改本体和题干。
-                </span>
+                {evaluationFresh && (
+                  <span className="cq-run-preflight">
+                    评估有效（{formatLocalTime(evaluation?.ran_at)}），无需重跑；题集或本体改动后这里会出现「重新验证」。
+                  </span>
+                )}
               </div>
             </>
           )}
         </div>
       </div>
-
-      {tab === 'cases' && (
-        <div className="cq-mode-note" role="note">
-          {mode === 'leader'
-            ? '领导模式：你只确认智能体生成的题、处理待决事项，不写题干、不选专业分类；需要手动编辑请切专家模式。'
-            : '专家模式：可查看/编辑 SPARQL、题干与专业分类；日常决策请回领导模式。'}
-        </div>
-      )}
 
       {showGlossary && <CqGlossary onClose={() => setShowGlossary(false)} />}
 
@@ -734,6 +732,21 @@ export default function CqPage() {
                       ? `；${delivery.failed_questions} 题回归未通过`
                       : ''}
                   </span>
+                  {!delivery.ready && (
+                    <button type="button" className="btn secondary" onClick={() => void requestCases()}>
+                      请求智能体生成候选题
+                    </button>
+                  )}
+                  {!evaluationFresh && (
+                    <>
+                      <span className="cq-stale-badge" title={evaluation?.reason || '还没有跑过评估'}>
+                        评估{evaluation?.state === 'none' ? '未生成' : '可能过期'}
+                      </span>
+                      <button type="button" className="btn secondary" onClick={() => void runRegression()}>
+                        重新验证
+                      </button>
+                    </>
+                  )}
                   <a
                     className="btn link"
                     href={api.cqExportUrl('markdown')}
@@ -892,7 +905,6 @@ export default function CqPage() {
                 <CqEditor
                   key={`${editing.mode}-${editing.draft.id ?? 'new'}`}
                   mode={editing.mode}
-                  viewMode={mode}
                   draft={editing.draft}
                   busy={busy === 'save'}
                   onCancel={() => setEditing(null)}
@@ -906,10 +918,14 @@ export default function CqPage() {
                   第一步：让智能体根据当前本体生成候选题。生成后点「刷新」，题目会出现在这里，你只需确认或驳回。
                 </p>
                 <p className="guide-muted">
-                  如果你是本体的专家，也可以切到专家模式，导入一份 CQ 集或手动新增题目。
+                  也可以手动新增题目或导入一份 CQ 集；技术细节默认收起。
                 </p>
-                <button type="button" className="btn secondary" onClick={() => setMode('expert')}>
-                  切到专家模式
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => setEditing({ mode: 'create', draft: { cq: '', status: 'draft', expected_type: 'retrieval' } })}
+                >
+                  手动新增题目
                 </button>
               </div>
             )
@@ -988,7 +1004,7 @@ export default function CqPage() {
                 </div>
               </section>
 
-              {mode === 'expert' && (
+              {showTech && (
                 <section className="panel cq-mention-coverage" aria-label="题干提及覆盖">
                   <div className="cq-mention-head">
                     <div>
@@ -1105,7 +1121,6 @@ export default function CqPage() {
                     <CqEditor
                       key={`${editing.mode}-${editing.draft.id ?? 'new'}`}
                       mode={editing.mode}
-                      viewMode={mode}
                       draft={editing.draft}
                       busy={busy === 'save'}
                       onCancel={() => setEditing(null)}
@@ -1138,7 +1153,7 @@ export default function CqPage() {
                         index={cases.indexOf(current)}
                         locate={locate}
                         error={locateError}
-                        viewMode={mode}
+                        showTech={showTech}
                       />
                     </div>
                   )}
@@ -1244,10 +1259,9 @@ function CqGlossary({ onClose }: { onClose: () => void }) {
 }
 
 function CqEditor({
-  mode, viewMode, draft, busy, onCancel, onSave,
+  mode, draft, busy, onCancel, onSave,
 }: {
   mode: 'create' | 'edit';
-  viewMode: 'leader' | 'expert';
   draft: CqSetCase;
   busy: boolean;
   onCancel: () => void;
@@ -1261,9 +1275,7 @@ function CqEditor({
   const [query, setQuery] = useState(regression.query || '');
   const [expect, setExpect] = useState(JSON.stringify(regression.expect ?? {}, null, 2));
   const [error, setError] = useState<string | null>(null);
-  const leader = viewMode === 'leader';
-  const hasAssertion = Boolean(String(regression.query || '').trim());
-  const summary = assertionSummaryText(draft);
+  const hasAssertion = Boolean(String(regression.query || query || '').trim());
 
   const submit = (intent: 'save' | 'confirm' | 'reject' = 'save') => {
     setError(null);
@@ -1271,158 +1283,104 @@ function CqEditor({
       setError('题干不能为空');
       return;
     }
-    if (!leader) {
-      let normalized: CqSetCase['regression'] | undefined;
-      try {
-        if (query.trim()) {
-          normalized = { query: query.trim(), expect: expect.trim() ? JSON.parse(expect) : {} };
-        }
-      } catch (e) {
-        setError(`JSON 解析失败：${e instanceof Error ? e.message : String(e)}`);
-        return;
+    let normalized: CqSetCase['regression'] | undefined;
+    try {
+      if (query.trim()) {
+        normalized = { query: query.trim(), expect: expect.trim() ? JSON.parse(expect) : {} };
       }
-      onSave({
-        ...draft,
-        cq: cq.trim(),
-        expected_type: expectedType.trim() || undefined,
-        status: status.trim() || undefined,
-        requirement: requirement.trim() || undefined,
-        ...(normalized ? { regression: normalized } : {}),
-      });
+    } catch (e) {
+      setError(`JSON 解析失败：${e instanceof Error ? e.message : String(e)}`);
       return;
     }
-    // 领导模式：不碰断言 / SPARQL / 内部枚举；确认→启用，驳回→退回智能体。
     onSave({
       ...draft,
       cq: cq.trim(),
       expected_type: expectedType.trim() || undefined,
-      status: intent === 'reject' ? 'draft' : (hasAssertion ? 'active' : 'draft'),
+      status: intent === 'reject'
+        ? 'draft'
+        : intent === 'confirm'
+          ? (hasAssertion ? 'active' : 'draft')
+          : (status.trim() || undefined),
+      requirement: requirement.trim() || undefined,
+      ...(normalized ? { regression: normalized } : {}),
     });
   };
 
-  if (leader) {
-    if (mode === 'create') {
-      return (
-        <div className="cq-editor cq-editor-leader">
-          <h3>新增题目</h3>
-          <p className="guide-muted">
-            领导模式不新建题目：题目由智能体根据本体生成。请切到专家模式手动新建，或让智能体生成候选题后在这里确认。
-          </p>
-          <div className="cq-editor-actions">
-            <button type="button" className="btn secondary" onClick={onCancel}>返回</button>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div className="cq-editor cq-editor-leader">
-        <h3>{`确认题目 ${draft.id || ''}`}</h3>
-        <p className="guide-muted">
-          题目与断言由智能体生成，你只确认业务语义；需要改题干、分类或查询时切到「专家模式」。
-        </p>
-        <section className="cq-section">
-          <h4>题干</h4>
-          <p className="cq-leader-question">{plainCopy(cq) || '（题干为空，请让智能体补全）'}</p>
-        </section>
-        <div className="cq-kv">
-          <div>
-            <span>业务分类</span>
-            <b>{expectedTypeLabel(expectedType)}</b>
-          </div>
-          <div>
-            <span>分类来源</span>
-            <b>智能体生成</b>
-          </div>
-        </div>
-        <section className="cq-section">
-          <h4>断言摘要</h4>
-          <p className="guide-muted">{summary}</p>
-          <div className="cq-kv">
-            <div>
-              <span>确认后状态</span>
-              <b>{hasAssertion ? '启用' : '草稿（等智能体补断言）'}</b>
-            </div>
-          </div>
-          {!hasAssertion && (
-            <div className="element-readonly-note">
-              智能体还没有为这道题写断言；先确认题目，断言补齐后才会进入回归。
-            </div>
-          )}
-        </section>
-        {error && <div className="field-error">{error}</div>}
-        <div className="cq-editor-actions">
-          <button type="button" className="btn" onClick={() => submit('confirm')} disabled={busy}>
-            {busy ? '保存中…' : hasAssertion ? '确认题目与断言' : '保存题目'}
-          </button>
-          {hasAssertion && (
-            <button type="button" className="btn secondary" onClick={() => submit('reject')} disabled={busy}>
-              驳回，退回智能体调整
-            </button>
-          )}
-          <button type="button" className="btn secondary" onClick={onCancel} disabled={busy}>取消</button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="cq-editor">
-      <h3>{mode === 'create' ? '新增题目' : `编辑 ${draft.id || ''}`}</h3>
-      <p className="guide-muted">专家模式：可直接编辑 SPARQL 与内部枚举，仅建议核对时使用。</p>
+      <h3>{mode === 'create' ? '新增题目' : `编辑 ${draft.short_id || draft.id || ''}`}</h3>
+      <p className="guide-muted">
+        业务信息默认可见；SPARQL 与专业分类收在「技术设置」里，修改断言会让这道题重新进入待审核。
+      </p>
       <label className="field">
         <span className="field-label">题干</span>
         <textarea value={cq} onChange={(event) => setCq(event.target.value)} rows={3} />
       </label>
-      <div className="cq-editor-grid">
-        <label className="field">
-          <span className="field-label">题型</span>
-          <select value={expectedType} onChange={(event) => setExpectedType(event.target.value)}>
-            {!EXPECTED_TYPE_OPTIONS.some((option) => option.value === expectedType) && (
-              <option value={expectedType}>{expectedTypeLabel(expectedType)}</option>
-            )}
-            {EXPECTED_TYPE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span className="field-label">状态</span>
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            {!STATUS_OPTIONS.some((option) => option.value === status) && (
-              <option value={status}>{statusLabel(status)}</option>
-            )}
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span className="field-label">来源需求</span>
-          <input value={requirement} onChange={(event) => setRequirement(event.target.value)} placeholder="REQ-1" />
-        </label>
-      </div>
-      <p className="field-hint">
-        专业分类：检索类=直接查本体事实；推导类=需要推理才能回答；计数类=统计数量；反例类=验证「不存在」。
-      </p>
-      <h4>回归断言</h4>
-      <p className="guide-muted">
-        只支持 SPARQL：填 query + expect（ASK 填 true / false；SELECT 填 {`{type, values}`} 等判分对象）。留空则不进入回归。
-      </p>
-      <div className="cq-editor-grid">
-        <label className="field cq-editor-wide">
-          <span className="field-label">SPARQL query</span>
-          <textarea value={query} onChange={(event) => setQuery(event.target.value)} rows={3} />
-        </label>
-        <label className="field cq-editor-wide">
-          <span className="field-label">expect（JSON）</span>
-          <textarea value={expect} onChange={(event) => setExpect(event.target.value)} rows={3} />
-        </label>
-      </div>
+      <label className="field">
+        <span className="field-label">来源需求</span>
+        <input value={requirement} onChange={(event) => setRequirement(event.target.value)} placeholder="REQ-1" />
+      </label>
+      <p className="guide-muted">断言摘要：{assertionSummaryText(draft)}</p>
+      <details className="cq-tech-section">
+        <summary>技术设置（SPARQL / 专业分类 / 状态）</summary>
+        <p className="field-hint">
+          改动断言会让这道题重新进入待审核；不确定时请让智能体处理。
+        </p>
+        <div className="cq-editor-grid">
+          <label className="field">
+            <span className="field-label">题型</span>
+            <select value={expectedType} onChange={(event) => setExpectedType(event.target.value)}>
+              {!EXPECTED_TYPE_OPTIONS.some((option) => option.value === expectedType) && (
+                <option value={expectedType}>{expectedTypeLabel(expectedType)}</option>
+              )}
+              {EXPECTED_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="field-label">状态</span>
+            <select value={status} onChange={(event) => setStatus(event.target.value)}>
+              {!STATUS_OPTIONS.some((option) => option.value === status) && (
+                <option value={status}>{statusLabel(status)}</option>
+              )}
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="field-hint">
+          专业分类：检索类=直接查本体事实；推导类=需要推理才能回答；计数类=统计数量；反例类=验证「不存在」。
+        </p>
+        <h4>回归断言</h4>
+        <p className="guide-muted">
+          只支持 SPARQL：填 query + expect（ASK 填 true / false；SELECT 填 {`{type, values}`} 等判分对象）。留空则不进入回归。
+        </p>
+        <div className="cq-editor-grid">
+          <label className="field cq-editor-wide">
+            <span className="field-label">SPARQL query</span>
+            <textarea value={query} onChange={(event) => setQuery(event.target.value)} rows={3} />
+          </label>
+          <label className="field cq-editor-wide">
+            <span className="field-label">expect（JSON）</span>
+            <textarea value={expect} onChange={(event) => setExpect(event.target.value)} rows={3} />
+          </label>
+        </div>
+      </details>
       {error && <div className="field-error">{error}</div>}
       <div className="cq-editor-actions">
-        <button type="button" className="btn" onClick={() => submit()} disabled={busy}>
-          {busy ? '保存中…' : '保存'}
+        <button type="button" className="btn" onClick={() => submit('confirm')} disabled={busy}>
+          {busy ? '保存中…' : hasAssertion ? '确认题目与断言' : '保存题目'}
         </button>
+        <button type="button" className="btn secondary" onClick={() => submit('save')} disabled={busy}>
+          保存
+        </button>
+        {hasAssertion && (
+          <button type="button" className="btn secondary" onClick={() => submit('reject')} disabled={busy}>
+            驳回，退回智能体调整
+          </button>
+        )}
         <button type="button" className="btn secondary" onClick={onCancel} disabled={busy}>取消</button>
       </div>
     </div>
@@ -1430,13 +1388,13 @@ function CqEditor({
 }
 
 function CqDetail({
-  item, index, locate, error, viewMode,
+  item, index, locate, error, showTech,
 }: {
   item: CqSetCase;
   index: number;
   locate: CqLocateResult | null;
   error: string | null;
-  viewMode: 'leader' | 'expert';
+  showTech: boolean;
 }) {
   const cache = item.coverage_cache;
   const regression = item.regression || {};
@@ -1480,7 +1438,7 @@ function CqDetail({
               </div>
             ) : (
               <p className="guide-muted">
-                {viewMode === 'leader' ? locateSummary(locate) : locate.hint}
+                {showTech ? locate.hint : locateSummary(locate)}
               </p>
             )}
             {locate.anchors.length > 0 && (
@@ -1493,13 +1451,13 @@ function CqDetail({
                 {locate.evidence.slice(0, 8).map((entry, i) => (
                   <li key={`${entry.item}-${entry.field}-${i}`}>
                     <b>{entry.label}</b>
-                    {viewMode === 'expert' && <code>{entry.field}</code>}
+                    {showTech && <code>{entry.field}</code>}
                     <span>{entry.text}</span>
                   </li>
                 ))}
               </ul>
             )}
-            {viewMode === 'expert' && (
+            {showTech && (
               <TechDetails
                 label="展开看定位技术细节"
                 items={[{
@@ -1521,7 +1479,7 @@ function CqDetail({
         <h4>回归断言</h4>
         <p className="guide-muted">{assertionSummaryText(item)}</p>
         {item.regression?.query ? (
-          viewMode === 'expert' ? (
+          showTech ? (
             <>
               <div className="cq-assertion-label">查询（query）</div>
               <pre className="cq-code">{item.regression.query}</pre>
@@ -1543,9 +1501,7 @@ function CqDetail({
           )
         ) : (
           <div className="guide-muted">
-            {viewMode === 'leader'
-              ? '该题还没有回归断言；智能体会补充，或切到专家模式手动补。'
-              : '该题没有回归断言；编辑后可补 SPARQL query 与 expect。'}
+            {'该题还没有回归断言；可以在「编辑 → 技术设置」里补，或让智能体补。'}
           </div>
         )}
       </section>

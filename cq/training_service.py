@@ -519,6 +519,36 @@ def _next_suggested(state: dict, gaps: list[dict], pending: list[dict] | None = 
     return {"action": "run_regression", "count": 0, "text": "跑一轮回归"}
 
 
+def evaluation_freshness(engine, data: dict, last_regression: dict | None) -> dict:
+    """#291：评估是否仍能代表当前题集 / 本体。
+
+    三条失效信号：没跑过、题集在评估后改过、本体文件在评估后被修改/重载。
+    只读，不落盘；页面用它决定「重新验证」是否出现。
+    """
+    ran_at = str((last_regression or {}).get("ran_at") or "")
+    if not ran_at:
+        return {"state": "none", "ran_at": "", "reason": "还没有跑过评估"}
+    ran = _parse_ts(ran_at)
+    reasons: list[str] = []
+    updated = _parse_ts(str(data.get("updated_at") or ""))
+    if updated is not None and ran is not None and updated > ran:
+        reasons.append("题集在评估后改过")
+    try:
+        onto_mtime = datetime.fromtimestamp(
+            Path(str(getattr(engine, "onto_path", "") or "")).stat().st_mtime,
+            timezone.utc,
+        )
+        if ran is None or onto_mtime > ran:
+            reasons.append("本体在评估后重载或修改")
+    except (OSError, ValueError):
+        pass
+    return {
+        "state": "stale" if reasons else "fresh",
+        "ran_at": ran_at,
+        "reason": "；".join(reasons),
+    }
+
+
 def resume(
     engine,
     ontology_id: str,
@@ -560,6 +590,7 @@ def resume(
     result = {
         "ontology_id": ontology_id,
         "depth": depth,
+        "evaluation": evaluation_freshness(engine, data, last_regression),
         "summary": view["summary"],
         "last_regression": last_regression,
         "pending_decisions": pending,

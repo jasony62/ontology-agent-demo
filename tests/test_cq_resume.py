@@ -189,3 +189,30 @@ def test_timeline_four_sources_and_filters(ws):
     assert len(limited) == 1
     future = training_service.timeline("agent_task", since="2099-01-01T00:00:00+00:00")["items"]
     assert future == []
+
+
+def test_evaluation_freshness_tracks_set_and_ontology(ws):
+    """#291：没跑过 = none；跑过且无变更 = fresh；变更后 = stale。"""
+    engine = _engine()
+    for ontology_id in ("none-ws", "fresh-ws", "stale-ws"):
+        cq_store.save_set(ontology_id, {
+            "suite": "t", "version": 1,
+            "cases": [{"id": "Q1", "cq": "本体里有哪些类？", "status": "active"}],
+        })
+    assert training_service.resume(engine, "none-ws")["evaluation"]["state"] == "none"
+
+    cq_store.save_run("fresh-ws", {
+        "suite": "t", "ran_at": "2099-01-01T00:00:00+00:00",
+        "total": 1, "pass": 1, "fail": 0, "cannot_tell": 0, "not_tested": 0,
+        "coverage_real": 1.0, "cases": [],
+    })
+    assert training_service.resume(engine, "fresh-ws")["evaluation"]["state"] == "fresh"
+
+    cq_store.save_run("stale-ws", {
+        "suite": "t", "ran_at": "2000-01-01T00:00:00+00:00",
+        "total": 1, "pass": 1, "fail": 0, "cannot_tell": 0, "not_tested": 0,
+        "coverage_real": 1.0, "cases": [],
+    })
+    stale = training_service.resume(engine, "stale-ws")["evaluation"]
+    assert stale["state"] == "stale"
+    assert "本体" in stale["reason"]

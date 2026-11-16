@@ -88,6 +88,12 @@ function stubFetch(resume: CqResumeResponse = RESUME, options: { failResume?: bo
         json: async () => ({ ontology_id: 'ws-1', action: 'feedback', decision_id: 'd-1', status: 'resolved' }),
       } as unknown as Response;
     }
+    if (url.includes('/cq/cases/request') && method === 'POST') {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ok: true, action: { action_id: 'a2', action: 'generate_cases' } }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/cases/Q1/events')) {
       return {
         ok: true, status: 200,
@@ -442,6 +448,26 @@ describe('训练现场（#198 / #203）', () => {
       String(url).includes('/cq/decision') && String(init?.method) === 'POST')!;
     const body = JSON.parse(String((call[1] as RequestInit).body));
     expect(body).toMatchObject({ option: 'B', conclusion: 'reject' });
+  });
+
+  it('评估有效时训练页下一步改为请求生成更多题（#291）', async () => {
+    stubFetch({
+      ...RESUME,
+      evaluation: { state: 'fresh', ran_at: '2026-11-17T00:10:00+00:00' },
+      next_suggested: { action: 'run_regression', count: 0, text: '跑一轮回归' },
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const next = container!.querySelector('.cq-training-next')!;
+    expect(next.textContent).toContain('评估有效');
+    expect(next.textContent).not.toContain('跑一轮回归');
+    const action = [...next.querySelectorAll<HTMLButtonElement>('button')]
+      .find((btn) => btn.textContent === '请求生成更多题')!;
+    await act(async () => { action.click(); });
+    await flush();
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) =>
+      String(url).includes('/cq/cases/request') && String(init?.method) === 'POST')).toBe(true);
   });
 
   it('有待审核题时训练页出独立提示与统计，不混进「待决」（#280）', async () => {

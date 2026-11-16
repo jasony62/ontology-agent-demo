@@ -753,10 +753,15 @@ def timeline(
     wanted_case = str(case_id or "").strip()
     items: list[dict] = []
     events = _events(ontology_id)
-    known_case_ids = {
-        str(case.get("id"))
-        for case in cq_store.get_set(ontology_id).get("cases") or []
+    cases = [
+        case for case in cq_store.get_set(ontology_id).get("cases") or []
         if isinstance(case, dict) and case.get("id")
+    ]
+    known_case_ids = {str(case.get("id")) for case in cases}
+    # #289：短号随题集存储；历史集没有时按存储顺序兜底。
+    short_ids = {
+        str(case.get("id")): str(case.get("short_id") or cq_store.short_id_for(index))
+        for index, case in enumerate(cases, start=1)
     }
     decision_case: dict[str, str] = {}
     authored_ts: list[str] = []
@@ -791,6 +796,7 @@ def timeline(
             "ts": item.get("ts"),
             "ref": content.get("event_id"),
             "case_id": linked,
+            "short_id": short_ids.get(linked, ""),
             "summary": _event_summary(item, action_names),
             "actor_type": item.get("actor_type"),
             "actor": item.get("actor"),
@@ -818,6 +824,7 @@ def timeline(
             "ts": entry.get("ts"),
             "ref": entry_case,
             "case_id": entry_case,
+            "short_id": short_ids.get(entry_case, ""),
             "summary": _audit_summary(entry),
             "actor_type": entry.get("actor_type"),
             "actor": entry.get("actor"),
@@ -840,6 +847,7 @@ def timeline(
                 "ts": run.get("ran_at"),
                 "ref": run.get("ran_at"),
                 "case_id": wanted_case,
+                "short_id": short_ids.get(wanted_case, ""),
                 "summary": "回归：" + _RUN_STATE_LABELS.get(state, state or "已回归"),
                 "actor_type": run.get("actor_type") or "human",
                 "actor": run.get("actor") or "web",
@@ -872,6 +880,7 @@ def timeline(
             "ts": archive.get("created_at") or archive.get("started_at"),
             "ref": archive.get("iteration_id"),
             "case_id": wanted_case or (linked_ids[0] if len(linked_ids) == 1 else ""),
+            "short_id": short_ids.get(wanted_case or (linked_ids[0] if len(linked_ids) == 1 else ""), ""),
             "summary": str(archive.get("business_translation") or archive.get("iteration_id") or ""),
             "actor_type": "human",
             "actor": "web",

@@ -20,8 +20,6 @@ import CqTrainingPage from './CqTrainingPage';
 import HelpTip from './HelpTip';
 import TechDetails from './TechDetails';
 
-type CqTab = 'cases' | 'training';
-
 // #250 R6：与 cq/lifecycle.py 题卡 blockers 同一组词、同一顺序。
 const BLOCKER_ORDER = ['未锚定', '未分型', '缺断言', '未通过', '待审核', '已归档'];
 
@@ -30,6 +28,24 @@ const BLOCKER_ORDER = ['未锚定', '未分型', '缺断言', '未通过', '待�
 // assertion_summary / intent_pending / coverage_cache）绝不能回传：
 // 后端 fail-fast 会 400；浅合并时还会用旧 review 覆盖服务端刚写入的状态。
 const CASE_WRITE_FIELDS = ['id', 'cq', 'expected_type', 'status', 'requirement', 'regression'] as const;
+
+type CqTabName = 'cases' | 'training';
+
+/** #290 / #292：视图与搜索词都在 hash 里，刷新 / 分享 / 前进后退都保持。 */
+function parseCqHash(): { tab: CqTabName; query: string } {
+  const raw = String(window.location.hash || '').replace(/^#cq\/?/, '');
+  const [segment, search = ''] = raw.split('?');
+  return {
+    tab: segment === 'training' ? 'training' : 'cases',
+    query: new URLSearchParams(search).get('q') || '',
+  };
+}
+
+function cqHash(tab: CqTabName, query: string): string {
+  const base = tab === 'training' ? '#cq/training' : '#cq/cases';
+  const trimmed = query.trim();
+  return trimmed ? `${base}?q=${encodeURIComponent(trimmed)}` : base;
+}
 
 function toCasePatch(item: CqSetCase): Partial<CqSetCase> {
   const out: Record<string, unknown> = {};
@@ -47,7 +63,10 @@ function toCasePatch(item: CqSetCase): Partial<CqSetCase> {
  * 标签状态只在本组件内，不进 URL。所有数据来自 `/api/domains/current/cq/*`，不调任何模型。
  */
 export default function CqPage() {
-  const [tab, setTab] = useState<CqTab>('cases');
+  const initialHash = parseCqHash();
+  const [tab, setTab] = useState<CqTabName>(initialHash.tab);
+  // #292：题目列表搜索（短号 / 状态词 / 题干关键词），与筛选叠加。
+  const [query, setQuery] = useState(initialHash.query);
   // #210：领导模式默认，隐藏 SPARQL 与内部枚举；专家模式显式切换。
   const [mode, setMode] = useState<'leader' | 'expert'>('leader');
   const [data, setData] = useState<CqSetResponse | null>(null);
@@ -78,6 +97,28 @@ export default function CqPage() {
   const [showGlossary, setShowGlossary] = useState(false);
   // #250 R6：点击整体缺口统计，把下方题目列表筛到对应题
   const [gapFilter, setGapFilter] = useState<string | null>(null);
+
+  const selectTab = useCallback((next: CqTabName) => {
+    setTab(next);
+    if (window.location.hash !== cqHash(next, query)) {
+      window.history.pushState(null, '', cqHash(next, query));
+    }
+  }, [query]);
+
+  const updateQuery = (next: string) => {
+    setQuery(next);
+    window.history.replaceState(null, '', cqHash(tab, next));
+  };
+
+  useEffect(() => {
+    const onHash = () => {
+      const next = parseCqHash();
+      setTab(next.tab);
+      setQuery(next.query);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -170,12 +211,29 @@ export default function CqPage() {
     }
     return counts;
   }, [cases]);
-  const visibleCases = useMemo(
-    () => cases
+  const visibleCases = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const numeric = needle.replace(/^#/, '').replace(/^q/, '');
+    const looksLikeNumber = /^#?q?\d+$/.test(needle);
+    return cases
       .map((item, index) => ({ item, index }))
-      .filter(({ item }) => !gapFilter || (item.blockers ?? []).includes(gapFilter)),
-    [cases, gapFilter],
-  );
+      .filter(({ item, index }) => {
+        if (gapFilter && !(item.blockers ?? []).includes(gapFilter)) return false;
+        if (!needle) return true;
+        const short = String(item.short_id || `Q${String(index + 1).padStart(2, '0')}`).toLowerCase();
+        if (looksLikeNumber) {
+          if (short === `q${numeric.padStart(2, '0')}`) return true;
+          if (String(index + 1) === numeric) return true;
+        }
+        return [
+          item.cq,
+          statusLabel(item.status),
+          expectedTypeLabel(item.expected_type),
+          ...(item.blockers ?? []),
+          short,
+        ].some((value) => String(value || '').toLowerCase().includes(needle));
+      });
+  }, [cases, gapFilter, query]);
   // #250 R3：运行评估前的预检口径，必须与后端「全量跑」一致。
   const preflight = useMemo(() => ({
     total: cases.length,
@@ -361,7 +419,8 @@ export default function CqPage() {
     if (Number.isNaN(started)) return max;
     return Math.max(max, Math.floor((Date.now() - started) / 3_600_000));
   }, 0);
-  const suiteDisplay = data?.suite ? '默认题集' : '未命名题集';
+  // #288：界面与评审包用同一个真实套件名，不再兜底成「默认题集」。
+  const suiteDisplay = data?.suite || '未命名题集';
   const lifecycleSummary = resumePreview?.lifecycle?.summary;
   const delivery = lifecycleSummary?.delivery ?? null;
   const cqm = lifecycleSummary?.cqm ?? null;
@@ -411,6 +470,9 @@ export default function CqPage() {
           <h2>
             CQ 集
             <span className="cq-abbr">能力问题 · Competency Question</span>
+            <span className="cq-breadcrumb" aria-label="当前位置">
+              › {tab === 'training' ? '训练' : '题目'}
+            </span>
           </h2>
           <p className="cq-intro">
             CQ 是把业务问题写成能被本体自动验证的题目集。智能体负责生成和检查，你负责看证据、拍板。
@@ -444,7 +506,7 @@ export default function CqPage() {
                 role="tab"
                 aria-selected={tab === 'cases'}
                 className={`cq-tab${tab === 'cases' ? ' active' : ''}`}
-                onClick={() => setTab('cases')}
+                onClick={() => selectTab('cases')}
               >
                 题目
               </button>
@@ -453,7 +515,7 @@ export default function CqPage() {
                 role="tab"
                 aria-selected={tab === 'training'}
                 className={`cq-tab${tab === 'training' ? ' active' : ''}`}
-                onClick={() => setTab('training')}
+                onClick={() => selectTab('training')}
               >
                 训练
               </button>
@@ -579,7 +641,7 @@ export default function CqPage() {
       {showGlossary && <CqGlossary onClose={() => setShowGlossary(false)} />}
 
       {tab === 'training' ? (
-        <CqTrainingPage onGoToCases={() => setTab('cases')} />
+        <CqTrainingPage onGoToCases={() => selectTab('cases')} />
       ) : (
         <>
           {notice && <div className="notice-banner" role="status">{notice}</div>}
@@ -642,7 +704,7 @@ export default function CqPage() {
                       : '当前没有待决；可确认题目或运行评估'
                   )}
                   {pendingState === 'ready' && pendingQuestions !== null && pendingQuestions > 0 && (
-                    <button type="button" className="btn link" onClick={() => setTab('training')}>
+                    <button type="button" className="btn link" onClick={() => selectTab('training')}>
                       去训练页处理
                     </button>
                   )}
@@ -695,7 +757,7 @@ export default function CqPage() {
                     <button
                       type="button"
                       className="btn"
-                      onClick={() => setTab('training')}
+                      onClick={() => selectTab('training')}
                     >
                       去处理待决
                     </button>
@@ -985,7 +1047,17 @@ export default function CqPage() {
                 <section className="panel cq-list" aria-label="CQ 列表">
                   <div className="cq-list-head">
                     <span>{gapFilter ? `题目 · 还差「${gapFilter}」` : '题目'}</span>
-                    <span>{visibleCases.length} 道</span>
+                    <div className="cq-list-tools">
+                      <input
+                        type="search"
+                        className="cq-search"
+                        value={query}
+                        placeholder="搜短号 / 状态 / 关键词"
+                        aria-label="搜索题目"
+                        onChange={(event) => updateQuery(event.target.value)}
+                      />
+                      <span>{visibleCases.length} 道</span>
+                    </div>
                   </div>
                   <ul>
                     {visibleCases.map(({ item, index }) => {
@@ -999,7 +1071,7 @@ export default function CqPage() {
                           >
                             <span className={`cq-dot ${item.located ? 'located' : 'gap'}`} title={item.located ? '已定位到证据' : '未定位到证据'} />
                             <span className="cq-row-main">
-                              <b title={`题目 ID：${item.id || '未分配'}`}>#{index + 1}</b>
+                              <b title={`题目 ID：${item.id || '未分配'}`}>#{item.short_id || `Q${String(index + 1).padStart(2, '0')}`}</b>
                               <span className="cq-row-cq" title={item.cq}>{item.cq}</span>
                             </span>
                             <span className="cq-row-meta">
@@ -1374,7 +1446,7 @@ function CqDetail({
   return (
     <div className="cq-detail-body">
       <div className="cq-detail-head">
-        <span className="guide-example-id" title={`题目 ID：${item.id || '未分配'}`}>#{index + 1}</span>
+        <span className="guide-example-id" title={`题目 ID：${item.id || '未分配'}`}>#{item.short_id || `Q${String(index + 1).padStart(2, '0')}`}</span>
         <h3>{item.cq}</h3>
       </div>
       {hasLatinIdentifier(item.cq) && (

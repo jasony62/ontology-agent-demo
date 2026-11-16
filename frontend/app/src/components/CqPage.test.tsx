@@ -269,6 +269,8 @@ async function flush() {
 }
 
 beforeEach(() => {
+  // #290 / #292：hash 是视图状态的数据源，测试之间必须清零
+  window.history.replaceState(null, '', '/');
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -427,6 +429,98 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-maturity-skeleton')).not.toBeNull();
   });
 
+  it('显示真实套件名，「来源未记录」是独立徽章（#288）', async () => {
+    stubFetch({ ...SET, provenance: { ...SET.provenance, known: false } });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const meta = container!.querySelector('.cq-meta')!;
+    expect(meta.textContent).toContain('demo_cq');
+    expect(meta.textContent).not.toContain('默认题集');
+    const badge = [...meta.querySelectorAll('.cq-badge')]
+      .find((node) => node.textContent === '来源未记录')!;
+    expect(badge).toBeTruthy();
+    // 名称与徽章不是同一段文本：徽章是独立元素
+    expect(badge.previousElementSibling?.tagName).toBe('B');
+  });
+
+  it('题目列表显示稳定短号，不再用序号当唯一标识（#289）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const ids = [...container!.querySelectorAll('.cq-row-main b')].map((node) => node.textContent);
+    expect(ids).toEqual(['#Q01', '#Q02']);
+    const detailId = container!.querySelector('.cq-detail .guide-example-id')?.textContent;
+    expect(detailId).toBe('#Q01');
+  });
+
+  it('视图 tab 进 URL，刷新 / 粘贴 / 前进后退都保持（#290）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const training = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '训练')!;
+    await act(async () => { training.click(); });
+    await flush();
+    expect(window.location.hash).toBe('#cq/training');
+    expect(container!.querySelector('.cq-breadcrumb')?.textContent).toContain('训练');
+
+    act(() => root!.unmount());
+    root = createRoot(container!);
+    act(() => root!.render(<CqPage />));
+    await flush();
+    expect([...container!.querySelectorAll('[role="tab"]')]
+      .find((tab) => tab.textContent === '训练')!.getAttribute('aria-selected')).toBe('true');
+
+    // 后退到题目：hashchange 驱动，不靠组件内部状态
+    act(() => {
+      window.history.replaceState(null, '', '#cq/cases');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    await flush();
+    expect(container!.querySelector('.cq-search')).not.toBeNull();
+  });
+
+  it('题目搜索支持短号、状态词与关键词，并与筛选叠加（#292）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const search = container!.querySelector<HTMLInputElement>('.cq-search')!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    const type = async (value: string) => {
+      await act(async () => {
+        setValue.call(search, value);
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await flush();
+    };
+
+    await type('结论凭什么');
+    expect(container!.querySelectorAll('.cq-row')).toHaveLength(1);
+    expect(container!.querySelector('.cq-row')!.textContent).toContain('这条结论凭什么成立？');
+    expect(window.location.hash).toContain('q=');
+
+    await type('#Q01');
+    expect(container!.querySelectorAll('.cq-row')).toHaveLength(1);
+    expect(container!.querySelector('.cq-row')!.textContent).toContain('登录模块开发');
+
+    await type('Q02');
+    expect(container!.querySelectorAll('.cq-row')).toHaveLength(1);
+
+    await type('');
+    const gapChip = [...container!.querySelectorAll<HTMLButtonElement>('.cq-gap-stats-actions button')]
+      .find((btn) => btn.textContent?.includes('未锚定'))!;
+    await act(async () => { gapChip.click(); });
+    await flush();
+    expect(container!.querySelectorAll('.cq-row')).toHaveLength(1);
+
+    await type('登录模块');
+    expect(container!.querySelectorAll('.cq-row')).toHaveLength(0); // 与「未锚定」叠加后无结果
+  });
+
   it('待决数取不到时显示「待决状态未知」，不冒称「没有待决」（#255）', async () => {
     stubFetch(SET, LOCATE, { failResume: true });
     act(() => root!.render(<CqPage />));
@@ -497,7 +591,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).toContain('检索类');
     expect(text).toContain('启用');
     expect(container!.querySelectorAll('.cq-row')).toHaveLength(2);
-    expect(container!.querySelector('.cq-row-main b')?.textContent).toBe('#1');
+    expect(container!.querySelector('.cq-row-main b')?.textContent).toBe('#Q01');
     expect(container!.querySelector('.cq-row-cq')?.getAttribute('title')).toContain('登录模块开发');
     // #223：进度条与计数同源（1/2 = 50%）
     expect(text).toContain('50%');
@@ -953,7 +1047,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-badge.muted')?.getAttribute('title')).toContain('不是错别字');
   });
 
-  it('展示 CQM、协同指标与默认题集名（#237 / #239 / #243）', async () => {
+  it('展示 CQM、协同指标与真实套件名（#237 / #239 / #243 / #288）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
@@ -963,7 +1057,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).toContain('10%');
     expect(text).toContain('协同指标');
     expect(text).toContain('决策面填充率');
-    expect(text).toContain('默认题集');
+    expect(text).toContain('demo_cq');
     expect(container!.querySelector('.cq-meta b')?.getAttribute('title')).toContain('demo_cq');
   });
 

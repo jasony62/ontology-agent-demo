@@ -446,6 +446,8 @@ export interface CqCaseLocation {
 
 export interface CqSetCase {
   id?: string;
+  /** #289：稳定短号（Q01…），排序变化不改；哈希只作机器字段。 */
+  short_id?: string;
   cq: string;
   expected_type?: string;
   requirement?: string;
@@ -587,6 +589,7 @@ export interface CqAction {
 
 export interface CqLifecycleCase {
   case_id: string;
+  short_id?: string;
   ordinal?: number;
   cq: string;
   status?: string | null;
@@ -723,6 +726,7 @@ export interface CqTimelineItem {
   ts?: string;
   ref?: string | null;
   case_id?: string;
+  short_id?: string;
   summary: string;
   actor_type?: string;
   actor?: string;

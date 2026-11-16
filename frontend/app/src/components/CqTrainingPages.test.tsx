@@ -140,7 +140,11 @@ describe('训练标签（#203）', () => {
     const log = container!.querySelector('.cq-training-log')!;
     expect(live.textContent).toContain('训练现场');
     expect(live.textContent).toContain('期望口径是什么？');
-    expect(log.textContent).toContain('全局事件（历史）');
+    expect(log.textContent).toContain('全部事件记录');
+    expect(log.getAttribute('aria-label')).toBe('事件记录');
+    // #267：同一对象不再有四种叫法
+    expect(log.textContent).not.toContain('全局事件');
+    expect(container!.textContent).not.toContain('这道题的卷');
     expect(live.compareDocumentPosition(log) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const text = container!.textContent ?? '';

@@ -59,7 +59,7 @@ DECISION_CONCLUSIONS = ("adopt", "reject", "defer")
 FEEDBACK_BASES = ("self", "expert")
 FEEDBACK_SOURCES = ("direct", "agent_relay")
 # 决策回写的机器行动（#238）：状态与允许的动作名。
-ACTION_STATUSES = ("done", "failed")
+ACTION_STATUSES = ("done", "failed", "cancelled")
 ACTION_NAMES = (
     "update_expectation", "update_ontology", "revise_case", "delete_case",
     "rerun_regression", "lock_graduation", "generate_cases",

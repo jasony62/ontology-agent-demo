@@ -29,7 +29,7 @@ import TechDetails from './TechDetails';
  *  - 概览数字由题卡阶段 roll-up：待决 / 已决按题数，决策条数另列；
  *  - 题卡显示当前阶段与阶段条，待决段内嵌现有决策卡；
  *  - 「待我处理」只看待决题，提交后自动进入下一题；
- *  - 「这道题的卷」按时间正序展示该题的事件流（人 / 智能体 / 系统可筛）。
+ *  - 「这道题的记录」按时间正序展示该题的事件流（人 / 智能体 / 系统可筛）。
  */
 const STAGE_BAR = ['authored', 'regression', 'pending', 'resolved', 'fixing', 'passed'] as const;
 const STAGES = [...STAGE_BAR, 'followup'] as const;
@@ -234,8 +234,19 @@ export default function CqTrainingPanel({
       <p className="guide-section-hint">
         以题为主语：每题一张卡，看它现在走到哪、需要你做什么。待决卡直接回答，已决会留在这道题的轨迹里。
       </p>
+      {(resume?.next_actions?.length ?? 0) > 0 && (
+        <p className="guide-section-hint cq-training-todo">
+          智能体待办 {resume?.next_actions?.length} 项：
+          {(resume?.next_actions ?? []).map((item) => actionLabel(item.action)).join('、')}
+        </p>
+      )}
 
-      {error && <div className="element-readonly-note">{error}</div>}
+      {error && (
+        <div className="element-readonly-note">
+          {error}
+          <button type="button" className="btn link" onClick={() => void load()}>重试</button>
+        </div>
+      )}
       {loading && !resume && <div className="guide-muted">正在读取训练现场…</div>}
 
       {resume && (
@@ -258,7 +269,7 @@ export default function CqTrainingPanel({
             </button>
             <button
               type="button"
-              className={`cq-training-stat${filter === 'resolved' ? ' active' : ''}`}
+              className={`cq-training-stat${filter === 'resolved' ? ' active' : ''}${(summary?.resolved_questions ?? 0) === 0 ? ' zero' : ''}`}
               onClick={() => setFilter('resolved')}
             >
               <b>{summary?.resolved_questions ?? 0}</b>
@@ -266,30 +277,37 @@ export default function CqTrainingPanel({
             </button>
             <button
               type="button"
-              className={`cq-training-stat${filter === 'followup' ? ' active' : ''}`}
+              className={`cq-training-stat${filter === 'followup' ? ' active' : ''}${(summary?.followup_questions ?? 0) === 0 ? ' zero' : ''}`}
               onClick={() => setFilter('followup')}
             >
               <b>{summary?.followup_questions ?? 0}</b>
               <span>待跟进题</span>
             </button>
-            <div className={`cq-training-stat${summary?.circuit_breaker?.open ? ' danger' : ''}`}>
-              <b>{summary?.circuit_breaker?.open ? '已触发' : '未触发'}</b>
-              <span>
-                熔断
-                <HelpTip text="连续多轮没有进展时暂停自动流程，等你处理；未触发表示当前流程正常。" />
-              </span>
-            </div>
+            {summary?.circuit_breaker?.open && (
+              <div className="cq-training-stat danger">
+                <b>已触发</b>
+                <span>
+                  熔断
+                  <HelpTip text="连续多轮没有进展时暂停自动流程，等你处理。" />
+                </span>
+              </div>
+            )}
           </div>
+          {!summary?.circuit_breaker?.open && (
+            <p className="guide-muted cq-training-normal">
+              流程正常 · 熔断未触发（连续多轮没有进展时才会暂停自动流程）。
+            </p>
+          )}
 
           <div className="cq-training-guide">
             <b>从这里开始</b>
             <span>
               {pendingCases.length > 0
                 ? `智能体已经把待决事项准备好了：先处理「待我决」的 ${pendingCases.length} 题。`
-                : '当前没有待决；可以逐题看阶段与依据，或到下方全局事件看历史。'}
+                : '当前没有待决；可以逐题看阶段与依据，或到下方全部事件记录看历史。'}
             </span>
             <span className="guide-muted">
-              概览看总量 → 题看板看每题 → 点题卡看这道题的卷；全局事件在下方。
+              概览看总量 → 题看板看每题 → 点题卡看这道题的记录；全部事件记录在下方。
             </span>
             {pendingCases.length > 0 && (
               <button type="button" className="btn" onClick={() => setFocusMode(true)}>
@@ -535,7 +553,7 @@ function CaseCard({
         )}
         <span className="guide-muted">{item.assertion_summary || '还没有可自动验收的检查'}</span>
         <button type="button" className="btn link" onClick={() => onHistory()}>
-          看这道题的事件流
+          看这道题的记录
         </button>
       </div>
     </article>
@@ -609,10 +627,10 @@ function CaseHistory({
     return true;
   });
   return (
-    <section className="cq-case-history" aria-label="这道题的卷">
+    <section className="cq-case-history" aria-label="这道题的记录">
       <div className="cq-case-history-head">
         <div>
-          <h4>这道题的卷</h4>
+          <h4>这道题的记录</h4>
           <p className="guide-muted">{caseId} · {title}</p>
         </div>
         <button type="button" className="btn secondary" onClick={onClose}>收起</button>
@@ -637,7 +655,7 @@ function CaseHistory({
           </select>
         </label>
       </div>
-      {loading && <div className="guide-muted">正在读取这道题的卷…</div>}
+      {loading && <div className="guide-muted">正在读取这道题的记录…</div>}
       {error && <div className="element-readonly-note">{error}</div>}
       {!loading && !error && filtered.length === 0 && (
         <div className="guide-empty-inline">这道题还没有匹配的事件。</div>
@@ -697,6 +715,12 @@ function DecisionCard({
   // 结论由选项推定，卡上不再有第二个能改同一决策的控件。
   const [pending, setPending] = useState<PendingDecision | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const confirmRef = useRef<HTMLButtonElement | null>(null);
+
+  // #271 / R23：确认条出现后把焦点送到「确认提交」，键盘 / 读屏用户不必再找。
+  useEffect(() => {
+    if (pending) confirmRef.current?.focus();
+  }, [pending]);
 
   // #257：决策对象顶到最上面——题号 + 题干首句，避免连续处理时张冠李戴。
   const anchorId = String(caseId || decision.case_id || '');
@@ -819,7 +843,7 @@ function DecisionCard({
       {pending && (
         <div className="cq-decision-confirm" role="alert">
           <span>{notice}</span>
-          <button type="button" className="btn" onClick={confirmPending}>
+          <button type="button" className="btn" ref={confirmRef} onClick={confirmPending}>
             确认提交
           </button>
           <button type="button" className="btn secondary" onClick={clearPending}>

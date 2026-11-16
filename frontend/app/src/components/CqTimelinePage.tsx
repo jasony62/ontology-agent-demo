@@ -79,9 +79,9 @@ export default function CqTimelinePage({
     <div className="cq-timeline-page">
       <div className="cq-timeline-bar">
         <div>
-          <h3>全局事件（历史）</h3>
+          <h3>全部事件记录</h3>
           <p className="guide-muted">
-            整轮跑分 / 整库保存 / 迭代归档等全局事件，新到旧；单题轨迹在题卡的「看这道题的事件流」。
+            整轮跑分 / 整库保存 / 迭代归档等整体动作，新到旧；单题轨迹在题卡的「这道题的记录」。
           </p>
         </div>
         <div className="cq-timeline-actions">

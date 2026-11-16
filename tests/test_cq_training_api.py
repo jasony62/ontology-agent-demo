@@ -237,3 +237,40 @@ def test_event_summary_handles_every_event_kind():
         "event": "gate_result",
         "content": {"gate": "iteration", "status": "pass"},
     }) == "闸门检查：迭代 — 通过"
+
+
+def test_human_can_cancel_pending_action(client):
+    """#264：请求发出后可看见、可取消；取消后从 next_actions 消失。"""
+    ontology_id, _ = M._cq_identity()
+    requested = client.post(
+        "/api/domains/current/cq/cases/request", json={"note": "补一批题"},
+    )
+    assert requested.status_code == 200, requested.text
+    action_id = requested.json()["action"]["action_id"]
+    assert any(
+        item["action_id"] == action_id
+        for item in client.get("/api/domains/current/cq/resume").json()["next_actions"]
+    )
+
+    cancelled = client.post(
+        f"/api/domains/current/cq/actions/{action_id}/complete",
+        json={"status": "cancelled", "note": "人已取消请求"},
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert not any(
+        item["action_id"] == action_id
+        for item in client.get("/api/domains/current/cq/resume").json()["next_actions"]
+    )
+    event = [
+        item for item in training_log.read_events(ontology_id)
+        if item["event"] == "action_completed"
+    ][-1]
+    assert event["content"]["status"] == "cancelled"
+    assert event["actor_type"] == "human"
+    assert event["actor"] == "web"
+
+    invalid = client.post(
+        f"/api/domains/current/cq/actions/{action_id}/complete",
+        json={"status": "whatever"},
+    )
+    assert invalid.status_code == 400

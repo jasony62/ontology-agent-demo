@@ -453,7 +453,7 @@ def register_tools(server, get_engine, get_cq_context) -> None:
         return {"ok": True, "ontology_id": target, "count": len(items), "items": items}
 
     @server.tool(description=(
-        "标记决策回写的机器行动完成（#238）：action_id + status=done/failed；"
+        "标记决策回写的机器行动完成（#238）：action_id + status=done/failed/cancelled；"
         "完成后该行动从 cq_resume.next_actions 消失，形成闭环④⑤。"))
     def cq_action_complete(action_id: str, status: str = "done", note: str = "",
                            ontology_id: str = "") -> dict:

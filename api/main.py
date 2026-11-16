@@ -2384,6 +2384,34 @@ def cq_request_cases(payload: dict | None = Body(None)):
     return {"ontology_id": ontology_id, "ok": True, "action": result}
 
 
+@app.post(
+    "/api/domains/current/cq/actions/{action_id}/complete",
+    tags=["通用查询"],
+    summary="标记机器行动完成 / 失败 / 取消",
+    responses={
+        200: {"model": OpenEnvelope, "description": "写入 action_completed 事件；该行动从 next_actions 消失。"},
+        **ERROR_400,
+    },
+)
+def cq_action_complete(
+    action_id: str = ApiPath(..., description="行动编号（action_requested 返回的 action_id）"),
+    payload: dict | None = Body(None),
+):
+    """人也可以取消自己发起的请求（#264）；智能体执行完仍走 MCP `cq_action_complete`。"""
+    ontology_id, _ = _cq_identity()
+    body = payload or {}
+    status = str(body.get("status") or "done")
+    try:
+        result = training_service.training_write(
+            ontology_id, "action_completed",
+            {"action_id": action_id, "status": status, "note": str(body.get("note") or "")},
+            actor_type="human", actor="web",
+        )
+    except training_service.TrainingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ontology_id": ontology_id, "ok": True, **result}
+
+
 @app.get(
     "/api/domains/current/cq/resume",
     tags=["通用查询"],

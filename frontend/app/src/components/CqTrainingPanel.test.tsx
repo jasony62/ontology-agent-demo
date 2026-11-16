@@ -470,6 +470,90 @@ describe('训练现场（#198 / #203）', () => {
       String(url).includes('/cq/cases/request') && String(init?.method) === 'POST')).toBe(true);
   });
 
+  it('0 值阶段 chip 不占位，通过态不再渲染 7 格阶段条（#296）', async () => {
+    stubFetch({
+      ...RESUME,
+      lifecycle: {
+        ...RESUME.lifecycle!,
+        cases: [{
+          ...RESUME.lifecycle!.cases[0],
+          stage: 'passed', stage_label: '通过',
+          pending_decision: null, latest_decision: null,
+        }],
+      },
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const filters = [...container!.querySelectorAll<HTMLButtonElement>('.cq-stage-filters button')]
+      .map((btn) => btn.textContent);
+    // 0 值阶段 chip 不渲染（原始 fixture：pending 1 / resolved 1）
+    expect(filters).toEqual(['全部 1', '待我决 1', '已决 1']);
+    expect(filters).not.toContain('已建题 0');
+    expect(filters).not.toContain('通过 0');
+    expect(container!.querySelector('.cq-stage-bar')).toBeNull();
+  });
+
+  it('无待决时默认排序自动切到题号并注明（#297）', async () => {
+    stubFetch({
+      ...RESUME,
+      pending_decisions: [],
+      lifecycle: {
+        ...RESUME.lifecycle!,
+        summary: {
+          ...RESUME.lifecycle!.summary,
+          pending_questions: 0,
+          decision_counts: { pending: 0, followup: 0, resolved: 2 },
+        },
+        cases: RESUME.lifecycle!.cases.map((item) => ({
+          ...item, stage: 'resolved', stage_label: '已决',
+          pending_decision: null,
+        })),
+      },
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const select = container!.querySelector<HTMLSelectElement>('.cq-board-controls select')!;
+    expect(select.value).toBe('case');
+  });
+
+  it('大集分页：先显示 20 题，可继续加载（#297）', async () => {
+    const cases = Array.from({ length: 25 }, (_, index) => ({
+      ...RESUME.lifecycle!.cases[0],
+      case_id: `C${index + 1}`,
+      short_id: `Q${String(index + 1).padStart(2, '0')}`,
+      cq: `第 ${index + 1} 题`,
+      stage: 'resolved', stage_label: '已决',
+      pending_decision: null, latest_decision: null,
+    }));
+    stubFetch({
+      ...RESUME,
+      pending_decisions: [],
+      lifecycle: {
+        ...RESUME.lifecycle!,
+        summary: {
+          ...RESUME.lifecycle!.summary,
+          questions: 25,
+          stages: { authored: 0, regression: 0, pending: 0, resolved: 25, fixing: 0, passed: 0, followup: 0 },
+          pending_questions: 0,
+          resolved_questions: 25,
+          decision_counts: { pending: 0, followup: 0, resolved: 25 },
+        },
+        cases,
+      },
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(20);
+    const more = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((btn) => btn.textContent?.includes('显示更多'))!;
+    expect(more.textContent).toContain('剩余 5 题');
+    await act(async () => { more.click(); });
+    expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(25);
+  });
+
   it('有待审核题时训练页出独立提示与统计，不混进「待决」（#280）', async () => {
     stubFetch({
       ...RESUME,

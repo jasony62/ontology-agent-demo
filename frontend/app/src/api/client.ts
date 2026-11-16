@@ -621,6 +621,8 @@ export interface CqLifecycleCase {
 }
 
 export interface CqDelivery {
+  /** 与评审包首行逐字一致的判定句（#298）。 */
+  verdict?: string;
   ready: boolean;
   target_questions: number;
   graduated_questions: number;

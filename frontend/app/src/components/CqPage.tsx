@@ -66,6 +66,7 @@ export default function CqPage() {
   const [tab, setTab] = useState<CqTabName>(initialHash.tab);
   // #292：题目列表搜索（短号 / 状态词 / 题干关键词），与筛选叠加。
   const [query, setQuery] = useState(initialHash.query);
+  const [visibleLimit, setVisibleLimit] = useState(20);
   // #293：不再要求用户先选「模式」——技术细节是一层可折叠信息，不是身份。
   const [showTech, setShowTech] = useState(() => {
     try {
@@ -74,6 +75,22 @@ export default function CqPage() {
       return false;
     }
   });
+  // #295：首次访问一次性横幅（localStorage 记忆），之后不再出现。
+  const [showWelcome, setShowWelcome] = useState(() => {
+    try {
+      return window.localStorage.getItem('oa.cq.welcome.v1') !== '1';
+    } catch {
+      return false;
+    }
+  });
+  const dismissWelcome = () => {
+    setShowWelcome(false);
+    try {
+      window.localStorage.setItem('oa.cq.welcome.v1', '1');
+    } catch {
+      /* 本地存储不可用时只影响记忆 */
+    }
+  };
   const toggleTech = (next: boolean) => {
     setShowTech(next);
     try {
@@ -224,6 +241,7 @@ export default function CqPage() {
     }
     return counts;
   }, [cases]);
+  useEffect(() => { setVisibleLimit(20); }, [query, gapFilter]);
   const visibleCases = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const numeric = needle.replace(/^#/, '').replace(/^q/, '');
@@ -421,11 +439,9 @@ export default function CqPage() {
   const partialMismatchText = summary
     ? `有 ${unanchoredCases.length} 道题没有对上本体术语（${unanchoredCases.slice(0, 5).map((id) => `#${id}`).join('、')}${unanchoredCases.length > 5 ? ' 等' : ''}），成熟度会偏低；建议改问法或补术语后重跑。`
     : '';
-  const ontologyName = String(health?.ontology || '');
   const ontologyLoadedAt = String(health?.loaded_at || '');
   const domainName = String(health?.domain || domainInfo?.name || '');
   const domainLabel = domainInfo?.display_name || domainName;
-  const domainCode = String(domainInfo?.name || health?.domain || '');
   const evaluation = resumePreview?.evaluation ?? null;
   const evaluationFresh = evaluation?.state === 'fresh';
   const pendingActions = resumePreview?.next_actions ?? [];
@@ -497,20 +513,6 @@ export default function CqPage() {
               ? '这些题能不能被本体验证、上次评估是否通过。'
               : '每题走到生命周期哪一段、需要你做什么；待决卡直接回答，题卡内可下钻完整轨迹，下区是全部事件记录。'}
           </p>
-          <p className="cq-meta">
-            当前题集：<b title={data?.suite ? `系统标识：${data.suite}` : ''}>{suiteDisplay}</b>
-            {provenance && !provenance.known && (
-              <span className="cq-badge warn" title="这份题集没有播种来源记录（早于来源校验功能）">
-                来源未记录
-              </span>
-            )}
-            {data?.updated_at ? `（题集更新于 ${formatLocalTime(data.updated_at)}，含导入 / 编辑时间）` : ''}
-            {domainLabel ? (
-              <> · 当前领域：<b title={domainCode && domainCode !== domainLabel ? `系统标识：${domainCode}` : ''}>{domainLabel}</b></>
-            ) : null}
-            {ontologyLoadedAt ? <> · 本体加载于 {formatLocalTime(ontologyLoadedAt)}（服务启动时间）</> : null}
-            {ontologyName ? <span className="cq-meta-tech" title={ontologyName}>（本体文件见技术细节）</span> : null}
-          </p>
         </div>
         <div className="cq-toolbar-actions">
           <div className="cq-tool-group">
@@ -523,7 +525,7 @@ export default function CqPage() {
                 className={`cq-tab${tab === 'cases' ? ' active' : ''}`}
                 onClick={() => selectTab('cases')}
               >
-                题目
+                集总览
               </button>
               <button
                 type="button"
@@ -642,6 +644,12 @@ export default function CqPage() {
         <CqTrainingPage onGoToCases={() => selectTab('cases')} />
       ) : (
         <>
+          {showWelcome && (
+            <div className="cq-welcome" role="status">
+              <span>CQ 集把业务问题写成能被本体自动验证的题目：智能体负责生成和检查，你只负责看证据、做决策。</span>
+              <button type="button" className="btn link" onClick={dismissWelcome}>知道了</button>
+            </div>
+          )}
           {notice && <div className="notice-banner" role="status">{notice}</div>}
           {error && <div className="error-banner">{error}</div>}
           {partialErrors.length > 0 && (
@@ -720,17 +728,13 @@ export default function CqPage() {
                   role="status"
                   aria-label="可交付判定"
                 >
-                  <b>{delivery.ready ? '✅ 可交付' : '⚠️ 未达交付线'}</b>
+                  <b>{delivery.ready ? '✅' : '⚠️'}</b>
                   <span>
-                    {delivery.ready
-                      ? `${delivery.graduated_questions} 题已全部毕业，可进入线下评审。`
-                      : `差 ${delivery.missing_questions} 题毕业`}
-                    {!delivery.ready && delivery.unanchored_questions > 0
-                      ? `；其中 ${delivery.unanchored_questions} 题未锚定（${delivery.unanchored_cases.map((id) => `#${id}`).join('、')}），建议改问法或补术语后重跑`
-                      : ''}
-                    {!delivery.ready && delivery.failed_questions > 0
-                      ? `；${delivery.failed_questions} 题回归未通过`
-                      : ''}
+                    {delivery.verdict
+                      || (delivery.ready
+                        ? `达到交付线：${delivery.graduated_questions} 题已全部毕业`
+                        : `未达交付线：差 ${delivery.missing_questions} 题毕业`)}
+                    {provenance && !provenance.known ? '（来源未记录，仅供参考）' : ''}
                   </span>
                   {!delivery.ready && (
                     <button type="button" className="btn secondary" onClick={() => void requestCases()}>
@@ -756,29 +760,19 @@ export default function CqPage() {
                   </a>
                 </div>
               )}
-              {summary && summary.total > 0 && (
-                <div className="cq-start-guide">
-                  <b>从这里开始</b>
-                  <span>
-                    {pendingState === 'ready' && pendingQuestions !== null && pendingQuestions > 0
-                      ? `智能体已准备 ${summary.total} 道题，其中 ${pendingQuestions} 件待你决定。先处理待决，再逐题确认或运行评估。`
-                      : pendingState === 'unknown'
-                        ? `智能体已准备 ${summary.total} 道题。待决数暂未取到，可先逐题确认/驳回，再运行评估看是否能答。`
-                        : `智能体已准备 ${summary.total} 道题。先逐题确认/驳回，再运行评估看是否能答。`}
-                  </span>
-                  {pendingState === 'ready' && pendingQuestions !== null && pendingQuestions > 0 && (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => selectTab('training')}
-                    >
-                      去处理待决
-                    </button>
+              <details className="cq-quality-detail">
+                <summary>质量明细与集信息</summary>
+                <p className="cq-meta guide-muted">
+                  当前题集：<b>{suiteDisplay}</b>
+                  {provenance && !provenance.known && (
+                    <span className="cq-badge warn" title="这份题集没有播种来源记录（早于来源校验功能）">来源未记录</span>
                   )}
-                </div>
-              )}
-
-              {!lifecycleSummary && loading && (
+                  {data?.updated_at ? `（题集更新于 ${formatLocalTime(data.updated_at)}，含导入 / 编辑时间）` : ''}
+                  {' '}· 当前领域：<b>{domainLabel}</b>
+                  {ontologyLoadedAt ? ` · 本体加载于 ${formatLocalTime(ontologyLoadedAt)}（服务启动时间）` : ''}
+                  {provenance && !provenance.known ? ' · 来源未记录（旧题集）' : ''}
+                </p>
+                {!lifecycleSummary && loading && (
                 <section className="cq-maturity cq-maturity-skeleton" aria-hidden="true">
                   <div className="cq-skeleton-line" />
                   <div className="cq-skeleton-line short" />
@@ -793,6 +787,9 @@ export default function CqPage() {
                       <HelpTip text="CQ 成熟度：已毕业题数 ÷ 目标题量；100% 即全部毕业。" />
                     </span>
                     <b>{cqmAvailable ? `${Math.round((cqm ?? 0) * 100)}%` : '不可用'}</b>
+                    {provenance && !provenance.known && (
+                      <span className="cq-badge warn" title="旧题集没有播种来源记录；成熟度仅供参考">来源未知</span>
+                    )}
                     <span className="guide-muted">
                       已毕业 {graduatedQuestions} / 目标 {targetQuestions} 题 · 交付线 100%（全部毕业）
                     </span>
@@ -860,6 +857,7 @@ export default function CqPage() {
                   </p>
                 </details>
               )}
+              </details>
             </>
           )}
 
@@ -931,61 +929,41 @@ export default function CqPage() {
             )
           ) : (
             <>
-              <div className="cq-overview">
-                <div className="cq-stat" title="总题数：CQ 集里的题目总数">
-                  <span>总题数</span>
-                  <b>{summary.total}</b>
+              <section className="cq-funnel" aria-label="质量漏斗">
+                <div className="cq-funnel-steps">
+                  <span><b>{summary.total}</b> 总题数</span>
+                  <i>→</i>
+                  <span><b>{summary.located}</b> 对上本体</span>
+                  <i>→</i>
+                  <span><b>{summary.answerable}</b> 可答</span>
+                  <i>→</i>
+                  <span><b>{graduatedQuestions}</b> 毕业 <em>/ 目标 {targetQuestions}</em></span>
+                  {summary.gap > 0 && <span className="cq-funnel-gap">没对上 {summary.gap}</span>}
                 </div>
-                <div className="cq-stat" title="已定位：题干能对上本体术语并查到证据的题数">
-                  <span>已定位 <HelpTip text="题干能对上本体术语、并查到至少一条证据的题数" /></span>
-                  <b>{summary.located}</b>
-                </div>
-                <div className="cq-stat" title="可答：有回归断言且上次评估通过的题数">
-                  <span>可答 <HelpTip text="有回归断言，且上次评估通过的题数；与「缺口」不是互补分类" /></span>
-                  <b className="ok">{summary.answerable}</b>
-                  {summary.gap > 0 && (
-                    <em className="cq-stat-note">含 {summary.gap} 题未锚定</em>
-                  )}
-                </div>
-                <div className="cq-stat" title="缺口：未定位到证据的题数（与可答不是互补分类）">
-                  <span>缺口 <HelpTip text="未定位到本体证据的题数；它统计「定位」，不统计「回归」，所以和可答不是互补关系" /></span>
-                  <b className={summary.gap > 0 ? 'warn' : ''}>{summary.gap}</b>
-                </div>
-                <div className="cq-coverage">
-                  <div className="cq-coverage-row" title="定位覆盖 = 已定位题数 ÷ 总题数">
-                    <span>定位覆盖（有证据）<HelpTip text="已定位题数 ÷ 总题数，和左侧「已定位 / 总题数」同一口径" /></span>
-                    <div className="cq-bar"><i style={{ width: `${locatedPct}%` }} /></div>
-                    <b>{locatedPct}%</b>
-                  </div>
-                  <div className="cq-coverage-row" title="可答覆盖 = 可答题数 ÷ 总题数">
-                    <span>可答覆盖（回归通过）<HelpTip text="可答题数 ÷ 总题数；只有跑过评估且通过才计入" /></span>
-                    <div className="cq-bar real"><i style={{ width: `${answerablePct}%` }} /></div>
-                    <b>{answerablePct}%</b>
-                  </div>
-                  <p className="guide-muted cq-dimension-note">
-                    缺口看「有没有定位到证据」，可答看「回归有没有通过」，两者不是互补分类。
-                  </p>
+                <div className="cq-funnel-meta">
+                  <span>覆盖（有证据）{locatedPct}%</span>
+                  <span>覆盖（回归通过）{answerablePct}%</span>
                   {runs[0] && (
-                    <div className="cq-trend">
+                    <span>
                       最近评估：{runs[0].pass}/{runs[0].total} 通过 · {formatLocalTime(runs[0].ran_at)}
                       {trend === null
-                        ? ' · 暂无上次对比'
+                        ? ''
                         : trend === 0
                           ? ' · 与上次持平'
                           : ` · 较上次${trend > 0 ? '上升' : '下降'} ${Math.abs(trend)} 个百分点`}
-                    </div>
+                    </span>
                   )}
                 </div>
-              </div>
+              </section>
 
               {/* #250 R6：与训练页题卡 blockers 一一对应的缺口统计，可点击筛题。 */}
               <section className="cq-gap-stats" aria-label="缺口统计">
                 <div className="cq-gap-stats-head">
-                  <b>还差什么</b>
-                  <span className="guide-muted">与训练页题卡「还差」同一组词；点一项筛出对应题目。</span>
+                  <b>未达毕业的原因</b>
+                  <span className="guide-muted">与训练页题卡「还差」同一组词；0 值不占位，点一项筛出对应题目。</span>
                 </div>
                 <div className="cq-gap-stats-actions">
-                  {BLOCKER_ORDER.map((label) => (
+                  {BLOCKER_ORDER.filter((label) => (blockerCounts[label] ?? 0) > 0 || gapFilter === label).map((label) => (
                     <button
                       key={label}
                       type="button"
@@ -1076,7 +1054,7 @@ export default function CqPage() {
                     </div>
                   </div>
                   <ul>
-                    {visibleCases.map(({ item, index }) => {
+                    {visibleCases.slice(0, visibleLimit).map(({ item, index }) => {
                       const key = caseKey(item, index);
                       return (
                         <li key={key}>

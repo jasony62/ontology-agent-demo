@@ -1145,15 +1145,14 @@ def export_review_markdown(
     unanchored = [str(item) for item in delivery.get("unanchored_cases") or []]
     failed = [str(item) for item in delivery.get("failed_cases") or []]
     missing = int(delivery.get("missing_questions") or 0)
-    if delivery.get("ready"):
-        verdict = f"达到交付线：{delivery.get('graduated_questions', 0)} 题已全部毕业"
-    else:
-        parts = [f"未达交付线：差 {missing} 题毕业"]
-        if unanchored:
-            parts.append(f"其中 {len(unanchored)} 题未锚定（{ '、'.join(case_ref(c) for c in unanchored) }），建议改问法或补术语后重跑")
-        if failed:
-            parts.append(f"{len(failed)} 题回归未通过（{ '、'.join(case_ref(c) for c in failed) }）")
-        verdict = "；".join(parts)
+    # 判定句只算一次：页面与评审包共用 delivery.verdict，保证逐字一致。
+    verdict = str(delivery.get("verdict") or "").strip()
+    if not verdict:
+        verdict = (
+            f"达到交付线：{delivery.get('graduated_questions', 0)} 题已全部毕业"
+            if delivery.get("ready")
+            else f"未达交付线：差 {missing} 题毕业"
+        )
 
     lines = [
         f"# CQ 集评审包 — {suite}",
@@ -1161,6 +1160,22 @@ def export_review_markdown(
         f"- 生成时间：{stamp}",
         f"- 来源：{source_text}",
         f"- 交付判定：**{verdict}**",
+        "",
+        "## 差距分析",
+        "",
+        f"- 目标题量：{delivery.get('target_questions', 0)} 题"
+        f"（按本体规模估算：关键术语数 × {TARGET_QUESTIONS_K}，最低 {TARGET_QUESTIONS_MIN} 题，可调）",
+        f"- 已毕业：{delivery.get('graduated_questions', 0)} 题；"
+        f"缺口：{delivery.get('missing_questions', 0)} 题"
+        f"（未锚定 {delivery.get('unanchored_questions', 0)} · "
+        f"回归未通过 {delivery.get('failed_questions', 0)}）",
+        "- 建议动作：",
+        ("  - 请求智能体按当前本体生成候选题（补足目标题量）"
+         if delivery.get("missing_questions", 0) > 0 else "  - 题量已达标，可进入线下评审"),
+        ("  - 对未锚定的题改问法或补术语后重跑"
+         if delivery.get("unanchored_questions", 0) > 0 else "  - 所有题都已对上本体术语"),
+        ("  - 回归未通过的题先归因，再决定改断言或改本体"
+         if delivery.get("failed_questions", 0) > 0 else "  - 回归全部通过"),
         "",
         "## 概览",
         "",

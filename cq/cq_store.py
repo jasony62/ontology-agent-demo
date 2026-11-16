@@ -30,6 +30,8 @@ from rdflib import OWL, RDF
 from api import workspaces
 from cq.constants import (
     DECISION_KINDS,
+    REVIEW_FIELDS,
+    REVIEW_STATES,
     EXPECTED_TYPE_ALIASES,
     EXPECTED_TYPE_UNKNOWN,
     EXPECTED_TYPE_VALUES,
@@ -172,7 +174,8 @@ def _read_json(path: Path) -> dict | None:
 def _summary(case: dict | None) -> dict | None:
     if not isinstance(case, dict):
         return None
-    return {
+    review = case.get("review") if isinstance(case.get("review"), dict) else None
+    summary = {
         "id": case.get("id"),
         "cq": case.get("cq"),
         "expected_type": case.get("expected_type"),
@@ -180,6 +183,14 @@ def _summary(case: dict | None) -> dict | None:
         # #245：删除时刻的毕业快照，留存率护栏只认这一份（见 graduated_snapshot）
         "graduated": graduated_snapshot(case),
     }
+    if review:
+        # #285：审核变化必须能在审计链上还原；by/at 一并保留，避免只看到状态。
+        summary["review"] = {
+            key: review.get(key)
+            for key in ("required", "state", "by", "at")
+            if review.get(key) is not None
+        }
+    return summary
 
 
 def graduated_snapshot(case: dict) -> bool:
@@ -304,6 +315,8 @@ def assertion_summary(regression: dict | None) -> str:
 _CASE_FIELDS = {
     "id", "cq", "expected_type", "status", "requirement",
     "regression", "rule", "coverage_cache",
+    # #285：审核门控字段；缺省 = 免审（存量题零影响）。
+    "review",
 }
 # 旧格式 / 死字段的定向报错，避免用户看到泛化的 "未知字段"。
 _LEGACY_CASE_FIELDS = {
@@ -375,6 +388,39 @@ def _validate_regression(case_ref: str, regression) -> None:
     _validate_expect(case_ref, regression["expect"])
 
 
+def _validate_review(case_ref: str, review) -> None:
+    """#285：`review` 整对象强校验；显式 null 也拒绝（缺省才是免审）。"""
+    if not isinstance(review, dict):
+        raise ValueError(
+            f"{case_ref}.review 必须是对象（required / state / by / at），"
+            f"实际为 {type(review).__name__}；合法 state：{' / '.join(REVIEW_STATES)}"
+        )
+    extra = sorted(set(review) - set(REVIEW_FIELDS))
+    if extra:
+        raise ValueError(
+            f"{case_ref}.review 含未知字段：{', '.join(extra)}；"
+            f"允许：{', '.join(REVIEW_FIELDS)}"
+        )
+    required = review.get("required", False)
+    if not isinstance(required, bool):
+        raise ValueError(f"{case_ref}.review.required 必须是布尔值")
+    state = review.get("state")
+    if state is not None and state not in REVIEW_STATES:
+        raise ValueError(
+            f"{case_ref}.review.state 非法：{state!r}；"
+            f"合法值：{' / '.join(REVIEW_STATES)}"
+        )
+    if required and not state:
+        raise ValueError(
+            f"{case_ref}.review 要求必审时必须给出 state；"
+            f"合法值：{' / '.join(REVIEW_STATES)}"
+        )
+    for key in ("by", "at"):
+        value = review.get(key)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(f"{case_ref}.review.{key} 必须是字符串")
+
+
 def _validate_case(index: int, case: dict) -> None:
     """写入前的 CQ schema 强制校验（#179/#180/#181），非法值不再静默兜底。"""
     ref = f"cases[{index}]"
@@ -401,6 +447,8 @@ def _validate_case(index: int, case: dict) -> None:
             f"合法值：{' / '.join(STATUS_CONTRACT_VALUES)}"
         )
     case["status"] = status or STATUS_UNSET
+    if "review" in case:
+        _validate_review(ref, case["review"])
     _validate_regression(ref, case.get("regression"))
 
 
@@ -425,6 +473,79 @@ def _write_set(ontology_id: str, payload: dict) -> None:
     os.replace(tmp, path)
 
 
+def _review_blocking(case: dict) -> bool:
+    """必审未过：`required=true` 且 state 不是 approved。"""
+    review = case.get("review")
+    if not isinstance(review, dict) or not review.get("required"):
+        return False
+    return str(review.get("state") or "none") != "approved"
+
+
+def _regression_signature(case: dict) -> str:
+    regression = case.get("regression") if isinstance(case.get("regression"), dict) else {}
+    payload = {
+        "query": str(regression.get("query") or ""),
+        "expect": regression.get("expect"),
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _apply_review_reset(previous: dict, cases: list[dict]) -> None:
+    """#285 Q2：断言语义变了 → 审核退回 pending；active 同时退回 draft。
+
+    只比较 `regression.query/expect`；改题干 / 需求 / 题型不重置。
+    退回 draft 是「active + pending 非法」的唯一合法出口，避免双真相。
+    """
+    prev_by_id = {
+        str(case.get("id")): case
+        for case in (previous.get("cases") or [])
+        if isinstance(case, dict) and case.get("id")
+    }
+    for case in cases:
+        prev = prev_by_id.get(str(case.get("id") or ""))
+        review = case.get("review")
+        if prev is None or not isinstance(review, dict):
+            continue
+        if not review.get("required") or str(review.get("state") or "") != "approved":
+            continue
+        if _regression_signature(prev) == _regression_signature(case):
+            continue
+        case["review"] = {**review, "state": "pending"}
+        case["review"].pop("by", None)
+        case["review"].pop("at", None)
+        if str(case.get("status") or "") == "active":
+            case["status"] = "draft"
+
+
+def _review_gate(previous: dict, cases: list[dict]) -> None:
+    """#285：只看写入 diff——结果里出现「active + 必审未过」就拒。
+
+    存量已处于该状态的题不反复报错（祖父条款），避免历史数据一写就死锁；
+    新翻成 active、或把 active 题改回 pending，都会被拦下。
+    """
+    prev_by_id = {
+        str(case.get("id")): case
+        for case in (previous.get("cases") or [])
+        if isinstance(case, dict) and case.get("id")
+    }
+    blocking: list[dict] = []
+    for case in cases:
+        if str(case.get("status") or "") != "active" or not _review_blocking(case):
+            continue
+        prev = prev_by_id.get(str(case.get("id") or ""))
+        if prev is not None and str(prev.get("status") or "") == "active" and _review_blocking(prev):
+            continue  # 祖父：存量 active + 待审不因其它写入反复被拒
+        review = case.get("review") or {}
+        blocking.append({
+            "id": str(case.get("id") or ""),
+            "state": str(review.get("state") or "none"),
+        })
+    if not blocking:
+        return
+    total_pending = sum(1 for case in cases if _review_blocking(case))
+    raise ReviewPendingError(blocking, total_pending)
+
+
 def save_set(
     ontology_id: str,
     data: dict,
@@ -438,8 +559,16 @@ def save_set(
     after: dict | None = None,
 ) -> dict:
     """校验骨架 + 补 id 后原子写，并追加审计。"""
-    cases = _validate(data)
+    validated = _validate(data)
+    # 复制一份再改写（审核自动重置 / 补 id），不污染调用方传入的 dict。
+    cases = [dict(item) for item in validated]
     _ensure_ids(cases)
+    previous = _read_json(set_path(ontology_id)) or {}
+    if action != "import":
+        _apply_review_reset(previous, cases)
+    # seed 来自受版本管理的领域包，显式豁免；用户整集导入仍要过门（防后门）。
+    if action != "seed":
+        _review_gate(previous, cases)
     payload = {
         "suite": str(data.get("suite") or ""),
         "version": data.get("version", 1),
@@ -456,11 +585,32 @@ def save_set(
     if isinstance(seeded_from, dict) and seeded_from:
         payload["seeded_from"] = seeded_from
     _write_set(ontology_id, payload)
+    audit_after = after
+    if audit_after is None and case_id is None:
+        # #285：整集写入逐题记 after，避免只看到最后一题。
+        audit_after = {"cases": [_summary(item) for item in cases]}
     _audit(
         ontology_id, action, actor_type=actor_type, actor=actor,
-        case_id=case_id, before=before, after=after or _summary(cases[-1] if cases else None),
+        case_id=case_id, before=before, after=audit_after,
     )
     return payload
+
+
+class ReviewPendingError(ValueError):
+    """必审未过却要把题翻成 active（#285）：结构化拒绝，前端按 code 定向提示。"""
+
+    def __init__(self, blocking: list[dict], total_pending: int):
+        self.blocking = blocking
+        self.total_pending = total_pending
+        super().__init__(f"有 {total_pending} 道题还没有审核结论，不能翻成启用")
+
+    def payload(self) -> dict:
+        return {
+            "code": "review_pending",
+            "message": str(self),
+            "blocking": self.blocking,
+            "total_pending": self.total_pending,
+        }
 
 
 class SeedFormatError(ValueError):
@@ -595,6 +745,8 @@ def import_set(
             action="import", after={"cases": len(cases)},
         )
         return saved
+    # 直写字节分支此前绕过了 save_set 的门（#285）；补上 diff 门。
+    _review_gate(_read_json(set_path(ontology_id)) or {}, cases)
     path = set_path(ontology_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
@@ -665,14 +817,24 @@ def update_case(
     index = _find(cases, case_id)
     before = _summary(cases[index])
     item = {**cases[index], **patch, "id": case_id}
+    # #285：review 禁止单键 patch 丢字段——浅合并会丢 required → fail-open。
+    if "review" in patch:
+        base_review = cases[index].get("review")
+        patch_review = patch.get("review")
+        if isinstance(base_review, dict) and isinstance(patch_review, dict):
+            item["review"] = {**base_review, **patch_review}
     if not str(item.get("cq") or "").strip():
         raise ValueError("题目缺少非空 cq 题干")
     cases[index] = item
-    save_set(
+    saved = save_set(
         ontology_id, data, actor_type=actor_type, actor=actor,
         action="update", case_id=case_id, before=before, after=_summary(item),
     )
-    return item
+    # 审核自动重置可能同时改 status/review：返回真正落盘的那份。
+    return next(
+        (case for case in saved.get("cases") or [] if case.get("id") == case_id),
+        item,
+    )
 
 
 def delete_case(
@@ -834,6 +996,8 @@ def build_view(engine, data: dict) -> dict:
             blockers.append("缺断言")
         if not is_answerable:
             blockers.append("未通过")
+        if _review_blocking(case):
+            blockers.append("待审核")
         if status == "archived":
             blockers.append("已归档")
         by_type[expected_type] += 1
@@ -886,6 +1050,21 @@ def build_view(engine, data: dict) -> dict:
         },
         "cases": enriched,
     }
+
+
+def _review_label(review) -> str:
+    """评审包的审核列（#285）：未要求 / 待审核 / 已通过（人·时间）/ 已驳回。"""
+    if not isinstance(review, dict) or not review.get("required"):
+        return "未要求"
+    state = str(review.get("state") or "none")
+    if state == "approved":
+        by = str(review.get("by") or "").strip()
+        at = str(review.get("at") or "").strip()
+        suffix = " · ".join(part for part in (by, at) if part)
+        return f"已通过（{suffix}）" if suffix else "已通过"
+    if state == "rejected":
+        return "已驳回"
+    return "待审核"
 
 
 def export_review_markdown(
@@ -962,8 +1141,8 @@ def export_review_markdown(
         "",
         "## 逐题清单",
         "",
-        "| # | 题号 | 题干 | 考法 | 结论 | 还差什么 |",
-        "|---|---|---|---|---|---|",
+        "| # | 题号 | 题干 | 考法 | 结论 | 审核 | 还差什么 |",
+        "|---|---|---|---|---|---|---|",
     ]
     for index, case in enumerate(cases, start=1):
         blockers = [str(item) for item in (case.get("blockers") or [])]
@@ -973,7 +1152,8 @@ def export_review_markdown(
         lines.append(
             f"| {index} | {case_ref(str(case.get('id') or ''))} | {cell(case.get('cq'))} "
             f"| {cell(EXPECTED_TYPE_LABELS.get(str(case.get('expected_type') or ''), '未分型'))} "
-            f"| {conclusion} | {cell(' / '.join(blockers) or '—')} |"
+            f"| {conclusion} | {cell(_review_label(case.get('review')))} "
+            f"| {cell(' / '.join(blockers) or '—')} |"
         )
 
     risk_rows = [
@@ -1069,6 +1249,7 @@ def export_junit(run: dict) -> str:
 
 
 __all__ = [
+    "ReviewPendingError",
     "SeedFormatError",
     "add_case",
     "audit_path",

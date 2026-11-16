@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { CqTimelineItem } from '../api/client';
-import { conclusionLabel, actorIcon, actorLabel } from '../lib/cqLabels';
+import { conclusionLabel, actorChannelText, actorIcon, timelineSummaryText } from '../lib/cqLabels';
+import { formatLocalTime } from '../lib/time';
 import CqIterationPage from './CqIterationPage';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -117,10 +118,10 @@ export default function CqTimelinePage({
                 <div className="cq-timeline-head">
                   <code>{SOURCE_LABELS[item.source] ?? item.source}</code>
                   <span className="guide-badge muted">{CATEGORY_LABELS[item.category] ?? item.category}</span>
-                  <time>{item.ts || '—'}</time>
+                  <time>{formatLocalTime(item.ts)}</time>
                   {item.actor && (
                     <span className="guide-muted">
-                      {actorIcon(item.actor_type)} {actorLabel(item.actor_type)}/{item.actor}
+                      {actorIcon(item.actor_type)} {actorChannelText(item.actor_type, item.actor)}
                     </span>
                   )}
                   {item.case_id && onOpenCase && (
@@ -133,7 +134,7 @@ export default function CqTimelinePage({
                     </button>
                   )}
                 </div>
-                <p>{item.summary}</p>
+                <p>{timelineSummaryText(item)}</p>
                 {item.content && Boolean(item.content.conclusion || item.content.basis) && (
                   <div className="cq-timeline-receipt">
                     {item.content.conclusion ? (

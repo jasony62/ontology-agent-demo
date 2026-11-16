@@ -600,6 +600,8 @@ def _category(event: str) -> str:
     return "observations"
 
 
+# #252：事件标签必须覆盖 constants.TRAINING_OBSERVATION_EVENTS 全集，
+# 缺一个就会掉到「记录：」这种空占位（用户看不出发生了什么）。
 _EVENT_LABELS = {
     "case_authored": "新题入库",
     "case_released": "题目放行",
@@ -611,10 +613,50 @@ _EVENT_LABELS = {
     "iteration_accepted": "迭代确认",
     "attribution_conclusion": "归因结论",
     "circuit_breaker": "熔断",
+    "action_requested": "动作请求",
+    "action_completed": "动作完成",
+    "workbench_viewed": "查看工作台",
 }
 
+# 用户可见的中文动作名（#252）；码本身仍原样落盘，只翻译展示。
+_ACTION_LABELS = {
+    "update_expectation": "改预期",
+    "update_ontology": "补本体 / 术语",
+    "revise_case": "改问法",
+    "delete_case": "删题",
+    "rerun_regression": "重跑回归",
+    "lock_graduation": "锁定毕业",
+    "generate_cases": "生成候选题",
+}
 
-def _event_summary(item: dict) -> str:
+# 审计动作（cq_store._audit 写入的 action 码）→ 中文（#252）。
+_AUDIT_ACTION_LABELS = {
+    "seed": "初始化题集",
+    "save": "保存题集",
+    "import": "导入题集",
+    "add": "新增题目",
+    "update": "更新题目",
+    "delete": "删除题目",
+    "run": "运行评估",
+}
+
+# 回归结论 / 闸门状态的展示中文（#252）。
+_RUN_STATE_LABELS = {
+    "pass": "通过",
+    "fail": "未通过",
+    "cannot_tell": "无法判断",
+    "not_tested": "未测试",
+    "ok": "通过",
+    "violation": "不通过",
+    "unknown": "未知",
+}
+
+# 闸门名沿用专名（G1–G4）；仅把内部英文代号翻成中文。
+_GATE_LABELS = {"iteration": "迭代"}
+
+
+def _event_summary(item: dict, action_names: dict[str, str] | None = None) -> str:
+    """把一条训练事件翻成一句人话（#252）；码本身仍原样留在 `event` / `content` 里。"""
     event = item.get("event")
     content = item.get("content") or {}
     if event == "decision_asked":
@@ -626,13 +668,67 @@ def _event_summary(item: dict) -> str:
         return "该项已由智能体自行处理"
     if event == "intent_pending_marked":
         return f"题目意图待确认：{content.get('case_id', '')}"
+    if event == "case_authored":
+        return f"新题入库：{content.get('case_id', '')}"
+    if event == "case_released":
+        return f"题目放行：{content.get('case_id', '')}"
     if event == "regression_run":
-        return (f"回归：通过 {content.get('pass', 0)} 题 / "
-                f"未通过 {content.get('fail', 0)} 题")
+        parts = [
+            f"通过 {content.get('pass', 0)} 题",
+            f"未通过 {content.get('fail', 0)} 题",
+        ]
+        if content.get("cannot_tell"):
+            parts.append(f"无法判断 {content.get('cannot_tell')} 题")
+        if content.get("not_tested"):
+            parts.append(f"未测试 {content.get('not_tested')} 题")
+        return "回归：" + " / ".join(parts)
+    if event == "gate_result":
+        gate = str(content.get("gate") or "")
+        status = str(content.get("status") or "")
+        gate_label = _GATE_LABELS.get(gate, gate or "闸门")
+        status_label = _RUN_STATE_LABELS.get(status, status or "未知")
+        return f"闸门检查：{gate_label} — {status_label}"
+    if event == "evidence_recorded":
+        detail = str(content.get("summary") or "").strip()
+        if detail:
+            return f"证据记录：{detail}"
+        ref = str(content.get("evidence_ref") or "").strip()
+        return f"证据记录：{ref}" if ref else "证据记录：已记录一条证据"
     if event.startswith("iteration_"):
         return f"迭代 {content.get('iteration_id', '')}：{_EVENT_LABELS.get(event, '迭代更新')}"
-    return (f"{_EVENT_LABELS.get(event, '记录')}："
-            f"{content.get('summary') or content.get('reason') or ''}")
+    if event == "attribution_conclusion":
+        conclusion = str(content.get("conclusion") or "").strip()
+        return f"归因结论：{conclusion}" if conclusion else "归因结论：已给出处理结论"
+    if event == "circuit_breaker":
+        reason = str(content.get("reason") or "").strip()
+        return f"熔断：{reason}" if reason else "熔断：连续多轮没有进展，已暂停自动流程"
+    if event == "action_requested":
+        action = _ACTION_LABELS.get(str(content.get("action") or ""), "执行动作")
+        return f"请求执行动作：{action}"
+    if event == "action_completed":
+        name = (action_names or {}).get(str(content.get("action_id") or ""), "")
+        name = _ACTION_LABELS.get(name, name)
+        status = "已完成" if content.get("status") == "done" else "未成功"
+        text = f"动作完成：{name}（{status}）" if name else f"动作完成（{status}）"
+        note = str(content.get("note") or "").strip()
+        return f"{text}：{note}" if note else text
+    if event == "workbench_viewed":
+        return (
+            "查看了工作台（当时有待处理事项）"
+            if content.get("pending") is True
+            else "查看了工作台"
+        )
+    # 兜底：至少给出事件名，绝不留「记录：」这种空冒号。
+    label = _EVENT_LABELS.get(event, "事件")
+    detail = str(content.get("summary") or content.get("reason") or "").strip()
+    return f"{label}：{detail}" if detail else label
+
+
+def _audit_summary(entry: dict) -> str:
+    """审计摘要用中文动作 + 题号（#252）；未知动作也不回退成英文码。"""
+    label = _AUDIT_ACTION_LABELS.get(str(entry.get("action") or ""), "题集变更")
+    case_id = str(entry.get("case_id") or "").strip()
+    return f"{label} {case_id}".strip()
 
 
 def _after(ts: str, since: str) -> bool:
@@ -664,8 +760,14 @@ def timeline(
     }
     decision_case: dict[str, str] = {}
     authored_ts: list[str] = []
+    # #252：action_completed 只带 action_id，动作名要从 action_requested 反查。
+    action_names: dict[str, str] = {}
     for event in events:
         content = event.get("content") or {}
+        if event.get("event") == "action_requested":
+            action_id = str(content.get("action_id") or "")
+            if action_id:
+                action_names[action_id] = str(content.get("action") or "")
         if event.get("event") == "decision_asked":
             did = str(content.get("decision_id") or "")
             cid = str(content.get("case_id") or "")
@@ -689,7 +791,7 @@ def timeline(
             "ts": item.get("ts"),
             "ref": content.get("event_id"),
             "case_id": linked,
-            "summary": _event_summary(item),
+            "summary": _event_summary(item, action_names),
             "actor_type": item.get("actor_type"),
             "actor": item.get("actor"),
             "content": content,
@@ -716,7 +818,7 @@ def timeline(
             "ts": entry.get("ts"),
             "ref": entry_case,
             "case_id": entry_case,
-            "summary": f"{entry.get('action')} {entry_case}".strip(),
+            "summary": _audit_summary(entry),
             "actor_type": entry.get("actor_type"),
             "actor": entry.get("actor"),
         })
@@ -738,7 +840,7 @@ def timeline(
                 "ts": run.get("ran_at"),
                 "ref": run.get("ran_at"),
                 "case_id": wanted_case,
-                "summary": f"回归：{'通过' if state == 'pass' else '未通过' if state == 'fail' else state}",
+                "summary": "回归：" + _RUN_STATE_LABELS.get(state, state or "已回归"),
                 "actor_type": run.get("actor_type") or "human",
                 "actor": run.get("actor") or "web",
                 "content": case_result,
@@ -751,7 +853,7 @@ def timeline(
                 "ts": run.get("ran_at"),
                 "ref": run.get("ran_at"),
                 "case_id": "",
-                "summary": f"回归：{run.get('pass', 0)}/{run.get('total', 0)} pass",
+                "summary": f"回归：{run.get('pass', 0)}/{run.get('total', 0)} 通过",
                 "actor_type": run.get("actor_type") or "human",
                 "actor": run.get("actor") or "web",
             })

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from cq import training_log
+from cq import constants, cq_store, training_log, training_service
 import api.main as M
 
 
@@ -130,3 +130,110 @@ def test_timeline_filters_and_no_workspace_route(client):
     assert items[0]["category"] == "decisions"
     spec = TestClient(M.app).get("/openapi.json").json()["paths"]
     assert not any(path.startswith("/api/workspaces/") for path in spec)
+
+
+# ---------------- #252：事件文案中文化 ----------------
+
+# 面向用户的摘要里不该再出现的裸英文码（ID / 专名 / MCP 除外）。
+_BARE_CODES = (
+    "pass", "fail", "save", "add", "update", "delete", "import",
+    "cannot_tell", "not_tested", "workbench_viewed", "action_requested",
+    "action_completed", "gate_result", "evidence_recorded", "circuit_breaker",
+)
+
+
+def test_event_labels_cover_all_observation_events():
+    """#252 R2：标签表必须覆盖 13 种观测 / 证据事件，否则会掉到「记录：」空占位。"""
+    assert set(training_service._EVENT_LABELS) == set(constants.TRAINING_OBSERVATION_EVENTS)
+
+
+def test_timeline_summaries_are_chinese_and_never_empty(client):
+    """#252 V1 / V2 / V6：每条摘要都可读、不以空冒号结尾、不夹裸英文码。"""
+    ontology_id, _ = M._cq_identity()
+    case_id = next(
+        event["content"]["case_id"]
+        for event in training_log.read_events(ontology_id)
+        if event["event"] == "case_authored"
+    )
+    decision_id = _ask(client)
+    client.post("/api/domains/current/cq/decision", json={
+        "action": "feedback", "decision_id": decision_id, "option": "A",
+    })
+
+    training_service.training_write(ontology_id, "workbench_viewed", {"pending": False})
+    training_service.training_write(ontology_id, "workbench_viewed", {"pending": True})
+    training_service.training_write(
+        ontology_id, "gate_result", {"gate": "G1", "status": "pass"},
+    )
+    training_service.training_write(ontology_id, "evidence_recorded", {
+        "kind": "evidence", "evidence_ref": "evidence/x.json",
+    })
+    training_service.training_write(
+        ontology_id, "attribution_conclusion", {"conclusion": "本体缺术语"},
+    )
+    training_service.training_write(
+        ontology_id, "circuit_breaker", {"reason": "连续三轮没有进展"},
+    )
+    requested = training_service.request_case_generation(ontology_id, note="补一批题")
+    training_service.training_write(ontology_id, "action_completed", {
+        "action_id": requested["action_id"], "status": "done", "note": "已生成 3 道候选题",
+    })
+    training_service.training_write(ontology_id, "regression_run", {
+        "run_ref": "r1", "total": 2, "pass": 1, "fail": 1,
+        "cannot_tell": 0, "not_tested": 0,
+    })
+    cq_store.save_run(ontology_id, {
+        "suite": "t", "ran_at": "2026-11-16T00:00:00+00:00",
+        "total": 2, "pass": 1, "fail": 1, "cannot_tell": 0, "not_tested": 0,
+        "coverage_real": 0.5, "cases": [],
+    })
+    # 审计动作也要中文化：save / update 是最常见的两种历史摘要。
+    cq_store.save_set(ontology_id, cq_store.get_set(ontology_id), action="save")
+    client.patch(f"/api/domains/current/cq/cases/{case_id}", json={"status": "active"})
+
+    items = training_service.timeline(ontology_id, limit=200)["items"]
+    summaries = [item["summary"] for item in items]
+    assert summaries
+    for summary in summaries:
+        assert summary.strip(), "摘要不能为空"
+        assert not summary.rstrip().endswith(("：", ":")), f"空冒号摘要：{summary!r}"
+        for code in _BARE_CODES:
+            assert code not in summary, f"摘要含裸英文码 {code!r}：{summary!r}"
+
+    assert "查看了工作台（当时有待处理事项）" in summaries
+    assert "请求执行动作：生成候选题" in summaries
+    assert "动作完成：生成候选题（已完成）：已生成 3 道候选题" in summaries
+    assert "闸门检查：G1 — 通过" in summaries
+    assert "归因结论：本体缺术语" in summaries
+    assert "熔断：连续三轮没有进展" in summaries
+    assert "回归：1/2 通过" in summaries
+    assert f"新增题目 {case_id}" in summaries
+    assert f"更新题目 {case_id}" in summaries
+    assert "保存题集" in summaries
+
+
+def test_event_summary_handles_every_event_kind():
+    """#252 R2②：即使 content 缺 summary / reason，也不输出空冒号。"""
+    content_by_event = {
+        "gate_result": {"gate": "iteration", "status": "unknown"},
+        "evidence_recorded": {"kind": "evidence", "evidence_ref": "evidence/x.json"},
+        "attribution_conclusion": {"conclusion": ""},
+        "circuit_breaker": {"reason": ""},
+        "action_requested": {"action_id": "a1", "action": "update_expectation"},
+        "action_completed": {"action_id": "a1", "status": "failed"},
+        "workbench_viewed": {"pending": False},
+        "case_authored": {"case_id": "Q1"},
+        "case_released": {"case_id": "Q1"},
+    }
+    for event, content in content_by_event.items():
+        summary = training_service._event_summary({"event": event, "content": content})
+        assert summary.strip(), event
+        assert not summary.rstrip().endswith(("：", ":")), (event, summary)
+    assert training_service._event_summary({
+        "event": "action_completed",
+        "content": {"action_id": "a1", "status": "done"},
+    }, {"a1": "generate_cases"}) == "动作完成：生成候选题（已完成）"
+    assert training_service._event_summary({
+        "event": "gate_result",
+        "content": {"gate": "iteration", "status": "pass"},
+    }) == "闸门检查：迭代 — 通过"

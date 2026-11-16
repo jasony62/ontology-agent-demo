@@ -26,6 +26,17 @@ const ITEMS = [
       gate_snapshot: { status: 'pass' }, ttl: '@prefix : <x> .', status: 'applied',
     },
   },
+  {
+    // #252：历史条目里仍是英文码（#252 之前落盘），展示层要兜底翻译
+    source: 'audit', category: 'audit', kind: 'save',
+    ts: '2026-11-14T23:59:00+00:00', ref: 'Q1', case_id: 'Q1', summary: 'save',
+    actor_type: 'system', actor: 'system',
+  },
+  {
+    source: 'regression', category: 'regression', kind: 'regression_run',
+    ts: '2026-11-14T23:58:00+00:00', ref: 'r1', case_id: '',
+    summary: '回归：20/20 pass', actor_type: 'human', actor: 'web',
+  },
 ];
 
 const RESUME = {
@@ -141,6 +152,26 @@ describe('训练标签（#203）', () => {
     expect(text).toContain('已授权');
     expect(text).not.toContain('withdraw');
     expect(text).not.toContain('自答');
+  });
+
+  it('全局事件摘要 / 主体 / 时间全部中文化（#252）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPage />));
+    await flush();
+
+    const log = container!.querySelector('.cq-training-log')!;
+    const text = log.textContent ?? '';
+    // 主体：「人 · 网页」「系统」，不再是 人/web
+    expect(text).toContain('人 · 网页');
+    expect(text).toContain('系统');
+    // 历史英文摘要兜底翻译
+    expect(text).toContain('保存题集');
+    expect(text).toContain('回归：20/20 通过');
+    // 时间本地化：无 UTC 尾巴，形如 YYYY-MM-DD HH:mm:ss
+    expect(text).not.toContain('+00:00');
+    expect(text).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+    // 用户可见文本不出现裸英文码（MCP 等专名除外）
+    expect(text).not.toMatch(/\b(save|pass|fail|web|mcp|system)\b/);
   });
 
   it('「迭代」是时间线的筛选按钮，不是第三个标签', async () => {

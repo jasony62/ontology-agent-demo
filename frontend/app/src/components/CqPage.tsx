@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { CqAuditEntry, CqCoverageResponse, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse } from '../api/client';
-import { EXPECTED_TYPE_OPTIONS, STATUS_OPTIONS, assertionSummaryText, expectedTypeLabel, statusLabel } from '../lib/cqLabels';
+import {
+  EXPECTED_TYPE_OPTIONS,
+  STATUS_OPTIONS,
+  actorChannelText,
+  actorIcon,
+  assertionSummaryText,
+  auditActionLabel,
+  expectedTypeLabel,
+  lastRunLabel,
+  statusLabel,
+} from '../lib/cqLabels';
 import { plainCopy } from '../lib/cqCopy';
 import { formatLocalTime } from '../lib/time';
 import CqTrainingPage from './CqTrainingPage';
@@ -553,12 +563,12 @@ export default function CqPage() {
                     return (
                       <li key={`${entry.ts}-${index}`}>
                         <span className={`cq-audit-actor ${entry.actor_type}`}>
-                          {entry.actor_type === 'agent' ? '🤖' : '🧑'}
+                          {actorIcon(entry.actor_type)}
                         </span>
-                        <span className="cq-audit-action">{entry.action}</span>
+                        <span className="cq-audit-action">{auditActionLabel(entry.action)}</span>
                         <code>{entry.case_id || '—'}</code>
                         <span className="cq-audit-summary">{summary}</span>
-                        <span className="cq-audit-meta">{entry.actor} · {formatLocalTime(entry.ts)}</span>
+                        <span className="cq-audit-meta">{actorChannelText(entry.actor_type, entry.actor)} · {formatLocalTime(entry.ts)}</span>
                       </li>
                     );
                   })}
@@ -839,23 +849,6 @@ function delayOrNA(value?: number | null): string {
   if (typeof value !== 'number') return '—';
   if (value < 60) return `${Math.round(value)} 秒`;
   return `${Math.round(value / 60)} 分钟`;
-}
-
-function lastRunLabel(earl?: unknown, conclusion?: unknown): string {
-  const state = String(earl || '');
-  if (state === 'pass') return '通过';
-  if (state === 'fail') return '未通过';
-  if (state === 'cannot_tell') return '无法判断';
-  if (state === 'not_tested') return '未测试';
-  return Number(conclusion || 0) > 0 ? '通过' : '未通过';
-}
-
-function auditActionLabel(action?: string | null): string {
-  const labels: Record<string, string> = {
-    add: '新增题目', update: '更新题目', delete: '删除题目',
-    save: '保存题集', import: '导入题集', run: '运行评估',
-  };
-  return labels[String(action || '')] ?? '更新题目';
 }
 
 const GLOSSARY: Array<{ term: string; desc: string }> = [

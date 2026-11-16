@@ -1,9 +1,18 @@
 import { describe, expect, it } from 'vitest';
+import cqPageSource from '../components/CqPage.tsx?raw';
+import panelSource from '../components/CqTrainingPanel.tsx?raw';
 import {
+  actionLabel,
+  actorChannelText,
   assertionSummaryText,
+  auditActionLabel,
   conclusionLabel,
+  eventLabel,
   expectedTypeLabel,
+  lastRunLabel,
+  runStateLabel,
   statusLabel,
+  timelineSummaryText,
 } from './cqLabels';
 
 describe('CQ 题型 / 状态中文映射（#169）', () => {
@@ -51,5 +60,66 @@ describe('领导模式文案（#210 / #212）', () => {
     expect(conclusionLabel('reject')).toBe('驳回 / 改选');
     expect(conclusionLabel('defer')).toBe('暂缓');
     expect(conclusionLabel('unknown')).toBe('');
+  });
+});
+
+describe('事件文案中文化（#252）', () => {
+  it('执行主体显示为「类型 · 渠道」中文组合', () => {
+    expect(actorChannelText('human', 'web')).toBe('人 · 网页');
+    expect(actorChannelText('agent', 'mcp')).toBe('智能体 · MCP 工具');
+    expect(actorChannelText('system', 'system')).toBe('系统');
+    expect(actorChannelText('system', 'cq')).toBe('系统');
+    // 历史条目 actor=system 但 actor_type 漏标：仍归到「系统」，不显示「人 · 系统」
+    expect(actorChannelText('human', 'system')).toBe('系统');
+    expect(actorChannelText('human', '')).toBe('人');
+    // 人名等非渠道值原样保留，但仍带主体类型
+    expect(actorChannelText('human', '杨工')).toBe('人 · 杨工');
+  });
+
+  it('审计动作 / 事件 / 动作 / 回归结论都有中文', () => {
+    expect(auditActionLabel('save')).toBe('保存题集');
+    expect(auditActionLabel('add')).toBe('新增题目');
+    expect(auditActionLabel('update')).toBe('更新题目');
+    expect(auditActionLabel('delete')).toBe('删除题目');
+    expect(auditActionLabel('import')).toBe('导入题集');
+    expect(auditActionLabel('weird')).toBe('题集变更');
+    expect(eventLabel('workbench_viewed')).toBe('查看工作台');
+    expect(eventLabel('action_completed')).toBe('动作完成');
+    expect(eventLabel('weird')).toBe('weird');
+    expect(actionLabel('generate_cases')).toBe('生成候选题');
+    expect(actionLabel('update_ontology')).toBe('补本体 / 术语');
+    expect(runStateLabel('pass')).toBe('通过');
+    expect(runStateLabel('cannot_tell')).toBe('无法判断');
+    expect(runStateLabel('')).toBe('—');
+    expect(lastRunLabel(undefined, 3)).toBe('通过');
+    expect(lastRunLabel('fail', 3)).toBe('未通过');
+  });
+
+  it('历史时间线摘要兜底只翻译已知形态，不动题面英文', () => {
+    expect(timelineSummaryText({
+      source: 'audit', kind: 'save', case_id: '', summary: 'save',
+    })).toBe('保存题集');
+    expect(timelineSummaryText({
+      source: 'audit', kind: 'add', case_id: 'Q1', summary: 'add Q1',
+    })).toBe('新增题目 Q1');
+    expect(timelineSummaryText({
+      source: 'regression', kind: 'regression_run', summary: '回归：20/20 pass',
+    })).toBe('回归：20/20 通过');
+    expect(timelineSummaryText({
+      source: 'regression', kind: 'regression_case', summary: '回归：cannot_tell',
+    })).toBe('回归：无法判断');
+    // 非已知形态不猜，避免把题面里的英文单词替换掉
+    expect(timelineSummaryText({
+      source: 'training', kind: 'feedback_received', summary: '反馈：pass 这个词',
+    })).toBe('反馈：pass 这个词');
+  });
+
+  it('映射只有一份：组件不再各自维护 stateLabel / 审计动作表', () => {
+    expect(cqPageSource).not.toMatch(/function (lastRunLabel|auditActionLabel|stateLabel)/);
+    expect(panelSource).not.toMatch(/function (runStateLabel|stateLabel)/);
+    expect(panelSource).not.toContain('const ACTION_LABELS');
+    expect(panelSource).not.toContain('const EVENT_LABELS');
+    expect(cqPageSource).toContain("from '../lib/cqLabels'");
+    expect(panelSource).toContain("from '../lib/cqLabels'");
   });
 });

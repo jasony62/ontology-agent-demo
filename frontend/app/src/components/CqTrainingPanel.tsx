@@ -9,7 +9,6 @@ import type {
 import { plainCopy, decisionKindLabel } from '../lib/cqCopy';
 import {
   BASIS_OPTIONS,
-  CONCLUSION_OPTIONS,
   actionLabel,
   actorChannelText,
   actorIcon,
@@ -143,15 +142,18 @@ export default function CqTrainingPanel({
         ...payload,
       });
       const label = result.status === 'resolved' ? '已裁决' : '待跟进';
-      const conclusion = payload.conclusion === 'defer'
-        ? ' · 已暂缓'
+      const anchor = decision.case_id ? `#${decision.case_id}` : '';
+      const conclusionText = payload.conclusion === 'defer'
+        ? '暂缓'
         : payload.conclusion === 'reject'
-          ? ' · 已驳回 / 改选'
+          ? '驳回 / 改选'
           : payload.conclusion === 'adopt'
-            ? ' · 已采纳'
+            ? '采纳推荐'
             : '';
       setLastResult(
-        `已提交反馈：${plainCopy(decision.question) || '该决策'} · ${label}${conclusion}`
+        `已记录决策${anchor ? ` ${anchor}` : ''}`
+        + (conclusionText ? ` · ${conclusionText}` : ` · ${label}`)
+        + (result.status !== 'resolved' ? `（${label}）` : '')
         + (result.intent_pending_marked ? ' · 题目意图待确认' : ''),
       );
       await load();
@@ -324,6 +326,7 @@ export default function CqTrainingPanel({
                 <span className="guide-muted">
                   {pendingCases.length > 0
                     ? `第 ${Math.min(focusIndex + 1, pendingCases.length)} / ${pendingCases.length} 题`
+                      + (focusCase?.case_id ? ` · #${focusCase.case_id}` : '')
                     : '当前没有待我决的题'}
                 </span>
                 <button type="button" className="btn link" onClick={() => setFocusMode(false)}>
@@ -513,6 +516,8 @@ function CaseCard({
       {decision ? (
         <DecisionCard
           decision={decision}
+          caseId={item.case_id}
+          caseTitle={item.cq}
           busy={busy === decision.decision_id}
           onSubmit={onSubmit}
         />
@@ -662,10 +667,17 @@ function CaseHistory({
   );
 }
 
+type PendingDecision =
+  | { kind: 'choice'; option: string; conclusion: 'adopt' | 'reject' }
+  | { kind: 'defer' }
+  | { kind: 'text' };
+
 function DecisionCard({
-  decision, busy, onSubmit,
+  decision, caseId, caseTitle, busy, onSubmit,
 }: {
   decision: CqDecision;
+  caseId?: string;
+  caseTitle?: string;
   busy: boolean;
   onSubmit: (decision: CqDecision, payload: {
     option?: string;
@@ -679,11 +691,17 @@ function DecisionCard({
   const [text, setText] = useState('');
   const [followUp, setFollowUp] = useState('');
   const [basis, setBasis] = useState<'self' | 'expert'>('self');
-  const [conclusion, setConclusion] = useState<'adopt' | 'reject' | 'defer'>('adopt');
   const [authorized, setAuthorized] = useState(false);
   const [open, setOpen] = useState(false);
-  const [pendingChoice, setPendingChoice] = useState<{ option: string; conclusion: 'adopt' | 'reject' } | null>(null);
+  // #256 / #262：任意提交（选项 / 暂缓 / 补充反馈）都先确认；
+  // 结论由选项推定，卡上不再有第二个能改同一决策的控件。
+  const [pending, setPending] = useState<PendingDecision | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // #257：决策对象顶到最上面——题号 + 题干首句，避免连续处理时张冠李戴。
+  const anchorId = String(caseId || decision.case_id || '');
+  const anchorTitle = plainCopy(caseTitle || decision.question || '');
+  const shortTitle = anchorTitle.length > 30 ? `${anchorTitle.slice(0, 30)}…` : anchorTitle;
 
   const receipt = () => ({
     basis,
@@ -691,37 +709,55 @@ function DecisionCard({
     follow_up_with: basis === 'expert' ? followUp.trim() : '',
   });
 
-  const submitChoice = (option: string, nextConclusion: 'adopt' | 'reject') => {
-    setPendingChoice(null);
+  const clearPending = () => {
+    setPending(null);
     setNotice(null);
-    void onSubmit(decision, { option, conclusion: nextConclusion, ...receipt() });
+  };
+
+  const confirmPending = () => {
+    if (!pending) return;
+    const current = pending;
+    clearPending();
+    if (current.kind === 'choice') {
+      void onSubmit(decision, {
+        option: current.option, conclusion: current.conclusion, ...receipt(),
+      });
+      return;
+    }
+    if (current.kind === 'defer') {
+      void onSubmit(decision, {
+        conclusion: 'defer', feedback_text: text, ...receipt(),
+      });
+      return;
+    }
+    void onSubmit(decision, { feedback_text: text, ...receipt() });
   };
 
   const choose = (option: string) => {
     const nextConclusion: 'adopt' | 'reject' = option === decision.recommended ? 'adopt' : 'reject';
-    if (nextConclusion !== conclusion) {
-      // #229：绝不静默改结论；先显示联动提示，由用户确认或取消。
-      setPendingChoice({ option, conclusion: nextConclusion });
-      setNotice(
-        `你选了「${plainCopy(option)}」，与当前结论不同；提交将记为「${conclusionLabel(nextConclusion)}」。`,
-      );
-      return;
-    }
-    submitChoice(option, nextConclusion);
+    // #229 原本只在结论冲突时确认；#256 起任何选项都要确认，并明示不可撤销。
+    setPending({ kind: 'choice', option, conclusion: nextConclusion });
+    setNotice(
+      `你选了「${plainCopy(option)}」，将记为「${conclusionLabel(nextConclusion)}」；提交后不可撤销。`,
+    );
   };
 
   const defer = () => {
-    void onSubmit(decision, {
-      conclusion: 'defer',
-      feedback_text: text,
-      ...receipt(),
-    });
+    setPending({ kind: 'defer' });
+    setNotice('将记为「暂缓」；提交后不可撤销，之后仍可从待跟进区补充结论。');
+  };
+
+  const submitText = () => {
+    setPending({ kind: 'text' });
+    setNotice('将记录这段反馈原文；提交后不可撤销。');
   };
 
   return (
     <div className="cq-training-card">
       <div className="cq-training-card-head">
+        {anchorId && <span className="cq-decision-anchor">#{anchorId}</span>}
         <span className="guide-badge muted">{decisionKindLabel(decision.kind)}</span>
+        {shortTitle && <span className="cq-decision-title" title={anchorTitle}>{shortTitle}</span>}
       </div>
       <div className="cq-training-evidence">
         <b>为什么问你</b>
@@ -738,21 +774,7 @@ function DecisionCard({
       <h4>{plainCopy(decision.question) || '未命名问题'}</h4>
 
       <div className="cq-training-receipt">
-        <label className="field">
-          <span className="field-label">结论</span>
-          <select
-            value={conclusion}
-            onChange={(event) => {
-              setConclusion(event.target.value as 'adopt' | 'reject' | 'defer');
-              setPendingChoice(null);
-              setNotice(null);
-            }}
-          >
-            {CONCLUSION_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
+
         <label className="field">
           <span className="field-label">依据来源</span>
           <select
@@ -774,7 +796,7 @@ function DecisionCard({
             />
           </label>
         )}
-        <label className="cq-training-authorize">
+        <label className={`cq-training-authorize${authorized ? '' : ' warn'}`}>
           <input
             type="checkbox"
             checked={authorized}
@@ -787,17 +809,20 @@ function DecisionCard({
         需要线下找专业的人确认？把「依据来源」改成「已问他人确认」并填写对方姓名；也可以补充反馈说明。
       </p>
 
-      {pendingChoice && (
+      {/* #263：未勾选授权时，把「为什么点不动」放在按钮上方，并关联到按钮。 */}
+      {!authorized && (
+        <div className="cq-decision-hint" id="cq-authorize-hint">
+          先勾选上方「我已确认可以按此决策执行」，下方按钮才可提交。
+        </div>
+      )}
+
+      {pending && (
         <div className="cq-decision-confirm" role="alert">
           <span>{notice}</span>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => submitChoice(pendingChoice.option, pendingChoice.conclusion)}
-          >
+          <button type="button" className="btn" onClick={confirmPending}>
             确认提交
           </button>
-          <button type="button" className="btn secondary" onClick={() => { setPendingChoice(null); setNotice(null); }}>
+          <button type="button" className="btn secondary" onClick={clearPending}>
             取消
           </button>
         </div>
@@ -810,7 +835,7 @@ function DecisionCard({
             type="button"
             className={`btn ${decision.recommended === option ? 'primary' : 'secondary'}`}
             disabled={busy || !authorized}
-            title={authorized ? '' : '先勾选授权确认'}
+            aria-describedby={authorized ? undefined : 'cq-authorize-hint'}
             onClick={() => choose(option)}
           >
             {plainCopy(option)}
@@ -821,15 +846,12 @@ function DecisionCard({
           type="button"
           className="btn secondary"
           disabled={busy || !authorized}
-          title={authorized ? '' : '先勾选授权确认'}
+          aria-describedby={authorized ? undefined : 'cq-authorize-hint'}
           onClick={defer}
         >
           暂缓
         </button>
       </div>
-      {!authorized && (
-        <div className="guide-muted">先勾选「我已确认可以按此决策执行」，再提交结论。</div>
-      )}
       {decision.reason && (
         <div className="guide-muted">推荐理由：{plainCopy(decision.reason)}</div>
       )}
@@ -853,12 +875,8 @@ function DecisionCard({
             type="button"
             className="btn"
             disabled={busy || !authorized}
-            title={authorized ? '' : '先勾选授权确认'}
-            onClick={() => void onSubmit(decision, {
-              feedback_text: text,
-              conclusion,
-              ...receipt(),
-            })}
+            aria-describedby={authorized ? undefined : 'cq-authorize-hint'}
+            onClick={submitText}
           >
             提交反馈
           </button>

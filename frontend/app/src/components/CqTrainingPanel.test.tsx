@@ -168,7 +168,7 @@ describe('训练现场（#198 / #203）', () => {
     expect(cards.compareDocumentPosition(gaps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('勾选授权后点选项即提交结构化反馈，并自动重新读取现场', async () => {
+  it('勾选授权后点选项需二次确认，确认才提交并自动重新读取现场（#256）', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
@@ -177,9 +177,21 @@ describe('训练现场（#198 / #203）', () => {
       '.cq-training-authorize input')!;
     await act(async () => { authorize.click(); });
 
-    const option = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+    const option = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
       .find((button) => button.textContent?.startsWith('A'))!;
     await act(async () => { option.click(); });
+    await flush();
+
+    // 推荐项也要先确认，且明示不可撤销
+    const confirm = container!.querySelector('.cq-decision-confirm')!;
+    expect(confirm.textContent).toContain('不可撤销');
+    expect(confirm.textContent).toContain('采纳推荐');
+    expect(vi.mocked(fetch).mock.calls.some(([url, init]) =>
+      String(url).includes('/cq/decision') && String(init?.method) === 'POST')).toBe(false);
+
+    const submit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '确认提交')!;
+    await act(async () => { submit.click(); });
     await flush();
 
     const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
@@ -190,7 +202,7 @@ describe('训练现场（#198 / #203）', () => {
       action: 'feedback', decision_id: 'd-1', option: 'A',
       conclusion: 'adopt', basis: 'self', authorized: true,
     });
-    expect(container!.textContent).toContain('已提交反馈');
+    expect(container!.textContent).toContain('已记录决策 #Q1');
     const resumeCalls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/cq/resume'));
     expect(resumeCalls.length).toBeGreaterThanOrEqual(2);
   });
@@ -212,6 +224,13 @@ describe('训练现场（#198 / #203）', () => {
     await act(async () => { defer.click(); });
     await flush();
 
+    const confirm = container!.querySelector('.cq-decision-confirm')!;
+    expect(confirm.textContent).toContain('暂缓');
+    const submit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '确认提交')!;
+    await act(async () => { submit.click(); });
+    await flush();
+
     const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
       String(url).includes('/cq/decision') && String(init?.method) === 'POST')!;
     const body = JSON.parse(String((call[1] as RequestInit).body));
@@ -227,8 +246,8 @@ describe('训练现场（#198 / #203）', () => {
     const selects = [...container!.querySelectorAll<HTMLSelectElement>('.cq-training-receipt select')];
     const setSelect = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
     act(() => {
-      setSelect.call(selects[1], 'expert');
-      selects[1].dispatchEvent(new Event('change', { bubbles: true }));
+      setSelect.call(selects[0], 'expert');
+      selects[0].dispatchEvent(new Event('change', { bubbles: true }));
     });
     const input = container!.querySelector<HTMLInputElement>(
       '.cq-training-receipt input:not([type="checkbox"])')!;
@@ -254,6 +273,11 @@ describe('训练现场（#198 / #203）', () => {
       .find((button) => button.textContent === '提交反馈')!;
     await act(async () => { submit.click(); });
     await flush();
+    const confirm = container!.querySelector('.cq-decision-confirm')!;
+    const confirmSubmit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '确认提交')!;
+    await act(async () => { confirmSubmit.click(); });
+    await flush();
 
     const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
       String(url).includes('/cq/decision') && String(init?.method) === 'POST');
@@ -262,6 +286,8 @@ describe('训练现场（#198 / #203）', () => {
     expect(body.follow_up_with).toBe('李四');
     expect(body.basis).toBe('expert');
     expect(body.authorized).toBe(true);
+    // #262：卡上不再有「结论」下拉，结论由选项推定
+    expect(container!.querySelectorAll('.cq-training-receipt select')).toHaveLength(1);
   });
 
   it('暂缓后的决策进入待跟进区，仍可继续提交结论（#212）', async () => {
@@ -397,7 +423,8 @@ describe('训练现场（#198 / #203）', () => {
     expect(vi.mocked(fetch).mock.calls.some(([url, init]) =>
       String(url).includes('/cq/decision') && String(init?.method) === 'POST')).toBe(false);
     const confirm = container!.querySelector('.cq-decision-confirm')!;
-    expect(confirm.textContent).toContain('与当前结论不同');
+    expect(confirm.textContent).toContain('驳回 / 改选');
+    expect(confirm.textContent).toContain('不可撤销');
     const submit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '确认提交')!;
     await act(async () => { submit.click(); });
@@ -406,6 +433,32 @@ describe('训练现场（#198 / #203）', () => {
       String(url).includes('/cq/decision') && String(init?.method) === 'POST')!;
     const body = JSON.parse(String((call[1] as RequestInit).body));
     expect(body).toMatchObject({ option: 'B', conclusion: 'reject' });
+  });
+
+  it('决策卡首行给出题号与题干片段，两张同问句也能区分（#257）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const card = container!.querySelector('.cq-training-card')!;
+    expect(card.querySelector('.cq-decision-anchor')!.textContent).toBe('#Q1');
+    expect(card.querySelector('.cq-decision-title')!.textContent).toContain('期望口径是什么？');
+    expect(card.querySelector('.cq-decision-title')!.getAttribute('title'))
+      .toContain('期望口径是什么？');
+  });
+
+  it('未勾选授权时提示在按钮上方并有关联（#263）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const card = container!.querySelector('.cq-training-card')!;
+    const hint = card.querySelector('#cq-authorize-hint')!;
+    const options = card.querySelector('.cq-training-options')!;
+    expect(hint.textContent).toContain('先勾选');
+    expect(hint.compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(options.querySelector('button')!.getAttribute('aria-describedby'))
+      .toBe('cq-authorize-hint');
   });
 
   it('事件技术细节用中文标签并标明技术视图（#230）', async () => {

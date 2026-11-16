@@ -51,6 +51,9 @@ export default function CqPage() {
   const [coverageError, setCoverageError] = useState<string | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [resumePreview, setResumePreview] = useState<CqResumeResponse | null>(null);
+  const [resumeFailed, setResumeFailed] = useState(false);
+  // #255：辅助取数失败不再静默——汇总成一条可关闭、可重试的警告条。
+  const [partialErrors, setPartialErrors] = useState<string[]>([]);
   const [recentAudit, setRecentAudit] = useState<CqAuditEntry[]>([]);
   const [metrics, setMetrics] = useState<CqMetricsResponse | null>(null);
   const [showGlossary, setShowGlossary] = useState(false);
@@ -60,6 +63,8 @@ export default function CqPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setPartialErrors([]);
+    setResumeFailed(false);
     try {
       const next = await api.cqSet();
       setData(next);
@@ -67,17 +72,25 @@ export default function CqPage() {
       const [healthResult, resumeResult, auditResult, metricsResult, coverageResult] = await Promise.allSettled([
         api.health(), api.cqResume(), api.cqAudit(5), api.cqMetrics(), api.cqCoverage(),
       ]);
+      const failed: string[] = [];
       if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
+      else failed.push('服务健康');
       if (resumeResult.status === 'fulfilled') setResumePreview(resumeResult.value);
+      else { setResumeFailed(true); failed.push('待决状态'); }
       if (auditResult.status === 'fulfilled') setRecentAudit(auditResult.value.entries);
+      else failed.push('最近变更');
       if (metricsResult.status === 'fulfilled') setMetrics(metricsResult.value);
+      else failed.push('协同指标');
       if (coverageResult.status === 'fulfilled') setCoverage(coverageResult.value);
+      else failed.push('覆盖检查');
       try {
         const history = await api.cqRuns();
         setRuns(history.runs);
       } catch {
         setRuns([]);
+        failed.push('回归历史');
       }
+      setPartialErrors(failed);
     } catch (e) {
       setError(`读取 CQ 集失败：${e instanceof Error ? e.message : String(e)}`);
       setData(null);
@@ -232,7 +245,13 @@ export default function CqPage() {
   };
 
   const summary = data?.summary;
-  const pendingQuestions = resumePreview?.lifecycle?.summary?.pending_questions ?? 0;
+  // #255：三态化——null 表示「还没取到」，绝不能用 0 兜底说成「没有待决」。
+  const pendingQuestions = resumePreview?.lifecycle?.summary?.pending_questions ?? null;
+  const pendingState: 'loading' | 'unknown' | 'ready' = resumeFailed
+    ? 'unknown'
+    : pendingQuestions !== null
+      ? 'ready'
+      : loading ? 'loading' : 'unknown';
   const agentEntry = recentAudit.find((entry) => entry.actor_type === 'agent');
   const agentText = agentEntry
     ? `最近${auditActionLabel(agentEntry.action)}${agentEntry.case_id ? ` ${agentEntry.case_id}` : ''} · ${formatLocalTime(agentEntry.ts)}`
@@ -448,6 +467,13 @@ export default function CqPage() {
         <>
           {notice && <div className="notice-banner" role="status">{notice}</div>}
           {error && <div className="error-banner">{error}</div>}
+          {partialErrors.length > 0 && (
+            <div className="notice-banner warn" role="status">
+              <span>部分数据未取到：{partialErrors.join(' / ')}。</span>
+              <button type="button" className="btn link" onClick={() => void load()}>重试</button>
+              <button type="button" className="btn link" onClick={() => setPartialErrors([])}>知道了</button>
+            </div>
+          )}
 
           {data && (
             <>
@@ -458,10 +484,21 @@ export default function CqPage() {
                 </span>
                 <span className="cq-role human">
                   <b>🧑 你</b>
-                  {pendingQuestions > 0
-                    ? `${pendingQuestions} 件待决定`
-                    : '当前没有待决；可确认题目或运行评估'}
-                  {pendingQuestions > 0 && (
+                  {pendingState === 'loading' && (
+                    <span className="guide-muted">正在读取待决…</span>
+                  )}
+                  {pendingState === 'unknown' && (
+                    <>
+                      <span className="cq-unknown">待决状态未知</span>
+                      <button type="button" className="btn link" onClick={() => void load()}>重试</button>
+                    </>
+                  )}
+                  {pendingState === 'ready' && pendingQuestions !== null && (
+                    pendingQuestions > 0
+                      ? `${pendingQuestions} 件待决定`
+                      : '当前没有待决；可确认题目或运行评估'
+                  )}
+                  {pendingState === 'ready' && pendingQuestions !== null && pendingQuestions > 0 && (
                     <button type="button" className="btn link" onClick={() => setTab('training')}>
                       去训练页处理
                     </button>
@@ -475,11 +512,13 @@ export default function CqPage() {
                 <div className="cq-start-guide">
                   <b>从这里开始</b>
                   <span>
-                    {pendingQuestions > 0
+                    {pendingState === 'ready' && pendingQuestions !== null && pendingQuestions > 0
                       ? `智能体已准备 ${summary.total} 道题，其中 ${pendingQuestions} 件待你决定。先处理待决，再逐题确认或运行评估。`
-                      : `智能体已准备 ${summary.total} 道题。先逐题确认/驳回，再运行评估看是否能答。`}
+                      : pendingState === 'unknown'
+                        ? `智能体已准备 ${summary.total} 道题。待决数暂未取到，可先逐题确认/驳回，再运行评估看是否能答。`
+                        : `智能体已准备 ${summary.total} 道题。先逐题确认/驳回，再运行评估看是否能答。`}
                   </span>
-                  {pendingQuestions > 0 && (
+                  {pendingState === 'ready' && pendingQuestions !== null && pendingQuestions > 0 && (
                     <button
                       type="button"
                       className="btn"

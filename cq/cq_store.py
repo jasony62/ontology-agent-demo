@@ -446,8 +446,30 @@ def save_set(
     return payload
 
 
+class SeedFormatError(ValueError):
+    """领域包种子 `cq_tests.json` 不符合当前 schema（#275）。
+
+    单独成类是为了让 API 能把它转成 **422 + 可操作文案**，而不是裸 500；
+    同时保留 ValueError 兼容既有调用方。
+    """
+
+
+def validate_set_payload(data: dict) -> dict:
+    """只校验、不写盘；供播种路径与 `domain install` 复用（#275）。"""
+    cases = _validate(data)
+    return {
+        "suite": str(data.get("suite") or ""),
+        "version": data.get("version", 1),
+        "cases": cases,
+    }
+
+
 def get_set(ontology_id: str, seed_path: Path | None = None) -> dict:
-    """读当前集；工作区内没有时从领域包 `cq_tests.json` 播种（#245 带来源）。"""
+    """读当前集；工作区内没有时从领域包 `cq_tests.json` 播种（#245 带来源）。
+
+    种子非法（例如 #179 之前的 `tool` + `params` 旧格式）时抛 `SeedFormatError`，
+    **不写半截文件**；API 层负责把它转成 422 并说明怎么修。
+    """
     stored = _read_json(set_path(ontology_id))
     if stored is not None:
         return stored
@@ -464,10 +486,16 @@ def get_set(ontology_id: str, seed_path: Path | None = None) -> dict:
             "ontology_base_iri": fingerprint.get("base_iri", ""),
             "ontology_digest": fingerprint.get("digest", ""),
         }
-        save_set(
-            ontology_id, seeded, mark_updated=False,
-            actor_type="system", actor="system", action="seed",
-        )
+        try:
+            save_set(
+                ontology_id, seeded, mark_updated=False,
+                actor_type="system", actor="system", action="seed",
+            )
+        except ValueError as exc:
+            raise SeedFormatError(
+                f"当前领域的题库种子不符合当前格式（{seed_path}）：{exc}。"
+                "请用新版 cq_tests.json 覆盖该文件，或重新安装领域包。"
+            ) from exc
         return seeded
     return empty_set()
 
@@ -1024,6 +1052,7 @@ def export_junit(run: dict) -> str:
 
 
 __all__ = [
+    "SeedFormatError",
     "add_case",
     "audit_path",
     "build_view",
@@ -1050,4 +1079,5 @@ __all__ = [
     "save_set",
     "set_path",
     "update_case",
+    "validate_set_payload",
 ]

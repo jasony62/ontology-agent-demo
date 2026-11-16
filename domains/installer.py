@@ -112,6 +112,29 @@ def _check_onto_file(pkg_dir: Path, onto: object, declared: str) -> str:
     return inside.as_posix()
 
 
+def _check_cq_tests(pkg_dir: Path) -> None:
+    """安装期校验包内 `cq_tests.json`（#275）：坏种子挡在安装前，别等首次访问 500。
+
+    延迟导入 `cq.cq_store`：安装器本身不依赖 CQ 模块，只有包带种子时才需要。
+    """
+    seed = pkg_dir / "cq_tests.json"
+    if not seed.is_file():
+        return
+    try:
+        from cq import cq_store
+
+        data = json.loads(seed.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise InstallError(f"领域包 {pkg_dir.name!r} 的 cq_tests.json 不是合法 JSON：{exc}") from exc
+    try:
+        cq_store.validate_set_payload(data)
+    except ValueError as exc:
+        raise InstallError(
+            f"领域包 {pkg_dir.name!r} 的 cq_tests.json 不符合当前 CQ schema：{exc}。"
+            "请先按 #179 的 regression{query, expect} 格式更新种子。"
+        ) from exc
+
+
 def validate_package(pkg_dir: Path, *, expect_name: str | None = None) -> dict:
     """校验目录是否是可用领域包，返回其声明信息。不修改任何文件。"""
     pkg_dir = Path(pkg_dir).resolve()
@@ -137,6 +160,8 @@ def validate_package(pkg_dir: Path, *, expect_name: str | None = None) -> dict:
 
         onto = getattr(module, "ONTO_FILE", None)
         onto_rel = _check_onto_file(pkg_dir, onto, "ONTO_FILE") if onto else None
+
+        _check_cq_tests(pkg_dir)
 
         # 说明文件与 ONTO_FILE 同级：安装是"复制进运行态"的唯一入口，
         # 不合格的包不该装进去、等启动时才失败。

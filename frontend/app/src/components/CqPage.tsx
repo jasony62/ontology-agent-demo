@@ -24,6 +24,21 @@ type CqTab = 'cases' | 'training';
 // #250 R6：与 cq/lifecycle.py 题卡 blockers 同一组词、同一顺序。
 const BLOCKER_ORDER = ['未锚定', '未分型', '缺断言', '未通过', '已归档'];
 
+// #278：与 cq/cq_store.py `_CASE_FIELDS` 对齐的落盘白名单。
+// 读视图字段（located / answerable / graduated / blockers / location /
+// assertion_summary / intent_pending / coverage_cache）绝不能回传：
+// 后端 fail-fast 会 400；浅合并时还会用旧 review 覆盖服务端刚写入的状态。
+const CASE_WRITE_FIELDS = ['id', 'cq', 'expected_type', 'status', 'requirement', 'regression'] as const;
+
+function toCasePatch(item: CqSetCase): Partial<CqSetCase> {
+  const out: Record<string, unknown> = {};
+  for (const key of CASE_WRITE_FIELDS) {
+    const value = (item as unknown as Record<string, unknown>)[key];
+    if (value !== undefined) out[key] = value;
+  }
+  return out as Partial<CqSetCase>;
+}
+
 /**
  * CQ 集页（#151 + #154 + #156 + #203）：顶部两个标签。
  *  - 「题目」：概览看板 + 单题定位卡 + 单题 CRUD + 回归测试台 + 审计 + 导入导出；
@@ -203,9 +218,10 @@ export default function CqPage() {
     setBusy('save');
     setError(null);
     try {
+      const patch = toCasePatch(draft);
       const saved = editing.mode === 'create'
-        ? await api.cqAddCase(draft)
-        : await api.cqUpdateCase(String(draft.id), draft);
+        ? await api.cqAddCase(patch)
+        : await api.cqUpdateCase(String(draft.id), patch);
       setNotice(editing.mode === 'create' ? '已新增题目。' : '已保存题目。');
       setEditing(null);
       setData(saved);

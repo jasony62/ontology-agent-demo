@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **旧格式题集种子不再把 CQ 页打成 500（#275）**：领域包 `cq_tests.json` 还是 #179 之前的 `tool` + `params` 时，`get_set()` 抛 `SeedFormatError`，`/cq/set` 与 `/cq/resume` 返回 **422** 并给出具体字段定位（如 `cases[0].tool`）与修复方式（覆盖 `domains/<domain>/cq_tests.json` 或重装领域包）；失败路径不写半截 `cq_set.json`。`domain install` 在安装期就校验包内种子，坏种子直接拒绝安装。
+- **CQ 题目「编辑 → 保存」不再必然 400（#278）**：前端新增落盘白名单 `CASE_WRITE_FIELDS`，PATCH/POST 只回传 `id / cq / expected_type / status / requirement / regression`，不再把 `located / answerable / graduated / blockers / location / assertion_summary / intent_pending / coverage_cache` 等读视图字段写回；领导模式「确认题目与断言」恢复可用，也避免未来 `review` 落地后被前端旧值覆盖。
+
 ## [0.9.0] - 2026-11-16
 
 ### Added

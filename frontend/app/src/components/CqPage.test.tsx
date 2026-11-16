@@ -123,6 +123,22 @@ function stubFetch(
         }),
       } as unknown as Response;
     }
+    if (url.includes('/cq/cases/') && !url.endsWith('/request') && method === 'PATCH') {
+      const caseId = decodeURIComponent(url.split('/cq/cases/')[1] || '');
+      const payload = JSON.parse(String(init?.body || '{}'));
+      const updated = {
+        ...(set.cases.find((item) => item.id === caseId) || {}),
+        ...payload,
+      };
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          ...set,
+          case: updated,
+          cases: set.cases.map((item) => (item.id === caseId ? updated : item)),
+        }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/actions/') && url.endsWith('/complete') && method === 'POST') {
       return {
         ok: true, status: 200,
@@ -574,6 +590,37 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(body.status).toBe('draft');
     expect(body.regression).toBeUndefined();
     expect(container!.querySelector('.cq-editor')).toBeNull();
+  });
+
+  it('编辑保存只回传落盘白名单字段，不再必然 400（#278）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '编辑')!;
+    act(() => edit.click());
+    const save = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor button')]
+      .find((button) => ['确认题目与断言', '保存题目'].includes(button.textContent || ''))!;
+    await act(async () => { save.click(); });
+    await flush();
+
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/cases/') && String(init?.method).toUpperCase() === 'PATCH')!;
+    expect(call).toBeTruthy();
+    const body = JSON.parse(String((call[1] as RequestInit).body));
+    for (const readOnly of [
+      'located', 'answerable', 'graduated', 'blockers', 'location',
+      'assertion_summary', 'intent_pending', 'coverage_cache',
+    ]) {
+      expect(body).not.toHaveProperty(readOnly);
+    }
+    expect(Object.keys(body).sort()).toEqual(
+      ['cq', 'expected_type', 'id', 'regression', 'requirement', 'status'],
+    );
+    // 领导模式的「确认题目与断言」确实把状态翻到启用
+    expect(body.status).toBe('active');
+    expect(container!.textContent).toContain('已保存题目');
   });
 
   it('领导模式零 SPARQL，专家模式显式切换后才出现（#210）', async () => {

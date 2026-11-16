@@ -260,6 +260,12 @@ async def _name_resolution_error(request, exc: NameResolutionError):
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
+@app.exception_handler(cq_store.SeedFormatError)
+async def _seed_format_error(request, exc: cq_store.SeedFormatError):
+    """领域包种子格式非法 → 422 + 可操作文案（#275）：不 500、也不静默降级。"""
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 APP_DIST = Path(__file__).resolve().parent.parent / "frontend" / "app" / "dist"
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -2007,7 +2013,7 @@ def _cq_identity() -> tuple[str, Path | None]:
     },
 )
 def cq_set():
-    """读 CQ 集：无集时返回空骨架，不 500。"""
+    """读 CQ 集：无集时返回空骨架；种子非法时 422 并说明怎么修（#275），不 500。"""
     ontology_id, seed = _cq_identity()
     # #194：pending_decisions / cases[].intent_pending 只在这里合并为视图字段
     return {"ontology_id": ontology_id,

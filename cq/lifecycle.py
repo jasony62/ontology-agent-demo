@@ -39,6 +39,48 @@ def _ts_num(value) -> float:
         return 0.0
 
 
+def delivery_verdict(view: dict) -> dict:
+    """#258：把散落计数折成一句「这份集现在能不能交」。
+
+    只读、无副作用；页面结论、CQM 差距换算与 Markdown 评审包共用同一份计算，
+    避免三处各算一套导致口径漂移。
+    """
+    summary = view.get("summary") or {}
+    cases = [case for case in view.get("cases") or [] if isinstance(case, dict)]
+    target = int(summary.get("target_questions") or 20)
+    graduated = sum(1 for case in cases if case.get("graduated"))
+    unanchored = [
+        str(case.get("id") or "")
+        for case in cases
+        if not case.get("located") and case.get("id")
+    ]
+    failed = [
+        str(case.get("id") or "")
+        for case in cases
+        if "未通过" in (case.get("blockers") or []) and case.get("id")
+    ]
+    missing = max(0, target - graduated)
+    if target:
+        cqm = round(graduated / target, 3)
+        # 乐观换算：把这些题补齐到毕业后的上限，供「再投入一天能到多少」参考。
+        optimistic = round(min(1.0, (graduated + len(unanchored)) / target), 3)
+    else:
+        cqm = 0.0
+        optimistic = 0.0
+    return {
+        "ready": graduated >= target and not failed,
+        "target_questions": target,
+        "graduated_questions": graduated,
+        "missing_questions": missing,
+        "unanchored_questions": len(unanchored),
+        "unanchored_cases": unanchored[:10],
+        "failed_questions": len(failed),
+        "failed_cases": failed[:10],
+        "cqm": cqm,
+        "cqm_if_unanchored_fixed": optimistic,
+    }
+
+
 def _changes_contain(changes, case_id: str) -> bool:
     """迭代档案的 changes 里是否出现该题号（只做只读线索，不要求固定结构）。"""
     stack = list(changes or [])
@@ -294,6 +336,8 @@ def build_lifecycle(
             ),
             "graduated": graduated,
         },
+        # #258 / #259：交付判定、达标线与差距换算（与评审包共用）
+        "delivery": delivery_verdict(view),
     }
     return {"summary": summary, "cases": rows}
 

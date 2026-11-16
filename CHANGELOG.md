@@ -7,6 +7,7 @@
 
 ### Added
 
+- **CQ 可交付判定与评审包（#258 / #259 / #260 / #261 / #265 / #266）**：`lifecycle.summary.delivery` 统一给出「能不能交」——交付线（全部毕业）、差多少题、未锚定清单、差距换算（补齐未锚定题后的 CQM 上限）；页面新增可交付判定条与「导出评审包（Markdown）」（`/cq/export?format=markdown`，含概览 / 逐题 / 风险 / 待决，供线下评审）。「可答」格标注「含 N 题未锚定」，CQM 旁给出交付线与差距换算，目标题量公式收进技术细节并改用「按本体规模估算（可调）」的人话。概览智能体格兜底改为「上一次动作 / 上一版更新时间」；`provenance.known=false` 标「来源未记录」，未锚定占比 > 10% 或 ≥ 2 题时出部分错配黄条并列出题号。导出菜单每项标注「给谁用」。
 - **CQ 题集播种来源校验（#245）**：题集首次从领域包播种时写入 `seeded_from`（领域 / 本体名 / 本体身份指纹 / 版本 / 时间），人工保存不清除、整集导入重置；`GET /cq/set` 顶层返回 `provenance`，当前本体与播种来源不一致时 `stale=true`，页面沿用错配告警位提示「不能作为成熟度依据」且 CQM 不可用。导入态不再静默播种领域包题集；空集时 `cq_resume.context_gaps` 新增 G7 并直接建议 `generate_cases`。
 - **CQ 护栏接入数据源并成为发布门禁（#247）**：CQ 接口统一埋点 `cq_api_call` / `cq_api_error`（报错率分母只数调用），毕业留存率读删除时刻的毕业快照，`/cq/metrics` 三项护栏不再恒为不可用；cq-test 纳入 CI 率仍要求「导出 + 消费方声明 + 执行结果」证据。新增 `pipeline/guardrails.json` 与 `scripts/check_cq_guardrails.py`（超阈非零退出），CI 增加护栏门禁步骤（数据成熟前允许 `continue-on-error`）。
 - **北极星达标补齐（#235–#243）**：`cq_resume.lifecycle` 增加 CQM / 毕业态 / 五条件分解与题卡序号；首页显示 CQM 仪表盘、协同指标与「还差哪条毕业」。决策回写生成机器行动 `action_requested`（系统归属），`cq_resume.next_actions` 供智能体拉取，新增 `cq_action_complete`（工具数 17 → 18）闭合「决策→行动→新状态」。新增 `GET /cq/metrics`（填充率 / 采纳率 / 往返轮次 / 决策时延 / CQM）与 telemetry/request 端点（端点 50 → 53）；`metrics.jsonl` 新增多种事件。`cq/coverage` 增加 `likely_mismatch`，错配时告警且 CQM 不可用。议程物化事件改为 `system/cq`，采纳率只统计真实 agent 建议；题卡用序号主标识、题集名显示默认题集、`cq/set` 与 `resume` 的待决数同源；领导模式改为「请求智能体生成候选题」。#242 的外部北极星基准文档不在仓库，仓库侧口径见手册 9.11 / 9.16。

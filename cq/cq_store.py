@@ -29,6 +29,7 @@ from rdflib import OWL, RDF
 
 from api import workspaces
 from cq.constants import (
+    DECISION_KINDS,
     EXPECTED_TYPE_ALIASES,
     EXPECTED_TYPE_UNKNOWN,
     EXPECTED_TYPE_VALUES,
@@ -38,6 +39,28 @@ from cq.constants import (
 )
 from reasoner.cq_locate import locate_cq
 from ontology_plugin_sdk.cq import tbox
+
+# #258：评审包里的中文口径；码本身仍原样落盘。
+EXPECTED_TYPE_LABELS = {
+    "retrieval": "检索类",
+    "derived": "推导类",
+    "counting": "计数类",
+    "negative": "反例类",
+    "unknown": "未分型",
+}
+DECISION_KIND_LABELS = {
+    "semantic": "语义",
+    "expectation": "预期",
+    "priority": "优先级",
+    "term": "术语",
+    "scope": "范围",
+}
+
+# #258 / #261：目标题量的初版估算法——每个本体关键术语折算 0.5 题，最低 20 题。
+# 这是待校准的内部参数，页面只用人话「按本体规模估算（可调）」；k 与下限只在
+# 技术细节里出现，避免把未定稿参数当成结论展示。
+TARGET_QUESTIONS_K = 0.5
+TARGET_QUESTIONS_MIN = 20
 
 FILE_NAME = "cq_set.json"
 AUDIT_FILE = "cq_set.audit.jsonl"
@@ -794,7 +817,10 @@ def build_view(engine, data: dict) -> dict:
         term_count = len(schema.get("classes") or []) + len(schema.get("properties") or [])
     except Exception:  # noqa: BLE001 —— 目标题量是展示口径，失败不拖垮概览
         term_count = 0
-    target_questions = max(20, round(term_count * 0.5)) if term_count else 20
+    target_questions = (
+        max(TARGET_QUESTIONS_MIN, round(term_count * TARGET_QUESTIONS_K))
+        if term_count else TARGET_QUESTIONS_MIN
+    )
     return {
         "suite": data.get("suite") or "",
         "version": data.get("version", 1),
@@ -815,6 +841,119 @@ def build_view(engine, data: dict) -> dict:
         },
         "cases": enriched,
     }
+
+
+def export_review_markdown(
+    view: dict,
+    delivery: dict,
+    *,
+    pending_decisions: list | None = None,
+    generated_at: str = "",
+) -> str:
+    """#258：给非工程人员看的评审包（Markdown）。
+
+    只读聚合，不落盘、不改题集；结论与页面顶部、CQM 差距换算同源
+    （`lifecycle.delivery_verdict`），避免导出件与屏幕口径不一致。
+    """
+    summary = view.get("summary") or {}
+    provenance = view.get("provenance") or {}
+    cases = [case for case in view.get("cases") or [] if isinstance(case, dict)]
+    pending = [item for item in (pending_decisions or []) if isinstance(item, dict)]
+    suite = str(view.get("suite") or "").strip() or "默认题集"
+    stamp = generated_at or _now()
+
+    def cell(value) -> str:
+        text = str(value if value is not None else "").strip()
+        return text.replace("|", "\\|").replace("\n", " ") or "—"
+
+    def case_ref(case_id: str) -> str:
+        return f"#{case_id}" if case_id else "—"
+
+    if provenance.get("stale"):
+        source_text = (
+            f"来源本体「{provenance.get('seed_ontology') or '未知'}」与当前本体"
+            f"「{provenance.get('current_ontology') or '未知'}」不一致，成熟度不可作为交付依据"
+        )
+    elif provenance.get("known"):
+        source_text = (
+            f"由领域包「{provenance.get('seed_domain') or '未知'}」按"
+            f"「{provenance.get('seed_ontology') or '未知'}」播种"
+        )
+    else:
+        source_text = "来源未记录（旧题集），成熟度仅供参考"
+
+    unanchored = [str(item) for item in delivery.get("unanchored_cases") or []]
+    failed = [str(item) for item in delivery.get("failed_cases") or []]
+    missing = int(delivery.get("missing_questions") or 0)
+    if delivery.get("ready"):
+        verdict = f"达到交付线：{delivery.get('graduated_questions', 0)} 题已全部毕业"
+    else:
+        parts = [f"未达交付线：差 {missing} 题毕业"]
+        if unanchored:
+            parts.append(f"其中 {len(unanchored)} 题未锚定（{ '、'.join(case_ref(c) for c in unanchored) }），建议改问法或补术语后重跑")
+        if failed:
+            parts.append(f"{len(failed)} 题回归未通过（{ '、'.join(case_ref(c) for c in failed) }）")
+        verdict = "；".join(parts)
+
+    lines = [
+        f"# CQ 集评审包 — {suite}",
+        "",
+        f"- 生成时间：{stamp}",
+        f"- 来源：{source_text}",
+        f"- 交付判定：**{verdict}**",
+        "",
+        "## 概览",
+        "",
+        "| 指标 | 数值 |",
+        "|---|---|",
+        f"| 总题数 | {summary.get('total', 0)} |",
+        f"| 已锚定 | {summary.get('located', 0)} |",
+        f"| 可答 | {summary.get('answerable', 0)} |",
+        f"| 已毕业 | {delivery.get('graduated_questions', 0)} |",
+        f"| 目标题量 | {delivery.get('target_questions', 0)} |",
+        f"| 成熟度 CQM | {round(float(delivery.get('cqm') or 0) * 100)}% |",
+        f"| 定位覆盖 | {round(float(summary.get('coverage_light') or 0) * 100)}% |",
+        f"| 可答覆盖 | {round(float(summary.get('coverage_real') or 0) * 100)}% |",
+        "",
+        "## 逐题清单",
+        "",
+        "| # | 题号 | 题干 | 考法 | 结论 | 还差什么 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for index, case in enumerate(cases, start=1):
+        blockers = [str(item) for item in (case.get("blockers") or [])]
+        conclusion = "已毕业" if case.get("graduated") else (
+            "回归通过" if case.get("answerable") else "未答"
+        )
+        lines.append(
+            f"| {index} | {case_ref(str(case.get('id') or ''))} | {cell(case.get('cq'))} "
+            f"| {cell(EXPECTED_TYPE_LABELS.get(str(case.get('expected_type') or ''), '未分型'))} "
+            f"| {conclusion} | {cell(' / '.join(blockers) or '—')} |"
+        )
+
+    risk_rows = [
+        ("未锚定", [case_ref(str(c.get("id") or "")) for c in cases if not c.get("located")]),
+        ("缺断言", [case_ref(str(c.get("id") or "")) for c in cases if not c.get("regression")]),
+        ("未通过", [case_ref(str(c.get("id") or "")) for c in cases if "未通过" in (c.get("blockers") or [])]),
+        ("已归档", [case_ref(str(c.get("id") or "")) for c in cases if str(c.get("status") or "") == "archived"]),
+    ]
+    lines += ["", "## 风险清单", ""]
+    for label, refs in risk_rows:
+        lines.append(f"- {label}（{len(refs)}）：{'、'.join(refs) if refs else '无'}")
+
+    lines += ["", "## 待决事项", ""]
+    if pending:
+        for item in pending:
+            kind = DECISION_KIND_LABELS.get(str(item.get("kind") or ""), "待决")
+            case_id = str(item.get("case_id") or "")
+            question = str(item.get("question") or "").strip() or "（未填写问题）"
+            prefix = f"{case_ref(case_id)} " if case_id else ""
+            lines.append(f"- {prefix}{question}（{kind}）")
+    else:
+        lines.append("- 当前没有待决事项")
+
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _yaml_expect_lines(expect) -> list[str]:
@@ -892,6 +1031,7 @@ __all__ = [
     "empty_set",
     "export_cq_test",
     "export_junit",
+    "export_review_markdown",
     "export_text",
     "get_set",
     "graduated_snapshot",

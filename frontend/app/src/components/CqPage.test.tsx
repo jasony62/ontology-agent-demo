@@ -95,7 +95,12 @@ const NO_ANCHORS = {
 function stubFetch(
   set = SET,
   locate = LOCATE,
-  options: { failResume?: boolean; hangResume?: boolean; pending?: number } = {},
+  options: {
+    failResume?: boolean;
+    hangResume?: boolean;
+    pending?: number;
+    auditEntries?: boolean;
+  } = {},
 ) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -159,6 +164,13 @@ function stubFetch(
               circuit_breaker: { open: false }, coverage_real: 0.5,
               graduated_questions: 2, target_questions: 20, cqm: 0.1,
               quality: { anchored: 1, validated: 1, answerable: 1, retained: 2, graduated: 2 },
+              delivery: {
+                ready: false, target_questions: 20, graduated_questions: 2,
+                missing_questions: 18, unanchored_questions: 1,
+                unanchored_cases: (set.cases ?? []).filter((item) => !item.located).map((item) => item.id),
+                failed_questions: 0, failed_cases: [],
+                cqm: 0.1, cqm_if_unanchored_fixed: 0.15,
+              },
             },
             cases: [],
           },
@@ -178,7 +190,7 @@ function stubFetch(
         ok: true, status: 200,
         json: async () => ({
           ontology_id: 'ws-1',
-          entries: [{
+          entries: options.auditEntries === false ? [] : [{
             ts: '2026-11-14T10:00:00', ontology_id: 'ws-1', actor_type: 'agent',
             actor: 'mcp', action: 'add', case_id: 'Q1',
             before: null, after: { id: 'Q1', cq: '智能体写入的题' },
@@ -222,6 +234,72 @@ afterEach(() => {
 });
 
 describe('CQ 集页（#151 / #203）', () => {
+  it('页面给出可交付判定、验收线与差距换算（#258 / #259）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('未达交付线');
+    expect(text).toContain('差 18 题毕业');
+    expect(text).toContain('未锚定（#Q2）');
+    // 达标线与差距换算在 CQM 区可见，且公式收进技术细节
+    expect(text).toContain('交付线 100%');
+    expect(text).toContain('补齐到毕业 → 15%');
+    expect(text).not.toContain('× 0.5（最低 20）');
+    const calc = [...container!.querySelectorAll('summary')]
+      .find((node) => node.textContent === '目标题量怎么算')!;
+    await act(async () => { calc.click(); });
+    expect(container!.textContent).toContain('max(20, 本体关键术语数 × 0.5)');
+    // 评审包导出入口与用途说明
+    expect(container!.textContent).toContain('评审包（Markdown）');
+    expect(container!.textContent).toContain('给参会的人看');
+    const link = [...container!.querySelectorAll<HTMLAnchorElement>('.cq-export-list a')]
+      .find((node) => node.textContent?.includes('评审包'))!;
+    expect(link.getAttribute('href')).toContain('format=markdown');
+  });
+
+  it('可答格标注其中未锚定的题数（#260）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const answerable = [...container!.querySelectorAll('.cq-stat')]
+      .find((node) => node.textContent?.startsWith('可答'))!;
+    expect(answerable.textContent).toContain('含 1 题未锚定');
+  });
+
+  it('部分错配与来源未记录都给出可见提示（#266）', async () => {
+    const set = {
+      ...SET,
+      provenance: { ...SET.provenance, known: false },
+      cases: [
+        { ...SET.cases[0], located: true, answerable: true },
+        { ...SET.cases[1], located: false, answerable: false },
+      ],
+      summary: { ...SET.summary, located: 1, answerable: 1, gap: 1 },
+    };
+    stubFetch(set);
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('来源未记录');
+    expect(text).toContain('没有对上本体术语');
+    expect(text).toContain('#Q2');
+    expect(text).toContain('成熟度仅供参考');
+  });
+
+  it('智能体格兜底文案带上一版更新时间，不再说「准备中」（#265）', async () => {
+    stubFetch(SET, LOCATE, { auditEntries: false });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const agent = container!.querySelector('.cq-role.agent')!;
+    expect(agent.textContent).toContain('上一版题集更新于');
+    expect(agent.textContent).not.toContain('等待你确认或运行评估');
+  });
+
   it('待决数取不到时显示「待决状态未知」，不冒称「没有待决」（#255）', async () => {
     stubFetch(SET, LOCATE, { failResume: true });
     act(() => root!.render(<CqPage />));
@@ -503,10 +581,14 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(labels).toEqual(['视图', '视角', '只读工具', '写操作']);
     expect(container!.querySelector('.cq-export-menu')).not.toBeNull();
     const links = [...container!.querySelectorAll<HTMLAnchorElement>('.cq-export-list a')];
-    expect(links.map((link) => link.textContent)).toEqual([
-      '导出 JSON', 'cq-test（CI）', 'JUnit（测试报告）',
-    ]);
+    const items = links.map((link) => link.textContent ?? '');
+    expect(items).toHaveLength(4);
+    expect(items[0]).toContain('评审包（Markdown）');
+    expect(items[1]).toContain('导出 JSON');
+    expect(items[2]).toContain('cq-test（CI）');
+    expect(items[3]).toContain('JUnit（测试报告）');
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/api/domains/current/cq/export?format=markdown',
       '/api/domains/current/cq/export?format=json',
       '/api/domains/current/cq/export?format=cq-test',
       '/api/domains/current/cq/export?format=junit',

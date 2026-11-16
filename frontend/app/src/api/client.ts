@@ -553,6 +553,19 @@ export interface CqLifecycleCase {
   pending_actions?: CqAction[];
 }
 
+export interface CqDelivery {
+  ready: boolean;
+  target_questions: number;
+  graduated_questions: number;
+  missing_questions: number;
+  unanchored_questions: number;
+  unanchored_cases: string[];
+  failed_questions: number;
+  failed_cases: string[];
+  cqm: number;
+  cqm_if_unanchored_fixed: number;
+}
+
 export interface CqLifecycle {
   summary: {
     questions: number;
@@ -569,6 +582,7 @@ export interface CqLifecycle {
     target_questions?: number;
     cqm?: number;
     quality?: Record<string, number>;
+    delivery?: CqDelivery;
   };
   cases: CqLifecycleCase[];
 }
@@ -798,7 +812,7 @@ export const api = {
   },
 
   /** CQ 集导出地址（附件下载；format: json / cq-test / junit） */
-  cqExportUrl: (format: 'json' | 'cq-test' | 'junit' = 'json') =>
+  cqExportUrl: (format: 'json' | 'cq-test' | 'junit' | 'markdown' = 'json') =>
     `/api/domains/current/cq/export?format=${format}`,
 
   /** 单题 CRUD（#154） */

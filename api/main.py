@@ -92,6 +92,7 @@ from . import workspaces
 from cq import cq_runner, cq_store, training_service
 from cq import agenda as cq_agenda
 from cq import coverage as cq_coverage
+from cq import lifecycle as cq_lifecycle
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
@@ -2070,11 +2071,15 @@ async def cq_import(file: UploadFile = File(..., description="cq_set.json（UTF-
     response_class=Response,
     responses={
         200: {
-            "description": "cq_set.json 原内容（json）或转换后的 cq-test YAML / JUnit XML。",
+            "description": (
+                "cq_set.json 原内容（json）或转换后的 cq-test YAML / JUnit XML，"
+                "以及给非工程人员看的 Markdown 评审包（markdown）。"
+            ),
             "content": {
                 "application/json": {"schema": {"type": "string"}},
                 "text/yaml": {"schema": {"type": "string"}},
                 "application/xml": {"schema": {"type": "string"}},
+                "text/markdown": {"schema": {"type": "string"}},
             },
         },
         **ERROR_400,
@@ -2082,9 +2087,12 @@ async def cq_import(file: UploadFile = File(..., description="cq_set.json（UTF-
 )
 def cq_export(format: str = Query(
     "json",
-    description="json（默认，原文） / cq-test（rdf-construct 兼容 YAML） / junit（最近一次回归）",
+    description=(
+        "json（默认，原文） / cq-test（rdf-construct 兼容 YAML） / "
+        "junit（最近一次回归） / markdown（评审包）"
+    ),
 )):
-    """导出当前 CQ 集；junit 使用最近一次 runs/ 结果。"""
+    """导出当前 CQ 集；junit 使用最近一次 runs/ 结果，markdown 用于线下评审。"""
     ontology_id, seed = _cq_identity()
     if format == "json":
         text = cq_store.export_text(ontology_id, seed)
@@ -2105,6 +2113,20 @@ def cq_export(format: str = Query(
         return Response(
             content=cq_store.export_junit(runs[0]), media_type="application/xml",
             headers={"Content-Disposition": f'attachment; filename="{ontology_id}-junit.xml"'},
+        )
+    if format == "markdown":
+        data = cq_store.get_set(ontology_id, seed)
+        view = cq_store.build_view(ENGINE, data)
+        pending = training_service.resume(ENGINE, ontology_id, seed)["pending_decisions"]
+        text = cq_store.export_review_markdown(
+            view, cq_lifecycle.delivery_verdict(view), pending_decisions=pending,
+        )
+        return Response(
+            content=text, media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="{ontology_id}-review.md"',
+            },
         )
     raise HTTPException(status_code=400, detail=f"不支持的导出格式：{format}")
 

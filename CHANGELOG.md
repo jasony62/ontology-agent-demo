@@ -7,6 +7,8 @@
 
 ### Added
 
+- **北极星达标补齐（#235–#243）**：`cq_resume.lifecycle` 增加 CQM / 毕业态 / 五条件分解与题卡序号；首页显示 CQM 仪表盘、协同指标与「还差哪条毕业」。决策回写生成机器行动 `action_requested`（系统归属），`cq_resume.next_actions` 供智能体拉取，新增 `cq_action_complete`（工具数 17 → 18）闭合「决策→行动→新状态」。新增 `GET /cq/metrics`（填充率 / 采纳率 / 往返轮次 / 决策时延 / CQM）与 telemetry/request 端点（端点 50 → 53）；`metrics.jsonl` 新增多种事件。`cq/coverage` 增加 `likely_mismatch`，错配时告警且 CQM 不可用。议程物化事件改为 `system/cq`，采纳率只统计真实 agent 建议；题卡用序号主标识、题集名显示默认题集、`cq/set` 与 `resume` 的待决数同源；领导模式改为「请求智能体生成候选题」。#242 的外部北极星基准文档不在仓库，仓库侧口径见手册 9.11 / 9.16。
+
 - **训练界面按题生命周期组织（#219）**：训练标签改为「题看板 + 全局事件」两层。`cq_resume` 新增 `resolved_decisions` 与按题聚合的 `lifecycle`（阶段 / 行动优先级 / 最近回归 / 决策与迭代线索）；前端每题一张卡，概览按题 roll-up（待决 / 已决按题数、决策条数另列），支持「待我处理」快速通道与题卡内「这道题的卷」（三入口、主体 / 阶段双筛、时间正序）。新增只读 `GET /api/domains/current/cq/cases/{case_id}/events`（端点 49 → 50）；网页建题 / 发题补写 `case_authored` / `case_released`，操作者为 `human/web`，MCP 路径仍为 `agent/mcp`。
 - **题干提及覆盖只读视图（#215 / #159-A）**：新增 `GET /api/domains/current/cq/coverage` 与 MCP `cq_coverage`（工具数 16 → 17）。用 `tbox.schema_map` 的元素全集 + `cq_locate` 锚点，返回类/属性的题干提及覆盖、未覆盖列表与未匹配锚点；明确标注「题干提及（字面）」，不代表解答依赖。不改 CQ schema、不落盘；前端只在专家模式提供「质量盲区（题干提及）」按需检查。#159 同时拆成 A/B/C：B（语义 provenance）与 C（多集）标记 deferred。
 - **题目页领导模式与结构化决策回收（#210 / #211 / #212）**：

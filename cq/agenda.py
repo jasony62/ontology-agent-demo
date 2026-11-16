@@ -90,9 +90,22 @@ def _item(
     }
 
 
-def _term_item(case: dict) -> dict:
+def _term_item(case: dict, run_case: dict | None = None) -> dict:
     case_id = _case_id(case)
     title = _short(case.get("cq"))
+    state = str((run_case or {}).get("state") or "")
+    if state == "pass":
+        return _item(
+            "term", case_id,
+            background=(
+                f"「{title}」这次能算出结果，但题干没有对上本体术语，"
+                "能答属于碰巧命中；长期看会误导，需要你决定改问法、补术语还是保留。"
+            ),
+            question="这道题长期要不要保留？",
+            options=["改问法后保留", "补充术语或数据后保留", "保留现状", "删除该题"],
+            recommended="改问法后保留",
+            reason="回归通过只能说明这一次碰巧命中了数据；题干没有对上术语，后续换数据或换本体时很容易失效。",
+        )
     return _item(
         "term", case_id,
         background=f"「{title}」目前定位不到可用的本体证据：可能缺对应术语，也可能缺数据。",
@@ -166,7 +179,7 @@ def _build_item(kind: str, case: dict, run_case: dict | None) -> dict:
         return _semantic_item(case)
     if kind == "expectation":
         return _expectation_item(case, run_case)
-    return _term_item(case)
+    return _term_item(case, run_case)
 
 
 def _context(case: dict, run_case: dict | None) -> str:
@@ -177,6 +190,9 @@ def _context(case: dict, run_case: dict | None) -> str:
     """
     state = str((run_case or {}).get("state") or "")
     summary = str(case.get("assertion_summary") or "").strip()
+    if not case.get("located"):
+        # 未定位的整段解释已放在 background，context 不再重复/拼接矛盾事实（#241）。
+        return ""
     parts: list[str] = []
     if summary and summary != "还没有可自动验收的检查":
         parts.append(f"验收要求：{summary}。")

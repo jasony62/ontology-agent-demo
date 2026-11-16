@@ -404,6 +404,8 @@ export interface CqSetCase {
   updated_at?: string;
   located?: boolean;
   answerable?: boolean;
+  graduated?: boolean;
+  blockers?: string[];
   location?: CqCaseLocation;
   /** #210：机器断言的业务话摘要（读视图字段，不落盘）。 */
   assertion_summary?: string;
@@ -418,6 +420,8 @@ export interface CqSetSummary {
   gap: number;
   coverage_light: number;
   coverage_real: number;
+  target_questions?: number;
+  schema_terms?: number;
 }
 
 export interface CqSetResponse {
@@ -493,14 +497,29 @@ export interface CqContextGap {
   suggestion: string;
 }
 
+export interface CqAction {
+  action_id: string;
+  action: string;
+  decision_id?: string;
+  case_id?: string;
+  conclusion?: string;
+  note?: string;
+  status: string;
+  requested_at?: string;
+  completed_at?: string;
+}
+
 export interface CqLifecycleCase {
   case_id: string;
+  ordinal?: number;
   cq: string;
   status?: string | null;
   expected_type?: string | null;
   assertion_summary?: string | null;
   located: boolean;
   answerable: boolean;
+  graduated?: boolean;
+  blockers?: string[];
   stage: string;
   stage_label: string;
   priority: number;
@@ -517,6 +536,8 @@ export interface CqLifecycleCase {
     created_at?: string;
     business_translation?: string;
   }>;
+  actions?: CqAction[];
+  pending_actions?: CqAction[];
 }
 
 export interface CqLifecycle {
@@ -531,6 +552,10 @@ export interface CqLifecycle {
     decision_counts: { pending: number; followup: number; resolved: number };
     circuit_breaker: { open: boolean; reason?: string | null; since?: string | null };
     coverage_real: number;
+    graduated_questions?: number;
+    target_questions?: number;
+    cqm?: number;
+    quality?: Record<string, number>;
   };
   cases: CqLifecycleCase[];
 }
@@ -543,6 +568,7 @@ export interface CqResumeResponse {
   pending_decisions: CqDecision[];
   resolved_decisions?: CqDecision[];
   pending_followups: CqDecision[];
+  next_actions?: CqAction[];
   counts: Record<string, number>;
   circuit_breaker: { open: boolean; reason?: string | null; since?: string | null };
   iterations: Array<Record<string, unknown>>;
@@ -574,10 +600,24 @@ export interface CqCoverageResponse {
     cases_without_anchor: number;
     locate_errors: number;
     unmatched_anchors: number;
+    likely_mismatch?: boolean;
   };
   elements: CqCoverageElement[];
   uncovered: CqCoverageElement[];
   unmatched_anchors: Array<{ term: string; source: string }>;
+}
+
+export interface CqMetricsResponse {
+  ontology_id: string;
+  decision_fill_rate: number | null;
+  adoption_rate: number | null;
+  round_trips_median: number | null;
+  decision_latency_median_seconds: number | null;
+  cqm: number | null;
+  quality: Record<string, number>;
+  counts: Record<string, number>;
+  guardrails: Record<string, { available: boolean; reason?: string }>;
+  sources?: Record<string, unknown>;
 }
 
 export interface CqTimelineItem {
@@ -695,6 +735,25 @@ export const api = {
 
   /** 题干提及覆盖（#215）：只读，字面口径 */
   cqCoverage: () => request<CqCoverageResponse>('/api/domains/current/cq/coverage'),
+
+  /** 协同/质量指标（#239） */
+  cqMetrics: () => request<CqMetricsResponse>('/api/domains/current/cq/metrics'),
+
+  /** 记录一次工作台打开（#239 填充率底座） */
+  cqTelemetryView: (payload: { pending: boolean }) =>
+    request<{ ok: boolean; event: unknown }>('/api/domains/current/cq/telemetry/view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+
+  /** 请求智能体生成候选题（#243 / G11） */
+  cqRequestCases: (payload: { note?: string } = {}) =>
+    request<{ ok: boolean; action: CqAction }>('/api/domains/current/cq/cases/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
 
   /** 单题事件流（#219）：时间正序的题卷 */
   cqCaseEvents: (caseId: string, limit = 500) =>

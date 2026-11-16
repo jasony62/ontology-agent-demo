@@ -159,6 +159,7 @@ def coverage(engine, ontology_id: str, seed_path=None) -> dict:
             "cases_without_anchor": without_anchor,
             "locate_errors": errors,
             "unmatched_anchors": len(unmatched),
+            "likely_mismatch": bool(cases) and total > 0 and mentioned == 0,
         },
         "elements": public_elements,
         "uncovered": [_public(element) for element in uncovered],

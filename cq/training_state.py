@@ -54,6 +54,7 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
     breaker = None
     breaker_answered = False
     intent_pending: set[str] = set()
+    actions: dict[str, dict] = {}
 
     for item in events:
         if not isinstance(item, dict):
@@ -126,6 +127,22 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
                 {"iteration_id": content.get("iteration_id")},
             )
             iteration["status"] = "accepted"
+        elif event == "action_requested":
+            action_id = str(content.get("action_id") or "")
+            if action_id:
+                actions[action_id] = {
+                    **content,
+                    "status": "pending",
+                    "requested_at": ts,
+                }
+        elif event == "action_completed":
+            action_id = str(content.get("action_id") or "")
+            if action_id and action_id in actions:
+                actions[action_id].update({
+                    "status": str(content.get("status") or "done"),
+                    "completed_at": ts,
+                    "completion_note": content.get("note") or "",
+                })
         if event == "decision_asked" and breaker is not None:
             # 熔断后出现了提问事件（G4 清空）
             breaker_answered = True
@@ -145,6 +162,10 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
     pending_followups = [
         _decision_view(item) for item in decisions.values() if item["status"] == "followup"
     ]
+    pending_actions = sorted(
+        [item for item in actions.values() if item["status"] == "pending"],
+        key=lambda item: str(item.get("requested_at") or ""),
+    )
 
     counts = {
         "asked": len(decisions),
@@ -156,10 +177,12 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
         "withdrawn": sum(1 for item in decisions.values() if item["status"] == "withdrawn"),
         "iterations": len(iterations),
         "intent_pending": len(intent_pending),
+        "pending_actions": len(pending_actions),
     }
     return {
         "pending_decisions": pending_decisions,
         "pending_followups": pending_followups,
+        "pending_actions": pending_actions,
         "counts": counts,
         "circuit_breaker": {
             "open": breaker is not None and not breaker_answered,
@@ -170,6 +193,7 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
         "iterations": list(iterations.values()),
         "intent_pending": sorted(intent_pending),
         "decisions": decisions,
+        "actions": actions,
         "now": now,
     }
 

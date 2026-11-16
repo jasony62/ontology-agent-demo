@@ -2257,6 +2257,61 @@ def cq_mention_coverage():
 
 
 @app.get(
+    "/api/domains/current/cq/metrics",
+    tags=["通用查询"],
+    summary="CQ 协同与质量指标（只读）",
+    responses={
+        200: {"model": OpenEnvelope, "description": "填充率 / 采纳率 / 往返轮次 / 决策时延 / CQM 与质量分解；护栏无数据源时明确标注不可用。"},
+    },
+)
+def cq_metrics():
+    """聚合北极星指标（#239）；只读，不写 metrics.jsonl。"""
+    ontology_id, seed = _cq_identity()
+    return {"ontology_id": ontology_id, **training_service.metrics_for(ENGINE, ontology_id, seed)}
+
+
+@app.post(
+    "/api/domains/current/cq/telemetry/view",
+    tags=["通用查询"],
+    summary="记录一次工作台打开（指标底座）",
+    responses={200: {"model": OpenEnvelope, "description": "已记录一次 workbench_viewed 事件。"}},
+)
+def cq_telemetry_view(payload: dict | None = Body(None)):
+    """记录「打开工作台时是否有待决」用于填充率；由前端在训练页加载后调用。"""
+    ontology_id, _ = _cq_identity()
+    body = payload or {}
+    try:
+        result = training_service.training_write(
+            ontology_id, "workbench_viewed",
+            {"pending": bool(body.get("pending"))},
+            actor_type="human", actor="web",
+        )
+    except training_service.TrainingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    cq_store.record_metric(ontology_id, "cq_workbench_viewed", {
+        "pending": bool(body.get("pending")),
+    })
+    return {"ontology_id": ontology_id, "ok": True, "event": result["event"]}
+
+
+@app.post(
+    "/api/domains/current/cq/cases/request",
+    tags=["通用查询"],
+    summary="请求智能体生成候选题",
+    responses={200: {"model": OpenEnvelope, "description": "已写入 generate_cases 行动项，供智能体经 cq_resume 拉取。"}},
+)
+def cq_request_cases(payload: dict | None = Body(None)):
+    """人只发起请求，不写题干（#243 / G11）。"""
+    ontology_id, _ = _cq_identity()
+    body = payload or {}
+    result = training_service.request_case_generation(
+        ontology_id, str(body.get("note") or ""),
+        actor_type="human", actor="web",
+    )
+    return {"ontology_id": ontology_id, "ok": True, "action": result}
+
+
+@app.get(
     "/api/domains/current/cq/resume",
     tags=["通用查询"],
     summary="CQ 训练现场自举",
@@ -2324,8 +2379,8 @@ def cq_case_events(
             "ref": agenda_item.get("decision_id"),
             "case_id": case_id,
             "summary": f"待决：{agenda_item.get('question') or ''}",
-            "actor_type": "agent",
-            "actor": "mcp",
+            "actor_type": "system",
+            "actor": "cq",
             "content": agenda_item,
         })
     return {

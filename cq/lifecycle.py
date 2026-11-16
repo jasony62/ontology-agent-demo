@@ -145,7 +145,7 @@ def build_lifecycle(
     intent = set(state.get("intent_pending") or [])
 
     rows: list[dict] = []
-    for case in cases:
+    for ordinal, case in enumerate(cases, start=1):
         case_id = str(case.get("id") or "").strip()
         if not case_id:
             continue
@@ -198,14 +198,32 @@ def build_lifecycle(
             str((linked[-1] if linked else {}).get("created_at") or ""),
             key=_ts_num,
         )
+        blockers: list[str] = []
+        if not case.get("located"):
+            blockers.append("未锚定")
+        if str(case.get("expected_type") or "") == "unknown":
+            blockers.append("未分型")
+        if not case.get("regression"):
+            blockers.append("缺断言")
+        if not case.get("answerable"):
+            blockers.append("未通过")
+        if str(case.get("status") or "") == "archived":
+            blockers.append("已归档")
+        case_actions = [
+            action for action in (state.get("actions") or {}).values()
+            if str(action.get("case_id") or "") == case_id
+        ]
         row = {
             "case_id": case_id,
+            "ordinal": ordinal,
             "cq": case.get("cq") or "",
             "status": case.get("status"),
             "expected_type": case.get("expected_type"),
             "assertion_summary": case.get("assertion_summary"),
             "located": bool(case.get("located")),
             "answerable": bool(case.get("answerable")),
+            "graduated": not blockers,
+            "blockers": blockers,
             "stage": stage,
             "stage_label": STAGE_LABELS[stage],
             "priority": priority,
@@ -224,6 +242,10 @@ def build_lifecycle(
                 training_state._decision_view(latest) if latest is not None else None
             ),
             "iterations": [_iteration_lite(item) for item in linked],
+            "actions": case_actions,
+            "pending_actions": [
+                action for action in case_actions if action.get("status") == "pending"
+            ],
         }
         rows.append(row)
 
@@ -241,6 +263,9 @@ def build_lifecycle(
         "followup": len(state.get("pending_followups") or []),
         "resolved": state.get("counts", {}).get("resolved", 0),
     }
+    view_summary = view.get("summary") or {}
+    target_questions = int(view_summary.get("target_questions") or 20)
+    graduated = sum(1 for row in rows if row["graduated"])
     summary = {
         "questions": len(rows),
         "stages": {stage: stage_counts.get(stage, 0) for stage in STAGES},
@@ -254,7 +279,21 @@ def build_lifecycle(
         "passed_questions": stage_counts.get("passed", 0),
         "decision_counts": decision_counts,
         "circuit_breaker": state.get("circuit_breaker") or {"open": False},
-        "coverage_real": (view.get("summary") or {}).get("coverage_real", 0.0),
+        "coverage_real": view_summary.get("coverage_real", 0.0),
+        "graduated_questions": graduated,
+        "target_questions": target_questions,
+        "cqm": round(graduated / target_questions, 3) if target_questions else 0.0,
+        "quality": {
+            "anchored": sum(1 for row in rows if row["located"]),
+            "validated": sum(
+                1 for row in rows if str(row.get("expected_type") or "") != "unknown"
+            ),
+            "answerable": sum(1 for row in rows if row["answerable"]),
+            "retained": sum(
+                1 for row in rows if str(row.get("status") or "") != "archived"
+            ),
+            "graduated": graduated,
+        },
     }
     return {"summary": summary, "cases": rows}
 

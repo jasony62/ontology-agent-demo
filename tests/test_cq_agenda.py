@@ -95,12 +95,16 @@ def test_answering_agenda_item_materializes_decision_event(ws):
     assert result["status"] == "resolved"
 
     events = training_log.read_events("agent_task")
-    assert len(events) == before + 2  # decision_asked + feedback_received
+    assert len(events) == before + 3  # decision_asked + feedback_received + action_requested
     asked = next(event for event in events if event["event"] == "decision_asked")
+    assert asked["actor_type"] == "system"
+    assert asked["actor"] == "cq"
     assert asked["content"]["decision_id"] == item["decision_id"]
     assert asked["content"]["question"] == item["question"]
     assert asked["content"]["background"] == item["background"]
     assert asked["content"]["context"] == "测试现场依据：这题目前没有可用证据。"
+    actions = [event for event in events if event["event"] == "action_requested"]
+    assert actions and actions[-1]["content"]["action"] == "revise_case"
 
     remaining = [entry["decision_id"]
                  for entry in training_service.resume(_engine(), "agent_task")["pending_decisions"]]

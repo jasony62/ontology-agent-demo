@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from api import workspaces
-from cq import agenda, cq_store, lifecycle, training_log, training_state
+from cq import agenda, cq_store, lifecycle, metrics as cq_metrics, training_log, training_state
 from cq.constants import (
     DECISION_ACTIONS,
     DECISION_CONCLUSIONS,
@@ -154,6 +154,27 @@ def _ask(ontology_id: str, payload: dict, *, actor_type: str, actor: str) -> dic
     return {"action": "ask", "decision_id": decision_id, "event": line}
 
 
+def _next_action(decision: dict, option: str, conclusion: str) -> str:
+    """把人的显式选择映射成机器可读动作（#238），不做额外分析。"""
+    kind = str(decision.get("kind") or "")
+    text = str(option or "")
+    if "删" in text:
+        return "delete_case"
+    if "改问法" in text or "调整问法" in text or "改写" in text:
+        return "revise_case"
+    if "补本体" in text or "补充术语" in text or "补充数据" in text or kind in {"term", "semantic"}:
+        return "update_ontology"
+    if "改预期" in text or "更新预期" in text or kind == "expectation":
+        return "update_expectation"
+    if "锁定" in text or "毕业" in text:
+        return "lock_graduation"
+    if conclusion == "reject":
+        return "revise_case"
+    if kind == "scope":
+        return "revise_case"
+    return "rerun_regression"
+
+
 def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, source: str) -> dict:
     _reject_extra(payload, {
         "decision_id", "feedback_text", "option", "follow_up_with",
@@ -182,7 +203,7 @@ def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, s
         if context_text:
             content["context"] = context_text
         _append(ontology_id, "decision_asked", content,
-                actor_type="agent", actor="mcp")
+                actor_type="system", actor="cq")
         state = _project(ontology_id)
         decision = state["decisions"].get(decision_id)
     if decision is None:
@@ -244,6 +265,45 @@ def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, s
         status = "resolved"
     else:
         status = "resolved" if (option.strip() or feedback_text.strip()) else "followup"
+
+    next_action = None
+    if status == "resolved":
+        action_name = _next_action(decision, option, conclusion)
+        action_id = uuid.uuid4().hex
+        action_content = {
+            "action_id": action_id,
+            "action": action_name,
+            "decision_id": decision_id,
+            "note": option or feedback_text[:120],
+        }
+        if decision.get("case_id"):
+            action_content["case_id"] = str(decision["case_id"])
+        if conclusion:
+            action_content["conclusion"] = conclusion
+        try:
+            action_event = _append(
+                ontology_id, "action_requested", action_content,
+                actor_type="system", actor="cq",
+            )
+            next_action = {
+                **action_content,
+                "status": "pending",
+                "requested_at": action_event.get("ts"),
+            }
+        except TrainingError:
+            # 行动写入失败不能回滚已提交的反馈；交由下一轮 resume 重新提示。
+            next_action = None
+    try:
+        cq_store.record_metric(ontology_id, "cq_decision_feedback", {
+            "decision_id": decision_id,
+            "case_id": decision.get("case_id"),
+            "conclusion": conclusion or None,
+            "option": option or None,
+            "adopted": bool(option and option == decision.get("recommended")),
+        })
+    except Exception:  # noqa: BLE001 —— 指标失败不拖垮决策
+        pass
+
     return {
         "action": "feedback",
         "decision_id": decision_id,
@@ -252,6 +312,7 @@ def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, s
         "basis": basis or None,
         "authorized": authorized,
         "intent_pending_marked": intent_marked,
+        "next_action": next_action,
         "event": line,
         "summary": {
             "option": option,
@@ -301,7 +362,14 @@ def merge_training_view(view: dict, state: dict) -> dict:
 
 def set_view(engine, ontology_id: str, seed_path=None) -> dict:
     data = cq_store.get_set(ontology_id, seed_path)
-    return merge_training_view(cq_store.build_view(engine, data), _project(ontology_id))
+    view = cq_store.build_view(engine, data)
+    state = _project(ontology_id)
+    merged = merge_training_view(view, state)
+    items = agenda.build_agenda(engine, ontology_id, seed_path, view=view, state=state)
+    merged["summary"]["pending_decisions"] = (
+        len(state.get("pending_decisions") or []) + len(items)
+    )
+    return merged
 
 
 # ---------------- cq_resume（#196） ----------------
@@ -484,6 +552,7 @@ def resume(
         "pending_decisions": pending,
         "resolved_decisions": resolved,
         "pending_followups": state["pending_followups"],
+        "next_actions": state.get("pending_actions") or [],
         "counts": {**state["counts"], "pending": len(pending)},
         "circuit_breaker": state["circuit_breaker"],
         "iterations": state["iterations"],
@@ -821,6 +890,58 @@ def auto_regression_event(ontology_id: str, run: dict, run_ref: str) -> None:
         return
 
 
+# ---------------- 指标 / 请求生成（#235 / #239） ----------------
+
+
+def metrics_for(engine, ontology_id: str, seed_path=None) -> dict:
+    """只读聚合协同/质量指标（#239）；不写 metrics.jsonl。"""
+    data = cq_store.get_set(ontology_id, seed_path)
+    view = cq_store.build_view(engine, data)
+    events = _events(ontology_id)
+    state = _project(ontology_id, events)
+    last_regression = (cq_store.list_runs(ontology_id, limit=1) or [None])[0]
+    items = agenda.build_agenda(engine, ontology_id, seed_path, view=view, state=state)
+    board = lifecycle.build_lifecycle(
+        view=view,
+        state=state,
+        last_regression=last_regression,
+        iterations=_all_iterations(ontology_id),
+        events=events,
+        agenda_items=items,
+    )
+    return cq_metrics.compute_metrics(
+        events,
+        lifecycle_summary=board["summary"],
+        view_summary=view["summary"],
+    )
+
+
+def request_case_generation(
+    ontology_id: str,
+    note: str = "",
+    *,
+    actor_type: str = "human",
+    actor: str = "web",
+) -> dict:
+    """人只发起「请智能体生成候选题」请求；不创作题干（#243 / G11）。"""
+    action = {
+        "action_id": uuid.uuid4().hex,
+        "action": "generate_cases",
+        "note": str(note or "")[:200],
+    }
+    line = _append(ontology_id, "action_requested", action,
+                   actor_type=actor_type, actor=actor)
+    try:
+        cq_store.record_metric(ontology_id, "cq_action_requested", {
+            "action": "generate_cases",
+            "actor_type": actor_type,
+            "actor": actor,
+        })
+    except Exception:  # noqa: BLE001
+        pass
+    return {**action, "status": "pending", "requested_at": line.get("ts"), "event": line}
+
+
 __all__ = [
     "TrainingError",
     "auto_case_event",
@@ -831,6 +952,8 @@ __all__ = [
     "iteration_write",
     "iterations_dir",
     "merge_training_view",
+    "metrics_for",
+    "request_case_generation",
     "resume",
     "set_view",
     "timeline",

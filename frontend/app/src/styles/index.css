@@ -756,6 +756,8 @@ a.download-link { display: inline-flex; align-items: center; height: var(--contr
 a.download-link:hover { background: var(--primary-soft); border-color: var(--border-strong); }
 
 .notice-banner { background: var(--success-bg); border: 1px solid var(--success-border); color: var(--success); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-md); }
+.notice-banner.warn { background: #fff4e5; border-color: #e6b36b; color: #8a5a00; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.notice-banner.warn .btn.link { margin-left: auto; }
 /* #126：成功提示（页头下方常驻区）——与 error-banner 同位置、不同颜色；
    多行结论按 \n 换行，右上角可手动关闭。 */
 .app-notice { display: flex; align-items: flex-start; gap: 10px; white-space: pre-line; line-height: 1.6; }
@@ -1494,6 +1496,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-role.agent { border-left: 3px solid #4b6cb7; }
 .cq-role.human { border-left: 3px solid #2f8f6b; }
 .cq-role .btn.link { margin-left: auto; }
+.cq-unknown { color: var(--warning); font-weight: 600; }
 .cq-start-guide {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin: 10px 0; padding: 9px 12px; border: 1px dashed var(--border-strong);
@@ -1857,6 +1860,22 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-training-authorize {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--text); padding-bottom: 6px;
+}
+.cq-training-authorize.warn {
+  padding: 5px 8px; border: 1px solid #e6b36b; border-radius: 6px;
+  background: #fff4e5; color: #8a5a00;
+}
+.cq-decision-hint {
+  padding: 6px 9px; border-radius: 6px; background: #fff4e5;
+  border: 1px solid #e6b36b; color: #8a5a00; font-size: 12px;
+}
+.cq-decision-anchor {
+  font-size: 12px; font-weight: 700; color: var(--heading);
+  font-variant-numeric: tabular-nums;
+}
+.cq-decision-title {
+  font-size: 12px; color: var(--muted); flex: 1 1 220px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .cq-tech-entry { margin-top: 2px; }
 .cq-tech-toggle { align-self: flex-start; }

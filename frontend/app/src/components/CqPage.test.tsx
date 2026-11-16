@@ -92,7 +92,11 @@ const NO_ANCHORS = {
   hint: '题干中未匹配到本体术语。这份本体有 248 个中文术语（例如员工、姓名、岗位）。',
 };
 
-function stubFetch(set = SET, locate = LOCATE) {
+function stubFetch(
+  set = SET,
+  locate = LOCATE,
+  options: { failResume?: boolean; hangResume?: boolean; pending?: number } = {},
+) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = String(init?.method || 'GET').toUpperCase();
@@ -132,17 +136,23 @@ function stubFetch(set = SET, locate = LOCATE) {
       return { ok: true, status: 200, json: async () => ({ ontology_id: 'ws-1', runs: [] }) } as unknown as Response;
     }
     if (url.includes('/cq/resume')) {
+      if (options.hangResume) {
+        return new Promise(() => {}) as unknown as Response;
+      }
+      if (options.failResume) {
+        return { ok: false, status: 500, json: async () => ({ detail: 'resume 挂了' }) } as unknown as Response;
+      }
       return {
         ok: true, status: 200,
         json: async () => ({
           ontology_id: 'ws-1', depth: 'snapshot',
-          summary: { ...set.summary, pending_decisions: 0 },
+          summary: { ...set.summary, pending_decisions: options.pending ?? 0 },
           last_regression: null, pending_decisions: [], pending_followups: [],
           counts: { followup: 0, pending: 0 }, circuit_breaker: { open: false },
           iterations: [], recent_iteration: null, intent_pending: [],
           lifecycle: {
             summary: {
-              questions: 2, stages: {}, pending_questions: 0,
+              questions: 2, stages: {}, pending_questions: options.pending ?? 0,
               resolved_questions: 0, followup_questions: 0,
               failed_questions: 0, passed_questions: 0,
               decision_counts: { pending: 0, followup: 0, resolved: 0 },
@@ -212,6 +222,41 @@ afterEach(() => {
 });
 
 describe('CQ 集页（#151 / #203）', () => {
+  it('待决数取不到时显示「待决状态未知」，不冒称「没有待决」（#255）', async () => {
+    stubFetch(SET, LOCATE, { failResume: true });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const strip = container!.querySelector('.cq-role.human')!;
+    expect(strip.textContent).toContain('待决状态未知');
+    expect(strip.textContent).not.toContain('没有待决');
+    // 辅助取数失败要汇总成可重试的警告条
+    expect(container!.textContent).toContain('部分数据未取到');
+    expect(container!.textContent).toContain('待决状态');
+    expect([...container!.querySelectorAll('button')].some((btn) => btn.textContent === '重试'))
+      .toBe(true);
+  });
+
+  it('resume 尚未返回时显示「正在读取待决」，不提前下结论（#255）', async () => {
+    stubFetch(SET, LOCATE, { hangResume: true });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const strip = container!.querySelector('.cq-role.human')!;
+    expect(strip.textContent).toContain('正在读取待决');
+    expect(strip.textContent).not.toContain('没有待决');
+  });
+
+  it('明确返回 0 时才允许出现「当前没有待决」（#255）', async () => {
+    stubFetch(SET, LOCATE, { pending: 0 });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const strip = container!.querySelector('.cq-role.human')!;
+    expect(strip.textContent).toContain('当前没有待决');
+    expect(strip.textContent).not.toContain('待决状态未知');
+  });
+
   it('顶部只有「题目 / 训练」两个标签，训练标签挂训练现场与时间线', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));

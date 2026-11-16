@@ -231,12 +231,16 @@ describe('训练标签（#203）', () => {
 
     const authorize = container!.querySelector<HTMLInputElement>('.cq-training-authorize input')!;
     await act(async () => { authorize.click(); });
-    const option = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+    const option = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
       .find((btn) => btn.textContent?.startsWith('A'))!;
     await act(async () => { option.click(); });
     await flush();
+    const confirm = [...container!.querySelectorAll<HTMLButtonElement>('.cq-decision-confirm button')]
+      .find((btn) => btn.textContent === '确认提交')!;
+    await act(async () => { confirm.click(); });
+    await flush();
 
-    expect(container!.textContent).toContain('已提交反馈');
+    expect(container!.textContent).toContain('已记录决策');
     expect(timelineCalls()).toBeGreaterThan(before);
     const writes = vi.mocked(fetch).mock.calls
       .filter(([, init]) => String(init?.method || 'GET').toUpperCase() !== 'GET')

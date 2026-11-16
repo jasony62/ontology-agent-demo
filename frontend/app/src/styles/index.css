@@ -2016,3 +2016,15 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; }
 .cq-tab.active { border-bottom-color: var(--primary); color: var(--heading); font-weight: 600; background: transparent; }
 .cq-stale-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: #fff4e5; border: 1px solid #e6b36b; color: #8a5a00; }
+.cq-funnel { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.cq-funnel-steps { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.cq-funnel-steps span b { font-size: 18px; color: var(--heading); font-variant-numeric: tabular-nums; }
+.cq-funnel-steps span em { font-style: normal; color: var(--muted); }
+.cq-funnel-steps i { color: var(--border-strong); font-style: normal; }
+.cq-funnel-gap { margin-left: 8px; color: #8a5a00; }
+.cq-funnel-meta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 11.5px; color: var(--muted); }
+.cq-quality-detail { margin: 8px 0; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; }
+.cq-quality-detail > summary { cursor: pointer; color: var(--link); font-size: 12.5px; }
+.cq-welcome { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 8px 0; padding: 8px 11px; border: 1px solid #a9b9e6; background: #eef3ff; border-radius: 8px; font-size: 12.5px; color: #2c4a8a; }
+.cq-welcome .btn.link { margin-left: auto; }
+.cq-load-more { margin: 8px auto 0; display: block; }

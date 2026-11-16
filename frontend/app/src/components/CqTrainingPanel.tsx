@@ -70,6 +70,8 @@ export default function CqTrainingPanel({
   const [focusMode, setFocusMode] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
   const [gapsOpen, setGapsOpen] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(20);
+  const sortTouched = useRef(false);
   const [openCaseId, setOpenCaseId] = useState<string | null>(null);
   const [historyStage, setHistoryStage] = useState('');
   const [caseEvents, setCaseEvents] = useState<CqTimelineItem[]>([]);
@@ -182,10 +184,20 @@ export default function CqTrainingPanel({
     if (sortMode === 'activity') {
       rows.sort((a, b) => String(b.activity_at || '').localeCompare(String(a.activity_at || '')));
     } else if (sortMode === 'case') {
-      rows.sort((a, b) => a.case_id.localeCompare(b.case_id));
+      rows.sort((a, b) => String(a.short_id || a.case_id).localeCompare(String(b.short_id || b.case_id)));
     }
     return rows;
   }, [cases, filter, sortMode]);
+  // #297：无待决时「行动优先」退化成随机——自动切回题号，并注明当前规则。
+  useEffect(() => {
+    if (!sortTouched.current && resume && pendingCases.length === 0 && sortMode === 'action') {
+      setSortMode('case');
+    }
+  }, [resume, pendingCases.length, sortMode]);
+  useEffect(() => {
+    setVisibleLimit(20);
+  }, [filter, sortMode]);
+  const visibleRows = filtered.slice(0, visibleLimit);
   const focusCase = pendingCases[Math.min(focusIndex, Math.max(0, pendingCases.length - 1))];
   const decisionCounts = summary?.decision_counts ?? {
     pending: resume?.counts?.pending ?? 0,
@@ -435,7 +447,10 @@ export default function CqTrainingPanel({
                 <select
                   aria-label="排序"
                   value={sortMode}
-                  onChange={(event) => setSortMode(event.target.value as SortMode)}
+                  onChange={(event) => {
+                    sortTouched.current = true;
+                    setSortMode(event.target.value as SortMode);
+                  }}
                 >
                   <option value="action">行动优先</option>
                   <option value="activity">最近活动</option>
@@ -456,7 +471,7 @@ export default function CqTrainingPanel({
               >
                 全部 {cases.length}
               </button>
-              {STAGES.map((stage) => (
+              {STAGES.filter((stage) => (summary?.stages?.[stage] ?? 0) > 0 || filter === stage).map((stage) => (
                 <button
                   key={stage}
                   type="button"
@@ -473,7 +488,7 @@ export default function CqTrainingPanel({
               <div className="guide-empty-inline">这个阶段没有题。</div>
             ) : (
               <div className="cq-case-board">
-                {filtered.map((item) => (
+                {visibleRows.map((item) => (
                   <Fragment key={item.case_id}>
                     <CaseCard
                       item={item}
@@ -495,6 +510,15 @@ export default function CqTrainingPanel({
                     )}
                   </Fragment>
                 ))}
+                {filtered.length > visibleRows.length && (
+                  <button
+                    type="button"
+                    className="btn secondary cq-load-more"
+                    onClick={() => setVisibleLimit((limit) => limit + 20)}
+                  >
+                    显示更多（剩余 {filtered.length - visibleRows.length} 题）
+                  </button>
+                )}
               </div>
             )}
           </section>
@@ -597,6 +621,8 @@ function CaseCard({
 }
 
 function StageBar({ stage, onSelect }: { stage: string; onSelect: (stage?: string) => void }) {
+  // #296：终态（通过）不再渲染 7 格阶段条，避免 56 格重复表达同一状态。
+  if (stage === 'passed') return null;
   const current = STAGE_BAR.indexOf(stage as (typeof STAGE_BAR)[number]);
   return (
     <div className="cq-stage-bar-wrap">

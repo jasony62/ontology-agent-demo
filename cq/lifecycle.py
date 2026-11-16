@@ -68,7 +68,21 @@ def delivery_verdict(view: dict) -> dict:
     else:
         cqm = 0.0
         optimistic = 0.0
+    if graduated >= target and not failed:
+        verdict = f"达到交付线：{graduated} 题已全部毕业"
+    else:
+        parts = [f"未达交付线：差 {missing} 题毕业"]
+        if unanchored:
+            parts.append(
+                "其中 " + str(len(unanchored)) + " 题未锚定（"
+                + "、".join(f"#{case_id}" for case_id in unanchored[:10])
+                + "），建议改问法或补术语后重跑"
+            )
+        if failed:
+            parts.append(f"{len(failed)} 题回归未通过")
+        verdict = "；".join(parts)
     return {
+        "verdict": verdict,
         "ready": graduated >= target and not failed,
         "target_questions": target,
         "graduated_questions": graduated,

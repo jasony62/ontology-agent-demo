@@ -197,6 +197,7 @@ function stubFetch(
               graduated_questions: 2, target_questions: 20, cqm: 0.1,
               quality: { anchored: 1, validated: 1, answerable: 1, retained: 2, graduated: 2 },
               delivery: {
+                verdict: '未达交付线：差 18 题毕业；其中 1 题未锚定（#Q2），建议改问法或补术语后重跑',
                 ready: false, target_questions: 20, graduated_questions: 2,
                 missing_questions: 18, unanchored_questions: 1,
                 unanchored_cases: (set.cases ?? []).filter((item) => !item.located).map((item) => item.id),
@@ -313,14 +314,16 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(link.getAttribute('href')).toContain('format=markdown');
   });
 
-  it('可答格标注其中未锚定的题数（#260）', async () => {
+  it('质量漏斗把「可答」与「没对上」并排说清（#260 / #294）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
-    const answerable = [...container!.querySelectorAll('.cq-stat')]
-      .find((node) => node.textContent?.startsWith('可答'))!;
-    expect(answerable.textContent).toContain('含 1 题未锚定');
+    const funnel = container!.querySelector('.cq-funnel')!;
+    expect(funnel.textContent).toContain('2 总题数');
+    expect(funnel.textContent).toContain('1 对上本体');
+    expect(funnel.textContent).toContain('1 可答');
+    expect(funnel.textContent).toContain('没对上 1');
   });
 
   it('部分错配与来源未记录都给出可见提示（#266）', async () => {
@@ -557,6 +560,51 @@ describe('CQ 集页（#151 / #203）', () => {
       .some((btn) => btn.textContent === '跑一轮评估')).toBe(true);
   });
 
+  it('四槽位：判定在上、漏斗在中、列表在主体、元信息折叠（#294）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const delivery = container!.querySelector('.cq-delivery')!;
+    const funnel = container!.querySelector('.cq-funnel')!;
+    const list = container!.querySelector('.cq-list')!;
+    expect(delivery.compareDocumentPosition(funnel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(funnel.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const details = container!.querySelector<HTMLDetailsElement>('.cq-quality-detail')!;
+    expect(details).not.toBeNull();
+    expect(details.open).toBe(false);
+    expect(details.querySelector('.cq-meta')).not.toBeNull();
+    expect(details.textContent).toContain('协同指标');
+  });
+
+  it('首次访问只出现一次引导横幅（#295）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+    expect(container!.querySelector('.cq-welcome')).not.toBeNull();
+    const dismiss = [...container!.querySelectorAll<HTMLButtonElement>('.cq-welcome button')]
+      .find((btn) => btn.textContent === '知道了')!;
+    act(() => dismiss.click());
+    expect(window.localStorage.getItem('oa.cq.welcome.v1')).toBe('1');
+    expect(container!.querySelector('.cq-welcome')).toBeNull();
+
+    act(() => root!.unmount());
+    root = createRoot(container!);
+    act(() => root!.render(<CqPage />));
+    await flush();
+    expect(container!.querySelector('.cq-welcome')).toBeNull();
+  });
+
+  it('来源未记录时判定条与 CQM 都带可信度标注（#295）', async () => {
+    stubFetch({ ...SET, provenance: { ...SET.provenance, known: false } });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelector('.cq-delivery')!.textContent).toContain('来源未记录，仅供参考');
+    expect(container!.textContent).toContain('来源未知');
+  });
+
   it('待决数取不到时显示「待决状态未知」，不冒称「没有待决」（#255）', async () => {
     stubFetch(SET, LOCATE, { failResume: true });
     act(() => root!.render(<CqPage />));
@@ -592,15 +640,15 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(strip.textContent).not.toContain('待决状态未知');
   });
 
-  it('顶部只有「题目 / 训练」两个标签，训练标签挂训练现场与时间线', async () => {
+  it('顶部只有「集总览 / 训练」两个标签，训练标签挂训练现场与时间线', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
     const tabs = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['题目', '训练']);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['集总览', '训练']);
     expect(tabs[0].getAttribute('aria-selected')).toBe('true');
-    expect(container!.querySelector('.cq-overview')).not.toBeNull();
+    expect(container!.querySelector('.cq-funnel')).not.toBeNull();
     expect(container!.querySelector('.cq-training-page')).toBeNull();
 
     await act(async () => { tabs[1].click(); });
@@ -620,9 +668,9 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const text = container!.textContent ?? '';
     expect(text).toContain('总题数');
-    expect(text).toContain('已定位');
+    expect(text).toContain('对上本体');
     expect(text).toContain('可答');
-    expect(text).toContain('缺口');
+    expect(text).toContain('没对上');
     // #169：英文码 → 中文显示
     expect(text).toContain('检索类');
     expect(text).toContain('启用');
@@ -970,9 +1018,8 @@ describe('CQ 集页（#151 / #203）', () => {
     const stats = container!.querySelector('.cq-gap-stats')!;
     const labels = [...stats.querySelectorAll('.cq-gap-stat')]
       .map((node) => node.textContent?.replace(/\s+/g, ' ').trim());
-    expect(labels).toEqual([
-      '未锚定 1', '未分型 0', '缺断言 1', '未通过 0', '待审核 0', '已归档 0',
-    ]);
+    // #296 / #297：0 值不占位，只显示真实缺口
+    expect(labels).toEqual(['未锚定 1', '缺断言 1']);
 
     const unattached = [...stats.querySelectorAll<HTMLButtonElement>('.cq-gap-stat')]
       .find((node) => node.textContent?.startsWith('未锚定'))!;
@@ -1082,7 +1129,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).toContain('协同指标');
     expect(text).toContain('决策面填充率');
     expect(text).toContain('demo_cq');
-    expect(container!.querySelector('.cq-meta b')?.getAttribute('title')).toContain('demo_cq');
+    expect(container!.querySelector('.cq-meta')?.textContent).toContain('demo_cq');
   });
 
   it('未对术语时只出现一段业务提示（#224）', async () => {

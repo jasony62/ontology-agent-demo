@@ -462,6 +462,8 @@ def test_review_markdown_export_is_human_readable(client):
     text = res.text
     assert "# CQ 集评审包 — 评审演示" in text
     assert "交付判定" in text
+    assert "## 差距分析" in text
+    assert "目标题量" in text and "建议动作" in text
     assert "## 概览" in text and "## 逐题清单" in text
     assert "#M1" in text and "#M2" in text
     assert "检索类" in text

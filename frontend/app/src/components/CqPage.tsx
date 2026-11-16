@@ -4,6 +4,7 @@ import type { CqAuditEntry, CqCoverageResponse, CqLocateResult, CqMetricsRespons
 import {
   EXPECTED_TYPE_OPTIONS,
   STATUS_OPTIONS,
+  actionLabel,
   actorChannelText,
   actorIcon,
   assertionSummaryText,
@@ -253,23 +254,40 @@ export default function CqPage() {
       ? 'ready'
       : loading ? 'loading' : 'unknown';
   const agentEntry = recentAudit.find((entry) => entry.actor_type === 'agent');
-  const agentText = agentEntry
-    ? `最近${auditActionLabel(agentEntry.action)}${agentEntry.case_id ? ` ${agentEntry.case_id}` : ''} · ${formatLocalTime(agentEntry.ts)}`
-    : `已准备 ${summary?.total ?? 0} 道题，等待你确认或运行评估`;
+  const pendingAgentActions = resumePreview?.next_actions ?? [];
+  const agentText = pendingAgentActions.length > 0
+    ? `待响应 ${pendingAgentActions.length} 项：${pendingAgentActions.map((item) => actionLabel(item.action)).join('、')}`
+    : agentEntry
+      ? `最近${auditActionLabel(agentEntry.action)}${agentEntry.case_id ? ` ${agentEntry.case_id}` : ''} · ${formatLocalTime(agentEntry.ts)}`
+      : data?.updated_at
+        ? `上一版题集更新于 ${formatLocalTime(data.updated_at)}；还没有智能体动作记录`
+        : '还没有智能体动作记录';
   const provenance = data?.provenance;
   const mismatch = Boolean(
     provenance?.stale
     || coverage?.summary?.likely_mismatch
     || (summary && summary.total > 0 && summary.located === 0),
   );
+  const unanchoredCases = cases.filter((item) => !item.located).map((item, index) => (
+    item.id || `第 ${index + 1} 题`
+  ));
+  // #266：部分错配（未锚定占比 > 10% 或 ≥ 2 题）此前落在「沉默区」，现在单独告警。
+  const partialMismatch = !mismatch && Boolean(
+    summary && summary.total > 0
+    && (unanchoredCases.length >= 2 || unanchoredCases.length / summary.total > 0.1),
+  );
   const mismatchText = provenance?.stale
     ? `这份题集是从「${provenance.seed_ontology || '另一个本体'}」播种的，当前加载的是「${provenance.current_ontology || '另一个本体'}」，不能作为成熟度依据。请让智能体按当前本体重新生成题目。`
     : '当前题集与加载的本体可能不是同一套：所有题目都没有命中本体术语。请先确认「当前题集 / 当前领域」是否匹配，或让智能体按当前本体重新生成题目。';
+  const partialMismatchText = summary
+    ? `有 ${unanchoredCases.length} 道题没有对上本体术语（${unanchoredCases.slice(0, 5).map((id) => `#${id}`).join('、')}${unanchoredCases.length > 5 ? ' 等' : ''}），成熟度会偏低；建议改问法或补术语后重跑。`
+    : '';
   const ontologyName = String(health?.ontology || '');
   const ontologyLoadedAt = String(health?.loaded_at || '');
   const domainName = String(health?.domain || '');
   const suiteDisplay = data?.suite ? '默认题集' : '未命名题集';
   const lifecycleSummary = resumePreview?.lifecycle?.summary;
+  const delivery = lifecycleSummary?.delivery ?? null;
   const cqm = lifecycleSummary?.cqm ?? null;
   const graduatedQuestions = lifecycleSummary?.graduated_questions ?? 0;
   const targetQuestions = lifecycleSummary?.target_questions ?? data?.summary?.target_questions ?? 20;
@@ -328,6 +346,11 @@ export default function CqPage() {
           </p>
           <p className="cq-meta">
             当前题集：<b title={data?.suite ? `系统标识：${data.suite}` : ''}>{suiteDisplay}</b>
+            {provenance && !provenance.known && (
+              <span className="cq-badge warn" title="这份题集没有播种来源记录（早于来源校验功能）">
+                来源未记录
+              </span>
+            )}
             {data?.updated_at ? `（更新于 ${formatLocalTime(data.updated_at)}）` : ''}
             {domainName ? <> · 当前领域：<b>{domainName}</b></> : null}
             {ontologyLoadedAt ? <> · 本体加载于 {formatLocalTime(ontologyLoadedAt)}</> : null}
@@ -397,9 +420,18 @@ export default function CqPage() {
                 <details className="cq-export-menu">
                   <summary className="btn secondary">导出 ▾</summary>
                   <div className="cq-export-list">
-                    <a href={api.cqExportUrl('json')} download>导出 JSON</a>
-                    <a href={api.cqExportUrl('cq-test')} download>cq-test（CI）</a>
-                    <a href={api.cqExportUrl('junit')} download>JUnit（测试报告）</a>
+                    <a href={api.cqExportUrl('markdown')} download>
+                      评审包（Markdown）<i>给参会的人看：概览 + 逐题 + 风险 + 待决</i>
+                    </a>
+                    <a href={api.cqExportUrl('json')} download>
+                      导出 JSON<i>给智能体 / 工具做二次处理</i>
+                    </a>
+                    <a href={api.cqExportUrl('cq-test')} download>
+                      cq-test（CI）<i>给 CI 流水线跑回归</i>
+                    </a>
+                    <a href={api.cqExportUrl('junit')} download>
+                      JUnit（测试报告）<i>给测试平台归档</i>
+                    </a>
                   </div>
                 </details>
               </div>
@@ -508,6 +540,36 @@ export default function CqPage() {
               {mismatch && (
                 <div className="error-banner" role="alert">{mismatchText}</div>
               )}
+              {partialMismatch && (
+                <div className="notice-banner warn" role="status">{partialMismatchText}</div>
+              )}
+              {delivery && summary && summary.total > 0 && (
+                <div
+                  className={`cq-delivery${delivery.ready ? ' ok' : ' warn'}`}
+                  role="status"
+                  aria-label="可交付判定"
+                >
+                  <b>{delivery.ready ? '✅ 可交付' : '⚠️ 未达交付线'}</b>
+                  <span>
+                    {delivery.ready
+                      ? `${delivery.graduated_questions} 题已全部毕业，可进入线下评审。`
+                      : `差 ${delivery.missing_questions} 题毕业`}
+                    {!delivery.ready && delivery.unanchored_questions > 0
+                      ? `；其中 ${delivery.unanchored_questions} 题未锚定（${delivery.unanchored_cases.map((id) => `#${id}`).join('、')}），建议改问法或补术语后重跑`
+                      : ''}
+                    {!delivery.ready && delivery.failed_questions > 0
+                      ? `；${delivery.failed_questions} 题回归未通过`
+                      : ''}
+                  </span>
+                  <a
+                    className="btn link"
+                    href={api.cqExportUrl('markdown')}
+                    download
+                  >
+                    导出评审包（Markdown）
+                  </a>
+                </div>
+              )}
               {summary && summary.total > 0 && (
                 <div className="cq-start-guide">
                   <b>从这里开始</b>
@@ -536,13 +598,30 @@ export default function CqPage() {
                     <span>成熟度 CQM</span>
                     <b>{cqmAvailable ? `${Math.round((cqm ?? 0) * 100)}%` : '不可用'}</b>
                     <span className="guide-muted">
-                      已毕业 {graduatedQuestions} / 目标 {targetQuestions} 题
+                      已毕业 {graduatedQuestions} / 目标 {targetQuestions} 题 · 交付线 100%（全部毕业）
                     </span>
                   </div>
+                  {delivery && (
+                    <p className="cq-maturity-gap">
+                      {delivery.ready
+                        ? '已达交付线：全部题都已毕业。'
+                        : `当前差 ${delivery.missing_questions} 题毕业`}
+                      {delivery.unanchored_questions > 0 && !delivery.ready
+                        ? `；把未锚定的 ${delivery.unanchored_questions} 题补齐到毕业 → ${Math.round(delivery.cqm_if_unanchored_fixed * 100)}%`
+                        : ''}
+                    </p>
+                  )}
                   <p className="guide-muted">
-                    目标题量 = 本体关键术语数（当前 {data?.summary?.schema_terms ?? '—'} 个）× 0.5（最低 20），不随删题变化；毕业 = 已锚定 + 已分型 + 有断言 + 回归通过 + 未归档。
+                    目标题量按本体规模估算（当前 {data?.summary?.schema_terms ?? '—'} 个关键术语，最低 20 题），可调，不随删题变化；毕业 = 已锚定 + 已分型 + 有断言 + 回归通过 + 未归档。
                     {!cqmAvailable && mismatch ? ' 当前题集与本体可能不匹配，CQM 暂不可用。' : ''}
+                    {provenance && !provenance.known ? ' 来源未记录（旧题集），成熟度仅供参考。' : ''}
                   </p>
+                  <details className="cq-tech-entry">
+                    <summary className="btn link cq-tech-toggle">目标题量怎么算</summary>
+                    <div className="cq-tech-body">
+                      目标题量 = max(20, 本体关键术语数 × 0.5)。0.5 是初版估算法（待校准），只在技术细节里出现。
+                    </div>
+                  </details>
                   <div className="cq-quality-grid">
                     <span>已锚定 {quality.anchored ?? 0}</span>
                     <span>已分型 {quality.validated ?? 0}</span>
@@ -659,6 +738,9 @@ export default function CqPage() {
                 <div className="cq-stat" title="可答：有回归断言且上次评估通过的题数">
                   <span>可答 <HelpTip text="有回归断言，且上次评估通过的题数；与「缺口」不是互补分类" /></span>
                   <b className="ok">{summary.answerable}</b>
+                  {summary.gap > 0 && (
+                    <em className="cq-stat-note">含 {summary.gap} 题未锚定</em>
+                  )}
                 </div>
                 <div className="cq-stat" title="缺口：未定位到证据的题数（与可答不是互补分类）">
                   <span>缺口 <HelpTip text="未定位到本体证据的题数；它统计「定位」，不统计「回归」，所以和可答不是互补关系" /></span>

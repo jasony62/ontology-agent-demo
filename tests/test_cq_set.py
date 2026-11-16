@@ -435,3 +435,37 @@ def test_cq_api_telemetry_records_calls_and_errors(client):
         event["error_code"] == "http_400" and event["endpoint"].endswith("/cq/export")
         for event in errors
     )
+
+
+def test_review_markdown_export_is_human_readable(client):
+    """#258：导出一份非工程人员能直接拿去开会的评审包。"""
+    payload = {
+        "suite": "评审演示",
+        "version": 1,
+        "cases": [
+            {"id": "M1", "cq": "哪些智能体能执行「登录模块开发」？",
+             "expected_type": "retrieval", "status": "active"},
+            {"id": "M2", "cq": "这条结论凭什么成立？",
+             "expected_type": "retrieval", "status": "active"},
+        ],
+    }
+    imported = client.post(
+        "/api/domains/current/cq/import",
+        files={"file": ("cq_set.json", json.dumps(payload).encode("utf-8"), "application/json")},
+    )
+    assert imported.status_code == 200, imported.text
+
+    res = client.get("/api/domains/current/cq/export?format=markdown")
+    assert res.status_code == 200, res.text
+    assert res.headers["content-type"].startswith("text/markdown")
+    assert "attachment" in res.headers["content-disposition"]
+    text = res.text
+    assert "# CQ 集评审包 — 评审演示" in text
+    assert "交付判定" in text
+    assert "## 概览" in text and "## 逐题清单" in text
+    assert "#M1" in text and "#M2" in text
+    assert "检索类" in text
+    assert "## 风险清单" in text and "未锚定" in text
+    assert "## 待决事项" in text
+    # 不把内部码当结论展示
+    assert "retrieval" not in text

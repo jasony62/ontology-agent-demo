@@ -247,3 +247,37 @@ def test_case_events_includes_current_agenda_item(monkeypatch, tmp_path):
     kinds = [item["kind"] for item in response.json()["items"]]
     assert "decision_agenda" in kinds
 
+
+
+def test_delivery_verdict_counts_missing_and_unanchored():
+    """#258 / #259：交付判定、差多少题、未锚定清单与差距换算同源。"""
+    view = {
+        "summary": {"target_questions": 20, "coverage_light": 0.9, "coverage_real": 1.0},
+        "cases": [
+            {"id": "A", "graduated": True, "located": True, "blockers": []},
+            {"id": "B", "graduated": False, "located": False, "blockers": ["未锚定", "缺断言"]},
+            {"id": "C", "graduated": False, "located": True, "blockers": ["未通过"]},
+        ],
+    }
+    delivery = lifecycle.delivery_verdict(view)
+    assert delivery["ready"] is False
+    assert delivery["graduated_questions"] == 1
+    assert delivery["missing_questions"] == 19
+    assert delivery["unanchored_cases"] == ["B"]
+    assert delivery["unanchored_questions"] == 1
+    assert delivery["failed_cases"] == ["C"]
+    assert delivery["cqm"] == pytest.approx(0.05)
+    assert delivery["cqm_if_unanchored_fixed"] == pytest.approx(0.1)
+
+
+def test_delivery_verdict_ready_when_target_reached():
+    view = {
+        "summary": {"target_questions": 2},
+        "cases": [
+            {"id": "A", "graduated": True, "located": True, "blockers": []},
+            {"id": "B", "graduated": True, "located": True, "blockers": []},
+        ],
+    }
+    delivery = lifecycle.delivery_verdict(view)
+    assert delivery["ready"] is True
+    assert delivery["missing_questions"] == 0

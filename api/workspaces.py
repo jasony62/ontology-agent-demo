@@ -170,6 +170,12 @@ def remove(workspace_id: str) -> None:
     shutil.rmtree(workspace_dir(workspace_id), ignore_errors=True)
 
 
+def remove_source(workspace_id: str) -> None:
+    """#276：只删本体源文件与元数据，保留同目录的 CQ 题集 / 跑分 / 审计 / 训练日志。"""
+    source_path(workspace_id).unlink(missing_ok=True)
+    meta_path(workspace_id).unlink(missing_ok=True)
+
+
 def set_current(workspace_id: str, mode: str = "imported") -> None:
     _write_json(root() / CURRENT_FILE, {"current_id": workspace_id, "mode": mode})
 
@@ -218,6 +224,7 @@ __all__ = [
     "meta_path",
     "read_meta",
     "remove",
+    "remove_source",
     "root",
     "set_current",
     "source_path",

@@ -108,7 +108,7 @@ export default function ImportModal({ onClose, onSynced }: Props) {
           导入后页头会切换为<b>「导入的本体」</b>：结构 / 推理 / 查询 / 依据等通用只读能力可用，
           领域专属推理（能力匹配 / 编排 / 合规检测）不可用。这是一份<b>只读副本</b>：
           可查看与推理，不能新建或覆盖保存；需要修改请先导出。
-          重启服务可回到默认领域。
+          可在页头「清除导入的本体」切回默认领域，无需重启。
         </div>
         <div
           className={`drop-zone ${dragging ? 'dragging' : ''}`}

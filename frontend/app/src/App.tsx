@@ -14,6 +14,7 @@ import ViewModeToggle from './components/ViewModeToggle';
 import InferenceNotice, { NoticeRestoreButton } from './components/InferenceNotice';
 import SourceView from './components/SourceView';
 import ImportModal from './components/ImportModal';
+import ClearImportedModal from './components/ClearImportedModal';
 import ExportDialog from './components/ExportDialog';
 import CreateElementBar from './components/CreateElementBar';
 import OntologyEditor from './components/OntologyEditor';
@@ -48,6 +49,7 @@ export default function App() {
   const ontology = useAppStore((s) => s.ontology);
 
   const [importOpen, setImportOpen] = useState(false);
+  const [clearImportedOpen, setClearImportedOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   // 三个平级页面：图谱工作台 / 当前领域（正式单页，不用弹框）/ CQ 集。
@@ -357,6 +359,11 @@ export default function App() {
           <span className={`health ${backendOk ? 'ok' : ''}`}>{backendOk ? '后端已连接' : '后端未连接'}</span>
           <div className="toolbar header-actions">
             <button onClick={() => setImportOpen(true)}>导入</button>
+            {ontologyMode === 'imported' && (
+              <button onClick={() => setClearImportedOpen(true)} title="退出导入态，或按粒度清理磁盘数据（不会误删 CQ 题库）">
+                清除导入的本体
+              </button>
+            )}
             <button onClick={() => setExportOpen(true)}>导出</button>
             <button onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>
             {/* 编辑入口只在工作区：右侧面板 Tab 条 / 40px 图标条 / 窄屏标签页，页头不再重复一份 */}
@@ -368,6 +375,9 @@ export default function App() {
             <button type="button" className="menu-nav-item" onClick={gotoGuide}>当前领域</button>
             <button type="button" className="menu-nav-item" onClick={gotoCq}>CQ 集</button>
             <button type="button" onClick={() => setImportOpen(true)}>导入本体</button>
+            {ontologyMode === 'imported' && (
+              <button type="button" onClick={() => setClearImportedOpen(true)}>清除导入的本体</button>
+            )}
             <button type="button" onClick={() => setExportOpen(true)}>导出本体</button>
             <button type="button" onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>
             <a href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
@@ -464,6 +474,12 @@ export default function App() {
       {importOpen && (
         <ImportModal
           onClose={() => setImportOpen(false)}
+          onSynced={loadWorkspace}
+        />
+      )}
+      {clearImportedOpen && (
+        <ClearImportedModal
+          onClose={() => setClearImportedOpen(false)}
           onSynced={loadWorkspace}
         />
       )}

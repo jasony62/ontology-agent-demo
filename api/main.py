@@ -39,6 +39,7 @@
 """
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -3098,6 +3099,229 @@ def activate_domain(name: str = ApiPath(..., description="已安装领域包名�
     workspaces.clear_current()
     return {"status": "ok", "domain": handle.name, "loaded_at": handle.loaded_at,
             "capabilities": handle.capabilities, "triples": len(handle.engine.g)}
+
+
+# ---------------- 导入工作区与清除（#276） ----------------
+
+_WORKSPACE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_LOGIC_COUNT_FILES = {
+    "audit": "cq_set.audit.jsonl",
+    "metrics": "metrics.jsonl",
+    "training_log": "training_log.jsonl",
+}
+
+
+def _workspace_id_or_404(workspace_id: str) -> str:
+    """只接受受限字符集，路径穿越（../）与超长 id 一律 404。"""
+    if not _WORKSPACE_ID.fullmatch(str(workspace_id or "")):
+        raise HTTPException(status_code=404, detail="工作区不存在")
+    return workspace_id
+
+
+def _count_lines(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    try:
+        return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+    except OSError:
+        return 0
+
+
+def _workspace_summary(meta: dict, current_id: str | None) -> dict:
+    """#276 R2：工作区详情 + 附属工件统计（只读，不触发 CQ 播种）。"""
+    workspace_id = str(meta.get("id") or "")
+    directory = workspaces.workspace_dir(workspace_id)
+    source = directory / workspaces.SOURCE_FILE
+    cq_cases = 0
+    cq_set = directory / "cq_set.json"
+    if cq_set.is_file():
+        try:
+            data = json.loads(cq_set.read_text(encoding="utf-8"))
+            cq_cases = len(data.get("cases") or []) if isinstance(data, dict) else 0
+        except (OSError, ValueError):
+            cq_cases = 0
+    runs = len(list((directory / "runs").glob("*.json"))) if (directory / "runs").is_dir() else 0
+    return {
+        "id": workspace_id,
+        "display_name": meta.get("display_name") or workspace_id,
+        "original_filename": meta.get("original_filename"),
+        "imported_at": meta.get("imported_at"),
+        "current": workspace_id == current_id,
+        "source_bytes": source.stat().st_size if source.is_file() else 0,
+        "cq_cases": cq_cases,
+        "runs": runs,
+        "audit_lines": _count_lines(directory / _LOGIC_COUNT_FILES["audit"]),
+        "metrics_lines": _count_lines(directory / _LOGIC_COUNT_FILES["metrics"]),
+        "training_log_lines": _count_lines(directory / _LOGIC_COUNT_FILES["training_log"]),
+    }
+
+
+def _default_domain_name() -> str:
+    """#276 R7：退出导入态要回到哪个领域；不新增配置项。"""
+    installed = DOMAINS.installed()
+    configured = DOMAINS.settings.effective_default() or DOMAINS.settings.default
+    if configured and configured in installed:
+        return configured
+    if installed:
+        return installed[0]
+    raise HTTPException(status_code=400, detail="没有可回退的已安装领域包")
+
+
+def _exit_imported_if_current(workspace_id: str) -> bool:
+    """若该工作区正是当前导入态，先切回默认领域并清指针；返回是否切换过。"""
+    current = (workspaces.get_current() or {}).get("current_id")
+    if current != workspace_id:
+        return False
+    default = _default_domain_name()
+    try:
+        DOMAINS.activate(default)
+    except (DomainContractError, DomainNotFoundError, ValueError, OSError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"切回默认领域失败（当前状态未改变）：{exc}",
+        )
+    workspaces.clear_current()
+    return True
+
+
+@app.get(
+    "/api/ontology/workspaces",
+    tags=["本体管理"],
+    summary="导入的工作区清单",
+    responses={200: {"model": OpenEnvelope, "description": "全部导入工作区（含 CQ 题数 / 跑分次数 / 日志条数）与当前工作区 id。"}},
+)
+def list_workspace_endpoint():
+    """#276 R1：只读列出历史导入工作区，删不删由用户逐个决定。"""
+    current_id = (workspaces.get_current() or {}).get("current_id")
+    return {
+        "current": current_id,
+        "workspaces": [
+            _workspace_summary(meta, current_id)
+            for meta in workspaces.list_workspaces()
+        ],
+    }
+
+
+@app.get(
+    "/api/ontology/workspaces/{workspace_id}",
+    tags=["本体管理"],
+    summary="导入工作区详情",
+    responses={200: {"model": OpenEnvelope, "description": "单个工作区的本体大小与附属工件统计。"}, **ERROR_400},
+)
+def workspace_detail_endpoint(
+    workspace_id: str = ApiPath(..., description="工作区 id（GET /api/ontology/workspaces 返回的 id）"),
+):
+    """#276 R2：确认弹窗的数据来源。不存在的 id / 路径穿越返回 404。"""
+    workspace_id = _workspace_id_or_404(workspace_id)
+    meta = workspaces.read_meta(workspace_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="工作区不存在")
+    current_id = (workspaces.get_current() or {}).get("current_id")
+    return _workspace_summary(meta, current_id)
+
+
+@app.post(
+    "/api/ontology/exit-imported",
+    tags=["本体管理"],
+    summary="退出导入态并切回默认领域",
+    responses={200: {"model": OpenEnvelope, "description": "切换结果；不删除任何磁盘文件。"}, **ERROR_400},
+)
+def exit_imported_endpoint():
+    """#276 R3：最小可交付闭环——不删文件，只切领域并清重启指针。"""
+    handle = DOMAINS.current()
+    if not handle.is_imported:
+        return {"status": "ok", "exited": False, "domain": handle.name}
+    workspace_id = (workspaces.get_current() or {}).get("current_id") or ""
+    default = _default_domain_name()
+    try:
+        switched = DOMAINS.activate(default)
+    except (DomainContractError, DomainNotFoundError, ValueError, OSError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"切回默认领域失败（当前状态未改变）：{exc}",
+        )
+    workspaces.clear_current()
+    if workspace_id:
+        cq_store.record_audit(
+            workspace_id, "exit_import",
+            after={"domain": switched.name, "workspace": workspace_id},
+        )
+    return {
+        "status": "ok",
+        "exited": True,
+        "domain": switched.name,
+        "loaded_at": switched.loaded_at,
+        "workspace": workspace_id,
+    }
+
+
+@app.delete(
+    "/api/ontology/workspaces/{workspace_id}/source",
+    tags=["本体管理"],
+    summary="只删导入的本体源文件（保留 CQ 题库）",
+    responses={200: {"model": OpenEnvelope, "description": "删除范围与保留范围。"}, **ERROR_400},
+)
+def delete_workspace_source_endpoint(
+    workspace_id: str = ApiPath(..., description="工作区 id；当前导入态会先自动退出导入"),
+):
+    """#276 R4：默认粒度——清本体不清题库。"""
+    workspace_id = _workspace_id_or_404(workspace_id)
+    meta = workspaces.read_meta(workspace_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="工作区不存在")
+    summary = _workspace_summary(meta, (workspaces.get_current() or {}).get("current_id"))
+    exited = _exit_imported_if_current(workspace_id)
+    cq_store.record_audit(
+        workspace_id, "workspace_source_delete",
+        after={
+            "scope": "source", "workspace": workspace_id,
+            "display_name": summary["display_name"],
+            "kept_cq_cases": summary["cq_cases"],
+        },
+    )
+    workspaces.remove_source(workspace_id)
+    return {
+        "status": "ok", "exited": exited, "workspace": workspace_id,
+        "deleted": ["source.owl", "meta.json"],
+        "kept": ["cq_set.json", "runs/", "cq_set.audit.jsonl", "metrics.jsonl", "training_log.jsonl"],
+    }
+
+
+@app.delete(
+    "/api/ontology/workspaces/{workspace_id}",
+    tags=["本体管理"],
+    summary="删除整个导入工作区（须显式 cascade_cq）",
+    responses={200: {"model": OpenEnvelope, "description": "删除范围与审计落点。"}, **ERROR_400},
+)
+def delete_workspace_endpoint(
+    workspace_id: str = ApiPath(..., description="工作区 id；当前导入态会先自动退出导入"),
+    cascade_cq: bool = Query(
+        False,
+        description="必须显式 true 才允许连同 CQ 题集 / 跑分 / 审计一起删除。",
+    ),
+):
+    """#276 R5：全删是危险动作，默认拒绝，先让人看清会带走什么。"""
+    workspace_id = _workspace_id_or_404(workspace_id)
+    meta = workspaces.read_meta(workspace_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="工作区不存在")
+    summary = _workspace_summary(meta, (workspaces.get_current() or {}).get("current_id"))
+    if not cascade_cq:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"该工作区含 {summary['cq_cases']} 道 CQ 题、{summary['runs']} 次跑分记录；"
+                "要连同这些一起删除请显式传 cascade_cq=true，否则请用「仅删本体源文件」。"
+            ),
+        )
+    exited = _exit_imported_if_current(workspace_id)
+    audit_target = _default_domain_name()
+    cq_store.record_audit(
+        audit_target, "workspace_delete",
+        after={"scope": "all", "workspace": workspace_id, **summary},
+    )
+    workspaces.remove(workspace_id)
+    return {"status": "ok", "exited": exited, "workspace": workspace_id, "audit": audit_target}
 
 
 @app.get(

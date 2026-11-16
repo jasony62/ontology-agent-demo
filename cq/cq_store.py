@@ -227,6 +227,23 @@ def _audit(
         handle.write(json.dumps(line, ensure_ascii=False) + "\n")
 
 
+def record_audit(
+    ontology_id: str,
+    action: str,
+    *,
+    actor_type: str = "human",
+    actor: str = "web",
+    case_id: str | None = None,
+    before: dict | None = None,
+    after: dict | None = None,
+) -> None:
+    """公开的审计写入（#276）：本体工作区生命周期事件复用同一份格式。"""
+    _audit(
+        ontology_id, action, actor_type=actor_type, actor=actor,
+        case_id=case_id, before=before, after=after,
+    )
+
+
 def _ensure_ids(cases: list) -> bool:
     """给缺少稳定 id 的 case 补 uuid；返回是否有改动（#154）。"""
     changed = False
@@ -1070,6 +1087,7 @@ __all__ = [
     "ontology_fingerprint",
     "provenance_view",
     "read_metrics",
+    "record_audit",
     "read_set",
     "record_metric",
     "set_fingerprint_provider",

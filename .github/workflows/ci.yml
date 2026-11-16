@@ -22,6 +22,11 @@ jobs:
         run: pip install -r requirements.txt "pytest>=8.0"
       - name: Run tests
         run: python -m pytest tests/ -q
+      # #247：CQ 护栏发布门禁。数据成熟前（干净检出没有任何 CQ 样本）保持
+      # continue-on-error，避免把「无样本」误判为发布失败；有超阈数据时 step 会红。
+      - name: CQ guardrails (publish gate)
+        continue-on-error: true
+        run: python scripts/check_cq_guardrails.py
 
   frontend:
     runs-on: ubuntu-latest

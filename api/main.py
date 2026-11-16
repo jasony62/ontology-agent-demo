@@ -161,6 +161,12 @@ ADAPTER = DOMAINS.adapter
 DOMAIN_NAME = DOMAINS.name
 ENGINE_LOADED_AT = DOMAINS.loaded_at
 
+# #245：CQ 播种时记「来源本体」的身份指纹。cq_store 不 import 引擎，由宿主注册
+# 一个动态取当前领域的 lambda；热切换后无需重新注册。
+cq_store.set_fingerprint_provider(
+    lambda: cq_store.ontology_fingerprint(DOMAINS.engine)
+)
+
 
 _SYNCED_VERSION = -1
 
@@ -371,6 +377,50 @@ async def _domain_sync_middleware(request, call_next):
     """
     _sync_runtime()
     return await call_next(request)
+
+
+CQ_API_PREFIX = "/api/domains/current/cq/"
+
+
+def _record_cq_api_call(path: str, status: int, duration_ms: float) -> None:
+    """CQ 接口调用埋点（#247）：成功记 cq_api_call，失败再记 cq_api_error。
+
+    只落盘、不改响应；任何异常都吞掉——观测不能拖垮业务接口。分母只数
+    cq_api_call，避免「错误事件自己进了分母」把报错率稀释。
+    """
+    try:
+        ontology_id, _ = _cq_identity()
+        payload = {
+            "endpoint": path,
+            "status": status,
+            "ok": status < 400,
+            "duration_ms": round(duration_ms, 1),
+        }
+        cq_store.record_metric(ontology_id, "cq_api_call", payload)
+        if status >= 400:
+            cq_store.record_metric(ontology_id, "cq_api_error", {
+                "endpoint": path,
+                "status": status,
+                "error_code": f"http_{status}",
+            })
+    except Exception:  # noqa: BLE001 —— 观测失败不影响接口
+        return
+
+
+@app.middleware("http")
+async def _cq_telemetry_middleware(request, call_next):
+    """CQ 接口调用 / 失败埋点（#247）；只覆盖 `/cq/` 前缀。"""
+    path = request.url.path
+    if not path.startswith(CQ_API_PREFIX):
+        return await call_next(request)
+    started = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        _record_cq_api_call(path, status, (time.perf_counter() - started) * 1000)
 
 
 @app.middleware("http")
@@ -1949,7 +1999,8 @@ def _cq_identity() -> tuple[str, Path | None]:
             "model": OpenEnvelope,
             "description": (
                 "当前本体挂载的 CQ 集：suite / version / ontology_id / "
-                "summary（两档覆盖率）/ cases（含逐题 located / answerable / location）。"
+                "provenance（播种来源与是否 stale）/ summary（两档覆盖率）/ "
+                "cases（含逐题 located / answerable / location）。"
             ),
         },
     },

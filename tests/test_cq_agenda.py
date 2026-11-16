@@ -195,3 +195,16 @@ def test_item_for_rebuilds_only_known_agenda_ids(ws):
         training_service.decide("agent_task", "feedback", {
             "decision_id": "ag-term-missing", "option": "调整问法后保留",
         }, source="direct")
+
+
+def test_quoted_title_is_not_wrapped_twice(ws):
+    """#249：题干自带书名号时不再加外层，避免「「…」」嵌套。"""
+    items = agenda.build_agenda(_engine(), "agent_task")
+    texts = " ".join(
+        str(item.get(key) or "")
+        for item in items
+        for key in ("background", "question", "reason")
+    )
+    assert "「「" not in texts
+    assert "」」" not in texts
+    assert "「敏感数据报表开发」" in texts

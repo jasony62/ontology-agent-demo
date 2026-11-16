@@ -17,12 +17,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+
+from rdflib import OWL, RDF
 
 from api import workspaces
 from cq.constants import (
@@ -41,9 +44,78 @@ AUDIT_FILE = "cq_set.audit.jsonl"
 RUNS_DIR = "runs"
 METRICS_FILE = "metrics.jsonl"
 
+# 宿主（api / mcp）启动时注册「当前本体身份」提供者：cq_store 不 import engine，
+# 也不认领域；播种时调用一次拿指纹，运行期换领域后由宿主 lambda 再取当前引擎。
+_FINGERPRINT_PROVIDER = None
+
+
+def set_fingerprint_provider(provider) -> None:
+    """注册当前本体的指纹提供者（返回 dict 或 None）；传 None 可清除。"""
+    global _FINGERPRINT_PROVIDER
+    _FINGERPRINT_PROVIDER = provider
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def ontology_fingerprint(engine) -> dict:
+    """本体身份指纹：名称 + `owl:Ontology` IRI。
+
+    只做**身份**哈希，不做内容哈希——否则任何一次本体编辑都会把题集判成
+    「来自另一个本体」，告警天天响。判等要的是「还是不是同一份本体」，
+    不是「内容有没有变」。
+    """
+    path = getattr(engine, "onto_path", None)
+    label = os.path.basename(str(path)) if path else ""
+    base_iri = ""
+    graph = getattr(engine, "g", None)
+    if graph is not None:
+        try:
+            subject = next(graph.subjects(RDF.type, OWL.Ontology), None)
+            if subject is not None:
+                base_iri = str(subject)
+        except Exception:  # noqa: BLE001 —— 指纹失败不该挡住读写
+            base_iri = ""
+    digest = hashlib.sha256(f"{label}\n{base_iri}".encode("utf-8")).hexdigest()
+    return {"label": label, "base_iri": base_iri, "digest": digest}
+
+
+def _current_ontology_fingerprint() -> dict | None:
+    provider = _FINGERPRINT_PROVIDER
+    if provider is None:
+        return None
+    try:
+        value = provider()
+    except Exception:  # noqa: BLE001
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def provenance_view(engine, seeded_from) -> dict:
+    """题集来源对照：种它的本体 vs 现在加载的本体（#245）。
+
+    `stale=True` 时页面必须告警、CQM 不可用；`known=False` 表示没有来源记录
+    （人工导入 / 老数据），此时不误报，只是「无法判断」。
+    """
+    seeded = seeded_from if isinstance(seeded_from, dict) else None
+    current = ontology_fingerprint(engine) if engine is not None else {
+        "label": "", "base_iri": "", "digest": "",
+    }
+    seed_digest = str((seeded or {}).get("ontology_digest") or "")
+    stale = bool(
+        seed_digest and current.get("digest") and seed_digest != current["digest"]
+    )
+    return {
+        "known": bool(seeded) and bool(seed_digest),
+        "stale": stale,
+        "seed_domain": (seeded or {}).get("domain"),
+        "seed_ontology": (seeded or {}).get("ontology_label"),
+        "seed_base_iri": (seeded or {}).get("ontology_base_iri"),
+        "seeded_at": (seeded or {}).get("seeded_at"),
+        "current_ontology": current.get("label"),
+        "current_base_iri": current.get("base_iri"),
+    }
 
 
 def empty_set() -> dict:
@@ -82,7 +154,28 @@ def _summary(case: dict | None) -> dict | None:
         "cq": case.get("cq"),
         "expected_type": case.get("expected_type"),
         "status": case.get("status"),
+        # #245：删除时刻的毕业快照，留存率护栏只认这一份（见 graduated_snapshot）
+        "graduated": graduated_snapshot(case),
     }
+
+
+def graduated_snapshot(case: dict) -> bool:
+    """「这一刻是否已毕业」的快照（#245 毕业留存率用）。
+
+    与 `build_view` 的 blockers 口径**有意不同**：审计只落集内字段，没有本次
+    定位结果，所以这里用「已分型 + 有断言 + 上次评估通过 + 未归档」判定，
+    不含锚点复核。CQM 仍以 `build_view` 的五条件为准，两者不要互相替代。
+    """
+    if not isinstance(case, dict):
+        return False
+    if _display_expected_type(case.get("expected_type")) == EXPECTED_TYPE_UNKNOWN:
+        return False
+    if _display_status(case.get("status")) == "archived":
+        return False
+    if _regression(case) is None:
+        return False
+    cache = case.get("coverage_cache") if isinstance(case.get("coverage_cache"), dict) else {}
+    return str(cache.get("earl") or "") == "pass"
 
 
 def _audit(
@@ -314,6 +407,14 @@ def save_set(
     }
     if mark_updated:
         payload["updated_at"] = _now()
+    # #245：人工保存 / 单题增删改不携带来源时，沿用磁盘上已记的播种来源；
+    # 整集导入视为新集，来源重置（无法证明它来自当前本体）。
+    seeded_from = data.get("seeded_from")
+    if (not isinstance(seeded_from, dict) or not seeded_from) and action != "import":
+        stored = _read_json(set_path(ontology_id)) or {}
+        seeded_from = stored.get("seeded_from")
+    if isinstance(seeded_from, dict) and seeded_from:
+        payload["seeded_from"] = seeded_from
     _write_set(ontology_id, payload)
     _audit(
         ontology_id, action, actor_type=actor_type, actor=actor,
@@ -323,13 +424,24 @@ def save_set(
 
 
 def get_set(ontology_id: str, seed_path: Path | None = None) -> dict:
-    """读当前集（纯读）；工作区内没有时从领域包 `cq_tests.json` 播种。"""
+    """读当前集；工作区内没有时从领域包 `cq_tests.json` 播种（#245 带来源）。"""
     stored = _read_json(set_path(ontology_id))
     if stored is not None:
         return stored
     seeded = _read_json(seed_path) if seed_path is not None else None
     if seeded is not None:
-        save_set(ontology_id, seeded, mark_updated=False, actor="system")
+        seeded = dict(seeded)
+        fingerprint = _current_ontology_fingerprint() or {}
+        seeded["seeded_from"] = {
+            "domain": ontology_id,
+            "seed_version": seeded.get("version", 1),
+            "seeded_at": _now(),
+            # 宿主未注册提供者（例如纯 cq 模块单测）时留空 → 只记「不知道来源」
+            "ontology_label": fingerprint.get("label", ""),
+            "ontology_base_iri": fingerprint.get("base_iri", ""),
+            "ontology_digest": fingerprint.get("digest", ""),
+        }
+        save_set(ontology_id, seeded, mark_updated=False, actor="system", action="seed")
         return seeded
     return empty_set()
 
@@ -548,6 +660,24 @@ def record_metric(ontology_id: str, event: str, payload: dict) -> None:
         }, ensure_ascii=False) + "\n")
 
 
+def read_metrics(ontology_id: str) -> list[dict]:
+    """按行读 metrics.jsonl（坏行跳过）；护栏聚合与脚本共用同一读取口径。"""
+    path = metrics_path(ontology_id)
+    if not path.is_file():
+        return []
+    events: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(item, dict):
+            events.append(item)
+    return events
+
+
 def record_run_cache(ontology_id: str, run: dict) -> dict:
     """把本次回归结论写回每题 coverage_cache，让 coverage_real 反映真实结果。"""
     data = get_set(ontology_id)
@@ -663,6 +793,8 @@ def build_view(engine, data: dict) -> dict:
         "suite": data.get("suite") or "",
         "version": data.get("version", 1),
         "updated_at": data.get("updated_at"),
+        # #245：播种来源与当前本体的对照（stale 时页面告警 + CQM 不可用）
+        "provenance": provenance_view(engine, data.get("seeded_from")),
         "summary": {
             "total": total,
             "by_type": dict(sorted(by_type.items())),
@@ -756,11 +888,16 @@ __all__ = [
     "export_junit",
     "export_text",
     "get_set",
+    "graduated_snapshot",
     "import_set",
     "list_runs",
     "metrics_path",
+    "ontology_fingerprint",
+    "provenance_view",
+    "read_metrics",
     "read_set",
     "record_metric",
+    "set_fingerprint_provider",
     "record_run_cache",
     "runs_dir",
     "save_run",

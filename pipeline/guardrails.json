@@ -1,0 +1,6 @@
+{
+  "_comment": "CQ 护栏发布门禁阈值（#247）。error 类取上限，其余取下限；无数据源的项跳过、不算通过。",
+  "tool_error_rate_max": 0.02,
+  "graduation_retention_min": 0.9,
+  "cq_test_ci_rate_min": 0.9
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { CqTimelineItem } from '../api/client';
+import { formatLocalTime } from '../lib/time';
 
 interface IterationArchive {
   iteration_id?: string;
@@ -66,7 +67,7 @@ export default function CqIterationPage() {
                 <span className={`guide-badge ${pending ? 'warn' : 'ok'}`}>
                   {pending ? '待人审' : '已接受'}
                 </span>
-                <time>{archive.created_at || '—'}</time>
+                <time>{formatLocalTime(archive.created_at)}</time>
               </div>
               <p className="cq-iteration-business">
                 {archive.business_translation || '（缺少业务话翻译）'}

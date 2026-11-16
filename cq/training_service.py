@@ -406,9 +406,21 @@ def _parse_ts(value: str) -> datetime | None:
         return None
 
 
-def context_gaps(ontology_id: str, state: dict, last_regression: dict | None) -> list[dict]:
+def context_gaps(
+    ontology_id: str,
+    state: dict,
+    last_regression: dict | None,
+    question_count: int | None = None,
+) -> list[dict]:
     gaps: list[dict] = []
     events = _events(ontology_id)
+
+    # G7（#245）：题集为空 → 智能体按当前本体生成候选题，人不写题干
+    if question_count == 0:
+        gaps.append({
+            "gap_type": "G7", "object": "cq_set",
+            "suggestion": "当前题集为空：请智能体按当前本体生成候选题（领导模式「请求智能体生成候选题」）",
+        })
 
     # G1：上轮回归失败，之后没有归因结论
     if last_regression and int(last_regression.get("fail") or 0) > 0:
@@ -524,7 +536,8 @@ def resume(
     events = _events(ontology_id)
     state = _project(ontology_id, events)
     last_regression = (cq_store.list_runs(ontology_id, limit=1) or [None])[0]
-    gaps = context_gaps(ontology_id, state, last_regression)
+    question_count = int((view.get("summary") or {}).get("total") or 0)
+    gaps = context_gaps(ontology_id, state, last_regression, question_count)
     # #207：议程由智能体侧的生成器推导，读接口只负责合并与透传。
     items = agenda.build_agenda(engine, ontology_id, seed_path, view=view, state=state)
     pending = list(state["pending_decisions"]) + items
@@ -561,7 +574,12 @@ def resume(
         "agenda": items,
         "lifecycle": board,
         "context_gaps": gaps,
-        "next_suggested": _next_suggested(state, gaps, pending),
+        "next_suggested": (
+            {"action": "generate_cases", "count": 0,
+             "text": "当前题集为空：请智能体按当前本体生成候选题"}
+            if question_count == 0
+            else _next_suggested(state, gaps, pending)
+        ),
     }
     if depth == "full":
         result["history"] = timeline(ontology_id, since=since, kinds=kinds, limit=limit)["items"]
@@ -877,6 +895,14 @@ def auto_case_event(
 
 
 def auto_regression_event(ontology_id: str, run: dict, run_ref: str) -> None:
+    """回归落盘留痕：操作者取自 run 本身（#248）。
+
+    两个调用方（REST 回归端点 / MCP `cq_regression`）都会先给 run 写上真实
+    操作者；这里不再硬编码 agent/mcp，否则人在网页点的回归会被算成智能体干的，
+    往返轮次与采纳率从源头失真。拿不到身份时显式标 unknown，不替任何一方代签。
+    """
+    actor_type = str(run.get("actor_type") or "unknown")
+    actor = str(run.get("actor") or "unknown")
     try:
         _append(ontology_id, "regression_run", {
             "run_ref": run_ref,
@@ -885,7 +911,7 @@ def auto_regression_event(ontology_id: str, run: dict, run_ref: str) -> None:
             "fail": int(run.get("fail") or 0),
             "cannot_tell": int(run.get("cannot_tell") or 0),
             "not_tested": int(run.get("not_tested") or 0),
-        }, actor_type="agent", actor="mcp")
+        }, actor_type=actor_type, actor=actor)
     except Exception:  # noqa: BLE001
         return
 
@@ -913,6 +939,13 @@ def metrics_for(engine, ontology_id: str, seed_path=None) -> dict:
         events,
         lifecycle_summary=board["summary"],
         view_summary=view["summary"],
+        # #247：护栏统一从 guardrails 读同一份数据源（metrics.jsonl / 审计 / 题集）
+        cases=[
+            {"id": case.get("id"), "graduated": bool(case.get("graduated"))}
+            for case in view.get("cases") or []
+        ],
+        audit=cq_store.read_audit(ontology_id, limit=100000),
+        metrics_events=cq_store.read_metrics(ontology_id),
     )
 
 

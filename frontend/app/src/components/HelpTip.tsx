@@ -1,8 +1,9 @@
-/** 行内术语帮助：hover / 读屏可读，只放业务解释。 */
+/** 行内术语帮助：hover 与键盘 focus 都显示自带浮层，只放业务解释。 */
 export default function HelpTip({ text }: { text: string }) {
   return (
-    <span className="cq-help" title={text} aria-label={text}>
+    <button type="button" className="cq-help" aria-label={text}>
       ?
-    </span>
+      <span className="cq-help-pop" role="tooltip">{text}</span>
+    </button>
   );
 }

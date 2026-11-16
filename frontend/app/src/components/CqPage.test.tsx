@@ -11,6 +11,7 @@ const SET = {
   ontology_id: 'ws-1',
   suite: 'demo_cq',
   version: 1,
+  updated_at: '2026-11-15T00:01:00+00:00',
   summary: {
     total: 2,
     by_type: { set: 2 },
@@ -33,6 +34,7 @@ const SET = {
       location: { coverage: 'has_candidates', evidence: 2, anchors: 1 },
       regression: { query: 'ASK { ?s ?p ?o }', expect: true },
       coverage_cache: { conclusion: 2, ran_at: '2026-11-14T09:00:00' },
+      blockers: [],
     },
     {
       id: 'Q2',
@@ -42,8 +44,13 @@ const SET = {
       located: false,
       answerable: false,
       location: { coverage: 'gap', evidence: 0, anchors: 0 },
+      blockers: ['未锚定', '缺断言'],
     },
   ],
+  provenance: {
+    known: true, stale: false, seed_domain: 'agent_task',
+    seed_ontology: 'agent_task_ontology.owl', current_ontology: 'agent_task_ontology.owl',
+  },
 };
 
 const LOCATE = {
@@ -222,8 +229,8 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-overview')).toBeNull();
     expect(container!.querySelector('.cq-training-live')?.textContent).toContain('训练现场');
     expect(container!.querySelector('.cq-training-log')?.textContent).toContain('全局事件（历史）');
-    // 训练标签没有题目侧的写入入口（新增题目 / 运行评估 / 导入导出）
-    expect(container!.querySelector('.cq-toolbar-actions')).toBeNull();
+    // 训练标签没有题目侧的写入入口（新增题目 / 跑一轮评估 / 导入导出）
+    expect(container!.querySelector('.cq-tool-group.writes')).toBeNull();
   });
 
   it('打开即见概览看板与列表；选中题目显示定位证据与上次可答', async () => {
@@ -406,19 +413,112 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-mention-coverage')).toBeNull();
   });
 
-  it('工具栏「运行评估」调用回归端点并提示通过数（#156）', async () => {
+  it('工具栏「跑一轮评估」先说明后果、确认后调用回归端点（#156 / #250 R3）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const run = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '运行评估')!;
+      .find((button) => button.textContent === '跑一轮评估')!;
+    await act(async () => { run.click(); });
+    await flush();
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('跑全部 2 道题'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('不改本体，也不改题干和断言'));
+    const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/cq/regression/run'));
+    expect(call).toBeTruthy();
+    expect(container!.textContent).toContain('评估完成：1/2 通过');
+    confirm.mockRestore();
+  });
+
+  it('取消确认时不会发起评估（#250 R3）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const run = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '跑一轮评估')!;
     await act(async () => { run.click(); });
     await flush();
 
     const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/cq/regression/run'));
-    expect(call).toBeTruthy();
-    expect(container!.textContent).toContain('评估完成：1/2 通过');
+    expect(call).toBeFalsy();
+    confirm.mockRestore();
+  });
+
+  it('顶部工具栏分成四组，导出收进一个下拉（#250 R1）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const labels = [...container!.querySelectorAll('.cq-tool-group-label')]
+      .map((node) => node.textContent);
+    expect(labels).toEqual(['视图', '视角', '只读工具', '写操作']);
+    expect(container!.querySelector('.cq-export-menu')).not.toBeNull();
+    const links = [...container!.querySelectorAll<HTMLAnchorElement>('.cq-export-list a')];
+    expect(links.map((link) => link.textContent)).toEqual([
+      '导出 JSON', 'cq-test（CI）', 'JUnit（测试报告）',
+    ]);
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/api/domains/current/cq/export?format=json',
+      '/api/domains/current/cq/export?format=cq-test',
+      '/api/domains/current/cq/export?format=junit',
+    ]);
+  });
+
+  it('「变更记录」面板说明用途且只读（#250 R2）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const button = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((node) => node.textContent === '变更记录')!;
+    await act(async () => { button.click(); });
+    await flush();
+
+    const panel = container!.querySelector('.cq-audit')!;
+    expect(panel.textContent).toContain('谁在什么时候增删改了哪道题');
+    expect(panel.textContent).toContain('只读');
+    expect(panel.querySelector('input, textarea')).toBeNull();
+    expect(container!.textContent).toContain('收起变更记录');
+  });
+
+  it('整体状态给出五项缺口统计，点击可按 blocker 筛题（#250 R6）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const stats = container!.querySelector('.cq-gap-stats')!;
+    const labels = [...stats.querySelectorAll('.cq-gap-stat')]
+      .map((node) => node.textContent?.replace(/\s+/g, ' ').trim());
+    expect(labels).toEqual([
+      '未锚定 1', '未分型 0', '缺断言 1', '未通过 0', '已归档 0',
+    ]);
+
+    const unattached = [...stats.querySelectorAll<HTMLButtonElement>('.cq-gap-stat')]
+      .find((node) => node.textContent?.startsWith('未锚定'))!;
+    act(() => unattached.click());
+    const rows = [...container!.querySelectorAll('.cq-list .cq-row')];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('这条结论凭什么成立');
+    expect(container!.querySelector('.cq-list-head')!.textContent).toContain('还差「未锚定」');
+
+    const reset = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((node) => node.textContent === '显示全部')!;
+    act(() => reset.click());
+    expect(container!.querySelectorAll('.cq-list .cq-row')).toHaveLength(2);
+  });
+
+  it('时间统一显示本地格式且不带时区后缀（#250 R5）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const meta = container!.querySelector('.cq-meta')!.textContent ?? '';
+    expect(meta).toMatch(/更新于 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+    expect(meta).not.toContain('T00:');
   });
 
   it('术语说明可展开，覆盖首屏行话（#233）', async () => {
@@ -435,6 +535,33 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(panel.textContent).toContain('可答');
     expect(panel.textContent).toContain('熔断');
     expect(panel.textContent).toContain('意图待确认');
+  });
+
+  it('题集来源与当前本体不一致时告警且 CQM 不可用（#245）', async () => {
+    stubFetch({
+      ...SET,
+      provenance: {
+        known: true, stale: true,
+        seed_domain: 'agent_task', seed_ontology: '旧本体.owl',
+        current_ontology: 'agent_task_ontology.owl',
+      },
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.textContent).toContain('这份题集是从「旧本体.owl」播种的');
+    expect(container!.textContent).toContain('不能作为成熟度依据');
+    expect(container!.querySelector('.cq-maturity')!.textContent).toContain('不可用');
+  });
+
+  it('「？」提示自带浮层，文案在读屏与浮层里都可读（#250 R4）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const tip = container!.querySelector<HTMLButtonElement>('.cq-help')!;
+    expect(tip.getAttribute('aria-label')).toContain('本体需要回答的题数');
+    expect(tip.querySelector('.cq-help-pop')?.textContent).toContain('本体需要回答的题数');
   });
 
   it('题集与本体全部未命中时显式告警（#232）', async () => {
@@ -457,6 +584,7 @@ describe('CQ 集页（#151 / #203）', () => {
         id: 'Q3', cq: 'NonCompliantPackage 属于什么？', expected_type: 'retrieval',
         status: 'active', located: true, answerable: false,
         location: { coverage: 'has_candidates', evidence: 1, anchors: 1 },
+        blockers: ['未通过'],
       }],
     });
     act(() => root!.render(<CqPage />));

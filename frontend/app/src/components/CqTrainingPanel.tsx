@@ -467,7 +467,7 @@ export default function CqTrainingPanel({
                     {openCaseId === item.case_id && (
                       <CaseHistory
                         key={`${item.case_id}-${historyStage}`}
-                        caseId={item.case_id}
+                        caseId={item.short_id || item.case_id}
                         title={item.cq}
                         items={caseEvents}
                         loading={eventsLoading}
@@ -534,7 +534,7 @@ function CaseCard({
   return (
     <article className={`cq-case-card stage-${item.stage}${focus ? ' focus' : ''}`}>
       <div className="cq-case-card-head">
-        <span className="cq-case-id" title={`题目 ID：${item.case_id}`}>#{item.ordinal ?? item.case_id}</span>
+        <span className="cq-case-id" title={`题目 ID：${item.case_id}`}>#{item.short_id || item.ordinal || item.case_id}</span>
         <h4>{plainCopy(item.cq) || '未命名题目'}</h4>
         <span className={`cq-stage-badge stage-${item.stage}`}>{item.stage_label}</span>
         {item.graduated && <span className="cq-badge ok">已毕业</span>}
@@ -553,7 +553,7 @@ function CaseCard({
       {decision ? (
         <DecisionCard
           decision={decision}
-          caseId={item.case_id}
+          caseId={item.short_id || item.case_id}
           caseTitle={item.cq}
           busy={busy === decision.decision_id}
           onSubmit={onSubmit}

@@ -255,6 +255,36 @@ def record_audit(
     )
 
 
+def short_id_for(index: int) -> str:
+    """稳定短号（#289）：Q01、Q02…；排序变化不改，哈希只作机器字段。"""
+    return f"Q{index:02d}" if index < 100 else f"Q{index}"
+
+
+def _ensure_short_ids(cases: list) -> None:
+    """给缺短号的题补稳定短号；已有短号一律保留（不因排序 / 删除重排）。"""
+    used: set[str] = set()
+    highest = 0
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        current = str(case.get("short_id") or "").strip()
+        if current.startswith("Q") and current[1:].isdigit():
+            used.add(current)
+            highest = max(highest, int(current[1:]))
+    # 不复用已删除的号：新号总取最大号 + 1，避免评审引用撞车。
+    next_number = highest + 1 if highest else 1
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        if str(case.get("short_id") or "").strip():
+            continue
+        while short_id_for(next_number) in used:
+            next_number += 1
+        case["short_id"] = short_id_for(next_number)
+        used.add(case["short_id"])
+        next_number += 1
+
+
 def _ensure_ids(cases: list) -> bool:
     """给缺少稳定 id 的 case 补 uuid；返回是否有改动（#154）。"""
     changed = False
@@ -313,7 +343,7 @@ def assertion_summary(regression: dict | None) -> str:
 
 # CQ 题目的合法字段（#180/#181）：只保留真正被消费的字段。
 _CASE_FIELDS = {
-    "id", "cq", "expected_type", "status", "requirement",
+    "id", "short_id", "cq", "expected_type", "status", "requirement",
     "regression", "rule", "coverage_cache",
     # #285：审核门控字段；缺省 = 免审（存量题零影响）。
     "review",
@@ -563,6 +593,7 @@ def save_set(
     # 复制一份再改写（审核自动重置 / 补 id），不污染调用方传入的 dict。
     cases = [dict(item) for item in validated]
     _ensure_ids(cases)
+    _ensure_short_ids(cases)
     previous = _read_json(set_path(ontology_id)) or {}
     if action != "import":
         _apply_review_reset(previous, cases)
@@ -795,11 +826,15 @@ def add_case(
     if not str(item.get("cq") or "").strip():
         raise ValueError("题目缺少非空 cq 题干")
     cases.append(item)
-    save_set(
+    saved = save_set(
         ontology_id, data, actor_type=actor_type, actor=actor,
         action="add", case_id=item["id"], after=_summary(item),
     )
-    return item
+    # 返回真正落盘的那份（含服务端补的 short_id）。
+    return next(
+        (case for case in saved.get("cases") or [] if case.get("id") == item["id"]),
+        item,
+    )
 
 
 def update_case(
@@ -1008,6 +1043,7 @@ def build_view(engine, data: dict) -> dict:
             answerable += 1
         enriched.append({
             **case,
+            "short_id": str(case.get("short_id") or short_id_for(len(enriched) + 1)),
             "expected_type": expected_type,
             "status": status,
             "regression": regression,
@@ -1083,15 +1119,15 @@ def export_review_markdown(
     provenance = view.get("provenance") or {}
     cases = [case for case in view.get("cases") or [] if isinstance(case, dict)]
     pending = [item for item in (pending_decisions or []) if isinstance(item, dict)]
-    suite = str(view.get("suite") or "").strip() or "默认题集"
+    suite = str(view.get("suite") or "").strip() or "未命名题集"
     stamp = generated_at or _now()
 
     def cell(value) -> str:
         text = str(value if value is not None else "").strip()
         return text.replace("|", "\\|").replace("\n", " ") or "—"
 
-    def case_ref(case_id: str) -> str:
-        return f"#{case_id}" if case_id else "—"
+    def case_ref(case_id: str, short_id: str = "") -> str:
+        return f"#{short_id or case_id}" if (short_id or case_id) else "—"
 
     if provenance.get("stale"):
         source_text = (
@@ -1150,7 +1186,8 @@ def export_review_markdown(
             "回归通过" if case.get("answerable") else "未答"
         )
         lines.append(
-            f"| {index} | {case_ref(str(case.get('id') or ''))} | {cell(case.get('cq'))} "
+            f"| {index} | {case_ref(str(case.get('id') or ''), str(case.get('short_id') or ''))} "
+            f"| {cell(case.get('cq'))} "
             f"| {cell(EXPECTED_TYPE_LABELS.get(str(case.get('expected_type') or ''), '未分型'))} "
             f"| {conclusion} | {cell(_review_label(case.get('review')))} "
             f"| {cell(' / '.join(blockers) or '—')} |"

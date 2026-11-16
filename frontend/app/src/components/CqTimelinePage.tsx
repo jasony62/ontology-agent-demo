@@ -130,7 +130,7 @@ export default function CqTimelinePage({
                       className="btn link"
                       onClick={() => onOpenCase(item.case_id as string)}
                     >
-                      看涉题 {item.case_id}
+                      看涉题 #{item.short_id || item.case_id}
                     </button>
                   )}
                 </div>

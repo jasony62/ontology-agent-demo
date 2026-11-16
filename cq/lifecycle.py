@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 
 from cq import training_state
+from cq.cq_store import short_id_for
 
 # 看板阶段条（顺序固定）；followup 单独徽标，不塞进线性阶段。
 STAGE_BAR = ("authored", "regression", "pending", "resolved", "fixing", "passed")
@@ -257,6 +258,7 @@ def build_lifecycle(
         ]
         row = {
             "case_id": case_id,
+            "short_id": str(case.get("short_id") or short_id_for(ordinal)),
             "ordinal": ordinal,
             "cq": case.get("cq") or "",
             "status": case.get("status"),

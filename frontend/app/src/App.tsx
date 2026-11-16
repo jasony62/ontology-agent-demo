@@ -81,7 +81,7 @@ export default function App() {
     const onHashChange = () => {
       const hash = window.location.hash;
       if (hash === '#guide') setPage('guide');
-      else if (hash === '#cq') setPage('cq');
+      else if (hash === '#cq' || hash.startsWith('#cq/')) setPage('cq');
       else setPage('graph');
     };
     window.addEventListener('hashchange', onHashChange);

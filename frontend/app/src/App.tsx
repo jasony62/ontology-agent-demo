@@ -287,7 +287,7 @@ export default function App() {
         {/* #134 R1：页头三段式、恒定单行——左品牌 + 页面入口 / 中领域上下文（可压缩）/ 右动作 + 状态 */}
         <div className="app-brand">
           <h1>本体图谱工作台</h1>
-          <span className="app-sub">OWL 2 RL 推理 API</span>
+          <span className="app-sub">本体推理 · OWL 2 RL</span>
         </div>
         {/* 三个平级入口：内容区整页替换，不弹框、不加遮罩（#203 导航 5→3） */}
         <nav className="app-nav" aria-label="页面切换">

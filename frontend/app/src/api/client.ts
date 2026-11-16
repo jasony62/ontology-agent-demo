@@ -787,6 +787,17 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  /** 标记机器行动完成 / 失败 / 取消（#264：人可取消自己发起的请求） */
+  cqActionComplete: (actionId: string, status: 'done' | 'failed' | 'cancelled', note = '') =>
+    request<{ ok: boolean; event: unknown }>(
+      `/api/domains/current/cq/actions/${encodeURIComponent(actionId)}/complete`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, note }),
+      },
+    ),
+
   /** 单题事件流（#219）：时间正序的题卷 */
   cqCaseEvents: (caseId: string, limit = 500) =>
     request<{ ontology_id: string; case_id: string; items: CqTimelineItem[] }>(

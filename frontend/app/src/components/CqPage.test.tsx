@@ -100,6 +100,7 @@ function stubFetch(
     hangResume?: boolean;
     pending?: number;
     auditEntries?: boolean;
+    agentActions?: Array<Record<string, unknown>>;
   } = {},
 ) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -120,6 +121,12 @@ function stubFetch(
           cqm: 0.1, quality: { anchored: 1, graduated: 2 },
           counts: {}, guardrails: {}, sources: {},
         }),
+      } as unknown as Response;
+    }
+    if (url.includes('/cq/actions/') && url.endsWith('/complete') && method === 'POST') {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ok: true, event: { event: 'action_completed' } }),
       } as unknown as Response;
     }
     if (url.includes('/cq/cases/request') && method === 'POST') {
@@ -174,7 +181,7 @@ function stubFetch(
             },
             cases: [],
           },
-          next_actions: [],
+          next_actions: options.agentActions ?? [],
           context_gaps: [], next_suggested: { action: 'none', count: 0, text: '本轮没有待决' },
         }),
       } as unknown as Response;
@@ -208,6 +215,25 @@ function stubFetch(
     }
     if (url.includes('/cq/set')) {
       return { ok: true, status: 200, json: async () => set } as unknown as Response;
+    }
+    if (url.endsWith('/api/health')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          status: 'ok', domain: 'agent_task',
+          ontology: 'agent_task_ontology.owl',
+          loaded_at: '2026-11-16T07:21:21+00:00',
+        }),
+      } as unknown as Response;
+    }
+    if (url.endsWith('/api/domains')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          current: 'agent_task', name: 'agent_task', display_name: '智能体任务',
+          root: '', installed: ['agent_task'], mode: 'domain',
+        }),
+      } as unknown as Response;
     }
     return { ok: false, status: 404, json: async () => ({ detail: 'no' }) } as unknown as Response;
   }));
@@ -300,6 +326,84 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(agent.textContent).not.toContain('等待你确认或运行评估');
   });
 
+  it('请求智能体后常驻等待状态，可催可取消（#264）', async () => {
+    const requestedAt = new Date(Date.now() - 9 * 3_600_000).toISOString();
+    stubFetch(SET, LOCATE, {
+      agentActions: [{
+        action_id: 'a1', action: 'generate_cases', status: 'pending',
+        requested_at: requestedAt,
+      }],
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const wait = container!.querySelector('.cq-waiting')!;
+    expect(wait.textContent).toContain('等待智能体');
+    expect(wait.textContent).toContain('生成候选题');
+    expect(wait.textContent).toContain('已等待 9 小时');
+
+    const urge = [...wait.querySelectorAll<HTMLButtonElement>('button')]
+      .find((btn) => btn.textContent === '催一下')!;
+    await act(async () => { urge.click(); });
+    await flush();
+    const urgeCall = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/cases/request') && String(init?.method) === 'POST');
+    expect(urgeCall).toBeTruthy();
+    expect(String((urgeCall![1] as RequestInit).body)).toContain('催促');
+
+    const cancel = [...container!.querySelectorAll<HTMLButtonElement>('.cq-waiting button')]
+      .find((btn) => btn.textContent === '取消请求')!;
+    await act(async () => { cancel.click(); });
+    await flush();
+    const cancelCall = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/actions/a1/complete') && String(init?.method) === 'POST')!;
+    expect(cancelCall).toBeTruthy();
+    expect(JSON.parse(String((cancelCall[1] as RequestInit).body)))
+      .toMatchObject({ status: 'cancelled' });
+  });
+
+  it('领导模式隐藏质量盲区，定位证据只给一句人话（#268）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelector('.cq-mention-coverage')).toBeNull();
+    expect(container!.textContent).toContain('对上 1 个术语、1 条证据。');
+    expect(container!.textContent).not.toContain('命中 1 条证据（结论性 0 条）');
+
+    const expert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((btn) => btn.textContent === '专家模式')!;
+    await act(async () => { expert.click(); });
+    await flush();
+    expect(container!.querySelector('.cq-mention-coverage')).not.toBeNull();
+    expect(container!.textContent).toContain('命中 1 条证据（结论性 0 条）');
+  });
+
+  it('总题数与时间口径改成业务能读懂的说明（#269）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('总题数');
+    expect(text).not.toContain('承诺');
+    expect(text).toContain('题集更新于');
+    expect(text).toContain('含导入 / 编辑时间');
+    expect(text).toContain('本体加载于');
+    expect(text).toContain('服务启动时间');
+    // 领域显示中文名，不再露 snake_case
+    expect(text).toContain('当前领域：智能体任务');
+    expect(text).not.toContain('当前领域：agent_task');
+  });
+
+  it('成熟度未返回时用等高骨架屏占位，避免首屏跳动（#271）', async () => {
+    stubFetch(SET, LOCATE, { hangResume: true });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelector('.cq-maturity-skeleton')).not.toBeNull();
+  });
+
   it('待决数取不到时显示「待决状态未知」，不冒称「没有待决」（#255）', async () => {
     stubFetch(SET, LOCATE, { failResume: true });
     act(() => root!.render(<CqPage />));
@@ -351,7 +455,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
     expect(container!.querySelector('.cq-overview')).toBeNull();
     expect(container!.querySelector('.cq-training-live')?.textContent).toContain('训练现场');
-    expect(container!.querySelector('.cq-training-log')?.textContent).toContain('全局事件（历史）');
+    expect(container!.querySelector('.cq-training-log')?.textContent).toContain('全部事件记录');
     // 训练标签没有题目侧的写入入口（新增题目 / 跑一轮评估 / 导入导出）
     expect(container!.querySelector('.cq-tool-group.writes')).toBeNull();
   });
@@ -362,7 +466,7 @@ describe('CQ 集页（#151 / #203）', () => {
     await flush();
 
     const text = container!.textContent ?? '';
-    expect(text).toContain('承诺');
+    expect(text).toContain('总题数');
     expect(text).toContain('已定位');
     expect(text).toContain('可答');
     expect(text).toContain('缺口');
@@ -687,8 +791,8 @@ describe('CQ 集页（#151 / #203）', () => {
     await flush();
 
     const tip = container!.querySelector<HTMLButtonElement>('.cq-help')!;
-    expect(tip.getAttribute('aria-label')).toContain('本体需要回答的题数');
-    expect(tip.querySelector('.cq-help-pop')?.textContent).toContain('本体需要回答的题数');
+    expect(tip.getAttribute('aria-label')).toContain('CQ 成熟度');
+    expect(tip.querySelector('.cq-help-pop')?.textContent).toContain('已毕业题数 ÷ 目标题量');
   });
 
   it('题集与本体全部未命中时显式告警（#232）', async () => {

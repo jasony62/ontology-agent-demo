@@ -15,7 +15,7 @@
 ├── examples/            # 领域包源，domain install 的来源
 │   ├── agent_task/      #   完整领域（7 能力 / R2 R4 / 9 个 MCP 工具）
 │   └── _minimal/        #   最小骨架（零 CLI 复制的验收物）
-├── api/                 # FastAPI REST 服务（api/main.py，53 个端点）
+├── api/                 # FastAPI REST 服务（api/main.py，54 个端点）
 ├── mcp/                 # MCP Server（/mcp/ontology：领域 10 + 通用 15；/mcp/cq：CQ 18）
 ├── frontend/            # 前端
 │   ├── index.html       #   旧单页（回退）

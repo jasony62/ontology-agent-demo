@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { CqAuditEntry, CqCoverageResponse, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse } from '../api/client';
+import type { CqAuditEntry, CqCoverageResponse, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse, DomainInfo } from '../api/client';
 import {
   EXPECTED_TYPE_OPTIONS,
   STATUS_OPTIONS,
@@ -53,6 +53,8 @@ export default function CqPage() {
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [resumePreview, setResumePreview] = useState<CqResumeResponse | null>(null);
   const [resumeFailed, setResumeFailed] = useState(false);
+  // #269 / R22：领域显示名（有中文标签时领导模式不露 snake_case 标识符）。
+  const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null);
   // #255：辅助取数失败不再静默——汇总成一条可关闭、可重试的警告条。
   const [partialErrors, setPartialErrors] = useState<string[]>([]);
   const [recentAudit, setRecentAudit] = useState<CqAuditEntry[]>([]);
@@ -70,8 +72,8 @@ export default function CqPage() {
       const next = await api.cqSet();
       setData(next);
       setSelected((current) => current ?? (next.cases[0] ? caseKey(next.cases[0], 0) : null));
-      const [healthResult, resumeResult, auditResult, metricsResult, coverageResult] = await Promise.allSettled([
-        api.health(), api.cqResume(), api.cqAudit(5), api.cqMetrics(), api.cqCoverage(),
+      const [healthResult, resumeResult, auditResult, metricsResult, coverageResult, domainsResult] = await Promise.allSettled([
+        api.health(), api.cqResume(), api.cqAudit(5), api.cqMetrics(), api.cqCoverage(), api.domains(),
       ]);
       const failed: string[] = [];
       if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
@@ -84,6 +86,8 @@ export default function CqPage() {
       else failed.push('协同指标');
       if (coverageResult.status === 'fulfilled') setCoverage(coverageResult.value);
       else failed.push('覆盖检查');
+      if (domainsResult.status === 'fulfilled') setDomainInfo(domainsResult.value);
+      else failed.push('领域信息');
       try {
         const history = await api.cqRuns();
         setRuns(history.runs);
@@ -101,6 +105,36 @@ export default function CqPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // #264：请求发出后要能看见「在等谁、等多久」，并能催 / 取消。
+  const [actionBusy, setActionBusy] = useState(false);
+  const urgeAgent = useCallback(async () => {
+    setActionBusy(true);
+    setError(null);
+    try {
+      await api.cqRequestCases({ note: '（催促）请尽快生成候选题' });
+      setNotice('已再次提醒智能体；生成后在这里会显示进度。');
+      await load();
+    } catch (e) {
+      setError(`提醒失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, [load]);
+
+  const cancelRequest = useCallback(async (actionId: string) => {
+    setActionBusy(true);
+    setError(null);
+    try {
+      await api.cqActionComplete(actionId, 'cancelled', '人已取消请求');
+      setNotice('已取消这次请求；需要时再让智能体生成。');
+      await load();
+    } catch (e) {
+      setError(`取消失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setActionBusy(false);
+    }
+  }, [load]);
 
   const cases = useMemo(() => data?.cases ?? [], [data]);
   const current = useMemo(() => {
@@ -284,7 +318,15 @@ export default function CqPage() {
     : '';
   const ontologyName = String(health?.ontology || '');
   const ontologyLoadedAt = String(health?.loaded_at || '');
-  const domainName = String(health?.domain || '');
+  const domainName = String(health?.domain || domainInfo?.name || '');
+  const domainLabel = domainInfo?.display_name || domainName;
+  const domainCode = String(domainInfo?.name || health?.domain || '');
+  const pendingActions = resumePreview?.next_actions ?? [];
+  const waitingHours = pendingActions.reduce((max, item) => {
+    const started = Date.parse(String(item.requested_at || ''));
+    if (Number.isNaN(started)) return max;
+    return Math.max(max, Math.floor((Date.now() - started) / 3_600_000));
+  }, 0);
   const suiteDisplay = data?.suite ? '默认题集' : '未命名题集';
   const lifecycleSummary = resumePreview?.lifecycle?.summary;
   const delivery = lifecycleSummary?.delivery ?? null;
@@ -342,7 +384,7 @@ export default function CqPage() {
           <p className="guide-muted">
             {tab === 'cases'
               ? '这些题能不能被本体验证、上次评估是否通过。'
-              : '每题走到生命周期哪一段、需要你做什么；待决卡直接回答，题卡内可下钻完整轨迹，下区是全局历史。'}
+              : '每题走到生命周期哪一段、需要你做什么；待决卡直接回答，题卡内可下钻完整轨迹，下区是全部事件记录。'}
           </p>
           <p className="cq-meta">
             当前题集：<b title={data?.suite ? `系统标识：${data.suite}` : ''}>{suiteDisplay}</b>
@@ -351,9 +393,11 @@ export default function CqPage() {
                 来源未记录
               </span>
             )}
-            {data?.updated_at ? `（更新于 ${formatLocalTime(data.updated_at)}）` : ''}
-            {domainName ? <> · 当前领域：<b>{domainName}</b></> : null}
-            {ontologyLoadedAt ? <> · 本体加载于 {formatLocalTime(ontologyLoadedAt)}</> : null}
+            {data?.updated_at ? `（题集更新于 ${formatLocalTime(data.updated_at)}，含导入 / 编辑时间）` : ''}
+            {domainLabel ? (
+              <> · 当前领域：<b title={domainCode && domainCode !== domainLabel ? `系统标识：${domainCode}` : ''}>{domainLabel}</b></>
+            ) : null}
+            {ontologyLoadedAt ? <> · 本体加载于 {formatLocalTime(ontologyLoadedAt)}（服务启动时间）</> : null}
             {ontologyName ? <span className="cq-meta-tech" title={ontologyName}>（本体文件见技术细节）</span> : null}
           </p>
         </div>
@@ -506,6 +550,32 @@ export default function CqPage() {
               <button type="button" className="btn link" onClick={() => setPartialErrors([])}>知道了</button>
             </div>
           )}
+          {pendingActions.length > 0 && (
+            <div className="cq-waiting" role="status" aria-label="等待智能体">
+              <b>⏳ 等待智能体</b>
+              <span>
+                {pendingActions.map((item) => actionLabel(item.action)).join('、')}
+                {waitingHours >= 1 ? ` · 已等待 ${waitingHours} 小时` : ' · 刚刚请求'}
+                {' · 未响应'}
+              </span>
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={actionBusy}
+                onClick={() => void urgeAgent()}
+              >
+                催一下
+              </button>
+              <button
+                type="button"
+                className="btn link"
+                disabled={actionBusy}
+                onClick={() => void cancelRequest(pendingActions[0].action_id)}
+              >
+                取消请求
+              </button>
+            </div>
+          )}
 
           {data && (
             <>
@@ -592,10 +662,20 @@ export default function CqPage() {
                 </div>
               )}
 
+              {!lifecycleSummary && loading && (
+                <section className="cq-maturity cq-maturity-skeleton" aria-hidden="true">
+                  <div className="cq-skeleton-line" />
+                  <div className="cq-skeleton-line short" />
+                </section>
+              )}
+
               {lifecycleSummary && (
                 <section className="cq-maturity" aria-label="成熟度">
                   <div className="cq-maturity-main">
-                    <span>成熟度 CQM</span>
+                    <span>
+                      成熟度 CQM
+                      <HelpTip text="CQ 成熟度：已毕业题数 ÷ 目标题量；100% 即全部毕业。" />
+                    </span>
                     <b>{cqmAvailable ? `${Math.round((cqm ?? 0) * 100)}%` : '不可用'}</b>
                     <span className="guide-muted">
                       已毕业 {graduatedQuestions} / 目标 {targetQuestions} 题 · 交付线 100%（全部毕业）
@@ -623,11 +703,17 @@ export default function CqPage() {
                     </div>
                   </details>
                   <div className="cq-quality-grid">
-                    <span>已锚定 {quality.anchored ?? 0}</span>
+                    <span>
+                      已锚定 <HelpTip text="题干能对上本体术语、并查到至少一条证据的题数。" />
+                      {quality.anchored ?? 0}
+                    </span>
                     <span>已分型 {quality.validated ?? 0}</span>
                     <span>可答 {quality.answerable ?? 0}</span>
                     <span>留存 {quality.retained ?? 0}</span>
-                    <span>毕业 {quality.graduated ?? 0}</span>
+                    <span>
+                      毕业 <HelpTip text="已锚定 + 已分型 + 有断言 + 回归通过 + 未归档；全部题毕业才算可交付。" />
+                      {quality.graduated ?? 0}
+                    </span>
                   </div>
                 </section>
               )}
@@ -727,8 +813,8 @@ export default function CqPage() {
           ) : (
             <>
               <div className="cq-overview">
-                <div className="cq-stat" title="承诺：本体需要回答的题数">
-                  <span>承诺 <HelpTip text="本体需要回答的题数（CQ 集里的题目总数）" /></span>
+                <div className="cq-stat" title="总题数：CQ 集里的题目总数">
+                  <span>总题数</span>
                   <b>{summary.total}</b>
                 </div>
                 <div className="cq-stat" title="已定位：题干能对上本体术语并查到证据的题数">
@@ -747,13 +833,13 @@ export default function CqPage() {
                   <b className={summary.gap > 0 ? 'warn' : ''}>{summary.gap}</b>
                 </div>
                 <div className="cq-coverage">
-                  <div className="cq-coverage-row" title="定位覆盖 = 已定位题数 ÷ 承诺题数">
-                    <span>定位覆盖（有证据）<HelpTip text="已定位题数 ÷ 承诺题数，和左侧「已定位 / 承诺」同一口径" /></span>
+                  <div className="cq-coverage-row" title="定位覆盖 = 已定位题数 ÷ 总题数">
+                    <span>定位覆盖（有证据）<HelpTip text="已定位题数 ÷ 总题数，和左侧「已定位 / 总题数」同一口径" /></span>
                     <div className="cq-bar"><i style={{ width: `${locatedPct}%` }} /></div>
                     <b>{locatedPct}%</b>
                   </div>
-                  <div className="cq-coverage-row" title="可答覆盖 = 可答题数 ÷ 承诺题数">
-                    <span>可答覆盖（回归通过）<HelpTip text="可答题数 ÷ 承诺题数；只有跑过评估且通过才计入" /></span>
+                  <div className="cq-coverage-row" title="可答覆盖 = 可答题数 ÷ 总题数">
+                    <span>可答覆盖（回归通过）<HelpTip text="可答题数 ÷ 总题数；只有跑过评估且通过才计入" /></span>
                     <div className="cq-bar real"><i style={{ width: `${answerablePct}%` }} /></div>
                     <b>{answerablePct}%</b>
                   </div>
@@ -961,6 +1047,16 @@ const GUARDRAIL_LABELS: Record<string, string> = {
   graduation_retention: '毕业留存率',
   cq_test_ci_rate: 'cq-test 纳入 CI 率',
 };
+
+/** #268：领导模式下的一句话定位结论，不含工程术语，长度 ≤ 30 字。 */
+function locateSummary(locate: CqLocateResult): string {
+  const anchors = locate.anchors?.length ?? 0;
+  const total = Number(locate.counts?.total ?? locate.evidence?.length ?? 0);
+  if (locate.coverage === 'scattered') return '对上了术语，但证据比较散。';
+  if (!anchors) return '还没对上本体里的术语。';
+  if (locate.coverage === 'gap' || total === 0) return '对上了术语，但还没有证据。';
+  return `对上 ${anchors} 个术语、${total} 条证据。`;
+}
 
 function percentOrNA(value?: number | null): string {
   return typeof value === 'number' ? `${Math.round(value * 100)}%` : '—';
@@ -1221,7 +1317,7 @@ function CqDetail({
       <div className="cq-kv">
         <div><span>题型</span><b>{expectedTypeLabel(item.expected_type)}</b></div>
         <div><span>状态</span><b>{statusLabel(item.status)}</b></div>
-        <div><span>来源需求</span><b>{item.requirement || '—'}</b></div>
+        <div><span>来自哪个需求</span><b>{item.requirement || '—'}</b></div>
       </div>
 
       <section className="cq-section">
@@ -1241,7 +1337,9 @@ function CqDetail({
                 这道题能对上本体术语，但暂时查不到证据；可以让智能体补数据或调整问法。
               </div>
             ) : (
-              <p className="guide-muted">{locate.hint}</p>
+              <p className="guide-muted">
+                {viewMode === 'leader' ? locateSummary(locate) : locate.hint}
+              </p>
             )}
             {locate.anchors.length > 0 && (
               <p className="guide-muted">

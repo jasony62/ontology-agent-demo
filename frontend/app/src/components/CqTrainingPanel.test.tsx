@@ -67,6 +67,10 @@ const RESUME: CqResumeResponse = {
       iterations: [],
     }],
   },
+  next_actions: [{
+    action_id: 'a1', action: 'generate_cases', status: 'pending',
+    requested_at: '2026-11-16T00:25:48+00:00',
+  }],
   context_gaps: [{ gap_type: 'G1', object: 'last_regression', suggestion: '补一条归因结论（attribution_conclusion）' }],
   next_suggested: { action: 'close_gaps', count: 1, text: '先补齐 1 项缺口（见 context_gaps）' },
 };
@@ -74,7 +78,7 @@ const RESUME: CqResumeResponse = {
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
-function stubFetch(resume: CqResumeResponse = RESUME) {
+function stubFetch(resume: CqResumeResponse = RESUME, options: { failResume?: boolean } = {}) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = String(init?.method || 'GET').toUpperCase();
@@ -98,6 +102,9 @@ function stubFetch(resume: CqResumeResponse = RESUME) {
       } as unknown as Response;
     }
     if (url.includes('/cq/resume')) {
+      if (options.failResume) {
+        return { ok: false, status: 500, json: async () => ({ detail: '现场读取失败' }) } as unknown as Response;
+      }
       return { ok: true, status: 200, json: async () => resume } as unknown as Response;
     }
     return { ok: false, status: 404, json: async () => ({ detail: 'no' }) } as unknown as Response;
@@ -186,6 +193,8 @@ describe('训练现场（#198 / #203）', () => {
     const confirm = container!.querySelector('.cq-decision-confirm')!;
     expect(confirm.textContent).toContain('不可撤销');
     expect(confirm.textContent).toContain('采纳推荐');
+    // #271 / R23：确认条出现后焦点落在「确认提交」，键盘用户可直接回车
+    expect(document.activeElement?.textContent).toBe('确认提交');
     expect(vi.mocked(fetch).mock.calls.some(([url, init]) =>
       String(url).includes('/cq/decision') && String(init?.method) === 'POST')).toBe(false);
 
@@ -364,19 +373,19 @@ describe('训练现场（#198 / #203）', () => {
     expect(focus.querySelectorAll('.cq-case-card')).toHaveLength(1);
   });
 
-  it('题卡可下钻「这道题的卷」，主体与阶段可筛（#219 / V12）', async () => {
+  it('题卡可下钻「这道题的记录」，主体与阶段可筛（#219 / V12）', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
 
     const historyButton = [...container!.querySelectorAll<HTMLButtonElement>('.cq-case-card button')]
-      .find((button) => button.textContent === '看这道题的事件流')!;
+      .find((button) => button.textContent === '看这道题的记录')!;
     await act(async () => { historyButton.click(); });
     await flush();
 
     const history = container!.querySelector('.cq-case-history')!;
     expect(history).not.toBeNull();
-    expect(history.textContent).toContain('这道题的卷');
+    expect(history.textContent).toContain('这道题的记录');
     expect(history.textContent).toContain('提问：期望口径是什么？');
     expect(history.textContent).toContain('反馈：就是 A');
     expect(history.textContent).toContain('智能体');
@@ -435,6 +444,38 @@ describe('训练现场（#198 / #203）', () => {
     expect(body).toMatchObject({ option: 'B', conclusion: 'reject' });
   });
 
+  it('训练页顶部显示智能体待办，熔断未触发不占统计格（#264 / #270）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('智能体待办 1 项');
+    expect(text).toContain('生成候选题');
+    expect(text).toContain('流程正常 · 熔断未触发');
+    // 0 值统计弱化，不与真实数据同权重
+    expect(container!.querySelectorAll('.cq-training-stat.zero').length).toBeGreaterThan(0);
+  });
+
+  it('现场读取失败时有可见错误与重试（#271）', async () => {
+    stubFetch(RESUME, { failResume: true });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('现场读取失败');
+    const retry = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((btn) => btn.textContent === '重试')!;
+    expect(retry).toBeTruthy();
+    const before = vi.mocked(fetch).mock.calls
+      .filter(([url]) => String(url).includes('/cq/resume')).length;
+    await act(async () => { retry.click(); });
+    await flush();
+    const after = vi.mocked(fetch).mock.calls
+      .filter(([url]) => String(url).includes('/cq/resume')).length;
+    expect(after).toBeGreaterThan(before);
+  });
+
   it('决策卡首行给出题号与题干片段，两张同问句也能区分（#257）', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));
@@ -467,7 +508,7 @@ describe('训练现场（#198 / #203）', () => {
     await flush();
 
     const historyButton = [...container!.querySelectorAll<HTMLButtonElement>('.cq-case-card button')]
-      .find((button) => button.textContent === '看这道题的事件流')!;
+      .find((button) => button.textContent === '看这道题的记录')!;
     await act(async () => { historyButton.click(); });
     await flush();
     const history = container!.querySelector('.cq-case-history')!;

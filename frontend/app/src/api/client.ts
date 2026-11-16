@@ -121,19 +121,41 @@ export interface SaveModelResponse {
   materialized: MaterializedResponse;
 }
 
+/** #280：保留结构化 detail，便于前端按 code 做定向提示（如 review_pending）。 */
+export class ApiError extends Error {
+  status?: number;
+  code?: string;
+  detail?: unknown;
+
+  constructor(message: string, options: { status?: number; code?: string; detail?: unknown } = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = options.status;
+    this.code = options.code;
+    this.detail = options.detail;
+  }
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options);
   if (!res.ok) {
-    let detail = `${res.status} ${res.statusText}`;
+    let message = `${res.status} ${res.statusText}`;
+    let code: string | undefined;
+    let detail: unknown;
     try {
       const body = await res.json();
-      if (body?.detail) detail = String(body.detail);
+      const raw = body?.detail;
+      if (raw && typeof raw === 'object') {
+        detail = raw;
+        code = typeof raw.code === 'string' ? raw.code : undefined;
+        message = String(raw.message || raw.error || JSON.stringify(raw));
+      } else if (raw) {
+        message = String(raw);
+      }
     } catch {
       /* 非 JSON 响应 */
     }
-    const error = new Error(detail) as Error & { status?: number };
-    error.status = res.status;
-    throw error;
+    throw new ApiError(message, { status: res.status, code, detail });
   }
   return res.json() as Promise<T>;
 }
@@ -441,6 +463,15 @@ export interface CqSetCase {
   location?: CqCaseLocation;
   /** #210：机器断言的业务话摘要（读视图字段，不落盘）。 */
   assertion_summary?: string;
+  /** #279/#280：审核门控字段（服务端尚未落地时不存在；存在即按契约展示）。 */
+  review?: CqReview | null;
+}
+
+export interface CqReview {
+  required?: boolean;
+  state?: 'none' | 'pending' | 'approved' | 'rejected' | string;
+  by?: string | null;
+  at?: string | null;
 }
 
 export interface CqSetSummary {
@@ -583,6 +614,7 @@ export interface CqLifecycleCase {
   }>;
   actions?: CqAction[];
   pending_actions?: CqAction[];
+  review?: CqReview | null;
 }
 
 export interface CqDelivery {

@@ -444,6 +444,29 @@ describe('训练现场（#198 / #203）', () => {
     expect(body).toMatchObject({ option: 'B', conclusion: 'reject' });
   });
 
+  it('有待审核题时训练页出独立提示与统计，不混进「待决」（#280）', async () => {
+    stubFetch({
+      ...RESUME,
+      lifecycle: {
+        ...RESUME.lifecycle!,
+        cases: RESUME.lifecycle!.cases.map((item, index) => (index === 0
+          ? { ...item, review: { required: true, state: 'pending' } }
+          : item)),
+      },
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('有 1 题在等审核结论');
+    const reviewStat = [...container!.querySelectorAll('.cq-training-stat')]
+      .find((node) => node.textContent?.includes('待审核题'))!;
+    expect(reviewStat.textContent).toContain('1');
+    // 与「待决题」分开命名，不共用「待审」
+    expect(text).toContain('待决题');
+    expect(text).not.toContain('待审题');
+  });
+
   it('训练页顶部显示智能体待办，熔断未触发不占统计格（#264 / #270）', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));

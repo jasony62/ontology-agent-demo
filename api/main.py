@@ -267,6 +267,12 @@ async def _seed_format_error(request, exc: cq_store.SeedFormatError):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
+@app.exception_handler(cq_store.ReviewPendingError)
+async def _review_pending_error(request, exc: cq_store.ReviewPendingError):
+    """必审未过 → 400 + 结构化 detail（#285）：前端按 code 定向提示。"""
+    return JSONResponse(status_code=400, content={"detail": exc.payload()})
+
+
 APP_DIST = Path(__file__).resolve().parent.parent / "frontend" / "app" / "dist"
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -2039,7 +2045,7 @@ def cq_set_put(payload: dict = Body(..., description="cq_set.json 结构：suite
     try:
         saved = cq_store.save_set(ontology_id, payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _cq_http_error(exc)
     return {"ontology_id": ontology_id, **cq_store.build_view(ENGINE, saved)}
 
 
@@ -2062,7 +2068,7 @@ async def cq_import(file: UploadFile = File(..., description="cq_set.json（UTF-
     try:
         data = cq_store.import_set(ontology_id, raw)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _cq_http_error(exc)
     return {
         "status": "ok",
         "ontology_id": ontology_id,
@@ -2138,6 +2144,13 @@ def cq_export(format: str = Query(
     raise HTTPException(status_code=400, detail=f"不支持的导出格式：{format}")
 
 
+def _cq_http_error(exc: Exception) -> HTTPException:
+    """#285：审核门禁拒绝保留结构化 detail，其余 ValueError 仍是一句中文。"""
+    if isinstance(exc, cq_store.ReviewPendingError):
+        return HTTPException(status_code=400, detail=exc.payload())
+    return HTTPException(status_code=400, detail=str(exc))
+
+
 def _cq_actor(actor_type: str, actor: str) -> tuple[str, str]:
     if actor_type not in {"human", "agent"}:
         raise HTTPException(status_code=400, detail="actor_type 只能是 human / agent")
@@ -2164,7 +2177,7 @@ def cq_add_case(
     try:
         item = cq_store.add_case(ontology_id, case, actor_type=actor_type, actor=actor)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _cq_http_error(exc)
     training_service.auto_case_event(
         ontology_id, str(item.get("id") or ""),
         added=True, status=str(item.get("status") or ""),
@@ -2202,7 +2215,7 @@ def cq_update_case(
             ontology_id, case_id, patch, actor_type=actor_type, actor=actor,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise _cq_http_error(exc)
     if (
         item
         and str(item.get("status") or "") == "active"

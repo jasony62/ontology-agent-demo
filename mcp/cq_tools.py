@@ -29,6 +29,15 @@ def _error(code: str, message: str, **extra) -> dict:
     return {"ok": False, "error": {"code": code, "message": message}, **extra}
 
 
+def _write_error(exc: Exception, code: str) -> dict:
+    """#285：审核门禁拒绝保持结构化 code，便于智能体区分「待审核」与普通非法值。"""
+    if isinstance(exc, cq_store.ReviewPendingError):
+        payload = exc.payload()
+        return _error(payload["code"], payload["message"],
+                      blocking=payload["blocking"], total_pending=payload["total_pending"])
+    return _error(code, str(exc))
+
+
 def _extra_terms(engine) -> set[str] | None:
     """从当前本体导出质检锚点术语（类/属性短名，与出题指引同源）。"""
     if engine is None or not hasattr(engine, "g"):
@@ -124,7 +133,7 @@ def register_tools(server, get_engine, get_cq_context) -> None:
                     actor_type="agent", actor="mcp", action="save",
                 )
         except ValueError as exc:
-            return _error("invalid_set", str(exc))
+            return _write_error(exc, "invalid_set")
         except Exception as exc:  # noqa: BLE001
             return _error("write_failed", str(exc))
         return {"ok": True, "ontology_id": target,
@@ -153,7 +162,7 @@ def register_tools(server, get_engine, get_cq_context) -> None:
                 )
             )
         except ValueError as exc:
-            return _error("invalid_case", str(exc))
+            return _write_error(exc, "invalid_case")
         except Exception as exc:  # noqa: BLE001
             return _error("write_failed", str(exc))
         # #197：服务端可见的出题 / 放行动作自动留痕（技能侧不必上报）

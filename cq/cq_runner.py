@@ -119,8 +119,22 @@ def run_case(engine, case: dict) -> dict:
     return out
 
 
+def _review_rejected(case: dict) -> bool:
+    review = case.get("review")
+    return (
+        isinstance(review, dict)
+        and bool(review.get("required"))
+        and str(review.get("state") or "") == "rejected"
+    )
+
+
 def run_suite(engine, cases: list[dict], suite: str = "") -> dict:
-    results = [run_case(engine, case) for case in cases if isinstance(case, dict)]
+    # #285：审核未通过的题不进回归分母（也不执行断言）。
+    eligible = [
+        case for case in cases
+        if isinstance(case, dict) and not _review_rejected(case)
+    ]
+    results = [run_case(engine, case) for case in eligible]
     total = len(results)
     counts = {state: sum(1 for item in results if item["state"] == state)
               for state in (PASS, FAIL, CANNOT_TELL, NOT_TESTED)}
@@ -130,5 +144,6 @@ def run_suite(engine, cases: list[dict], suite: str = "") -> dict:
         "total": total,
         **counts,
         "coverage_real": round(counts[PASS] / total, 3) if total else 0.0,
+        "excluded_review": len([case for case in cases if isinstance(case, dict)]) - total,
         "cases": results,
     }

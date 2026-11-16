@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-17
+
+### Added
+
+- **CQ 审核门控服务端落地（#285）**：`review` 进入 CQ 字段白名单并整对象强校验（非对象 / `required` 非 bool / 非法 state / `required=true` 缺 state / 未知字段一律 400）；`active + 必审未过` 写入即拒，REST 返回结构化 `{code:"review_pending", message, blocking, total_pending}`，MCP 返回 `error.code=review_pending`。门按写入 diff 判定，覆盖 PUT set / PATCH case / 新增 / MCP `cq_set_write` / `cq_case_upsert` / 导入直写分支；`seed` 豁免。`regression.query/expect` 变化时审核自动回 `pending` 并把 `active` 退回 `draft`；`rejected` 不进回归分母；`build_view.blockers` 增加「待审核」；审计 `_summary` 带 `review` 且整集写入逐题记 `after`；评审包补审核列。
+- **CQ 标识与导航收口（#288 / #289 / #290 / #292）**：页面显示真实套件名（不再兜底「默认题集」），「来源未记录」改为独立徽章；引入落盘稳定短号 `Q01…`（删除不复用、排序不改），界面列表 / 详情 / 训练题卡 / 决策卡 / 事件流 / 评审包统一使用，32 位哈希只留技术视图；视图 tab 进 URL（`#cq/cases`、`#cq/training`，支持刷新 / 分享 / 前进后退）并加位置指示；题目列表新增搜索框（短号 / 状态词 / 关键词，与筛选叠加且入 URL）。
+- **CQ 评估状态驱动与渐进披露（#291 / #293）**：`cq_resume.evaluation` 给出 `fresh / stale / none`（上次回归 vs 题集更新 / 本体 mtime）；评估有效时不再出现「跑一轮评估」，判定条只保留「请求生成候选题 / 导出评审包」，过期才出现「评估可能过期 + 重新验证」，训练页「下一步」同源；移除领导 / 专家模式开关，技术细节改为页头「显示技术细节」开关（localStorage 记忆），编辑 / 新增入口常驻，编辑器技术区折叠并提示重审风险。
+- **CQ 四槽位信息架构与降噪（#294–#298）**：题目页收敛为「判定 → 质量漏斗 → 内容 → 折叠元信息」，列表回到首屏；删除「从这里开始」静态剧本，首次访问改为一次性引导；`provenance.known=false` 时判定条与 CQM 带可信度标注；词表统一（没对上 / 未达毕业的原因 / 覆盖），0 值筛选 chip 与通过态阶段条不再占位；无待决时默认按题号排序，列表与题看板超过 20 条分页；评审包新增「差距分析」，判定句由 `delivery.verdict` 单一来源，页面与 Markdown 逐字一致。
+
 ## [0.9.1] - 2026-11-16
 
 ### Added

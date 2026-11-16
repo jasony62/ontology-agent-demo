@@ -441,7 +441,10 @@ def get_set(ontology_id: str, seed_path: Path | None = None) -> dict:
             "ontology_base_iri": fingerprint.get("base_iri", ""),
             "ontology_digest": fingerprint.get("digest", ""),
         }
-        save_set(ontology_id, seeded, mark_updated=False, actor="system", action="seed")
+        save_set(
+            ontology_id, seeded, mark_updated=False,
+            actor_type="system", actor="system", action="seed",
+        )
         return seeded
     return empty_set()
 
@@ -691,7 +694,10 @@ def record_run_cache(ontology_id: str, run: dict) -> dict:
             "earl": result.get("state"),
             "ran_at": run.get("ran_at"),
         }
-    save_set(ontology_id, data, actor="system", action="save", after={"run": run.get("ran_at")})
+    save_set(
+        ontology_id, data, actor_type="system", actor="system", action="save",
+        after={"run": run.get("ran_at")},
+    )
     return data
 
 

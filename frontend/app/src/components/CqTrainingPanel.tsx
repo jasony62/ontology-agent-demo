@@ -10,9 +10,14 @@ import { plainCopy, decisionKindLabel } from '../lib/cqCopy';
 import {
   BASIS_OPTIONS,
   CONCLUSION_OPTIONS,
+  actionLabel,
+  actorChannelText,
   actorIcon,
-  actorLabel,
   conclusionLabel,
+  contentFieldLabel,
+  eventLabel,
+  runStateLabel,
+  timelineSummaryText,
 } from '../lib/cqLabels';
 import { notifyCqTrainingChanged } from '../lib/cqTrainingEvent';
 import { formatLocalTime } from '../lib/time';
@@ -502,7 +507,7 @@ function CaseCard({
       )}
       {(item.pending_actions?.length ?? 0) > 0 && (
         <div className="cq-case-action-pending">
-          智能体下一步：{item.pending_actions?.map((action) => ACTION_LABELS[action.action] || action.action).join('、')}
+          智能体下一步：{item.pending_actions?.map((action) => actionLabel(action.action)).join('、')}
         </div>
       )}
       {decision ? (
@@ -639,11 +644,11 @@ function CaseHistory({
             className={`cq-case-event ${event.actor_type || 'system'}`}
           >
             <div className="cq-case-event-head">
-              <span className="cq-actor">{actorIcon(event.actor_type)} {actorLabel(event.actor_type)}</span>
+              <span className="cq-actor">{actorIcon(event.actor_type)} {actorChannelText(event.actor_type, event.actor)}</span>
               <time>{formatLocalTime(event.ts)}</time>
               <span className="guide-badge muted">{eventLabel(event.kind)}</span>
             </div>
-            <p>{plainCopy(event.summary)}</p>
+            <p>{plainCopy(timelineSummaryText(event))}</p>
             {event.content && Object.keys(event.content).length > 0 && (
               <TechDetails
                 label="展开看这条的技术细节"
@@ -877,83 +882,6 @@ function DecisionCard({
   );
 }
 
-function runStateLabel(state: string): string {
-  if (state === 'pass') return '通过';
-  if (state === 'fail') return '未通过';
-  if (state === 'cannot_tell') return '无法判断';
-  if (state === 'not_tested') return '未测试';
-  return state || '—';
-}
-
-const ACTION_LABELS: Record<string, string> = {
-  update_expectation: '改预期',
-  update_ontology: '补本体/术语',
-  revise_case: '改问法',
-  delete_case: '删题',
-  rerun_regression: '重跑回归',
-  lock_graduation: '锁定毕业',
-  generate_cases: '生成候选题',
-};
-
-const EVENT_LABELS: Record<string, string> = {
-  decision_asked: '提问',
-  decision_agenda: '待决议程',
-  feedback_received: '反馈',
-  decision_resolved_by_self: '智能体自行处理',
-  intent_pending_marked: '意图待确认',
-  case_authored: '新题入库',
-  case_released: '发题',
-  regression_run: '整轮回归',
-  regression_case: '回归结果',
-  iteration_archive: '迭代档案',
-  iteration_started: '迭代开始',
-  iteration_applied: '迭代应用',
-  iteration_accepted: '迭代确认',
-  gate_result: '闸门检查',
-  evidence_recorded: '证据记录',
-  attribution_conclusion: '归因结论',
-  circuit_breaker: '熔断',
-  add: '新增',
-  update: '修改',
-  delete: '删除',
-};
-
-const CONTENT_LABELS: Record<string, string> = {
-  decision_id: '决策编号',
-  case_id: '题目编号',
-  question: '问题',
-  option: '所选选项',
-  feedback_text: '反馈原文',
-  follow_up_with: '需要谁确认',
-  conclusion: '结论',
-  basis: '依据来源',
-  authorized: '是否授权',
-  source: '来源',
-  kind: '类别',
-  background: '背景',
-  context: '现场依据',
-  reason: '推荐理由',
-  recommended: '推荐项',
-  options: '选项',
-  state: '评估结论',
-  detail: '明细',
-  hint: '提示',
-  run_ref: '回归记录',
-  iteration_id: '迭代编号',
-  business_translation: '业务话翻译',
-  changes: '变更清单',
-  gate_snapshot: '闸门快照',
-  status: '状态',
-  ttl: 'TTL',
-  event_id: '事件编号',
-  summary: '摘要',
-};
-
-function eventLabel(kind?: string): string {
-  if (!kind) return '事件';
-  return EVENT_LABELS[kind] ?? kind;
-}
-
 function eventStage(event: CqTimelineItem): string {
   const kind = String(event.kind || '');
   if (kind === 'case_authored' || kind === 'case_released' || kind === 'add') return 'authored';
@@ -979,7 +907,7 @@ function contentLines(content: Record<string, unknown>): string[] {
       const text = typeof value === 'object' && value !== null
         ? JSON.stringify(value)
         : String(value ?? '');
-      return `${CONTENT_LABELS[key] || `技术字段「${key}」`}：${text}`;
+      return `${contentFieldLabel(key)}：${text}`;
     }),
   ];
 }

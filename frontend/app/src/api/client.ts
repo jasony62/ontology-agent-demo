@@ -654,9 +654,17 @@ export interface CqLifecycle {
   cases: CqLifecycleCase[];
 }
 
+export interface CqEvaluationFreshness {
+  state: 'fresh' | 'stale' | 'none' | string;
+  ran_at: string;
+  reason?: string;
+}
+
 export interface CqResumeResponse {
   ontology_id: string;
   depth: 'snapshot' | 'full' | string;
+  /** #291：评估新鲜度；stale/none 时页面才出现「重新验证」。 */
+  evaluation?: CqEvaluationFreshness;
   summary: CqSetSummary & { pending_decisions: number };
   last_regression: CqRun | null;
   pending_decisions: CqDecision[];

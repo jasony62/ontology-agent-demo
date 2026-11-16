@@ -193,7 +193,16 @@ export default function CqTrainingPanel({
     resolved: resume?.counts?.resolved ?? 0,
   };
   const gaps = resume?.context_gaps ?? [];
-  const nextAction = String(resume?.next_suggested?.action || '');
+  const evaluation = resume?.evaluation;
+  const evaluationFresh = evaluation?.state === 'fresh';
+  const suggestedAction = String(resume?.next_suggested?.action || '');
+  // #291：评估仍有效时不再推荐"跑回归"，改为请求生成更多题。
+  const nextAction = suggestedAction === 'run_regression' && evaluationFresh
+    ? 'generate_cases'
+    : suggestedAction;
+  const nextText = suggestedAction === 'run_regression' && evaluationFresh
+    ? `评估有效（${formatLocalTime(evaluation?.ran_at)}），无需重跑；可请求智能体生成更多题`
+    : (plainCopy(resume?.next_suggested?.text) || '—');
   const nextDisabled = !nextAction
     || (nextAction === 'answer_decisions' && pendingCases.length === 0);
   const handleNext = () => {
@@ -213,6 +222,12 @@ export default function CqTrainingPanel({
     }
     if (nextAction === 'run_regression') {
       onGoToCases?.();
+      return;
+    }
+    if (nextAction === 'generate_cases') {
+      void api.cqRequestCases({ note: '请根据当前本体生成更多候选题' })
+        .then(() => load())
+        .catch((err) => setError(err instanceof Error ? err.message : String(err)));
       return;
     }
     if (nextAction === 'handle_circuit_breaker') {
@@ -337,7 +352,7 @@ export default function CqTrainingPanel({
 
           <div className="cq-training-next">
             <b>下一步</b>
-            <span>{plainCopy(resume.next_suggested?.text) || '—'}</span>
+            <span>{nextText}</span>
             <button
               type="button"
               className="btn secondary"
@@ -346,6 +361,8 @@ export default function CqTrainingPanel({
             >
               {nextAction === 'run_regression'
                 ? '去题目页运行评估'
+                : nextAction === 'generate_cases'
+                  ? '请求生成更多题'
                 : nextAction === 'close_gaps'
                   ? '查看缺口'
                   : nextAction === 'follow_up'

@@ -102,6 +102,7 @@ function stubFetch(
     auditEntries?: boolean;
     agentActions?: Array<Record<string, unknown>>;
     patchError?: Record<string, unknown>;
+    evaluation?: Record<string, unknown>;
   } = {},
 ) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -181,6 +182,7 @@ function stubFetch(
         ok: true, status: 200,
         json: async () => ({
           ontology_id: 'ws-1', depth: 'snapshot',
+          evaluation: options.evaluation,
           summary: { ...set.summary, pending_decisions: options.pending ?? 0 },
           last_regression: null, pending_decisions: [], pending_followups: [],
           counts: { followup: 0, pending: 0 }, circuit_breaker: { open: false },
@@ -271,6 +273,7 @@ async function flush() {
 beforeEach(() => {
   // #290 / #292：hash 是视图状态的数据源，测试之间必须清零
   window.history.replaceState(null, '', '/');
+  window.localStorage.clear();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -387,7 +390,7 @@ describe('CQ 集页（#151 / #203）', () => {
       .toMatchObject({ status: 'cancelled' });
   });
 
-  it('领导模式隐藏质量盲区，定位证据只给一句人话（#268）', async () => {
+  it('默认隐藏质量盲区，定位证据只给一句人话（#268 / #293）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
@@ -396,9 +399,8 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.textContent).toContain('对上 1 个术语、1 条证据。');
     expect(container!.textContent).not.toContain('命中 1 条证据（结论性 0 条）');
 
-    const expert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((btn) => btn.textContent === '专家模式')!;
-    await act(async () => { expert.click(); });
+    const tech = container!.querySelector<HTMLInputElement>('.cq-tech-switch input')!;
+    await act(async () => { tech.click(); });
     await flush();
     expect(container!.querySelector('.cq-mention-coverage')).not.toBeNull();
     expect(container!.textContent).toContain('命中 1 条证据（结论性 0 条）');
@@ -521,6 +523,40 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelectorAll('.cq-row')).toHaveLength(0); // 与「未锚定」叠加后无结果
   });
 
+  it('评估有效时不再出现「跑一轮评估」，判定条持有动作（#291）', async () => {
+    stubFetch(SET, LOCATE, {
+      evaluation: { state: 'fresh', ran_at: '2026-11-17T00:10:00+00:00' },
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const buttons = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .map((btn) => btn.textContent);
+    expect(buttons).not.toContain('跑一轮评估');
+    expect(buttons).not.toContain('重新验证');
+    const delivery = container!.querySelector('.cq-delivery')!;
+    expect(delivery.textContent).toContain('请求智能体生成候选题');
+    expect(delivery.textContent).toContain('导出评审包');
+    expect(container!.textContent).toContain('评估有效');
+  });
+
+  it('评估过期时判定条出现「重新验证」（#291）', async () => {
+    stubFetch(SET, LOCATE, {
+      evaluation: {
+        state: 'stale', ran_at: '2026-11-16T00:10:00+00:00',
+        reason: '本体在评估后重载或修改',
+      },
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const delivery = container!.querySelector('.cq-delivery')!;
+    expect(delivery.textContent).toContain('评估可能过期');
+    expect(delivery.textContent).toContain('重新验证');
+    expect([...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .some((btn) => btn.textContent === '跑一轮评估')).toBe(true);
+  });
+
   it('待决数取不到时显示「待决状态未知」，不冒称「没有待决」（#255）', async () => {
     stubFetch(SET, LOCATE, { failResume: true });
     act(() => root!.render(<CqPage />));
@@ -615,7 +651,7 @@ describe('CQ 集页（#151 / #203）', () => {
     });
     await flush();
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('这条结论凭什么成立');
-    expect(container!.querySelector('.cq-detail')?.textContent).toContain('智能体会补充');
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('技术设置');
     expect(container!.querySelector('.cq-detail')?.textContent).not.toContain('rdfs:label');
     expect(container!.querySelector('.cq-detail')?.textContent).not.toContain('没有命中证据（0 条）');
   });
@@ -635,24 +671,18 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).toContain('让智能体根据当前本体生成候选题');
     expect(container!.querySelectorAll('.cq-row')).toHaveLength(0);
 
-    // #231：领导模式不新建题目；空态引导切到专家模式
-    expect([...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .some((button) => button.textContent === '新增题目')).toBe(false);
-    const switchExpert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '切到专家模式')!;
-    act(() => switchExpert.click());
-    expect([...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .some((button) => button.textContent === '新增题目')).toBe(true);
+    // #293：编辑入口常驻，空态也提供手动新增
+    const add = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '手动新增题目')!;
+    act(() => add.click());
+    expect(container!.querySelector('.cq-editor')).not.toBeNull();
   });
 
-  it('专家模式可新增题目并保存（#154 / #210 / #231）', async () => {
+  it('可直接新增题目并保存（#154 / #210 / #231 / #293）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
-    const expert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '专家模式')!;
-    act(() => expert.click());
     const add = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '新增题目')!;
     act(() => add.click());
@@ -798,47 +828,43 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.textContent).toContain('已保存题目');
   });
 
-  it('领导模式零 SPARQL，专家模式显式切换后才出现（#210）', async () => {
+  it('技术细节默认收起，勾选「显示技术细节」后展开并跨刷新保留（#293）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
-    expect(container!.textContent).toContain('领导模式');
-    expect(container!.textContent).not.toContain('查询（query）');
+    expect(container!.textContent).not.toContain('领导模式');
+    const detail = container!.querySelector('.cq-detail')!;
+    expect(detail.textContent).not.toContain('查询（query）');
 
     const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '编辑')!;
     act(() => edit.click());
-    expect(container!.querySelector('.cq-editor .cq-leader-question')).not.toBeNull();
-    expect(container!.querySelector('.cq-editor textarea')).toBeNull();
-    expect(container!.querySelector('.cq-editor select')).toBeNull();
-    expect(container!.querySelector('.cq-editor')?.textContent).toContain('确认题目');
+    const editor = container!.querySelector('.cq-editor')!;
+    expect(editor.querySelector('.cq-tech-section')).not.toBeNull();
+    expect(editor.querySelector('textarea')).not.toBeNull();
+    expect(editor.textContent).toContain('改动断言会让这道题重新进入待审核');
 
-    const expert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '专家模式')!;
-    act(() => expert.click());
-    const expertLabels = [...container!.querySelectorAll('.cq-editor .field-label')]
-      .map((node) => node.textContent);
-    expect(expertLabels).toContain('SPARQL query');
-    expect(expertLabels).toContain('expect（JSON）');
-
-    const leader = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '领导模式')!;
-    act(() => leader.click());
-    expect([...container!.querySelectorAll('.cq-editor .field-label')]
-      .map((node) => node.textContent)).not.toContain('SPARQL query');
+    const tech = container!.querySelector<HTMLInputElement>('.cq-tech-switch input')!;
+    await act(async () => { tech.click(); });
+    await flush();
+    expect(window.localStorage.getItem('oa.cq.tech.v1')).toBe('1');
+    const cancel = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor button')]
+      .find((button) => button.textContent === '取消')!;
+    act(() => cancel.click());
+    await flush();
+    expect(container!.querySelector('.cq-detail')!.textContent).toContain('查询（query）');
   });
 
-  it('专家模式可检查题干提及覆盖，领导模式不出现（#215）', async () => {
+  it('质量盲区跟随「显示技术细节」，不随模式开关（#215 / #293）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
     expect(container!.querySelector('.cq-mention-coverage')).toBeNull();
 
-    const expert = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '专家模式')!;
-    act(() => expert.click());
+    const tech = container!.querySelector<HTMLInputElement>('.cq-tech-switch input')!;
+    act(() => tech.click());
     const panel = container!.querySelector('.cq-mention-coverage');
     expect(panel).not.toBeNull();
     expect(panel!.textContent).toContain('质量盲区（题干提及）');
@@ -856,9 +882,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).toContain('未匹配到类/属性的词');
     expect(text).toContain('登录模块开发');
 
-    const leader = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '领导模式')!;
-    act(() => leader.click());
+    act(() => tech.click());
     expect(container!.querySelector('.cq-mention-coverage')).toBeNull();
   });
 
@@ -904,7 +928,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const labels = [...container!.querySelectorAll('.cq-tool-group-label')]
       .map((node) => node.textContent);
-    expect(labels).toEqual(['视图', '视角', '只读工具', '写操作']);
+    expect(labels).toEqual(['视图', '技术', '只读工具', '写操作']);
     expect(container!.querySelector('.cq-export-menu')).not.toBeNull();
     const links = [...container!.querySelectorAll<HTMLAnchorElement>('.cq-export-list a')];
     const items = links.map((link) => link.textContent ?? '');

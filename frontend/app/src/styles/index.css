@@ -2009,3 +2009,10 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .cq-search:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
 .cq-meta .cq-badge.warn { margin-left: 6px; }
+.cq-tech-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
+.cq-tech-section { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--panel-2); }
+.cq-tech-section > summary { cursor: pointer; color: var(--link); font-size: 12.5px; }
+.cq-tabs { border-bottom: 1px solid var(--border); }
+.cq-tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; }
+.cq-tab.active { border-bottom-color: var(--primary); color: var(--heading); font-weight: 600; background: transparent; }
+.cq-stale-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: #fff4e5; border: 1px solid #e6b36b; color: #8a5a00; }

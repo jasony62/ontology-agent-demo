@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-16
+
 ### Added
 
 - **CQ 等待智能体的可见状态（#264）**：存在 pending 的 `action_requested` 时概览常驻「等待智能体 · 已等待 N 小时 · 未响应」，可催一下或取消；取消走新增的 `POST /api/domains/current/cq/actions/{action_id}/complete`（`status` 扩展为 `done/failed/cancelled`，人可取消自己发起的请求）。训练页顶部同步「智能体待办 N 项」。

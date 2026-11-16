@@ -164,13 +164,49 @@ def build_server(get_engine, get_adapter, domain_name: str, description: str,
                 file=sys.stderr, flush=True,
             )
         else:
-            mod.register_tools(_ToolNameGuard(server), get_adapter)
+            guard = _ToolNameGuard(server)
+            mod.register_tools(guard, get_adapter)
+            server._domain_tool_names = set(guard._names)
+    if not hasattr(server, "_domain_tool_names"):
+        server._domain_tool_names = set()
 
     # 通用工具（L1：与本体定义无关，任意 .owl 可用）；受控语义策略与调用护栏随领域包走
     _register_generic_tools(server, get_engine,
                              policy_mod.load_policy(domain_name),
                              guard_mod.load_guard_config(domain_name))
     return server
+
+
+def _tool_names(server) -> set[str]:
+    """读取当前已注册工具名（SDK 内部注册表；用于换域时精确增删）。"""
+    manager = getattr(server, "_tool_manager", None)
+    tools = getattr(manager, "_tools", None)
+    return set(tools.keys()) if isinstance(tools, dict) else set()
+
+
+def register_domain_tools(server, domain_name: str, get_adapter) -> set[str]:
+    """把某个领域包的 mcp.py 工具注册到现有 server，返回注册名集合（#277）。"""
+    load_domain_module(domain_name)
+    try:
+        mod = importlib.import_module(f"domains.{domain_name}.mcp")
+    except ModuleNotFoundError as exc:
+        if exc.name != f"domains.{domain_name}.mcp":
+            raise
+        print(f"[mcp] 领域「{domain_name}」未提供 mcp.py，仅注册通用工具",
+              file=sys.stderr, flush=True)
+        return set()
+    guard = _ToolNameGuard(server)
+    mod.register_tools(guard, get_adapter)
+    return set(guard._names)
+
+
+def register_status_tool(server, status_provider) -> None:
+    """通用自省工具 mcp_status（#277 R4）：不随领域变，任何领域下都可用。"""
+    @server.tool(description=(
+        "MCP 自省：当前领域 / 领域来源（installed / imported）/ 已注册领域工具数与"
+        "通用工具数 / 载入时间 / 可切换的已安装领域。"))
+    def mcp_status() -> dict:
+        return status_provider()
 
 
 def build_cq_server(get_engine, get_cq_context) -> MCPServer:
@@ -407,7 +443,8 @@ def _run_server(server, transport: str, on_sighup, **kwargs):
 
 
 def combined_http_app(servers: dict[str, MCPServer], *, host: str = "127.0.0.1",
-                      aliases: dict[str, str] | None = None):
+                      aliases: dict[str, str] | None = None,
+                      control: dict | None = None):
     """把多个 MCPServer 挂到同一 ASGI 应用的不同路径（#171，单进程单引擎）。
 
     SDK 的 `streamable_http_app()` 每次调用会为对应 server 创建并记住一个
@@ -422,6 +459,7 @@ def combined_http_app(servers: dict[str, MCPServer], *, host: str = "127.0.0.1",
     `streamable_http_app()` 调用后才可读，所以这里先建 app 再取 manager。
     """
     from starlette.applications import Starlette
+    from starlette.responses import JSONResponse
     from starlette.routing import Route
 
     sub_apps = {
@@ -437,6 +475,26 @@ def combined_http_app(servers: dict[str, MCPServer], *, host: str = "127.0.0.1",
         endpoint = endpoints.get(primary)
         if endpoint is not None:
             routes.append(Route(alias, endpoint=endpoint))
+
+    # #277：跨进程换域控制面（不占用 MCP 协议路径，不打断已建立会话）。
+    if control:
+        async def _status_endpoint(_request):
+            return JSONResponse(control["status"]())
+
+        async def _switch_endpoint(request):
+            try:
+                body = await request.json()
+            except Exception:  # noqa: BLE001 —— 空 body 也允许，按空领域处理
+                body = {}
+            target = str((body or {}).get("domain") or "").strip()
+            try:
+                result = control["switch"](target)
+            except Exception as exc:  # noqa: BLE001 —— MCP 侧失败原样回报给 API
+                return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+            return JSONResponse({"ok": True, **result})
+
+        routes.append(Route("/control/status", _status_endpoint, methods=["GET"]))
+        routes.append(Route("/control/switch-domain", _switch_endpoint, methods=["POST"]))
 
     @contextlib.asynccontextmanager
     async def lifespan(_app):
@@ -545,21 +603,33 @@ def main() -> int:
             )
         description = domain_mod.DESCRIPTION
 
-    # 运行态（引擎 / 适配器随热重载替换）：工具闭包只依赖这两个工厂
-    state = {}
+    # 运行态（#277）：领域 / 引擎 / 适配器放进可变 runtime；工具闭包只读它，
+    # 换域时无需重启进程，也不会把旧领域实例捕获进闭包。
+    runtime: dict = {
+        "domain": domain_name,
+        "mod": domain_mod,
+        "onto": onto_path,
+        "imported": imported_mode,
+        "description": description,
+        "settings": settings,
+        "loaded_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "engine": engine0 if imported_mode else None,
+        "adapter": adapter0 if imported_mode else None,
+        "server": None,
+        "domain_tools": set(),
+        "generic_tools": set(),
+    }
+    switch_lock = threading.RLock()
 
-    def _load(onto_path, extensions_dir=None) -> tuple:
-        engine = OntologyEngine(onto_path=onto_path, extensions_dir=extensions_dir)
-        if imported_mode:
+    def _load_target(onto: str, mod, imported: bool, name: str) -> tuple:
+        """按目标领域重建引擎 + 适配器（规则层与 API 激活流水线同序）。"""
+        engine = OntologyEngine(onto_path=onto, extensions_dir=None)
+        if imported:
             # 导入的本体没有领域包 / 规则目录：只读通用适配器，不重新物化
-            return engine, domain_mod.ImportedOntologyAdapter(engine)
-        # 规则层在加载路径上（与 API 的激活流水线同序）：owlrl 物化 → rules/*.ttl
-        # （文件名顺序，前序产出进后续规则的前提）→ 适配器构造。少这一步，
-        # 适配器的 capability_match 读不到 R2 委派边——之前靠适配器构造时
-        # 自算 R2 补齐，现在 R2 归位规则层，这步就不能少。
-        # 显式传本领域包的规则目录（不走默认发现）：与 domains/manager 同因——
-        # 自动发现解析的是配置默认领域，领域以热重载切换时可能读到别的包。
-        rules_dir = os.path.join(os.path.dirname(domain_mod.__file__), "rules")
+            return engine, mod.ImportedOntologyAdapter(engine)
+        # 规则层在加载路径上：owlrl 物化 → rules/*.ttl → 适配器构造。
+        # 显式传本领域包的规则目录（不走默认发现），避免读到别的包。
+        rules_dir = os.path.join(os.path.dirname(mod.__file__), "rules")
         rule_paths = []
         if os.path.isdir(rules_dir):
             rule_paths = sorted(
@@ -573,31 +643,31 @@ def main() -> int:
                 bad = ", ".join(f["file"] for f in report.get("files", []) if f.get("error"))
                 print(f"[mcp] 规则文件执行有错误（{bad}），详见 run_rules 报告；领域照常加载",
                       file=sys.stderr, flush=True)
-        return engine, load_domain(domain_name, engine, settings=settings)
+        return engine, load_domain(name, engine, settings=settings)
+
+    if not imported_mode:
+        runtime["engine"], runtime["adapter"] = _load_target(
+            onto_path, domain_mod, False, domain_name,
+        )
 
     def get_engine() -> OntologyEngine:
-        return state["engine"]
+        return runtime["engine"]
 
     def get_adapter():
-        return state["adapter"]
+        return runtime["adapter"]
 
     def get_cq_context() -> tuple[str, Path | None]:
-        """CQ 身份（#164/#171）：与 REST 共用 identity_for；领域名 + 包内题库播种。"""
-        adapter = state["adapter"]
-        name = getattr(adapter, "NAME", domain_name)
+        """CQ 身份（#164/#171/#277）：与 REST 共用 identity_for；换域后自动跟随。"""
+        adapter = runtime["adapter"]
+        name = getattr(adapter, "NAME", runtime["domain"])
         seed = None
-        if not imported_mode:
-            package_file = getattr(domain_mod, "__file__", None)
+        if not runtime["imported"]:
+            package_file = getattr(runtime["mod"], "__file__", None)
             if package_file:
                 candidate = Path(package_file).parent / "cq_tests.json"
                 if candidate.is_file():
                     seed = candidate
         return cq_store.identity_for(name, seed)
-
-    if imported_mode:
-        state["engine"], state["adapter"] = engine0, adapter0
-    else:
-        state["engine"], state["adapter"] = _load(onto_path)
 
     def _reload(trigger: str) -> bool:
         """重建引擎 + 适配器（核心 + extensions/）；失败保持旧状态。SIGHUP / 文件监听共用。
@@ -607,16 +677,110 @@ def main() -> int:
         无需重启进程（与 API 端 reload 行为一致）。
         """
         try:
-            new_engine, new_adapter = _load(onto_path)
+            new_engine, new_adapter = _load_target(
+                runtime["onto"], runtime["mod"], runtime["imported"], runtime["domain"],
+            )
         except Exception as exc:
             print(f"[{trigger}] 重载失败（保持旧状态）: {exc}", file=sys.stderr, flush=True)
             return False
-        state["engine"], state["adapter"] = new_engine, new_adapter
+        runtime["engine"], runtime["adapter"] = new_engine, new_adapter
         print(f"[{trigger}] 本体已热重载：{len(new_engine.g)} 三元组，"
               f"{len(set(new_engine.g.subjects()) | set(new_engine.g.objects()))} 节点，"
               f"extensions_dir={new_engine.extensions_dir}",
               file=sys.stderr, flush=True)
         return True
+
+    def _label() -> str:
+        adapter = runtime["adapter"]
+        if runtime["imported"]:
+            return "导入的本体"
+        return f"{getattr(adapter, 'NAME', runtime['domain'])} 领域"
+
+    def _status() -> dict:
+        server = runtime.get("server")
+        tools = _tool_names(server) if server is not None else set()
+        return {
+            "domain": runtime["domain"],
+            "source": "imported" if runtime["imported"] else "installed",
+            "adapter": getattr(runtime["adapter"], "NAME", runtime["domain"]),
+            "installed": settings.installed(),
+            "domain_tools": len(runtime["domain_tools"]),
+            "generic_tools": len(runtime["generic_tools"]),
+            "tools": len(tools),
+            "loaded_at": runtime["loaded_at"],
+            "ontology": os.path.basename(runtime["onto"] or ""),
+        }
+
+    def _reregister_tools() -> None:
+        """换域后只换注册表（不重建 server / 不断会话）：领域工具增删 + 通用工具重挂。"""
+        server = runtime.get("server")
+        if server is None:
+            return
+        for name in list(runtime["domain_tools"]):
+            server.remove_tool(name)
+        for name in list(runtime["generic_tools"]):
+            server.remove_tool(name)
+        runtime["domain_tools"] = set()
+        runtime["generic_tools"] = set()
+        if not runtime["imported"]:
+            runtime["domain_tools"] = register_domain_tools(
+                server, runtime["domain"], get_adapter,
+            )
+        _register_generic_tools(
+            server, get_engine,
+            policy_mod.load_policy(runtime["domain"]),
+            guard_mod.load_guard_config(runtime["domain"]),
+        )
+        register_status_tool(server, _status)
+        runtime["generic_tools"] = _tool_names(server) - runtime["domain_tools"]
+        try:
+            server.title = f"本体推理服务（{_label()}）"
+        except Exception:  # noqa: BLE001 —— 标题只是展示，不因它失败影响换域
+            pass
+
+    def _switch_domain(target: str) -> dict:
+        """#277 R1：换域 = 重建引擎/适配器 + 重挂工具；失败回滚到旧状态。"""
+        target = str(target or "").strip()
+        if not target:
+            raise ValueError("domain 不能为空")
+        with switch_lock:
+            if (not runtime["imported"]) and target == runtime["domain"]:
+                return _status()
+            snapshot = dict(runtime)
+            try:
+                if target == "imported":
+                    mod, engine, adapter, onto, _meta = load_imported_runtime()
+                    imported = True
+                else:
+                    installed = settings.installed()
+                    if target not in installed:
+                        raise ValueError(
+                            f"领域 {target!r} 未安装；可切换：{', '.join(installed) or '无'}"
+                        )
+                    mod = load_domain_module(target, settings=settings)
+                    onto = package_onto_path(target, settings=settings)
+                    if not onto:
+                        raise ValueError(f"领域「{target}」未解析到本体文件")
+                    engine, adapter = _load_target(onto, mod, False, target)
+                    imported = False
+                runtime.update(
+                    domain=target, mod=mod, onto=onto, imported=imported,
+                    engine=engine, adapter=adapter,
+                    description=getattr(mod, "DESCRIPTION", ""),
+                    loaded_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                )
+                _reregister_tools()
+                print(f"[switch-domain] 已切到 {_label()}（{target}）："
+                      f"工具 {_status()['tools']} 个", file=sys.stderr, flush=True)
+                return _status()
+            except Exception:
+                runtime.clear()
+                runtime.update(snapshot)
+                try:
+                    _reregister_tools()
+                except Exception:  # noqa: BLE001 —— 回滚尽力而为，原错误继续上抛
+                    pass
+                raise
 
     _on_sighup = _make_sighup_handler(_reload)
 
@@ -629,8 +793,8 @@ def main() -> int:
     # 环境无关（信号在部分运行环境被抑制），改文件即生效。
     if args.watch:
         def _fingerprint():
-            paths = [onto_path]
-            ext = state["engine"].extensions_dir
+            paths = [runtime["onto"]]
+            ext = runtime["engine"].extensions_dir
             if ext and os.path.isdir(ext):
                 paths += sorted(
                     os.path.join(ext, f) for f in os.listdir(ext)
@@ -654,14 +818,19 @@ def main() -> int:
               file=sys.stderr, flush=True)
 
     ontology_server = build_server(
-        get_engine, get_adapter, domain_name, description,
-        with_domain_tools=not imported_mode,
+        get_engine, get_adapter, runtime["domain"], runtime["description"],
+        with_domain_tools=not runtime["imported"],
     )
+    runtime["server"] = ontology_server
+    runtime["domain_tools"] = set(getattr(ontology_server, "_domain_tool_names", set()))
+    runtime["generic_tools"] = _tool_names(ontology_server) - runtime["domain_tools"]
+    register_status_tool(ontology_server, _status)
+    runtime["generic_tools"] = _tool_names(ontology_server) - runtime["domain_tools"]
     cq_server = build_cq_server(get_engine, get_cq_context)
 
-    label = state["adapter"].NAME
-    if imported_mode:
-        label = f"{domain_mod.DISPLAY_NAME}（{imported_meta.get('original_filename') or Path(onto_path).name}）"
+    label = _label()
+    if runtime["imported"]:
+        label = f"{runtime['mod'].DISPLAY_NAME}（{Path(runtime['onto']).name}）"
 
     if args.transport == "stdio":
         # stdio 只有单通道：CQ 工具与本体工具合并到同一个 server。
@@ -675,6 +844,7 @@ def main() -> int:
             {"/mcp/ontology": ontology_server, "/mcp/cq": cq_server},
             host=args.host,
             aliases={"/mcp": "/mcp/ontology"},   # 旧客户端兼容
+            control={"status": _status, "switch": _switch_domain},
         )
         print(f"[info] 本体推理 MCP Server（{label}）已启动（streamable-http，单进程双端点）: "
               f"http://{args.host}:{args.port}/mcp/ontology 与 /mcp/cq"

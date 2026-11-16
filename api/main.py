@@ -2593,6 +2593,7 @@ async def load_ontology(file: UploadFile = File(..., description="要加载的�
         "triples_before": len(engine.raw),
         "classes": len(engine.classes()),
         "individuals": engine.individual_count(),
+        **_mcp_follow("imported"),
     }
 
 
@@ -3073,6 +3074,28 @@ def reload_domain():
             "triples": len(handle.engine.g)}
 
 
+@app.get(
+    "/api/domains/current/mcp-sync",
+    tags=["领域管理"],
+    summary="MCP 领域同步状态",
+    responses={200: {"model": OpenEnvelope, "description": "MCP 实际领域 / 工具数 / 是否与 API 一致 / 不一致原因。"}},
+)
+def mcp_sync_status():
+    """#277 R9：页面「MCP 未同步」提示与一键修复的数据源。"""
+    return _mcp_sync_view()
+
+
+@app.post(
+    "/api/domains/current/mcp-sync",
+    tags=["领域管理"],
+    summary="立即同步 MCP 领域",
+    responses={200: {"model": OpenEnvelope, "description": "同步结果与同步后的状态。"}},
+)
+def mcp_sync_now():
+    """#277 R11：页面「立即同步」按钮；MCP 不可达时如实返回未同步原因。"""
+    return {**_mcp_follow(DOMAINS.current().name), **_mcp_sync_view()}
+
+
 @app.post(
     "/api/domains/{name}/activate",
     tags=["领域管理"],
@@ -3098,7 +3121,8 @@ def activate_domain(name: str = ApiPath(..., description="已安装领域包名�
     # #149：切到预置包后，重启不再恢复上一个导入本体。
     workspaces.clear_current()
     return {"status": "ok", "domain": handle.name, "loaded_at": handle.loaded_at,
-            "capabilities": handle.capabilities, "triples": len(handle.engine.g)}
+            "capabilities": handle.capabilities, "triples": len(handle.engine.g),
+            **_mcp_follow(handle.name)}
 
 
 # ---------------- 导入工作区与清除（#276） ----------------
@@ -3165,6 +3189,74 @@ def _default_domain_name() -> str:
     if installed:
         return installed[0]
     raise HTTPException(status_code=400, detail="没有可回退的已安装领域包")
+
+
+def _mcp_base_url() -> str:
+    """MCP 控制面地址；默认按配置端口，测试 / 多实例可用 ONTOLOGY_MCP_URL 覆盖。"""
+    configured = os.environ.get("ONTOLOGY_MCP_URL")
+    if configured:
+        return configured.rstrip("/")
+    port = DOMAINS.settings.servers.get("mcp_port", 9000)
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        port = 9000
+    return f"http://127.0.0.1:{port}"
+
+
+def _mcp_http(path: str, *, method: str = "GET", payload: dict | None = None,
+              timeout: float = 1.5) -> dict:
+    import urllib.error
+    import urllib.request
+
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    request = urllib.request.Request(
+        f"{_mcp_base_url()}{path}", data=data, method=method,
+        headers={"Content-Type": "application/json"} if data else {},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8") or "{}")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        try:
+            raise RuntimeError(json.loads(detail).get("error") or detail) from exc
+        except ValueError:
+            raise RuntimeError(detail or str(exc)) from exc
+
+
+def _mcp_sync_view() -> dict:
+    """#277 R9：MCP 实际领域 vs API 当前领域（只读聚合）。"""
+    api_domain = DOMAINS.current().name
+    try:
+        status = _mcp_http("/control/status")
+    except Exception as exc:  # noqa: BLE001 —— 进程没起 / 网络不通都按「未运行」处理
+        return {
+            "running": False, "synced": False, "api_domain": api_domain,
+            "reason": f"MCP 服务未运行或不可达：{exc}",
+        }
+    mcp_domain = str(status.get("domain") or "")
+    synced = mcp_domain == api_domain
+    return {
+        "running": True,
+        "synced": synced,
+        "api_domain": api_domain,
+        "mcp_domain": mcp_domain,
+        "tools": status.get("tools"),
+        "domain_tools": status.get("domain_tools"),
+        "loaded_at": status.get("loaded_at"),
+        "reason": None if synced else f"MCP 仍是 {mcp_domain or '未知'}，API 当前是 {api_domain}",
+    }
+
+
+def _mcp_follow(domain: str) -> dict:
+    """#277 R7/R8：切换领域后通知 MCP；不可达不影响领域切换本身。"""
+    try:
+        _mcp_http("/control/switch-domain", method="POST",
+                  payload={"domain": domain}, timeout=10.0)
+        return {"mcp_synced": True}
+    except Exception as exc:  # noqa: BLE001 —— MCP 是下游，失败只做告警
+        return {"mcp_synced": False, "mcp_error": f"MCP 未同步：{exc}"}
 
 
 def _exit_imported_if_current(workspace_id: str) -> bool:
@@ -3252,6 +3344,7 @@ def exit_imported_endpoint():
         "domain": switched.name,
         "loaded_at": switched.loaded_at,
         "workspace": workspace_id,
+        **_mcp_follow(switched.name),
     }
 
 

@@ -320,3 +320,42 @@ def test_build_server_allows_domain_without_mcp_module(monkeypatch):
     server = mcp_server.build_server(lambda: None, lambda: adapter, "minimal", "最小领域")
 
     assert server is not None
+
+
+def test_domain_tools_can_be_swapped_on_a_live_server():
+    """#277 R1/R2：换域不重建 server，只增删注册表；工具集可恢复。"""
+    from config import load_config
+    from domains import load_domain, package_onto_path
+    from reasoner.engine import OntologyEngine
+
+    settings = load_config(cli_domain="agent_task")
+    name = settings.effective_default()
+    mod = domain_module()
+    onto = package_onto_path(name, settings=settings)
+    engine = OntologyEngine(onto_path=onto, extensions_dir=None)
+    adapter = load_domain(name, engine, settings=settings)
+
+    server = mcp_server.build_server(
+        lambda: engine, lambda: adapter, name, mod.DESCRIPTION,
+    )
+    before = mcp_server._tool_names(server)
+    domain_tools = set(server._domain_tool_names)
+    assert "capability_match" in domain_tools
+
+    for tool in list(domain_tools):
+        server.remove_tool(tool)
+    stripped = mcp_server._tool_names(server)
+    assert "capability_match" not in stripped
+    assert "query_sparql" in stripped          # 通用工具不随领域增删
+
+    restored = mcp_server.register_domain_tools(server, name, lambda: adapter)
+    after = mcp_server._tool_names(server)
+    assert restored == domain_tools
+    assert after == before
+
+
+def test_status_tool_is_generic_and_reports_live_state():
+    """#277 R4：mcp_status 不随领域变，任何领域下都可用。"""
+    server = _FakeServer()
+    mcp_server.register_status_tool(server, lambda: {"domain": "agent_task", "tools": 23})
+    assert server.tools["mcp_status"]()["domain"] == "agent_task"

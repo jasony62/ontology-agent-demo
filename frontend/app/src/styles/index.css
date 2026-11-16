@@ -1996,3 +1996,6 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .clear-import-delete label { display: flex; align-items: center; gap: 6px; }
 .clear-import-delete .btn { align-self: flex-start; }
+.mode-badge.mcp-ok { background: #e9f7f0; color: #1f6b4a; border: 1px solid #9fd4b8; }
+.mode-badge.mcp-warn { background: #fff4e5; color: #8a5a00; border: 1px solid #e6b36b; cursor: pointer; }
+.mcp-warn-text { color: #8a5a00; }

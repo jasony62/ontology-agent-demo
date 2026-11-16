@@ -190,6 +190,27 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(text).toContain('<项目根目录>/.venv/bin/python');
   });
 
+  it('#277 说明页显示 MCP 实时领域、工具数与不同步提示', () => {
+    render(
+      <DomainGuidePage
+        guide={withGuide(GUIDE)}
+        error={null}
+        loading={false}
+        onRetry={() => {}}
+        mcpSync={{
+          running: true, synced: false, api_domain: 'agent_task',
+          mcp_domain: 'imported', tools: 15, domain_tools: 0,
+        }}
+      />,
+    );
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('MCP 当前领域');
+    expect(text).toContain('imported');
+    expect(text).toContain('工具 15 个');
+    expect(text).toContain('与页面不一致');
+  });
+
   it('#135 切题后把新展开的卡片滚到内容区顶部，而不是 section 顶部', () => {
     // 全局 scrollIntoView 在文件顶部被打成空实现：这里换成 spy，断言真的定位到卡片。
     const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');

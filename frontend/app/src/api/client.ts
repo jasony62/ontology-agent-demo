@@ -513,6 +513,33 @@ export interface CqSetResponse {
   cases: CqSetCase[];
 }
 
+/** #319 / #320：出题配置（工作区级）。结构同框架 default_prompts.json。 */
+export interface CqPromptsConfig {
+  name?: string;
+  description?: string;
+  namespace_hint?: string;
+  format_instruction?: string;
+  axiom_patterns?: Record<string, string>;
+  checklist?: string[];
+  /** 只读：锚点仍来自运行时本体，界面不提供手写表编辑。 */
+  schema_terms?: { classes?: string[]; properties?: string[] };
+  declared_anchor_stopwords?: string[];
+  cq_generation?: {
+    type_taxonomy?: Record<string, string>;
+    suggested_mix?: Record<string, number>;
+    phrasing_rules?: string[];
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+export interface CqPromptsResponse {
+  ontology_id: string;
+  /** workspace = 工作区自定义；default = 出厂种子 / 框架默认。 */
+  source: 'workspace' | 'default' | string;
+  config: CqPromptsConfig;
+}
+
 export interface CqEvidence {
   item: string;
   label: string;
@@ -806,6 +833,19 @@ export const api = {
 
   /** CQ 集（#150）：读当前集 + 概览 summary */
   cqSet: () => request<CqSetResponse>('/api/domains/current/cq/set'),
+
+  /** #319 / #320：出题配置（只作用当前工作区） */
+  cqPrompts: () => request<CqPromptsResponse>('/api/domains/current/cq/prompts'),
+
+  cqSavePrompts: (config: CqPromptsConfig) =>
+    request<CqPromptsResponse>('/api/domains/current/cq/prompts', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config }),
+    }),
+
+  cqResetPrompts: () =>
+    request<CqPromptsResponse>('/api/domains/current/cq/prompts', { method: 'DELETE' }),
 
   /** 训练现场自举（#196）：状态 / 待决 / 待跟进 / 缺口 / 下一步 */
   cqResume: (depth: 'snapshot' | 'full' = 'snapshot') =>

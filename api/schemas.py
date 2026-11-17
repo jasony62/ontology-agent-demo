@@ -212,6 +212,21 @@ class CqLocateRequest(BaseModel):
     )
 
 
+class CqPromptsRequest(BaseModel):
+    """出题配置保存（#319）：整份配置写回当前工作区。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config: dict[str, Any] = Field(
+        ...,
+        description=(
+            "出题配置对象，结构同框架默认模板：`cq_generation`（题型定义 / "
+            "建议配比 / 措辞规则）、`description`、`declared_anchor_stopwords` 等。"
+            "锚点术语不在此配置，仍由运行时本体提供。"
+        ),
+    )
+
+
 class CqDecisionRequest(BaseModel):
     """CQ 决策入口（#195）：提问 / 反馈 / 自答撤问。"""
 

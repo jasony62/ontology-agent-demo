@@ -1731,6 +1731,21 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-editor .field { display: flex; flex-direction: column; gap: 3px; }
 .cq-editor textarea { font-family: inherit; resize: vertical; }
 .cq-editor-actions { display: flex; gap: 8px; }
+/* #320：出题配置面板（工作区级） */
+.cq-prompts-modal { width: min(720px, 94vw); }
+.cq-prompts-section { display: flex; flex-direction: column; gap: 6px; }
+.cq-prompts-section h4 { font-size: var(--fs-md); color: var(--heading); margin: 0; }
+.cq-prompts-mix {
+  display: grid; grid-template-columns: repeat(4, minmax(76px, 1fr));
+  gap: 8px; align-items: end;
+}
+.cq-prompts-mix .field-label { font-size: 11px; }
+.cq-prompts-total { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }
+.cq-prompts-total b { color: var(--heading); }
+.cq-prompts-readonly { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cq-prompts-readonly li { display: flex; gap: 8px; font-size: 12px; color: var(--muted); line-height: 1.55; }
+.cq-prompts-readonly b { flex: 0 0 58px; color: var(--text); }
+.cq-prompts-modal .guide-muted .cq-badge { margin-left: 6px; }
 
 /* #165：CQ 审计面板 */
 .cq-audit-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }

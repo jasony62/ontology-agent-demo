@@ -15,6 +15,7 @@ import {
 } from '../lib/cqLabels';
 import { ApiError } from '../api/client';
 import { formatLocalTime } from '../lib/time';
+import CqPromptsPanel from './CqPromptsPanel';
 import CqTrainingPage from './CqTrainingPage';
 import HelpTip from './HelpTip';
 import TechDetails from './TechDetails';
@@ -110,6 +111,8 @@ export default function CqPage() {
   const [recentAudit, setRecentAudit] = useState<CqAuditEntry[]>([]);
   const [metrics, setMetrics] = useState<CqMetricsResponse | null>(null);
   const [showGlossary, setShowGlossary] = useState(false);
+  // #320：出题配置面板（只作用当前工作区）
+  const [showPrompts, setShowPrompts] = useState(false);
   // #250 R6：点击整体缺口统计，把下方题目列表筛到对应题
   const [gapFilter, setGapFilter] = useState<string | null>(null);
 
@@ -527,6 +530,12 @@ export default function CqPage() {
           {tab === 'cases' && (
             <>
               <div className="cq-tool-group">
+                <span className="cq-tool-group-label">出题</span>
+                <button type="button" className="btn secondary" onClick={() => setShowPrompts(true)}>
+                  出题配置
+                </button>
+              </div>
+              <div className="cq-tool-group">
                 <span className="cq-tool-group-label">技术</span>
                 <label className="cq-tech-switch" title="显示 SPARQL、内部枚举与证据原文；状态会记住">
                   <input
@@ -630,6 +639,7 @@ export default function CqPage() {
       </div>
 
       {showGlossary && <CqGlossary onClose={() => setShowGlossary(false)} />}
+      {showPrompts && <CqPromptsPanel onClose={() => setShowPrompts(false)} />}
 
       {tab === 'training' ? (
         <CqTrainingPage onGoToCases={() => selectTab('cases')} />

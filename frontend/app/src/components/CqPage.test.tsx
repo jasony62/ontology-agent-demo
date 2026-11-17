@@ -975,14 +975,14 @@ describe('CQ 集页（#151 / #203）', () => {
     confirm.mockRestore();
   });
 
-  it('顶部工具栏分成四组，导出收进一个下拉（#250 R1）', async () => {
+  it('顶部工具栏分成五组，导出收进一个下拉（#250 R1 / #320）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
     const labels = [...container!.querySelectorAll('.cq-tool-group-label')]
       .map((node) => node.textContent);
-    expect(labels).toEqual(['视图', '技术', '只读工具', '写操作']);
+    expect(labels).toEqual(['视图', '出题', '技术', '只读工具', '写操作']);
     expect(container!.querySelector('.cq-export-menu')).not.toBeNull();
     const links = [...container!.querySelectorAll<HTMLAnchorElement>('.cq-export-list a')];
     const items = links.map((link) => link.textContent ?? '');

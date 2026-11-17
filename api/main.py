@@ -39,6 +39,7 @@
 """
 
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -49,7 +50,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Path as ApiPath, Body
+from fastapi import FastAPI, HTTPException, UploadFile, File, Query, Path as ApiPath, Body, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from rdflib import Graph, Literal, RDF, OWL, RDFS, URIRef
@@ -90,7 +91,7 @@ from reasoner.protocol import (
 from domains import DomainManager, DomainContractError, DomainNotFoundError
 from domains.imported import display_filename
 from . import workspaces
-from cq import cq_runner, cq_store, training_service
+from cq import cq_runner, cq_store, prompts_store, training_service
 from cq import agenda as cq_agenda
 from cq import coverage as cq_coverage
 from cq import lifecycle as cq_lifecycle
@@ -98,7 +99,7 @@ from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
     DescribeRequest, SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
-    CqDecisionRequest,
+    CqPromptsRequest, CqDecisionRequest,
 )
 from .response_schemas import (
     ClassesResponse,
@@ -123,6 +124,29 @@ from .response_schemas import (
 
 # 领域运行态：唯一真相源（名字、引擎、适配器、加载时刻都在里面）。
 DOMAINS = DomainManager(eager=True)
+
+
+def _seed_cq_prompts(workspace_id: str) -> None:
+    """#317：给工作区播种出题配置；已有文件不覆盖。
+
+    配置播种是附加工件，失败不得回滚本体导入 / 领域激活，因此这里吞掉
+    异常（原因会在下一次读配置时以「回落到出厂默认」体现）。
+    """
+    try:
+        if workspace_id:
+            prompts_store.ensure_seeded(workspace_id)
+    except Exception:  # noqa: BLE001 —— 配置播种不影响主流程
+        pass
+
+
+def _seed_current_prompts(handle=None) -> None:
+    """按当前领域身份播种：导入态用工作区 id，安装领域用领域名。"""
+    handle = handle or DOMAINS.current()
+    if handle.is_imported:
+        current = workspaces.get_current() or {}
+        _seed_cq_prompts(str(current.get("current_id") or ""))
+    else:
+        _seed_cq_prompts(handle.name)
 
 
 def _restore_imported_workspace() -> None:
@@ -150,6 +174,8 @@ def _restore_imported_workspace() -> None:
 
 
 _restore_imported_workspace()
+# #317：启动即给当前领域的工作区播种出题配置（失败不影响服务启动）。
+_seed_current_prompts()
 
 
 # 模块级 ENGINE / ADAPTER 是 DOMAINS 的**请求级快照**：
@@ -2004,6 +2030,106 @@ def _cq_identity() -> tuple[str, Path | None]:
     return cq_store.identity_for(handle.name, seed)
 
 
+def _require_loopback(request: Request) -> None:
+    """#319：出题配置写操作只接受本地回环来源。
+
+    API 没有登录 / token 体系；一旦开放写配置，任何能访问端口的人都能改
+    提示词。因此写端点自身校验来源，而不是依赖部署时是否只监听 127.0.0.1。
+    TestClient 的 host 固定为 `testclient`，按本地调用处理。
+    """
+    host = request.client.host if request.client else ""
+    if host == "testclient":
+        return
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            return
+    except ValueError:
+        pass
+    raise HTTPException(
+        status_code=403,
+        detail="出题配置只能在本地回环地址修改；请在本机浏览器或本机 API 调用中保存。",
+    )
+
+
+def _cq_prompts_view(ontology_id: str, config: dict | None = None) -> dict:
+    return {
+        "ontology_id": ontology_id,
+        "source": prompts_store.source(ontology_id),
+        "config": config if config is not None else prompts_store.load(ontology_id),
+    }
+
+
+@app.get(
+    "/api/domains/current/cq/prompts",
+    tags=["通用查询"],
+    summary="当前工作区的出题配置",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "出题配置：config 为当前生效值（框架默认 → 领域包 → 工作区，"
+                "逐字段深合并），source 标明来源是 workspace（工作区自定义）"
+                "还是 default（出厂种子 / 框架默认）。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def cq_prompts():
+    """读当前工作区的出题配置；只读，不写盘。"""
+    ontology_id, _ = _cq_identity()
+    try:
+        return _cq_prompts_view(ontology_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"出题配置无法读取：{exc}")
+
+
+@app.put(
+    "/api/domains/current/cq/prompts",
+    tags=["通用查询"],
+    summary="保存当前工作区的出题配置",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "保存后的生效配置与来源。",
+        },
+        **ERROR_400,
+    },
+)
+def cq_prompts_save(req: CqPromptsRequest, request: Request):
+    """整份保存到当前工作区；只接受本地回环来源。"""
+    _require_loopback(request)
+    ontology_id, _ = _cq_identity()
+    try:
+        config = prompts_store.save(ontology_id, req.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"出题配置无法保存：{exc}")
+    return _cq_prompts_view(ontology_id, config)
+
+
+@app.delete(
+    "/api/domains/current/cq/prompts",
+    tags=["通用查询"],
+    summary="恢复当前工作区的默认出题配置",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "删除工作区配置后的生效值（回到出厂种子 / 框架默认）与来源。",
+        },
+        **ERROR_400,
+    },
+)
+def cq_prompts_reset(request: Request):
+    """删除工作区配置文件；只删这一个文件，不动题集 / 本体 / 元数据。"""
+    _require_loopback(request)
+    ontology_id, _ = _cq_identity()
+    try:
+        config = prompts_store.reset(ontology_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"出题配置无法恢复默认：{exc}")
+    return _cq_prompts_view(ontology_id, config)
+
+
 @app.get(
     "/api/domains/current/cq/set",
     tags=["通用查询"],
@@ -2593,6 +2719,8 @@ async def load_ontology(file: UploadFile = File(..., description="要加载的�
         # 一起换成这份本体，不再保留上一个包的句柄。构建失败时旧领域原样服务。
         handle = DOMAINS.activate_imported(engine, filename=meta["original_filename"])
         workspaces.set_current(meta["id"], "imported")
+        # #317：导入路径没有领域包配置，播种框架默认；已有配置不覆盖。
+        _seed_cq_prompts(meta["id"])
     except Exception as exc:
         if created and meta is not None:
             workspaces.remove(meta["id"])
@@ -2918,6 +3046,8 @@ def save_ontology(req: SaveOntologyRequest):
             )
             if workspace_meta is not None:
                 workspaces.set_current(workspace_meta["id"], "imported")
+                # #317：另存新本体同样按导入态播种；已有配置不覆盖。
+                _seed_cq_prompts(workspace_meta["id"])
     except Exception as exc:
         if backup is not None:
             try:
@@ -3083,6 +3213,8 @@ def reload_domain():
         handle = DOMAINS.reload()
     except (DomainContractError, DomainNotFoundError, ValueError, OSError) as exc:
         raise HTTPException(status_code=400, detail=f"领域重载失败（旧领域保持可用）：{exc}")
+    # #317：重载不重播种已存在的工作区配置；仅在文件缺失时补种子。
+    _seed_current_prompts(handle)
     return {"status": "ok", "domain": handle.name, "loaded_at": handle.loaded_at,
             "triples": len(handle.engine.g)}
 
@@ -3133,6 +3265,8 @@ def activate_domain(name: str = ApiPath(..., description="已安装领域包名�
         raise HTTPException(status_code=400, detail=f"切换领域失败（当前领域保持可用）：{exc}")
     # #149：切到预置包后，重启不再恢复上一个导入本体。
     workspaces.clear_current()
+    # #317：安装领域按包内 cq_prompts.json 播种；用户改过的配置不覆盖。
+    _seed_cq_prompts(handle.name)
     return {"status": "ok", "domain": handle.name, "loaded_at": handle.loaded_at,
             "capabilities": handle.capabilities, "triples": len(handle.engine.g),
             **_mcp_follow(handle.name)}

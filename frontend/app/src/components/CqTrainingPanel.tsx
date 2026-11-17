@@ -291,7 +291,7 @@ export default function CqTrainingPanel({
           <div className="cq-training-stats" role="group" aria-label="训练概览">
             <button type="button" className="cq-training-stat" onClick={() => setFilter('all')}>
               <b>{Math.round((summary?.coverage_real ?? resume.summary?.coverage_real ?? 0) * 100)}%</b>
-              <span>可答率</span>
+              <span>回归通过率</span>
             </button>
             <button
               type="button"
@@ -583,8 +583,8 @@ function CaseCard({
         {item.intent_pending && <span className="guide-badge">意图待确认</span>}
       </div>
       <StageBar stage={item.stage} onSelect={onHistory} />
-      {!item.graduated && (item.blockers?.length ?? 0) > 0 && (
-        <div className="cq-case-blockers">还差：{item.blockers?.join(' / ')}</div>
+      {!item.graduated && ((item.missing ?? item.blockers)?.length ?? 0) > 0 && (
+        <div className="cq-case-blockers">还差：{(item.missing ?? item.blockers)?.join(' / ')}</div>
       )}
       {(item.pending_actions?.length ?? 0) > 0 && (
         <div className="cq-case-action-pending">

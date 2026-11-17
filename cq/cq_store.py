@@ -39,6 +39,7 @@ from cq.constants import (
     STATUS_CONTRACT_VALUES,
     STATUS_UNSET,
 )
+from cq.graduation import graduation_view
 from reasoner.cq_locate import locate_cq
 from ontology_plugin_sdk.cq import tbox
 
@@ -194,11 +195,12 @@ def _summary(case: dict | None) -> dict | None:
 
 
 def graduated_snapshot(case: dict) -> bool:
-    """「这一刻是否已毕业」的快照（#245 毕业留存率用）。
+    """「这一刻是否已毕业」的审计快照（#245 毕业留存率专用）。
 
-    与 `build_view` 的 blockers 口径**有意不同**：审计只落集内字段，没有本次
-    定位结果，所以这里用「已分型 + 有断言 + 上次评估通过 + 未归档」判定，
-    不含锚点复核。CQM 仍以 `build_view` 的五条件为准，两者不要互相替代。
+    **仅用于毕业留存率，不用于交付判定 / CQM / 列表。** 与 `cq.graduation`
+    的 blockers 口径有意不同：审计只落集内字段，没有本次定位结果，所以这里
+    用「已分型 + 有断言 + 上次评估通过 + 未归档」判定，不含锚点复核。
+    交付与 CQM 一律走 `graduation.is_graduated`（#308），两者不要互相替代。
     """
     if not isinstance(case, dict):
         return False
@@ -511,9 +513,11 @@ def _review_blocking(case: dict) -> bool:
     return str(review.get("state") or "none") != "approved"
 
 
-def _regression_signature(case: dict) -> str:
+def _substantive_signature(case: dict) -> str:
+    """#312：实质变更 = 题干或断言内容变化（标签 / 需求 / 题型不算）。"""
     regression = case.get("regression") if isinstance(case.get("regression"), dict) else {}
     payload = {
+        "cq": str(case.get("cq") or ""),
         "query": str(regression.get("query") or ""),
         "expect": regression.get("expect"),
     }
@@ -521,10 +525,11 @@ def _regression_signature(case: dict) -> str:
 
 
 def _apply_review_reset(previous: dict, cases: list[dict]) -> None:
-    """#285 Q2：断言语义变了 → 审核退回 pending；active 同时退回 draft。
+    """#285 Q2 / #312：题干或断言变了 → 审核退回 pending，active 原子退回 draft。
 
-    只比较 `regression.query/expect`；改题干 / 需求 / 题型不重置。
-    退回 draft 是「active + pending 非法」的唯一合法出口，避免双真相。
+    只比较 `cq` 与 `regression.query/expect`；改需求 / 题型 / 备注等元数据不重置。
+    退回 draft 是「active + pending 非法」的唯一合法出口，避免双真相：
+    审核重开与运营态降级必须在同一写入路径完成，不产生中间态。
     """
     prev_by_id = {
         str(case.get("id")): case
@@ -538,7 +543,7 @@ def _apply_review_reset(previous: dict, cases: list[dict]) -> None:
             continue
         if not review.get("required") or str(review.get("state") or "") != "approved":
             continue
-        if _regression_signature(prev) == _regression_signature(case):
+        if _substantive_signature(prev) == _substantive_signature(case):
             continue
         case["review"] = {**review, "state": "pending"}
         case["review"].pop("by", None)
@@ -1022,19 +1027,17 @@ def build_view(engine, data: dict) -> dict:
         is_answerable = bool(regression) and conclusion > 0
         expected_type = _display_expected_type(case.get("expected_type"))
         status = _display_status(case.get("status"))
-        blockers = []
-        if not is_located:
-            blockers.append("未锚定")
-        if expected_type == EXPECTED_TYPE_UNKNOWN:
-            blockers.append("未分型")
-        if not regression:
-            blockers.append("缺断言")
-        if not is_answerable:
-            blockers.append("未通过")
-        if _review_blocking(case):
-            blockers.append("待审核")
-        if status == "archived":
-            blockers.append("已归档")
+        # #308 / #309：毕业与 blocker 只走 graduation 单一事实源；
+        # 审核状态（review）只用于写入门与预检，不再混进 blockers。
+        graduation = graduation_view({
+            **case,
+            "expected_type": expected_type,
+            "status": status,
+            "regression": regression,
+            "located": is_located,
+            "answerable": is_answerable,
+        })
+        blockers = graduation["blockers"]
         by_type[expected_type] += 1
         by_status[status] += 1
         if is_located:
@@ -1049,8 +1052,9 @@ def build_view(engine, data: dict) -> dict:
             "regression": regression,
             "located": is_located,
             "answerable": is_answerable,
-            "graduated": not blockers,
+            "graduated": graduation["graduated"],
             "blockers": blockers,
+            "missing": graduation["missing"],
             "location": location,
             "assertion_summary": assertion_summary(regression),
         })

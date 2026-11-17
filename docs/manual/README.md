@@ -18,6 +18,7 @@
 | Agent 调用护栏（预算/循环/缓存/审计） | MCP `guard_status` + `guard_config.json` | [03 前端与 MCP](03-前端与MCP.md) / [04 运维](04-运维与本体管理.md) |
 | CQ 集管理与出题质检（LLM 出题闭环） | 页头「CQ 集」/ MCP `/mcp/cq`：`cq_author` / `cq_to_schema` / `cq_regression` | [09 CQ 集管理](09-CQ集管理.md) / [03 前端与 MCP](03-前端与MCP.md) |
 | 训练过程线上化（决策 / 现场 / 时间线 / 迭代） | CQ 集页 →「训练」标签（训练现场 + 只读时间线，迭代是时间线筛选项）/ MCP `cq_decision` / `cq_resume` / `cq_timeline` | [09 CQ 集管理](09-CQ集管理.md) |
+| CQ 状态怎么流转、什么时候算毕业 | CQ 集页列表 / 详情「审核」组 / 交付线 | [10 CQ 状态与毕业](10-CQ状态与毕业.md) |
 | 本体管理（热重载 / 编辑 / 回滚 / 备份） | API / ontologyctl / backup.sh | [04 运维与本体管理](04-运维与本体管理.md) |
 | 二次开发（新增领域 / 扩展工具） | `domains/`、`reasoner/` | [06 二次开发指南](06-二次开发指南.md) |
 

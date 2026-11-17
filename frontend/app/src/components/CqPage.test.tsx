@@ -322,7 +322,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(link.getAttribute('href')).toContain('format=markdown');
   });
 
-  it('质量漏斗把「可答」与「没对上」并排说清（#260 / #294）', async () => {
+  it('质量漏斗把「回归通过」与「没对上」并排说清（#260 / #294 / #311）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
@@ -330,7 +330,7 @@ describe('CQ 集页（#151 / #203）', () => {
     const funnel = container!.querySelector('.cq-funnel')!;
     expect(funnel.textContent).toContain('2 总题数');
     expect(funnel.textContent).toContain('1 对上本体');
-    expect(funnel.textContent).toContain('1 可答');
+    expect(funnel.textContent).toContain('1 回归通过');
     expect(funnel.textContent).toContain('没对上 1');
   });
 
@@ -777,26 +777,26 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-editor')).toBeNull();
   });
 
-  it('待审核题有徽章、统计与预检拦截（#280）', async () => {
+  it('待审核仍拦住评估，但不再作为毕业缺口（#280 / #309 / #311）', async () => {
     const set = {
       ...SET,
       cases: SET.cases.map((item, index) => (index === 1 ? {
         ...item,
         review: { required: true, state: 'pending' },
-        blockers: [...(item.blockers || []), '待审核'],
       } : item)),
     };
     stubFetch(set);
     act(() => root!.render(<CqPage />));
     await flush();
 
+    // 审核状态只在详情区「审核」组，不在列表行、不进「缺：…」。
     const row = [...container!.querySelectorAll('.cq-row')]
       .find((node) => node.textContent?.includes('这条结论凭什么成立？'))!;
-    expect(row.textContent).toContain('待审核');
+    expect(row.textContent).not.toContain('待审核');
 
     const gapStat = [...container!.querySelectorAll<HTMLButtonElement>('.cq-gap-stats-actions button')]
-      .find((btn) => btn.textContent?.includes('待审核'))!;
-    expect(gapStat.textContent).toContain('1');
+      .find((btn) => btn.textContent?.includes('待审核'));
+    expect(gapStat).toBeUndefined();
 
     const run = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((btn) => btn.textContent === '跑一轮评估')!;
@@ -1230,18 +1230,22 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/cq/actions/'))).toBe(false);
   });
 
-  it('题库状态在列表 / 详情 / 弹窗三处同名，搜索占位同步（#302 R2 / V4）', async () => {
+  it('列表行不再重复展示题库状态，详情与弹窗保留（#310 / #302 V4）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
-    const rowStatus = container!.querySelector('.cq-row-meta span[title="题库状态"]')!;
-    expect(rowStatus.textContent).toContain('题库状态：启用');
+    // 列表行只留题型 / 含本体标识符徽标 + 独占一行的毕业状态。
+    expect(container!.querySelector('.cq-row-meta span[title="题库状态"]')).toBeNull();
+    const rows = container!.textContent ?? '';
+    expect(rows).not.toContain('题库状态：');
+    expect(container!.querySelector('.cq-row-status')).toBeTruthy();
+
     const detailLabels = [...container!.querySelectorAll('.cq-detail .cq-kv span')]
       .map((node) => node.textContent);
     expect(detailLabels).toContain('题库状态');
     expect(container!.querySelector<HTMLInputElement>('.cq-search')!.placeholder)
-      .toContain('题库状态');
+      .toContain('状态');
 
     const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '编辑')!;

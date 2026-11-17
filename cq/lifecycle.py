@@ -16,6 +16,7 @@ from datetime import datetime
 
 from cq import training_state
 from cq.cq_store import short_id_for
+from cq.graduation import case_blockers, display_blockers, is_graduated
 
 # 看板阶段条（顺序固定）；followup 单独徽标，不塞进线性阶段。
 STAGE_BAR = ("authored", "regression", "pending", "resolved", "fixing", "passed")
@@ -255,17 +256,9 @@ def build_lifecycle(
             str((linked[-1] if linked else {}).get("created_at") or ""),
             key=_ts_num,
         )
-        blockers: list[str] = []
-        if not case.get("located"):
-            blockers.append("未锚定")
-        if str(case.get("expected_type") or "") == "unknown":
-            blockers.append("未分型")
-        if not case.get("regression"):
-            blockers.append("缺断言")
-        if not case.get("answerable"):
-            blockers.append("未通过")
-        if str(case.get("status") or "") == "archived":
-            blockers.append("已归档")
+        # #308 / #309：与 build_view 共用同一判定；不在看板里重算一套。
+        blockers = case_blockers(case)
+        graduated = is_graduated(case)
         case_actions = [
             action for action in (state.get("actions") or {}).values()
             if str(action.get("case_id") or "") == case_id
@@ -280,8 +273,9 @@ def build_lifecycle(
             "assertion_summary": case.get("assertion_summary"),
             "located": bool(case.get("located")),
             "answerable": bool(case.get("answerable")),
-            "graduated": not blockers,
+            "graduated": graduated,
             "blockers": blockers,
+            "missing": display_blockers(case),
             "stage": stage,
             "stage_label": STAGE_LABELS[stage],
             "priority": priority,

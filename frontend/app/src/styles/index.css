@@ -1446,26 +1446,26 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .cq-tab:hover { color: var(--text); }
 .cq-tab.active { background: #fff; color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
-.cq-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.cq-toolbar-main { min-width: 260px; flex: 1 1 420px; }
+/* #307：标题与工具分层，工具组左对齐；不再用两端对置把右侧挤成两层。 */
+.cq-toolbar { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.cq-toolbar-main { min-width: 0; flex: 0 0 auto; }
 .cq-toolbar h2 { font-size: var(--fs-page); color: var(--heading); margin-bottom: 3px; }
 .cq-abbr { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--muted); }
 .cq-intro { margin: 2px 0 4px; font-size: 13px; color: var(--text); line-height: 1.65; }
 .cq-meta { margin: 4px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.6; }
 .cq-meta-tech { margin-left: 4px; color: var(--muted); }
-.cq-toolbar-actions { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.cq-toolbar-actions { display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap; justify-content: flex-start; }
 .cq-toolbar-actions .btn { text-decoration: none; display: inline-flex; align-items: center; }
-/* #250 R1：视图 / 视角 / 只读工具 / 写操作四组，组标签常驻；写操作单独描边。 */
+/* #250 R1 / #307：四组工具左对齐；组标签行内，去掉外框，压缩垂直空间。 */
 .cq-tool-group {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 4px 8px 5px; border-radius: 8px; border: 1px solid transparent;
+  padding: 2px 0; border: 0; border-radius: 0; background: transparent;
 }
 .cq-tool-group-label {
-  flex-basis: 100%; font-size: 10.5px; color: var(--muted);
-  letter-spacing: .04em; margin-bottom: -2px;
+  flex-basis: auto; font-size: 10.5px; color: var(--muted);
+  letter-spacing: .04em; margin: 0 2px 0 0;
 }
-.cq-tool-group.readonly { background: var(--panel-2); border-color: var(--border); }
-.cq-tool-group.writes { background: #fff7ed; border-color: #f0c9a0; }
+.cq-tool-group.readonly, .cq-tool-group.writes { background: transparent; border: 0; }
 .cq-export-menu { position: relative; }
 .cq-export-menu > summary { list-style: none; cursor: pointer; }
 .cq-export-menu > summary::-webkit-details-marker { display: none; }
@@ -1482,7 +1482,16 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .cq-export-list a:hover { background: var(--panel-2); }
 .cq-export-list a i { display: block; margin-top: 1px; font-style: normal; font-size: 10.5px; color: var(--muted); }
-.cq-run-preflight { flex-basis: 100%; max-width: 360px; font-size: 11px; color: var(--muted); line-height: 1.55; }
+/* #307：预检默认折成徽标；待审核数仍在 summary 上可见，点开看明细。 */
+.cq-run-preflight { flex-basis: auto; max-width: none; font-size: 11px; color: var(--muted); line-height: 1.55; }
+.cq-run-preflight > summary {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2);
+  color: var(--muted); font-size: 10.5px; cursor: pointer; list-style: none;
+}
+.cq-run-preflight > summary::-webkit-details-marker { display: none; }
+.cq-run-preflight[open] > summary { border-color: var(--border-strong); color: var(--text); }
+.cq-run-preflight > span { display: block; max-width: 360px; margin-top: 4px; }
 .cq-mode-note {
   margin: 8px 0 0; padding: 7px 10px; border-radius: 6px;
   background: var(--panel-2); font-size: 12px; color: var(--muted);
@@ -1630,7 +1639,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .cq-list ul { list-style: none; margin: 0; padding: 0; max-height: 64vh; overflow: auto; }
 .cq-row {
-  display: flex; align-items: flex-start; gap: 8px; width: 100%; text-align: left;
+  display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; width: 100%; text-align: left;
   border: 0; border-bottom: 1px solid var(--border); background: transparent;
   padding: 9px 12px; cursor: pointer;
 }
@@ -1642,6 +1651,12 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-row-main b { font-size: 12px; color: var(--heading); }
 .cq-row-main span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cq-row-meta { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 11px; color: var(--muted); }
+/* #310：毕业 / 缺什么独占一行、右对齐，不与右侧徽标挤在同一列。 */
+.cq-row-status {
+  flex: 1 1 100%; margin-left: 16px; text-align: right;
+  font-size: 11px; color: var(--muted); line-height: 1.5;
+}
+.cq-row-status.ok { color: var(--success); font-weight: 600; }
 .cq-badge.ok { color: var(--success); background: var(--success-bg); border-radius: 999px; padding: 1px 7px; }
 .cq-badge.warn { color: #8a5a00; background: #fff4e5; border: 1px solid #e6b36b; border-radius: 999px; padding: 1px 7px; }
 .cq-delivery { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 10px 0; padding: 9px 12px; border: 1px solid; border-radius: 8px; font-size: 12.5px; line-height: 1.6; }

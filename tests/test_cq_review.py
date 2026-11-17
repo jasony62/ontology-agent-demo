@@ -186,13 +186,29 @@ def test_regression_change_resets_review_and_demotes_active(ws):
     assert stored["status"] == "draft"
 
 
-def test_text_change_does_not_reset_review(ws):
+def test_text_change_resets_review_and_demotes_active(ws):
+    """#312：题干与断言都算实质变更；审核重开与退回草稿在同一写入路径。"""
     cq_store.save_set(ws, _set(_case(
         "Q1", status="active",
         review={"required": True, "state": "approved"},
         regression={"query": "ASK {}", "expect": True},
     )))
-    updated = cq_store.update_case(ws, "Q1", {"cq": "只改题干"})
+    updated = cq_store.update_case(ws, "Q1", {"cq": "改过的题干"})
+    assert updated["review"]["state"] == "pending"
+    assert updated["status"] == "draft"
+    stored = cq_store.get_set(ws)["cases"][0]
+    assert stored["review"]["state"] == "pending"
+    assert stored["status"] == "draft"
+
+
+def test_metadata_change_does_not_reset_review(ws):
+    """只改需求 / 题型等元数据，不触发审核重开，也不退回草稿。"""
+    cq_store.save_set(ws, _set(_case(
+        "Q1", status="active",
+        review={"required": True, "state": "approved"},
+        regression={"query": "ASK {}", "expect": True},
+    )))
+    updated = cq_store.update_case(ws, "Q1", {"requirement": "只改来源需求"})
     assert updated["review"]["state"] == "approved"
     assert updated["status"] == "active"
 
@@ -229,15 +245,23 @@ def test_audit_records_review_and_per_case_after(ws):
     assert len(audit[-1]["after"]["cases"]) == 2
 
 
-def test_review_pending_shows_up_in_blockers():
+def test_review_pending_is_not_a_blocker(monkeypatch):
+    """#309：待审核不进 blockers；草稿不能毕业是因为运营态门槛。"""
     engine = OntologyEngine(ONTO_PATH, extensions_dir=None)
     data = _set(_case(
         "Q1", status="draft",
         review={"required": True, "state": "pending"},
         regression={"query": "ASK { ?s ?p ?o }", "expect": True},
+        coverage_cache={"conclusion": 1},
     ))
+    monkeypatch.setattr(
+        cq_store, "locate_cq",
+        lambda engine, cq: {"coverage": "exact", "counts": {"total": 1}, "anchors": ["x"]},
+    )
     view = cq_store.build_view(engine, data)
-    assert "待审核" in view["cases"][0]["blockers"]
+    assert "待审核" not in view["cases"][0]["blockers"]
+    assert view["cases"][0]["blockers"] == []
+    assert view["cases"][0]["missing"] == ["未启用"]
     assert view["cases"][0]["graduated"] is False
 
 

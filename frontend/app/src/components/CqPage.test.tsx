@@ -231,6 +231,12 @@ function stubFetch(
         }),
       } as unknown as Response;
     }
+    if (url.includes('/cq/import') && method === 'POST') {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ suite: '导入的题集', cases: 3 }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/cases') && method === 'POST') {
       const payload = JSON.parse(String(init?.body || '{}'));
       const newCase = { ...payload, id: 'NEW' };
@@ -302,8 +308,10 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).toContain('交付线 100%');
     expect(text).toContain('补齐到毕业 → 15%');
     expect(text).not.toContain('× 0.5（最低 20）');
+    expect([...container!.querySelectorAll('summary')]
+      .some((node) => node.textContent === '目标题量怎么算')).toBe(false);
     const calc = [...container!.querySelectorAll('summary')]
-      .find((node) => node.textContent === '目标题量怎么算')!;
+      .find((node) => node.textContent === '技术展开')!;
     await act(async () => { calc.click(); });
     expect(container!.textContent).toContain('max(20, 本体关键术语数 × 0.5)');
     // 评审包导出入口与用途说明
@@ -369,7 +377,7 @@ describe('CQ 集页（#151 / #203）', () => {
     await flush();
 
     const wait = container!.querySelector('.cq-waiting')!;
-    expect(wait.textContent).toContain('等待智能体');
+    expect(wait.textContent).toContain('等待中');
     expect(wait.textContent).toContain('生成候选题');
     expect(wait.textContent).toContain('已等待 9 小时');
 
@@ -539,7 +547,9 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(buttons).not.toContain('重新验证');
     const delivery = container!.querySelector('.cq-delivery')!;
     expect(delivery.textContent).toContain('请求智能体生成候选题');
-    expect(delivery.textContent).toContain('导出评审包');
+    // #303：判定条不再复制导出 / 评估按钮，只给去向提示
+    expect(delivery.querySelectorAll('a')).toHaveLength(0);
+    expect(delivery.textContent).toContain('导出评审包见工具栏');
     expect(container!.textContent).toContain('评估有效');
   });
 
@@ -555,8 +565,11 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const delivery = container!.querySelector('.cq-delivery')!;
     expect(delivery.textContent).toContain('评估可能过期');
-    expect(delivery.textContent).toContain('重新验证');
-    expect([...container!.querySelectorAll<HTMLButtonElement>('button')]
+    // #303：判定条只留文字指引，评估入口唯一在工具栏
+    expect(delivery.textContent).toContain('去工具栏「跑一轮评估」重新验证');
+    expect([...delivery.querySelectorAll('button')]
+      .some((btn) => btn.textContent === '重新验证')).toBe(false);
+    expect([...container!.querySelectorAll<HTMLButtonElement>('.cq-tool-group.writes button')]
       .some((btn) => btn.textContent === '跑一轮评估')).toBe(true);
   });
 
@@ -578,22 +591,15 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(details.textContent).toContain('协同指标');
   });
 
-  it('首次访问只出现一次引导横幅（#295）', async () => {
+  it('页面说明只出现一处，旧欢迎横幅已删除（#303）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
-    expect(container!.querySelector('.cq-welcome')).not.toBeNull();
-    const dismiss = [...container!.querySelectorAll<HTMLButtonElement>('.cq-welcome button')]
-      .find((btn) => btn.textContent === '知道了')!;
-    act(() => dismiss.click());
-    expect(window.localStorage.getItem('oa.cq.welcome.v1')).toBe('1');
-    expect(container!.querySelector('.cq-welcome')).toBeNull();
 
-    act(() => root!.unmount());
-    root = createRoot(container!);
-    act(() => root!.render(<CqPage />));
-    await flush();
     expect(container!.querySelector('.cq-welcome')).toBeNull();
+    const text = container!.textContent ?? '';
+    expect(text.split('智能体负责生成和检查，你负责看证据、拍板').length - 1).toBe(1);
+    expect(text).toContain('本页：看每题能不能被本体验证');
   });
 
   it('来源未记录时判定条与 CQM 都带可信度标注（#295）', async () => {
@@ -744,7 +750,7 @@ describe('CQ 集页（#151 / #203）', () => {
     const labels = [...container!.querySelectorAll('.cq-editor .field-label')]
       .map((node) => node.textContent);
     expect(labels).toContain('题型');
-    expect(labels).toContain('状态');
+    expect(labels).toContain('题库状态');
     expect(labels).toContain('SPARQL query');
     expect(labels).toContain('expect（JSON）');
     expect(labels).not.toContain('工具（tool）');
@@ -835,7 +841,7 @@ describe('CQ 集页（#151 / #203）', () => {
       .find((button) => button.textContent === '编辑')!;
     act(() => edit.click());
     const save = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor button')]
-      .find((button) => ['确认题目与断言', '保存题目'].includes(button.textContent || ''))!;
+      .find((button) => button.textContent === '保存')!;
     await act(async () => { save.click(); });
     await flush();
 
@@ -854,7 +860,7 @@ describe('CQ 集页（#151 / #203）', () => {
       .find((button) => button.textContent === '编辑')!;
     act(() => edit.click());
     const save = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor button')]
-      .find((button) => ['确认题目与断言', '保存题目'].includes(button.textContent || ''))!;
+      .find((button) => button.textContent === '保存')!;
     await act(async () => { save.click(); });
     await flush();
 
@@ -891,7 +897,7 @@ describe('CQ 集页（#151 / #203）', () => {
     const editor = container!.querySelector('.cq-editor')!;
     expect(editor.querySelector('.cq-tech-section')).not.toBeNull();
     expect(editor.querySelector('textarea')).not.toBeNull();
-    expect(editor.textContent).toContain('改动断言会让这道题重新进入待审核');
+    expect(editor.textContent).toContain('修改断言会让这道题重新进入待审核');
 
     const tech = container!.querySelector<HTMLInputElement>('.cq-tech-switch input')!;
     await act(async () => { tech.click(); });
@@ -1006,6 +1012,9 @@ describe('CQ 集页（#151 / #203）', () => {
     const panel = container!.querySelector('.cq-audit')!;
     expect(panel.textContent).toContain('谁在什么时候增删改了哪道题');
     expect(panel.textContent).toContain('只读');
+    // #303：标题与条数合成一行，不再单独占一行
+    expect(panel.querySelector('.cq-audit-head h3')?.textContent)
+      .toContain('变更记录 · 最近 1 条（新到旧）');
     expect(panel.querySelector('input, textarea')).toBeNull();
     expect(container!.textContent).toContain('收起变更记录');
   });
@@ -1116,6 +1125,13 @@ describe('CQ 集页（#151 / #203）', () => {
 
     expect(container!.textContent).toContain('含本体标识符');
     expect(container!.querySelector('.cq-badge.muted')?.getAttribute('title')).toContain('不是错别字');
+    // #303：详情不再重复整段解释，改为可点开
+    const row = [...container!.querySelectorAll<HTMLButtonElement>('.cq-row')]
+      .find((node) => node.textContent?.includes('NonCompliantPackage'))!;
+    act(() => row.click());
+    const note = container!.querySelector<HTMLDetailsElement>('.cq-detail .cq-inline-note')!;
+    expect(note.open).toBe(false);
+    expect(note.querySelector('summary')!.textContent).toContain('点开看说明');
   });
 
   it('展示 CQM、协同指标与真实套件名（#237 / #239 / #243 / #288）', async () => {
@@ -1159,5 +1175,161 @@ describe('CQ 集页（#151 / #203）', () => {
       String(url).includes('/cq/cases/request') && String(init?.method) === 'POST');
     expect(call).toBeTruthy();
     expect(container!.textContent).toContain('已请求智能体生成候选题');
+  });
+
+  it('编辑弹窗只有一个「保存」，状态由题库状态下拉决定（#302 R1 / V1 / V2）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '编辑')!;
+    act(() => edit.click());
+
+    const editor = container!.querySelector('.cq-editor')!;
+    const labels = [...editor.querySelectorAll('.cq-editor-actions button')]
+      .map((button) => button.textContent);
+    expect(labels).toEqual(['保存', '退回草稿', '取消']);
+    expect(editor.textContent).not.toContain('确认题目与断言');
+    expect(editor.textContent).not.toContain('退回智能体');
+
+    // 下拉选「草稿」再保存 → 落盘草稿；人工翻批能力未丢失
+    const select = [...editor.querySelectorAll<HTMLSelectElement>('select')][1];
+    const setValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setValue.call(select, 'draft');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const save = [...editor.querySelectorAll<HTMLButtonElement>('.cq-editor-actions button')]
+      .find((button) => button.textContent === '保存')!;
+    await act(async () => { save.click(); });
+    await flush();
+
+    const patch = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/cases/') && String(init?.method).toUpperCase() === 'PATCH')!;
+    expect(JSON.parse(String((patch[1] as RequestInit).body)).status).toBe('draft');
+  });
+
+  it('「退回草稿」只写草稿状态，不再承诺通知智能体（#302 V3）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '编辑')!;
+    act(() => edit.click());
+    const draft = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor-actions button')]
+      .find((button) => button.textContent === '退回草稿')!;
+    await act(async () => { draft.click(); });
+    await flush();
+
+    const patch = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/cases/') && String(init?.method).toUpperCase() === 'PATCH')!;
+    expect(JSON.parse(String((patch[1] as RequestInit).body)).status).toBe('draft');
+    // 没有发出任何智能体行动项
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/cq/actions/'))).toBe(false);
+  });
+
+  it('题库状态在列表 / 详情 / 弹窗三处同名，搜索占位同步（#302 R2 / V4）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const rowStatus = container!.querySelector('.cq-row-meta span[title="题库状态"]')!;
+    expect(rowStatus.textContent).toContain('题库状态：启用');
+    const detailLabels = [...container!.querySelectorAll('.cq-detail .cq-kv span')]
+      .map((node) => node.textContent);
+    expect(detailLabels).toContain('题库状态');
+    expect(container!.querySelector<HTMLInputElement>('.cq-search')!.placeholder)
+      .toContain('题库状态');
+
+    const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '编辑')!;
+    act(() => edit.click());
+    const editor = container!.querySelector('.cq-editor')!;
+    expect(editor.querySelector('summary')!.textContent).toContain('题库状态');
+    expect([...editor.querySelectorAll('.field-label')].map((node) => node.textContent))
+      .toContain('题库状态');
+    // 训练页那套状态机不跟着改名
+    expect(editor.textContent).not.toContain('训练状态');
+  });
+
+  it('弹窗内保存失败，错误就地显示在按钮旁（#302 R3 / V5）', async () => {
+    stubFetch(SET, LOCATE, {
+      patchError: { code: 'invalid_case', message: '断言格式不对' },
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const edit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '编辑')!;
+    act(() => edit.click());
+    const save = [...container!.querySelectorAll<HTMLButtonElement>('.cq-editor-actions button')]
+      .find((button) => button.textContent === '保存')!;
+    await act(async () => { save.click(); });
+    await flush();
+
+    const local = container!.querySelector('.cq-editor .field-error')!;
+    expect(local.textContent).toContain('保存失败：断言格式不对');
+    const banner = container!.querySelector('.error-banner');
+    expect(banner?.textContent ?? '').not.toContain('保存失败');
+  });
+
+  it('导入 JSON 先确认整集覆盖，取消则不动题集（#302 R4 / V6）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const input = container!.querySelector<HTMLInputElement>('.cq-import input')!;
+    const file = new File(['{}'], 'cq.json', { type: 'application/json' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await flush();
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('会替换当前全部题目，此操作不可撤销'));
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/cq/import'))).toBe(false);
+
+    confirm.mockReturnValue(true);
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await flush();
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/cq/import'))).toBe(true);
+  });
+
+  it('重复入口收口：生成候选题 / 跑评估 / 导出各只有一处（#303 V3）', async () => {
+    stubFetch(SET, LOCATE, {
+      evaluation: { state: 'stale', ran_at: '2026-11-16T00:10:00+00:00' },
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const byText = (text: string) => [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .filter((button) => button.textContent === text);
+    expect(byText('请求智能体生成候选题')).toHaveLength(1);
+    expect(container!.querySelector('.cq-delivery')!
+      .contains(byText('请求智能体生成候选题')[0])).toBe(true);
+    expect(byText('跑一轮评估')).toHaveLength(1);
+    expect(container!.querySelector('.cq-tool-group.writes')!
+      .contains(byText('跑一轮评估')[0])).toBe(true);
+    // 导出评审包只剩下拉里的一项，判定条不再有独立按钮
+    const exportLinks = [...container!.querySelectorAll<HTMLAnchorElement>('a')]
+      .filter((link) => link.textContent?.includes('评审包（Markdown）'));
+    expect(exportLinks).toHaveLength(1);
+    expect(exportLinks[0].closest('.cq-export-menu')).not.toBeNull();
+  });
+
+  it('等待条与角色条不再复述同一份待响应清单（#303 第 11 组）', async () => {
+    stubFetch(SET, LOCATE, {
+      agentActions: [{ action_id: 'a1', action: 'generate_cases', requested_at: '2026-11-17T00:00:00+00:00' }],
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const strip = container!.querySelector('.cq-role.agent')!;
+    expect(strip.textContent).toContain('待响应 1 项');
+    expect(strip.textContent).not.toContain('生成候选题');
+    expect(container!.querySelector('.cq-waiting')!.textContent).toContain('生成候选题');
   });
 });

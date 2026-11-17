@@ -75,22 +75,6 @@ export default function CqPage() {
       return false;
     }
   });
-  // #295：首次访问一次性横幅（localStorage 记忆），之后不再出现。
-  const [showWelcome, setShowWelcome] = useState(() => {
-    try {
-      return window.localStorage.getItem('oa.cq.welcome.v1') !== '1';
-    } catch {
-      return false;
-    }
-  });
-  const dismissWelcome = () => {
-    setShowWelcome(false);
-    try {
-      window.localStorage.setItem('oa.cq.welcome.v1', '1');
-    } catch {
-      /* 本地存储不可用时只影响记忆 */
-    }
-  };
   const toggleTech = (next: boolean) => {
     setShowTech(next);
     try {
@@ -293,6 +277,8 @@ export default function CqPage() {
 
   const importFile = async (file: File | null) => {
     if (!file) return;
+    // #302 R4：整集原子覆盖，先确认再执行。
+    if (!window.confirm('导入会替换当前全部题目，此操作不可撤销。继续？')) return;
     setNotice(null);
     setError(null);
     try {
@@ -308,7 +294,6 @@ export default function CqPage() {
   const saveCase = async (draft: CqSetCase) => {
     if (!editing) return;
     setBusy('save');
-    setError(null);
     try {
       const patch = toCasePatch(draft);
       const saved = editing.mode === 'create'
@@ -326,13 +311,12 @@ export default function CqPage() {
           total_pending?: number;
         };
         const ids = (detail.blocking || []).map((item) => `#${item.id || '?'}`).join('、');
-        setError(
+        throw new Error(
           `有 ${detail.total_pending ?? (detail.blocking?.length || 0)} 道题还没有审核结论`
           + (ids ? `：${ids}` : '') + '。请先处理审核，再保存。',
         );
-        return;
       }
-      setError(`保存失败：${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`保存失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(null);
     }
@@ -413,7 +397,7 @@ export default function CqPage() {
   const agentEntry = recentAudit.find((entry) => entry.actor_type === 'agent');
   const pendingAgentActions = resumePreview?.next_actions ?? [];
   const agentText = pendingAgentActions.length > 0
-    ? `待响应 ${pendingAgentActions.length} 项：${pendingAgentActions.map((item) => actionLabel(item.action)).join('、')}`
+    ? `待响应 ${pendingAgentActions.length} 项（明细见下方等待条）`
     : agentEntry
       ? `最近${auditActionLabel(agentEntry.action)}${agentEntry.case_id ? ` ${agentEntry.case_id}` : ''} · ${formatLocalTime(agentEntry.ts)}`
       : data?.updated_at
@@ -510,8 +494,8 @@ export default function CqPage() {
           </p>
           <p className="guide-muted">
             {tab === 'cases'
-              ? '这些题能不能被本体验证、上次评估是否通过。'
-              : '每题走到生命周期哪一段、需要你做什么；待决卡直接回答，题卡内可下钻完整轨迹，下区是全部事件记录。'}
+              ? '本页：看每题能不能被本体验证，并处理需要你拍板的事。'
+              : '每题走到生命周期哪一段、需要你做什么；题卡内可下钻完整轨迹。'}
           </p>
         </div>
         <div className="cq-toolbar-actions">
@@ -582,9 +566,7 @@ export default function CqPage() {
               </div>
               <div className="cq-tool-group writes">
                 <span className="cq-tool-group-label">写操作</span>
-                <button type="button" className="btn" onClick={() => void requestCases()}>
-                  请求智能体生成候选题
-                </button>
+                <span className="guide-muted">生成候选题用上方判定条旁的按钮</span>
                 <button
                   type="button"
                   className="btn secondary"
@@ -644,12 +626,6 @@ export default function CqPage() {
         <CqTrainingPage onGoToCases={() => selectTab('cases')} />
       ) : (
         <>
-          {showWelcome && (
-            <div className="cq-welcome" role="status">
-              <span>CQ 集把业务问题写成能被本体自动验证的题目：智能体负责生成和检查，你只负责看证据、做决策。</span>
-              <button type="button" className="btn link" onClick={dismissWelcome}>知道了</button>
-            </div>
-          )}
           {notice && <div className="notice-banner" role="status">{notice}</div>}
           {error && <div className="error-banner">{error}</div>}
           {partialErrors.length > 0 && (
@@ -661,7 +637,7 @@ export default function CqPage() {
           )}
           {pendingActions.length > 0 && (
             <div className="cq-waiting" role="status" aria-label="等待智能体">
-              <b>⏳ 等待智能体</b>
+              <b>⏳ 等待中</b>
               <span>
                 {pendingActions.map((item) => actionLabel(item.action)).join('、')}
                 {waitingHours >= 1 ? ` · 已等待 ${waitingHours} 小时` : ' · 刚刚请求'}
@@ -742,22 +718,14 @@ export default function CqPage() {
                     </button>
                   )}
                   {!evaluationFresh && (
-                    <>
-                      <span className="cq-stale-badge" title={evaluation?.reason || '还没有跑过评估'}>
+                    <span className="guide-muted" title={evaluation?.reason || '还没有跑过评估'}>
+                      <span className="cq-stale-badge">
                         评估{evaluation?.state === 'none' ? '未生成' : '可能过期'}
                       </span>
-                      <button type="button" className="btn secondary" onClick={() => void runRegression()}>
-                        重新验证
-                      </button>
-                    </>
+                      {' '}去工具栏「跑一轮评估」重新验证
+                    </span>
                   )}
-                  <a
-                    className="btn link"
-                    href={api.cqExportUrl('markdown')}
-                    download
-                  >
-                    导出评审包（Markdown）
-                  </a>
+                  <span className="guide-muted">导出评审包见工具栏「导出 ▾」</span>
                 </div>
               )}
               <details className="cq-quality-detail">
@@ -810,9 +778,9 @@ export default function CqPage() {
                     {provenance && !provenance.known ? ' 来源未记录（旧题集），成熟度仅供参考。' : ''}
                   </p>
                   <details className="cq-tech-entry">
-                    <summary className="btn link cq-tech-toggle">目标题量怎么算</summary>
+                    <summary className="btn link cq-tech-toggle">技术展开</summary>
                     <div className="cq-tech-body">
-                      目标题量 = max(20, 本体关键术语数 × 0.5)。0.5 是初版估算法（待校准），只在技术细节里出现。
+                      公式：目标题量 = max(20, 本体关键术语数 × 0.5)。0.5 是初版估算法（待校准）。
                     </div>
                   </details>
                   <div className="cq-quality-grid">
@@ -865,10 +833,9 @@ export default function CqPage() {
             <section className="panel cq-audit" aria-label="CQ 变更审计">
               <div className="cq-audit-head">
                 <div>
-                  <h3>变更记录</h3>
+                  <h3>变更记录 · 最近 {audit.length} 条（新到旧）</h3>
                   <p className="guide-muted">谁在什么时候增删改了哪道题；只读，不会改动题集。</p>
                 </div>
-                <span className="guide-muted">最近 {audit.length} 条（新到旧）</span>
               </div>
               {auditLoading ? (
                 <div className="guide-muted">正在读取审计…</div>
@@ -906,7 +873,7 @@ export default function CqPage() {
                   draft={editing.draft}
                   busy={busy === 'save'}
                   onCancel={() => setEditing(null)}
-                  onSave={(draft) => void saveCase(draft)}
+                  onSave={saveCase}
                 />
               </section>
             ) : (
@@ -1046,7 +1013,7 @@ export default function CqPage() {
                         type="search"
                         className="cq-search"
                         value={query}
-                        placeholder="搜短号 / 状态 / 关键词"
+                        placeholder="搜短号 / 题库状态 / 关键词"
                         aria-label="搜索题目"
                         onChange={(event) => updateQuery(event.target.value)}
                       />
@@ -1070,7 +1037,7 @@ export default function CqPage() {
                             </span>
                             <span className="cq-row-meta">
                               <span>{expectedTypeLabel(item.expected_type)}</span>
-                              <span>{statusLabel(item.status)}</span>
+                              <span title="题库状态">题库状态：{statusLabel(item.status)}</span>
                               {hasLatinIdentifier(item.cq) && (
                                 <span className="cq-badge muted" title="题干里的英文是本体的类/属性/个体标识符，不是错别字">含本体标识符</span>
                               )}
@@ -1102,7 +1069,7 @@ export default function CqPage() {
                       draft={editing.draft}
                       busy={busy === 'save'}
                       onCancel={() => setEditing(null)}
-                      onSave={(draft) => void saveCase(draft)}
+                      onSave={saveCase}
                     />
                   ) : !current ? (
                     <div className="guide-empty">左侧选一道题看定位证据。</div>
@@ -1243,7 +1210,7 @@ function CqEditor({
   draft: CqSetCase;
   busy: boolean;
   onCancel: () => void;
-  onSave: (draft: CqSetCase) => void;
+  onSave: (draft: CqSetCase) => Promise<void>;
 }) {
   const regression = draft.regression || {};
   const [cq, setCq] = useState(draft.cq || '');
@@ -1253,9 +1220,9 @@ function CqEditor({
   const [query, setQuery] = useState(regression.query || '');
   const [expect, setExpect] = useState(JSON.stringify(regression.expect ?? {}, null, 2));
   const [error, setError] = useState<string | null>(null);
-  const hasAssertion = Boolean(String(regression.query || query || '').trim());
 
-  const submit = (intent: 'save' | 'confirm' | 'reject' = 'save') => {
+  // #302 R1：只保留一个「保存」——题库状态由下拉显式表达；「退回草稿」只把状态写回草稿。
+  const submit = async (intent: 'save' | 'draft' = 'save') => {
     setError(null);
     if (!cq.trim()) {
       setError('题干不能为空');
@@ -1270,18 +1237,19 @@ function CqEditor({
       setError(`JSON 解析失败：${e instanceof Error ? e.message : String(e)}`);
       return;
     }
-    onSave({
-      ...draft,
-      cq: cq.trim(),
-      expected_type: expectedType.trim() || undefined,
-      status: intent === 'reject'
-        ? 'draft'
-        : intent === 'confirm'
-          ? (hasAssertion ? 'active' : 'draft')
-          : (status.trim() || undefined),
-      requirement: requirement.trim() || undefined,
-      ...(normalized ? { regression: normalized } : {}),
-    });
+    try {
+      await onSave({
+        ...draft,
+        cq: cq.trim(),
+        expected_type: expectedType.trim() || undefined,
+        status: intent === 'draft' ? 'draft' : (status.trim() || undefined),
+        requirement: requirement.trim() || undefined,
+        ...(normalized ? { regression: normalized } : {}),
+      });
+    } catch (e) {
+      // #302 R3：弹窗内发起的保存失败，就地显示在按钮旁，不只出现在页面顶部。
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   return (
@@ -1300,10 +1268,7 @@ function CqEditor({
       </label>
       <p className="guide-muted">断言摘要：{assertionSummaryText(draft)}</p>
       <details className="cq-tech-section">
-        <summary>技术设置（SPARQL / 专业分类 / 状态）</summary>
-        <p className="field-hint">
-          改动断言会让这道题重新进入待审核；不确定时请让智能体处理。
-        </p>
+        <summary>技术设置（SPARQL / 专业分类 / 题库状态）</summary>
         <div className="cq-editor-grid">
           <label className="field">
             <span className="field-label">题型</span>
@@ -1317,7 +1282,7 @@ function CqEditor({
             </select>
           </label>
           <label className="field">
-            <span className="field-label">状态</span>
+            <span className="field-label">题库状态</span>
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               {!STATUS_OPTIONS.some((option) => option.value === status) && (
                 <option value={status}>{statusLabel(status)}</option>
@@ -1346,17 +1311,14 @@ function CqEditor({
           </label>
         </div>
       </details>
-      {error && <div className="field-error">{error}</div>}
+      {error && <div className="field-error" role="alert">{error}</div>}
       <div className="cq-editor-actions">
-        <button type="button" className="btn" onClick={() => submit('confirm')} disabled={busy}>
-          {busy ? '保存中…' : hasAssertion ? '确认题目与断言' : '保存题目'}
+        <button type="button" className="btn" onClick={() => void submit('save')} disabled={busy}>
+          {busy ? '保存中…' : '保存'}
         </button>
-        <button type="button" className="btn secondary" onClick={() => submit('save')} disabled={busy}>
-          保存
-        </button>
-        {hasAssertion && (
-          <button type="button" className="btn secondary" onClick={() => submit('reject')} disabled={busy}>
-            驳回，退回智能体调整
+        {mode === 'edit' && (
+          <button type="button" className="btn secondary" onClick={() => void submit('draft')} disabled={busy}>
+            退回草稿
           </button>
         )}
         <button type="button" className="btn secondary" onClick={onCancel} disabled={busy}>取消</button>
@@ -1386,14 +1348,15 @@ function CqDetail({
         <h3>{item.cq}</h3>
       </div>
       {hasLatinIdentifier(item.cq) && (
-        <div className="cq-inline-note">
-          题干里的英文是本体的类 / 属性 / 个体标识符，不是错别字；业务叫法可让智能体补中文标签。
-        </div>
+        <details className="cq-inline-note">
+          <summary>题干里有英文标识符，点开看说明</summary>
+          这些英文是本体的类 / 属性 / 个体标识符，不是错别字；业务叫法可让智能体补中文标签。
+        </details>
       )}
 
       <div className="cq-kv">
         <div><span>题型</span><b>{expectedTypeLabel(item.expected_type)}</b></div>
-        <div><span>状态</span><b>{statusLabel(item.status)}</b></div>
+        <div><span>题库状态</span><b>{statusLabel(item.status)}</b></div>
         <div><span>来自哪个需求</span><b>{item.requirement || '—'}</b></div>
         <div><span>审核</span><b>{reviewLabel(item.review)}</b></div>
       </div>

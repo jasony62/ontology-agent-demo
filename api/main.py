@@ -27,6 +27,9 @@
         POST /api/types        个体的推理后类型
         POST /api/property     主体-属性取值
         POST /api/infer        重新执行推理并返回统计
+    CQ 出题（工作区级，写操作仅接受回环来源）：
+        GET/PUT/DELETE /api/domains/current/cq/prompts      出题配比 / 措辞 / 描述
+        GET/PUT        /api/domains/current/cq/requirements 人沉淀的出题要求
     本体管理（v1.3.0 起，通用层扩展）：
         POST /api/ontology/load         上传 .owl/.rdf 并切换为「导入的本体」只读领域
         GET  /api/ontology/materialized 物化 diff：原始断言 / 推理新增 / 统计
@@ -91,7 +94,7 @@ from reasoner.protocol import (
 from domains import DomainManager, DomainContractError, DomainNotFoundError
 from domains.imported import display_filename
 from . import workspaces
-from cq import cq_runner, cq_store, prompts_store, training_service
+from cq import cq_runner, cq_store, prompts_store, requirements as requirements_store, training_service
 from cq import agenda as cq_agenda
 from cq import coverage as cq_coverage
 from cq import lifecycle as cq_lifecycle
@@ -99,7 +102,7 @@ from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
     DescribeRequest, SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
-    CqPromptsRequest, CqDecisionRequest,
+    CqPromptsRequest, CqRequirementsRequest, CqDecisionRequest,
 )
 from .response_schemas import (
     ClassesResponse,
@@ -2128,6 +2131,58 @@ def cq_prompts_reset(request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"出题配置无法恢复默认：{exc}")
     return _cq_prompts_view(ontology_id, config)
+
+
+def _cq_requirements_view(ontology_id: str, items: list[dict] | None = None) -> dict:
+    values = items if items is not None else requirements_store.items(ontology_id)
+    return {"ontology_id": ontology_id, "count": len(values), "items": values}
+
+
+@app.get(
+    "/api/domains/current/cq/requirements",
+    tags=["通用查询"],
+    summary="当前工作区的出题要求",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "人沉淀的出题要求清单：text 是原文，rule 是注入出题指引的正面祈使句，"
+                "source 标明来自审核意见 / 裁决反馈 / 人手写。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def cq_requirements():
+    """读当前工作区的出题要求；只读，不写盘。"""
+    ontology_id, _ = _cq_identity()
+    try:
+        return _cq_requirements_view(ontology_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"出题要求无法读取：{exc}")
+
+
+@app.put(
+    "/api/domains/current/cq/requirements",
+    tags=["通用查询"],
+    summary="保存当前工作区的出题要求",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "整份保存后的要求清单；下一次出题指令会加载其中的 rule。",
+        },
+        **ERROR_400,
+    },
+)
+def cq_requirements_save(req: CqRequirementsRequest, request: Request):
+    """整份覆盖当前工作区的要求清单；只接受本地回环来源。"""
+    _require_loopback(request)
+    ontology_id, _ = _cq_identity()
+    try:
+        items = requirements_store.replace(ontology_id, req.items)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"出题要求无法保存：{exc}")
+    return _cq_requirements_view(ontology_id, items)
 
 
 @app.get(

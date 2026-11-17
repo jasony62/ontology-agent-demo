@@ -147,7 +147,7 @@ def _default_prompts() -> dict:
 
 
 def guide_cq_generation(prompts: dict | None = None, engine=None, focus: str | None = None,
-                        schema_map=None) -> dict:
+                        schema_map=None, requirements: list | None = None) -> dict:
     """生成宿主 LLM 出题指令（含 schema 对照、题型、建议配比、措辞规则、输出格式）。
 
     focus 可选：提供全新领域描述时降级为 from_description 模式（无既有 schema 对照，
@@ -156,9 +156,24 @@ def guide_cq_generation(prompts: dict | None = None, engine=None, focus: str | N
 
     schema_map：可调用对象（engine -> {"classes":[{name,label}], "properties":[str]}）；
     缺省用同包 tbox.schema_map。
+
+    requirements（#306）：人沉淀的出题要求，每条取 `rule` 注入「措辞规则」段，
+    并把原文 / 规则一并回传，供工作台显示「本次加载了哪些要求」。第 1 期不保证
+    LLM 遵守，也不做违反检测。
     """
     prompts = prompts or _default_prompts()
     gen = prompts.get("cq_generation", {})
+    loaded = [
+        {
+            "id": item.get("id"),
+            "text": str(item.get("text") or "").strip(),
+            "rule": str(item.get("rule") or "").strip(),
+            "source": item.get("source"),
+            "source_id": item.get("source_id"),
+        }
+        for item in (requirements or [])
+        if isinstance(item, dict) and str(item.get("rule") or "").strip()
+    ]
 
     if focus:  # 全新领域：focus 描述即锚点来源，不对照既有 schema
         schema_terms: dict = {}
@@ -181,7 +196,8 @@ def guide_cq_generation(prompts: dict | None = None, engine=None, focus: str | N
 
     taxonomy_lines = "\n".join(f"  - {k}（{v}）" for k, v in gen["type_taxonomy"].items())
     mix_lines = "\n".join(f"  - {k}: {n} 题" for k, n in gen["suggested_mix"].items())
-    rules_lines = "\n".join(f"  - {r}" for r in gen["phrasing_rules"])
+    rules = list(gen["phrasing_rules"]) + [item["rule"] for item in loaded]
+    rules_lines = "\n".join(f"  - {r}" for r in rules)
 
     if mode == "schema_anchored":
         anchor_text = (
@@ -213,6 +229,9 @@ def guide_cq_generation(prompts: dict | None = None, engine=None, focus: str | N
         "schema_terms": schema_terms,
         "suggested_mix": gen["suggested_mix"],
         "mode": mode,
+        # #306：加载了哪些出题要求（原文 + 规则），工作台据此显示可见提示。
+        "requirements_loaded": loaded,
+        "requirements_count": len(loaded),
         "next_step": "将 LLM 输出的问题数组交给 validate_cqs 质检后再入题库",
     }
 

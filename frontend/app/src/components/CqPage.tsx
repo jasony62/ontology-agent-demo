@@ -19,8 +19,9 @@ import CqTrainingPage from './CqTrainingPage';
 import HelpTip from './HelpTip';
 import TechDetails from './TechDetails';
 
-// #250 R6：与 cq/lifecycle.py 题卡 blockers 同一组词、同一顺序。
-const BLOCKER_ORDER = ['未锚定', '未分型', '缺断言', '未通过', '待审核', '已归档'];
+// #308 / #309 / #310：与 cq/graduation.py 同一组词、同一顺序。
+// 「未启用」是运营态门槛，不是质量 blocker；「待审核」已从缺口词表移除。
+const MISSING_ORDER = ['未启用', '未锚定', '未分型', '缺断言', '未通过', '已归档'];
 
 // #278：与 cq/cq_store.py `_CASE_FIELDS` 对齐的落盘白名单。
 // 读视图字段（located / answerable / graduated / blockers / location /
@@ -213,13 +214,14 @@ export default function CqPage() {
     return cases.find((item, index) => caseKey(item, index) === selected) ?? null;
   }, [cases, selected]);
 
-  // #250 R6：与训练页题卡 blockers 同一组词，逐项计数、可点击筛题。
-  const blockerCounts = useMemo(() => {
+  // #250 R6 / #310：与训练页「还差」同一组词，逐项计数、可点击筛题。
+  // 列表口径用 missing（含未启用），不再把「待审核」当缺口。
+  const missingCounts = useMemo(() => {
     const counts: Record<string, number> = Object.fromEntries(
-      BLOCKER_ORDER.map((label) => [label, 0]),
+      MISSING_ORDER.map((label) => [label, 0]),
     );
     for (const item of cases) {
-      for (const blocker of item.blockers ?? []) {
+      for (const blocker of item.missing ?? item.blockers ?? []) {
         if (blocker in counts) counts[blocker] += 1;
       }
     }
@@ -233,7 +235,7 @@ export default function CqPage() {
     return cases
       .map((item, index) => ({ item, index }))
       .filter(({ item, index }) => {
-        if (gapFilter && !(item.blockers ?? []).includes(gapFilter)) return false;
+        if (gapFilter && !(item.missing ?? item.blockers ?? []).includes(gapFilter)) return false;
         if (!needle) return true;
         const short = String(item.short_id || `Q${String(index + 1).padStart(2, '0')}`).toLowerCase();
         if (looksLikeNumber) {
@@ -244,7 +246,7 @@ export default function CqPage() {
           item.cq,
           statusLabel(item.status),
           expectedTypeLabel(item.expected_type),
-          ...(item.blockers ?? []),
+          ...(item.missing ?? item.blockers ?? []),
           short,
         ].some((value) => String(value || '').toLowerCase().includes(needle));
       });
@@ -348,7 +350,7 @@ export default function CqPage() {
       + (preflight.pendingReview > 0 ? `（${preflight.pendingReview} 道待审核会被拦住）` : '')
       + '\n'
       + '· 写本轮记录到评估历史\n'
-      + '· 更新每题「可答」与可答覆盖\n\n'
+      + '· 更新每题「回归通过」与回归通过覆盖\n\n'
       + '不改本体，也不改题干和断言。继续？',
     );
     if (!confirmed) return;
@@ -357,7 +359,7 @@ export default function CqPage() {
     setNotice(null);
     try {
       const run = await api.cqRun('human');
-      setNotice(`评估完成：${run.pass}/${run.total} 通过（可答覆盖 ${Math.round(run.coverage_real * 100)}%）。`);
+      setNotice(`评估完成：${run.pass}/${run.total} 通过（回归通过覆盖 ${Math.round(run.coverage_real * 100)}%）。`);
       setRuns((currentRuns) => [run, ...currentRuns].slice(0, 20));
       await load();
     } catch (e) {
@@ -600,19 +602,26 @@ export default function CqPage() {
                     >
                       {busy === 'run' ? '评估中…' : '跑一轮评估'}
                     </button>
-                    <span className="cq-run-preflight">
-                      预检：{preflight.total} 题，无断言 {preflight.noAssertion}、未确认 {preflight.unconfirmed}
-                      {preflight.pendingReview > 0
-                        ? `、待审核 ${preflight.pendingReview}（会拦住本次评估）`
-                        : ''}；
-                      会写本轮记录并更新可答覆盖，不改本体和题干。
-                    </span>
+                    <details className="cq-run-preflight">
+                      <summary>
+                        预检 · {preflight.total} 题
+                        {preflight.pendingReview > 0 ? ` · 待审核 ${preflight.pendingReview}` : ''}
+                      </summary>
+                      <span>
+                        无断言 {preflight.noAssertion}、未确认 {preflight.unconfirmed}
+                        {preflight.pendingReview > 0
+                          ? `、待审核 ${preflight.pendingReview}（会拦住本次评估）`
+                          : ''}；
+                        会写本轮记录并更新回归通过覆盖，不改本体和题干。
+                      </span>
+                    </details>
                   </>
                 )}
                 {evaluationFresh && (
-                  <span className="cq-run-preflight">
-                    评估有效（{formatLocalTime(evaluation?.ran_at)}），无需重跑；题集或本体改动后这里会出现「重新验证」。
-                  </span>
+                  <details className="cq-run-preflight">
+                    <summary>评估有效（{formatLocalTime(evaluation?.ran_at)}）</summary>
+                    <span>无需重跑；题集或本体改动后这里会出现「重新验证」。</span>
+                  </details>
                 )}
               </div>
             </>
@@ -789,7 +798,7 @@ export default function CqPage() {
                       {quality.anchored ?? 0}
                     </span>
                     <span>已分型 {quality.validated ?? 0}</span>
-                    <span>可答 {quality.answerable ?? 0}</span>
+                    <span>回归通过 {quality.answerable ?? 0}</span>
                     <span>留存 {quality.retained ?? 0}</span>
                     <span>
                       毕业 <HelpTip text="已锚定 + 已分型 + 有断言 + 回归通过 + 未归档；全部题毕业才算可交付。" />
@@ -902,7 +911,7 @@ export default function CqPage() {
                   <i>→</i>
                   <span><b>{summary.located}</b> 对上本体</span>
                   <i>→</i>
-                  <span><b>{summary.answerable}</b> 可答</span>
+                  <span><b>{summary.answerable}</b> 回归通过</span>
                   <i>→</i>
                   <span><b>{graduatedQuestions}</b> 毕业 <em>/ 目标 {targetQuestions}</em></span>
                   {summary.gap > 0 && <span className="cq-funnel-gap">没对上 {summary.gap}</span>}
@@ -923,14 +932,16 @@ export default function CqPage() {
                 </div>
               </section>
 
-              {/* #250 R6：与训练页题卡 blockers 一一对应的缺口统计，可点击筛题。 */}
-              <section className="cq-gap-stats" aria-label="缺口统计">
+              {/* #250 R6 / #311：与训练页题卡「还差」一一对应的毕业条件统计，可点击筛题。 */}
+              <section className="cq-gap-stats" aria-label="毕业条件">
                 <div className="cq-gap-stats-head">
-                  <b>未达毕业的原因</b>
-                  <span className="guide-muted">与训练页题卡「还差」同一组词；0 值不占位，点一项筛出对应题目。</span>
+                  <b>毕业条件</b>
+                  <span className="guide-muted">
+                    回归通过（即质量区的「可答」）是同一判据；未启用是运营态门槛，不是质量 blocker。0 值不占位，点一项筛出对应题目。
+                  </span>
                 </div>
                 <div className="cq-gap-stats-actions">
-                  {BLOCKER_ORDER.filter((label) => (blockerCounts[label] ?? 0) > 0 || gapFilter === label).map((label) => (
+                  {MISSING_ORDER.filter((label) => (missingCounts[label] ?? 0) > 0 || gapFilter === label).map((label) => (
                     <button
                       key={label}
                       type="button"
@@ -938,7 +949,7 @@ export default function CqPage() {
                       aria-pressed={gapFilter === label}
                       onClick={() => setGapFilter(gapFilter === label ? null : label)}
                     >
-                      {label} <b>{blockerCounts[label] ?? 0}</b>
+                      {label} <b>{missingCounts[label] ?? 0}</b>
                     </button>
                   ))}
                   {gapFilter && (
@@ -1013,7 +1024,7 @@ export default function CqPage() {
                         type="search"
                         className="cq-search"
                         value={query}
-                        placeholder="搜短号 / 题库状态 / 关键词"
+                        placeholder="搜短号 / 状态 / 关键词"
                         aria-label="搜索题目"
                         onChange={(event) => updateQuery(event.target.value)}
                       />
@@ -1037,17 +1048,16 @@ export default function CqPage() {
                             </span>
                             <span className="cq-row-meta">
                               <span>{expectedTypeLabel(item.expected_type)}</span>
-                              <span title="题库状态">题库状态：{statusLabel(item.status)}</span>
                               {hasLatinIdentifier(item.cq) && (
                                 <span className="cq-badge muted" title="题干里的英文是本体的类/属性/个体标识符，不是错别字">含本体标识符</span>
                               )}
-                              {isReviewBlocking(item) && (
-                                <span className="cq-badge warn" title="题干或断言改动后需重新确认">
-                                  待审核
-                                </span>
-                              )}
-                              {item.graduated && <span className="cq-badge ok">已毕业</span>}
-                              {item.answerable ? <span className="cq-badge ok">可答</span> : null}
+                              {item.answerable ? <span className="cq-badge ok">回归通过</span> : null}
+                            </span>
+                            {/* #310 / #311：状态独占一行、右对齐；审核信息只放详情区「审核」组。 */}
+                            <span className={`cq-row-status${item.graduated ? ' ok' : ''}`}>
+                              {item.graduated
+                                ? '已毕业'
+                                : `缺：${(item.missing ?? item.blockers ?? []).join('、') || '—'}`}
                             </span>
                           </button>
                         </li>
@@ -1174,7 +1184,7 @@ const GLOSSARY: Array<{ term: string; desc: string }> = [
   { term: '题干', desc: '题目的业务问题本身，例如「哪些智能体能执行登录模块开发？」。' },
   { term: '定位 / 锚点', desc: '系统在题干里找到的本体术语；锚点是「对上了哪个词」，定位是「能不能查到证据」。' },
   { term: '证据', desc: '本体里承载这道题的条目；有证据说明题目问的概念在本体里存在。' },
-  { term: '可答', desc: '有回归断言，并且上次评估通过；与「缺口」不是互补分类。' },
+  { term: '回归通过（即可答）', desc: '有回归断言，并且上次评估通过；与「缺口」不是互补分类。' },
   { term: '回归', desc: '按题目预设的检查自动跑一遍，看结果是否符合预期。' },
   { term: '断言', desc: '这道题的自动检查：查什么、期望什么；由智能体生成，专家可核对。' },
   { term: '题型', desc: '检索 / 推导 / 计数 / 反例四类，描述题目主要考什么。' },
@@ -1358,8 +1368,18 @@ function CqDetail({
         <div><span>题型</span><b>{expectedTypeLabel(item.expected_type)}</b></div>
         <div><span>题库状态</span><b>{statusLabel(item.status)}</b></div>
         <div><span>来自哪个需求</span><b>{item.requirement || '—'}</b></div>
-        <div><span>审核</span><b>{reviewLabel(item.review)}</b></div>
       </div>
+
+      {/* #311：审核信息单独成组；不并进毕业条件，也不叫「状态 / 许可」。 */}
+      <section className="cq-section">
+        <h4>审核</h4>
+        <div className="cq-kv">
+          <div><span>审核结论</span><b>{reviewLabel(item.review)}</b></div>
+        </div>
+        <p className="guide-muted">
+          待审核不阻断毕业；因题干或断言改动而重开的题会自动退回草稿，在编辑弹窗翻回启用后再交付。
+        </p>
+      </section>
 
       <section className="cq-section">
         <h4>定位证据</h4>

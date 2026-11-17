@@ -462,6 +462,8 @@ export interface CqSetCase {
   answerable?: boolean;
   graduated?: boolean;
   blockers?: string[];
+  /** #310：列表「缺：…」展示口径（质量 blocker + 未启用），不是 blocker 本体。 */
+  missing?: string[];
   location?: CqCaseLocation;
   /** #210：机器断言的业务话摘要（读视图字段，不落盘）。 */
   assertion_summary?: string;
@@ -599,6 +601,7 @@ export interface CqLifecycleCase {
   answerable: boolean;
   graduated?: boolean;
   blockers?: string[];
+  missing?: string[];
   stage: string;
   stage_label: string;
   priority: number;

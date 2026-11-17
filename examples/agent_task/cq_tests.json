@@ -7,7 +7,7 @@
       "id": "T2-01",
       "cq": "哪些智能体可以执行「登录模块开发」？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R1",
       "regression": {
         "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_login_dev> }",
@@ -24,7 +24,7 @@
       "id": "T2-02",
       "cq": "哪些智能体可以执行「登录模块代码审查」？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R1",
       "regression": {
         "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_login_review> }",
@@ -40,7 +40,7 @@
       "id": "T2-03",
       "cq": "哪些智能体可以执行「生产部署发布」？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R1",
       "regression": {
         "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_deploy> }",
@@ -56,7 +56,7 @@
       "id": "T2-04",
       "cq": "哪些智能体可以整体执行「新功能上线」？",
       "expected_type": "negative",
-      "status": "active",
+      "status": "draft",
       "rule": "R1 反例",
       "regression": {
         "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_feature> }",
@@ -70,7 +70,7 @@
       "id": "T2-05",
       "cq": "「登录模块测试执行」依赖哪些任务？请包含间接依赖。",
       "expected_type": "derived",
-      "status": "active",
+      "status": "draft",
       "rule": "R3",
       "regression": {
         "query": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_login_test> <http://ontology.localhost/agent-task#depends_on>+ ?dep }",
@@ -88,7 +88,7 @@
       "id": "T2-06",
       "cq": "「生产部署发布」间接依赖哪些任务？（不含自身与直接前置的测试任务）",
       "expected_type": "derived",
-      "status": "active",
+      "status": "draft",
       "rule": "R3",
       "regression": {
         "query": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_deploy> <http://ontology.localhost/agent-task#depends_on>* ?dep . FILTER(?dep != <http://ontology.localhost/agent-task#t_deploy> && ?dep != <http://ontology.localhost/agent-task#t_login_test>) }",
@@ -106,7 +106,7 @@
       "id": "T2-07",
       "cq": "「敏感数据报表开发」有什么约束？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R4",
       "regression": {
         "query": "SELECT ?c WHERE { <http://ontology.localhost/agent-task#t_compliance_dev> <http://ontology.localhost/agent-task#requires_constraint> ?c }",
@@ -122,7 +122,7 @@
       "id": "T2-08",
       "cq": "「敏感数据报表开发」要求的是合规类约束吗？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R4",
       "regression": {
         "query": "ASK { <http://ontology.localhost/agent-task#t_compliance_dev> <http://ontology.localhost/agent-task#requires_constraint> ?c . ?c a <http://ontology.localhost/agent-task#ComplianceRequirement> }",
@@ -133,7 +133,7 @@
       "id": "T2-09",
       "cq": "「登录模块开发」要求合规类约束吗？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R4",
       "regression": {
         "query": "ASK { <http://ontology.localhost/agent-task#t_login_dev> <http://ontology.localhost/agent-task#requires_constraint> ?c . ?c a <http://ontology.localhost/agent-task#ComplianceRequirement> }",
@@ -144,7 +144,7 @@
       "id": "T2-10",
       "cq": "哪些智能体可以整体执行「双模块开发」？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R2",
       "regression": {
         "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_double_dev> }",
@@ -161,7 +161,7 @@
       "id": "T2-11",
       "cq": "全系统哪些智能体是「已认证」的（CertifiedAgent）？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R2",
       "regression": {
         "query": "SELECT ?a WHERE { ?a a <http://ontology.localhost/agent-task#CertifiedAgent> }",
@@ -180,7 +180,7 @@
       "id": "T2-12",
       "cq": "初级研发Agent 属于哪些业务类别？",
       "expected_type": "derived",
-      "status": "active",
+      "status": "draft",
       "rule": "R2",
       "regression": {
         "query": "SELECT ?t WHERE { <http://ontology.localhost/agent-task#junior_dev> a ?t . FILTER(?t IN (<http://ontology.localhost/agent-task#JuniorDevAgent>, <http://ontology.localhost/agent-task#DevAgent>, <http://ontology.localhost/agent-task#Agent>)) }",
@@ -198,7 +198,7 @@
       "id": "T2-13",
       "cq": "「敏感数据报表开发」会被归类为合规任务吗？",
       "expected_type": "derived",
-      "status": "active",
+      "status": "draft",
       "rule": "R4",
       "regression": {
         "query": "ASK { <http://ontology.localhost/agent-task#t_compliance_dev> a <http://ontology.localhost/agent-task#ComplianceTask> }",
@@ -209,7 +209,7 @@
       "id": "T2-14",
       "cq": "哪些智能体可以执行「全栈改造任务」（要求编码与部署双能力）？",
       "expected_type": "negative",
-      "status": "active",
+      "status": "draft",
       "rule": "R1",
       "regression": {
         "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_execute> <http://ontology.localhost/agent-task#t_full_stack> }",
@@ -223,7 +223,7 @@
       "id": "T2-15",
       "cq": "「新功能上线」由哪些任务组成？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R2",
       "regression": {
         "query": "SELECT ?dep WHERE { <http://ontology.localhost/agent-task#t_feature> <http://ontology.localhost/agent-task#composed_of> ?dep }",
@@ -243,7 +243,7 @@
       "id": "T2-16",
       "cq": "「新功能上线」需要人工介入吗？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R5",
       "regression": {
         "query": "ASK { <http://ontology.localhost/agent-task#t_feature> <http://ontology.localhost/agent-task#needs_manual_review> true }",
@@ -254,7 +254,7 @@
       "id": "T2-17",
       "cq": "「双模块开发」需要人工介入吗？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R5",
       "regression": {
         "query": "ASK { <http://ontology.localhost/agent-task#t_double_dev> <http://ontology.localhost/agent-task#needs_manual_review> true }",
@@ -265,7 +265,7 @@
       "id": "T2-18",
       "cq": "「敏感数据报表开发」需要双人复核吗？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R6",
       "regression": {
         "query": "ASK { <http://ontology.localhost/agent-task#t_compliance_dev> <http://ontology.localhost/agent-task#needs_second_review> true }",
@@ -276,7 +276,7 @@
       "id": "T2-19",
       "cq": "「登录模块开发」需要双人复核吗？",
       "expected_type": "retrieval",
-      "status": "active",
+      "status": "draft",
       "rule": "R6",
       "regression": {
         "query": "ASK { <http://ontology.localhost/agent-task#t_login_dev> <http://ontology.localhost/agent-task#needs_second_review> true }",
@@ -287,7 +287,7 @@
       "id": "T2-20",
       "cq": "「敏感数据报表开发」谁可以担责（can_own）？",
       "expected_type": "derived",
-      "status": "active",
+      "status": "draft",
       "rule": "R2b",
       "regression": {
         "query": "SELECT ?agent WHERE { ?agent <http://ontology.localhost/agent-task#can_own> <http://ontology.localhost/agent-task#t_compliance_dev> }",

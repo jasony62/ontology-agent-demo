@@ -515,6 +515,21 @@ export interface CqDispositionResponse extends CqSetResponse {
   disposition: CqDispositionResult;
 }
 
+/** #338：单题回归调试结果（不写评估历史）。 */
+export interface CqCaseRunResult {
+  id?: string;
+  case_id: string;
+  cq?: string;
+  rule?: string;
+  state: 'pass' | 'fail' | 'cannot_tell' | 'not_tested' | string;
+  detail?: unknown;
+  hint?: string;
+  excluded_from_formal: boolean;
+  excluded_reason?: string;
+  actor_type?: string;
+  actor?: string;
+}
+
 export interface CqSetSummary {
   total: number;
   by_type: Record<string, number>;
@@ -1079,6 +1094,13 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, note }),
       },
+    ),
+
+  /** #338：单题回归（调试；不写 runs/、不算覆盖率） */
+  cqRunCase: (caseId: string) =>
+    request<CqCaseRunResult>(
+      `/api/domains/current/cq/cases/${encodeURIComponent(caseId)}/regression/run`,
+      { method: 'POST' },
     ),
 
   /** 回归执行与历史（#156） */

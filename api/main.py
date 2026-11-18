@@ -2590,6 +2590,54 @@ def cq_regression_run(payload: dict | None = Body(None)):
     return {**run, "trend_delta": trend}
 
 
+@app.post(
+    "/api/domains/current/cq/cases/{case_id}/regression/run",
+    tags=["通用查询"],
+    summary="单题回归（调试，不写评估历史）",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "只跑这一题的回归结果：state / detail / hint。调试定位用——"
+                "不写 runs/、不算覆盖率、不产生回归事件、不更新最近回归缓存。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def cq_regression_run_case(
+    case_id: str = ApiPath(..., description="题目稳定 id"),
+    actor_type: str = Query("human", description="human / agent（结果标注用）"),
+    actor: str = Query("web", description="操作者标识（结果标注用）"),
+):
+    """对单道题执行确定性回归（#338），与全量正式评估分离。"""
+    ontology_id, seed = _cq_identity()
+    actor_type, actor = _cq_actor(actor_type, actor)
+    data = cq_store.get_set(ontology_id, seed)
+    case = next(
+        (item for item in data.get("cases") or []
+         if isinstance(item, dict) and str(item.get("id") or "") == case_id),
+        None,
+    )
+    if case is None:
+        raise HTTPException(status_code=404, detail=f"题目不存在：{case_id}")
+    result = cq_runner.run_case(ENGINE, case)
+    review = case.get("review") if isinstance(case.get("review"), dict) else {}
+    excluded = (
+        bool(review.get("required"))
+        and str(review.get("state") or "") == "rejected"
+    )
+    return {
+        **result,
+        "case_id": case_id,
+        "actor_type": actor_type,
+        "actor": actor,
+        # #285 / #338：正式回归会排除审核驳回的题；单题调试仍允许跑，但要标注。
+        "excluded_from_formal": excluded,
+        "excluded_reason": "该题审核已驳回，正式回归会排除它；本次结果只用于调试" if excluded else "",
+    }
+
+
 @app.get(
     "/api/domains/current/cq/runs",
     tags=["通用查询"],

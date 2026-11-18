@@ -67,7 +67,8 @@ def test_domain_endpoints_are_namespaced_under_current():
     #319 新增 cq/prompts，
     #306 新增 cq/requirements，
     #320 补充 cq/prompts/preview，
-    #332 新增 cases/{case_id}/disposition），变的只是 key。
+    #332 新增 cases/{case_id}/disposition，
+    #338 新增 cases/{case_id}/regression/run），变的只是 key。
     旧路径必须从 `spec["paths"]` 里彻底消失——不做别名、deprecated 或重定向。
     """
     spec = client.get("/openapi.json").json()
@@ -75,11 +76,11 @@ def test_domain_endpoints_are_namespaced_under_current():
     prefixed = {
         path for path in paths if path.startswith("/api/domains/current/")
     }
-    assert len(prefixed) == 36
+    assert len(prefixed) == 37
     assert not MOVED_PATHS & set(paths), (
         f"旧路径仍在 OpenAPI 中：{sorted(MOVED_PATHS & set(paths))}"
     )
-    assert len(paths) == 61
+    assert len(paths) == 62
 
 
 def test_every_operation_is_tagged_and_summarised():

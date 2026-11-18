@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { CqAuditEntry, CqCoverageResponse, CqDispositionResult, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse, DomainInfo } from '../api/client';
+import type { CqAuditEntry, CqCaseRunResult, CqCoverageResponse, CqDispositionResult, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse, DomainInfo } from '../api/client';
 import {
   EXPECTED_TYPE_OPTIONS,
   STATUS_OPTIONS,
@@ -11,6 +11,7 @@ import {
   auditActionLabel,
   expectedTypeLabel,
   lastRunLabel,
+  runStateLabel,
   statusLabel,
 } from '../lib/cqLabels';
 import { ApiError } from '../api/client';
@@ -116,6 +117,9 @@ export default function CqPage() {
   // #332：处置结果（四轨回执）
   const [dispositionBusy, setDispositionBusy] = useState(false);
   const [dispositionResult, setDispositionResult] = useState<CqDispositionResult | null>(null);
+  // #338：单题回归调试结果（不写评估历史）
+  const [caseRunBusy, setCaseRunBusy] = useState(false);
+  const [caseRunResult, setCaseRunResult] = useState<CqCaseRunResult | null>(null);
   // #250 R6：点击整体缺口统计，把下方题目列表筛到对应题
   const [gapFilter, setGapFilter] = useState<string | null>(null);
 
@@ -234,8 +238,11 @@ export default function CqPage() {
     return counts;
   }, [cases]);
   useEffect(() => { setVisibleLimit(20); }, [query, gapFilter]);
-  // 换题时清掉上一题的处置回执，避免把结果挂在另一道题上。
-  useEffect(() => { setDispositionResult(null); }, [selected]);
+  // 换题时清掉上一题的处置 / 单题回归回执，避免把结果挂在另一道题上。
+  useEffect(() => {
+    setDispositionResult(null);
+    setCaseRunResult(null);
+  }, [selected]);
   const visibleCases = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const numeric = needle.replace(/^#/, '').replace(/^q/, '');
@@ -347,6 +354,19 @@ export default function CqPage() {
       setError(`删除失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(null);
+    }
+  };
+
+  const runCaseNow = async () => {
+    if (!current?.id) return;
+    setCaseRunBusy(true);
+    setError(null);
+    try {
+      setCaseRunResult(await api.cqRunCase(String(current.id)));
+    } catch (e) {
+      setError(`单题回归失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setCaseRunBusy(false);
     }
   };
 
@@ -1144,6 +1164,9 @@ export default function CqPage() {
                         dispositionBusy={dispositionBusy}
                         dispositionResult={dispositionResult}
                         onDispose={(action) => void disposeCurrent(action)}
+                        caseRunBusy={caseRunBusy}
+                        caseRunResult={caseRunResult}
+                        onRunCase={() => void runCaseNow()}
                       />
                     </div>
                   )}
@@ -1383,6 +1406,7 @@ function CqEditor({
 function CqDetail({
   item, index, locate, error, showTech,
   dispositionBusy, dispositionResult, onDispose,
+  caseRunBusy, caseRunResult, onRunCase,
 }: {
   item: CqSetCase;
   index: number;
@@ -1392,6 +1416,9 @@ function CqDetail({
   dispositionBusy: boolean;
   dispositionResult: CqDispositionResult | null;
   onDispose: (action: string) => void;
+  caseRunBusy: boolean;
+  caseRunResult: CqCaseRunResult | null;
+  onRunCase: () => void;
 }) {
   const cache = item.coverage_cache;
   const regression = item.regression || {};
@@ -1488,6 +1515,42 @@ function CqDetail({
                 ? actionLabel(dispositionResult.next_action.action || '')
                 : '跑回归验证这题的断言'}
             </span>
+          </div>
+        )}
+      </section>
+
+      {/* #338：单题回归调试，与正式全量评估分离。 */}
+      <section className="cq-section cq-case-run">
+        <h4>单题回归</h4>
+        <p className="guide-muted">
+          只验证这一题，方便改完断言立刻确认；不写评估历史、不算覆盖率、不更新最近回归。
+          正式评估仍用工具栏「跑一轮评估」。
+        </p>
+        <button
+          type="button"
+          className="btn secondary"
+          disabled={caseRunBusy}
+          onClick={onRunCase}
+        >
+          {caseRunBusy ? '测试中…' : '测这一题'}
+        </button>
+        {caseRunResult && (
+          <div className={`cq-case-run-result state-${caseRunResult.state}`} role="status">
+            <b>
+              回归：
+              {caseRunResult.state === 'pass'
+                ? '回归通过'
+                : caseRunResult.state === 'fail'
+                  ? '回归未通过'
+                  : runStateLabel(caseRunResult.state)}
+            </b>
+            {caseRunResult.excluded_from_formal && (
+              <span className="guide-muted">{caseRunResult.excluded_reason}</span>
+            )}
+            {caseRunResult.hint && <p>{caseRunResult.hint}</p>}
+            {caseRunResult.detail !== undefined && (
+              <pre className="cq-case-run-detail">{JSON.stringify(caseRunResult.detail, null, 2)}</pre>
+            )}
           </div>
         )}
       </section>

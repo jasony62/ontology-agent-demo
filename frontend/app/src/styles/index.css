@@ -2095,3 +2095,18 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px;
 }
 .cq-training-no-options { margin: 2px 0; }
+
+/* #338：单题回归调试结果 */
+.cq-case-run { align-items: flex-start; }
+.cq-case-run .btn { align-self: flex-start; }
+.cq-case-run-result { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; width: 100%; }
+.cq-case-run-result b { font-size: 12.5px; color: var(--heading); }
+.cq-case-run-result.state-fail b { color: var(--warning); }
+.cq-case-run-result.state-pass b { color: #1f6b4a; }
+.cq-case-run-result p { margin: 0; font-size: 12px; color: var(--muted); }
+.cq-case-run-detail {
+  margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 11.5px; line-height: 1.55;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

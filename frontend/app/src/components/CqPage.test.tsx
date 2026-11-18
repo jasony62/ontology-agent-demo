@@ -147,6 +147,17 @@ function stubFetch(
         }),
       } as unknown as Response;
     }
+    if (url.includes('/cq/cases/') && url.includes('/regression/run') && method === 'POST') {
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          id: 'Q1', case_id: 'Q1', state: 'pass',
+          detail: { expect: true, actual: true },
+          excluded_from_formal: false,
+          actor_type: 'human', actor: 'web',
+        }),
+      } as unknown as Response;
+    }
     if (url.includes('/disposition') && method === 'POST') {
       const payload = JSON.parse(String(init?.body || '{}'));
       return {
@@ -1384,5 +1395,27 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(result.textContent).toContain('审核：审核已通过');
     expect(result.textContent).toContain('状态：启用');
     expect(result.textContent).toContain('下一步：跑回归验证');
+  });
+
+  it('单题回归就地显示结果，且不发全量评估请求（#338）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const run = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '测这一题')!;
+    await act(async () => { run.click(); });
+    await flush();
+
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/cases/Q1/regression/run') && String(init?.method) === 'POST');
+    expect(call).toBeTruthy();
+    const fullRuns = vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).endsWith('/cq/regression/run'));
+    expect(fullRuns).toHaveLength(0);
+
+    const result = container!.querySelector('.cq-case-run-result')!;
+    expect(result.textContent).toContain('回归：回归通过');
+    expect(result.textContent).toContain('"actual": true');
   });
 });

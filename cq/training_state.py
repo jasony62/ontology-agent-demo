@@ -208,7 +208,8 @@ def _decision_view(decision: dict) -> dict:
         "recommended": decision.get("recommended"),
         "reason": decision.get("reason"),
         "background": decision.get("background"),
-        "context": decision.get("context"),
+        # #327：缺 context 统一投影成空串，避免前端拿到 null 回传时被 Pydantic 422 拒收。
+        "context": decision.get("context") or "",
         "case_id": decision.get("case_id"),
         "asked_at": decision.get("asked_at"),
         "since": decision.get("since"),

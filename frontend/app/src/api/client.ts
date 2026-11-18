@@ -145,7 +145,18 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     try {
       const body = await res.json();
       const raw = body?.detail;
-      if (raw && typeof raw === 'object') {
+      if (Array.isArray(raw)) {
+        // #327：FastAPI 校验错误是数组；拼成「字段：原因」，避免 [object Object]。
+        detail = raw;
+        message = raw
+          .map((item) => {
+            const field = Array.isArray(item?.loc) ? item.loc.slice(1).join('.') : '';
+            const reason = item?.msg || item?.message || '';
+            return [field, reason].filter(Boolean).join('：');
+          })
+          .filter(Boolean)
+          .join('；') || `${res.status} ${res.statusText}`;
+      } else if (raw && typeof raw === 'object') {
         detail = raw;
         code = typeof raw.code === 'string' ? raw.code : undefined;
         message = String(raw.message || raw.error || JSON.stringify(raw));

@@ -26,9 +26,9 @@ import TechDetails from './TechDetails';
 /**
  * 训练现场（#203 / #219）：以「题」为主语的看板。
  *
- *  - 概览数字由题卡阶段 roll-up：待决 / 已决按题数，决策条数另列；
- *  - 题卡显示当前阶段与阶段条，待决段内嵌现有决策卡；
- *  - 「待我处理」只看待决题，提交后自动进入下一题；
+ *  - 概览数字由题卡阶段 roll-up：待裁定 / 已裁定按题数，决策条数另列；
+ *  - 题卡显示当前阶段与阶段条，待裁定段内嵌现有决策卡；
+ *  - 「逐题处理」只看待裁定题，提交后自动进入下一题；
  *  - 「这道题的记录」按时间正序展示该题的事件流（人 / 智能体 / 系统可筛）。
  */
 const STAGE_BAR = ['authored', 'regression', 'pending', 'resolved', 'fixing', 'passed'] as const;
@@ -36,8 +36,8 @@ const STAGES = [...STAGE_BAR, 'followup'] as const;
 const STAGE_LABELS: Record<string, string> = {
   authored: '已建题',
   regression: '回归中',
-  pending: '待我决',
-  resolved: '已决',
+  pending: '待裁定',
+  resolved: '已裁定',
   fixing: '修复中',
   passed: '通过',
   followup: '待跟进',
@@ -140,7 +140,8 @@ export default function CqTrainingPanel({
       const result = await api.cqDecision({
         action: 'feedback',
         decision_id: decision.decision_id,
-        context: decision.context,
+        // #327：投影修复前 context 可能是 null；前端再兜一层，绝不把 null 发出去。
+        context: decision.context ?? '',
         ...payload,
       });
       const label = result.status === 'resolved' ? '已裁决' : '待跟进';
@@ -264,7 +265,7 @@ export default function CqTrainingPanel({
         </button>
       </div>
       <p className="guide-section-hint">
-        以题为主语：每题一张卡，看它现在走到哪、需要你做什么。待决卡直接回答，已决会留在这道题的轨迹里。
+        以题为主语：每题一张卡，看它现在走到哪、需要你做什么。待裁定卡直接回答，已裁定会留在这道题的轨迹里。
       </p>
       {(resume?.next_actions?.length ?? 0) > 0 && (
         <p className="guide-section-hint cq-training-todo">
@@ -302,7 +303,7 @@ export default function CqTrainingPanel({
               }}
             >
               <b>{summary?.pending_questions ?? 0}</b>
-              <span>待决题 · {decisionCounts.pending} 条决策</span>
+              <span>待裁定题 · {decisionCounts.pending} 条决策</span>
             </button>
             <button
               type="button"
@@ -310,7 +311,7 @@ export default function CqTrainingPanel({
               onClick={() => setFilter('resolved')}
             >
               <b>{summary?.resolved_questions ?? 0}</b>
-              <span>已决题 · {decisionCounts.resolved} 条决策</span>
+              <span>已裁定题 · {decisionCounts.resolved} 条决策</span>
             </button>
             <button
               type="button"
@@ -349,15 +350,15 @@ export default function CqTrainingPanel({
             <b>从这里开始</b>
             <span>
               {pendingCases.length > 0
-                ? `智能体已经把待决事项准备好了：先处理「待我决」的 ${pendingCases.length} 题。`
-                : '当前没有待决；可以逐题看阶段与依据，或到下方全部事件记录看历史。'}
+                ? `智能体已经把待决事项准备好了：先处理「待裁定」的 ${pendingCases.length} 题。`
+                : '当前没有待裁定；可以逐题看阶段与依据，或到下方全部事件记录看历史。'}
             </span>
             <span className="guide-muted">
               概览看总量 → 题看板看每题 → 点题卡看这道题的记录；全部事件记录在下方。
             </span>
             {pendingCases.length > 0 && (
               <button type="button" className="btn" onClick={() => setFocusMode(true)}>
-                开始处理待决
+                开始裁定
               </button>
             )}
           </div>
@@ -386,17 +387,17 @@ export default function CqTrainingPanel({
           {lastResult && <div className="notice-banner cq-training-result">{lastResult}</div>}
 
           {focusMode && (
-            <section className="cq-focus-mode" aria-label="待我处理">
+            <section className="cq-focus-mode" aria-label="逐题处理">
               <div className="cq-focus-head">
-                <b>待我处理</b>
+                <b>逐题处理</b>
                 <span className="guide-muted">
                   {pendingCases.length > 0
                     ? `第 ${Math.min(focusIndex + 1, pendingCases.length)} / ${pendingCases.length} 题`
                       + (focusCase?.case_id ? ` · #${focusCase.case_id}` : '')
-                    : '当前没有待我决的题'}
+                    : '当前没有待裁定的题'}
                 </span>
                 <button type="button" className="btn link" onClick={() => setFocusMode(false)}>
-                  退出待我处理
+                  退出逐题处理
                 </button>
               </div>
               {focusCase ? (
@@ -458,7 +459,7 @@ export default function CqTrainingPanel({
                 </select>
                 {pendingCases.length > 0 && (
                   <button type="button" className="btn" onClick={() => setFocusMode(true)}>
-                    待我处理（{pendingCases.length}）
+                    逐题处理（{pendingCases.length}）
                   </button>
                 )}
               </div>
@@ -623,25 +624,23 @@ function CaseCard({
 function StageBar({ stage, onSelect }: { stage: string; onSelect: (stage?: string) => void }) {
   // #296：终态（通过）不再渲染 7 格阶段条，避免 56 格重复表达同一状态。
   if (stage === 'passed') return null;
-  const current = STAGE_BAR.indexOf(stage as (typeof STAGE_BAR)[number]);
+  // #325：阶段是按优先级重算的「当前状态」，不是走过的时间线；
+  // 只高亮当前格，其余格子样式一致，避免「前面都走过了」的假进度。
   return (
     <div className="cq-stage-bar-wrap">
       <span className="cq-stage-caption">阶段 · 点击查看该阶段的记录（回归可能反复，阶段是当前状态）</span>
       <div className="cq-stage-bar" role="group" aria-label="题目阶段">
-        {STAGE_BAR.map((item, index) => {
-          const visited = current >= 0 && index <= current;
-          return (
-            <button
-              key={item}
-              type="button"
-              className={`cq-stage-step${item === stage ? ' active' : ''}${visited ? ' visited' : ''}`}
-              onClick={() => onSelect(item)}
-              title={`只看「${STAGE_LABELS[item]}」阶段的事件`}
-            >
-              {STAGE_LABELS[item]}
-            </button>
-          );
-        })}
+        {STAGE_BAR.map((item) => (
+          <button
+            key={item}
+            type="button"
+            className={`cq-stage-step${item === stage ? ' active' : ''}`}
+            onClick={() => onSelect(item)}
+            title={`只看「${STAGE_LABELS[item]}」阶段的事件`}
+          >
+            {STAGE_LABELS[item]}
+          </button>
+        ))}
         {stage === 'followup' && <span className="cq-stage-step active">待跟进</span>}
       </div>
     </div>

@@ -274,3 +274,29 @@ def test_human_can_cancel_pending_action(client):
         json={"status": "whatever"},
     )
     assert invalid.status_code == 400
+
+
+def test_feedback_without_context_projects_empty_string_and_succeeds(client):
+    """#327：智能体提问未带 context 时，投影补空串，人裁决不再 422。"""
+    decision_id = _ask(client)
+    resume = client.get("/api/domains/current/cq/resume").json()
+    decision = next(
+        item for item in resume["pending_decisions"]
+        if item["decision_id"] == decision_id
+    )
+    assert decision["context"] == ""
+
+    response = client.post("/api/domains/current/cq/decision", json={
+        "action": "feedback", "decision_id": decision_id,
+        "option": "A", "conclusion": "adopt", "basis": "self",
+        "authorized": True, "context": decision["context"],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "resolved"
+
+    ontology_id, _ = M._cq_identity()
+    assert any(
+        event["event"] == "feedback_received"
+        and event["content"].get("decision_id") == decision_id
+        for event in training_log.read_events(ontology_id)
+    )

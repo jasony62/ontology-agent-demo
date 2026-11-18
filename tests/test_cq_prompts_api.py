@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 import api.main as M
 from api import workspaces
-from cq import cq_store, prompts_store
+from cq import cq_store, prompts_store, requirements
 from reasoner.engine import ONTO_PATH, OntologyEngine
 
 _NAMES = (
@@ -273,3 +273,59 @@ def test_reactivation_and_reload_keep_user_config(ws_root, restore_engine):
 
     assert client.post("/api/domains/reload").status_code == 200
     assert prompts_store.load("agent_task")["description"] == "用户自定义描述"
+
+
+# ---------------- 指令预览（#320 补充） ----------------
+
+def _preview(payload: dict) -> dict:
+    return _client().post("/api/domains/current/cq/prompts/preview", json=payload)
+
+
+def test_preview_matches_real_authoring_prompt(ws_root):
+    """验收 8：同一份配置下，预览全文 == cq_author 返回的 prompt。"""
+    engine = OntologyEngine(ONTO_PATH)
+    server = __import__("mcp.server.mcpserver", fromlist=["MCPServer"]).MCPServer(
+        name="cq-preview-same-source"
+    )
+    _load_cq_tools().register_tools(server, lambda: engine, lambda: ("agent_task", None))
+    authored = _author(server, {})["result"]
+
+    response = _preview({})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["prompt"] == authored["prompt"]
+    assert body["requirements_count"] == authored["requirements_count"]
+    assert body["dirty"] is False
+    assert body["source"] == "default"
+
+
+def test_preview_reflects_unsaved_edits(ws_root):
+    """验收 7 / 9：未保存的配比、描述与新增要求都出现在预览里。"""
+    client = _client()
+    config = client.get(_prompts()).json()["config"]
+    config["description"] = "临时描述的领域"
+    config["cq_generation"]["suggested_mix"] = {
+        "retrieval": 1, "counting": 1, "derived": 1, "negative": 1,
+    }
+
+    response = _preview({
+        "config": config,
+        "items": [{"text": "不要问没有数据支撑的题"}],
+    })
+    assert response.status_code == 200, response.text
+    body = response.json()
+    prompt = body["prompt"]
+    assert body["dirty"] is True
+    assert "临时描述的领域" in prompt
+    assert "retrieval: 1 题" in prompt
+    assert "避免问没有数据支撑的题" in prompt
+    assert body["requirements_count"] == 1
+    # 预览不落盘：工作区配置仍是出厂默认。
+    assert client.get(_prompts()).json()["config"]["description"] != "临时描述的领域"
+    assert requirements.items("agent_task") == []
+
+
+def test_preview_rejects_incomplete_config(ws_root):
+    response = _preview({"config": {"cq_generation": {}}})
+    assert response.status_code == 400
+    assert "无法预览" in response.text

@@ -227,6 +227,21 @@ class CqPromptsRequest(BaseModel):
     )
 
 
+class CqPromptsPreviewRequest(BaseModel):
+    """出题指令预览（#320 补充）：只读，可带未保存的编辑值。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config: dict[str, Any] | None = Field(
+        None,
+        description="可选的出题配置草稿；不传则用当前工作区生效值（含未保存编辑的预览）。",
+    )
+    items: list[dict[str, Any]] | None = Field(
+        None,
+        description="可选的出题要求草稿；不传则用当前工作区已保存的要求清单。",
+    )
+
+
 class CqRequirementsRequest(BaseModel):
     """出题要求整份保存（#306）：人可见、可改、可删的约束清单。"""
 

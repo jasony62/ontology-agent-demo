@@ -46,6 +46,32 @@ function stubFetch(options: { source?: 'default' | 'workspace'; requirements?: t
     const method = String(init?.method || 'GET').toUpperCase();
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ url, method, body });
+    if (url.includes('/cq/prompts/preview')) {
+      const draft = body as { config: typeof CONFIG; items: typeof REQUIREMENTS };
+      const mix = draft.config.cq_generation.suggested_mix;
+      const rules = [
+        ...draft.config.cq_generation.phrasing_rules,
+        ...draft.items.map((item) => item.rule || item.text),
+      ];
+      const prompt = [
+        `你是在为『${draft.config.description}』出能力问题（CQ）。`,
+        '建议配比：',
+        `  - retrieval: ${mix.retrieval} 题`,
+        '措辞规则：',
+        ...rules.map((rule) => `  - ${rule}`),
+        '输出格式：只输出 JSON 数组。',
+      ].join('\n');
+      const dirty = JSON.stringify(draft.config) !== JSON.stringify(CONFIG)
+        || JSON.stringify(draft.items) !== JSON.stringify(REQUIREMENTS);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ontology_id: 'ws-1', source, dirty, prompt, mode: 'schema_anchored',
+          requirements_count: draft.items.length, requirements_loaded: draft.items,
+        }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/requirements') && method === 'PUT') {
       requirements = (body as { items: typeof REQUIREMENTS }).items;
       return {
@@ -282,5 +308,66 @@ describe('出题配置面板（#320）', () => {
     const items = (put!.body as { items: typeof REQUIREMENTS }).items;
     expect(items).toHaveLength(1);
     expect(items[0].rule).toBe('问法避免绕口，一句一问');
+  });
+
+  it('指令预览默认折叠，用未保存编辑生成并标注来源与要求条数（#320 补充）', async () => {
+    const calls = stubFetch();
+    act(() => root!.render(<CqPromptsPanel onClose={() => {}} />));
+    await flush();
+
+    const details = container!.querySelector<HTMLDetailsElement>('.cq-preview details')!;
+    expect(details.hasAttribute('open')).toBe(false);
+    expect(container!.querySelector('.cq-preview-text')).toBeNull();
+
+    const retrieval = container!.querySelector<HTMLInputElement>('.cq-prompts-mix input')!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype, 'value',
+      )!.set!;
+      setter.call(retrieval, '1');
+      retrieval.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    await act(async () => { button('生成预览').click(); });
+    await flush();
+
+    const call = calls.find((item) => item.url.includes('/cq/prompts/preview'))!;
+    const draft = call.body as { config: typeof CONFIG; items: typeof REQUIREMENTS };
+    expect(draft.config.cq_generation.suggested_mix.retrieval).toBe(1);
+    expect(draft.items).toHaveLength(2);
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('retrieval: 1 题');
+    expect(text).toContain('本次加载 2 条出题要求');
+    expect(text).toContain('未保存的编辑');
+    expect(container!.querySelector('.cq-preview-text')?.textContent).toContain('问法避免绕口');
+
+    // 预览生成后再改配置 → 提示需要重新生成。
+    const description = container!.querySelector<HTMLInputElement>('.cq-prompts-section input:not([type="number"])')!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype, 'value',
+      )!.set!;
+      setter.call(description, '改过的描述');
+      description.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container!.textContent).toContain('配置已改动，请重新生成预览');
+  });
+
+  it('预览内容可复制（#320 补充）', async () => {
+    stubFetch();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    act(() => root!.render(<CqPromptsPanel onClose={() => {}} />));
+    await flush();
+
+    await act(async () => { button('生成预览').click(); });
+    await flush();
+    await act(async () => { button('复制').click(); });
+    await flush();
+
+    expect(writeText).toHaveBeenCalledOnce();
+    expect(writeText.mock.calls[0][0]).toContain('措辞规则：');
+    expect(container!.textContent).toContain('已复制完整指令');
   });
 });

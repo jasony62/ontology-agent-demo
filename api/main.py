@@ -29,6 +29,7 @@
         POST /api/infer        重新执行推理并返回统计
     CQ 出题（工作区级，写操作仅接受回环来源）：
         GET/PUT/DELETE /api/domains/current/cq/prompts      出题配比 / 措辞 / 描述
+        POST           /api/domains/current/cq/prompts/preview 出题指令预览（只读）
         GET/PUT        /api/domains/current/cq/requirements 人沉淀的出题要求
     本体管理（v1.3.0 起，通用层扩展）：
         POST /api/ontology/load         上传 .owl/.rdf 并切换为「导入的本体」只读领域
@@ -102,7 +103,7 @@ from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
     DescribeRequest, SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
-    CqPromptsRequest, CqRequirementsRequest, CqDecisionRequest,
+    CqPromptsRequest, CqPromptsPreviewRequest, CqRequirementsRequest, CqDecisionRequest,
 )
 from .response_schemas import (
     ClassesResponse,
@@ -2136,6 +2137,63 @@ def cq_prompts_reset(request: Request):
 def _cq_requirements_view(ontology_id: str, items: list[dict] | None = None) -> dict:
     values = items if items is not None else requirements_store.items(ontology_id)
     return {"ontology_id": ontology_id, "count": len(values), "items": values}
+
+
+@app.post(
+    "/api/domains/current/cq/prompts/preview",
+    tags=["通用查询"],
+    summary="预览当前出题指令（只读）",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "与真实出题同一个拼装函数生成的 prompt 全文；可传未保存的 config / "
+                "items 预览编辑后的结果。dirty 表示入参与当前工作区落盘值不同。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def cq_prompts_preview(req: CqPromptsPreviewRequest):
+    """只读预览：调用与 `cq_author` 相同的 `guide_cq_generation`，不写盘。
+
+    预览必须与真实出题同源，否则用户看到的和智能体收到的会对不上（#320 补充）。
+    未传 config / items 时用当前工作区生效值；传了就用传入值（支持未保存编辑）。
+    """
+    ontology_id, _ = _cq_identity()
+    try:
+        stored_config = prompts_store.load(ontology_id)
+        stored_items = requirements_store.items(ontology_id)
+        config = req.config if req.config is not None else stored_config
+        items = req.items if req.items is not None else stored_items
+        # 未保存的新要求可能只有原文：按保存时同一规则补出 rule，预览才不虚。
+        prepared = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            rule = str(item.get("rule") or "").strip()
+            text = str(item.get("text") or "").strip()
+            if not rule and text:
+                rule = requirements_store.rule_from_comment(text)
+            if rule:
+                prepared.append({**item, "rule": rule})
+        from ontology_plugin_sdk.cq import gen
+        guide = gen.guide_cq_generation(
+            prompts=config, engine=ENGINE, requirements=prepared,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"出题配置无法预览：{exc}")
+    except (KeyError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=f"出题配置不完整，无法预览：{exc}")
+    return {
+        "ontology_id": ontology_id,
+        "source": prompts_store.source(ontology_id),
+        "dirty": config != stored_config or items != stored_items,
+        "prompt": guide["prompt"],
+        "mode": guide.get("mode"),
+        "requirements_count": guide.get("requirements_count", 0),
+        "requirements_loaded": guide.get("requirements_loaded", []),
+    }
 
 
 @app.get(

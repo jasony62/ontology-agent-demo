@@ -119,20 +119,29 @@ def _ask(ontology_id: str, payload: dict, *, actor_type: str, actor: str) -> dic
     if kind not in DECISION_KINDS:
         raise TrainingError("invalid_kind", f"未知决策类别 {kind!r}；允许：{' / '.join(DECISION_KINDS)}")
     question = str(payload.get("question") or "").strip()
-    options = payload.get("options")
+    raw_options = payload.get("options")
+    if raw_options is None:
+        options: list[str] = []
+    elif (
+        isinstance(raw_options, list)
+        and len(raw_options) != 1
+        and all(isinstance(item, str) and item.strip() for item in raw_options)
+    ):
+        options = [item.strip() for item in raw_options]
+    else:
+        raise TrainingError(
+            "invalid_options",
+            "options 至少需要 2 个非空字符串（也可以不传选项）",
+        )
     recommended = str(payload.get("recommended") or "").strip()
     reason = str(payload.get("reason") or "").strip()
     background = str(payload.get("background") or "").strip()
     context = str(payload.get("context") or "").strip()
     if not question:
         raise TrainingError("invalid_question", "问题不能为空")
-    if not isinstance(options, list) or len(options) < 2 or any(
-        not isinstance(item, str) or not item.strip() for item in options
-    ):
-        raise TrainingError("invalid_options", "options 至少需要 2 个非空字符串")
-    if not recommended:
-        raise TrainingError("invalid_recommended", "推荐项不能为空")
-    if recommended not in options:
+    if recommended and not options:
+        raise TrainingError("invalid_recommended", "没有选项时不能给推荐项")
+    if recommended and recommended not in options:
         raise TrainingError("invalid_recommended", "推荐项必须属于 options")
     if not reason:
         raise TrainingError("invalid_reason", "推荐理由不能为空")
@@ -266,13 +275,16 @@ def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, s
         }, actor_type=actor_type, actor=actor)
         intent_marked = True
 
-    # #212：暂缓 / 未授权 → 待跟进；采纳 / 驳回 → 已裁决；无结论时沿用旧口径。
+    # #334：回答与处置分离——只有选了选项（含「其他」）才算已回答；
+    # 只写文字仍保持待裁定，处置统一走处置区。
     if conclusion == "defer" or authorized is False:
         status = "followup"
     elif conclusion in {"adopt", "reject"}:
         status = "resolved"
+    elif option.strip():
+        status = "resolved"
     else:
-        status = "resolved" if (option.strip() or feedback_text.strip()) else "followup"
+        status = "pending"
 
     next_action = None
     if status == "resolved":
@@ -456,9 +468,13 @@ def context_gaps(
                 "suggestion": "补一段业务话翻译，说明这轮改动的业务含义",
             })
 
-    # G3：待跟进超过 N 轮 / N 天未动作（无读计数副作用，用时间近似）
+    # G3：待跟进 / 已答未处置超过 N 轮 / N 天未动作（无读计数副作用，用时间近似）
     threshold = datetime.now(timezone.utc) - timedelta(days=G3_ROUNDS)
-    for item in state.get("pending_followups") or []:
+    stale = list(state.get("pending_followups") or []) + [
+        item for item in (state.get("pending_decisions") or [])
+        if item.get("latest_feedback")
+    ]
+    for item in stale:
         since = _parse_ts(str(item.get("since") or ""))
         if since is not None and since <= threshold:
             gaps.append({
@@ -482,10 +498,10 @@ def context_gaps(
                 "suggestion": "补一份迭代档案，记录这轮改动的业务说明",
             })
 
-    # G6：反馈既无选项、无原文、无跟进对象
+    # G6：反馈既无选项、无原文、无跟进对象（待裁定 / 待跟进都算）
     for decision in (state.get("decisions") or {}).values():
         latest = decision.get("latest_feedback")
-        if decision.get("status") != "followup" or not latest:
+        if decision.get("status") not in {"pending", "followup"} or not latest:
             continue
         if not any(str(latest.get(key) or "").strip()
                    for key in ("option", "feedback_text", "follow_up_with")):

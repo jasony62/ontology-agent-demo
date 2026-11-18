@@ -480,6 +480,8 @@ export interface CqSetCase {
   assertion_summary?: string;
   /** #279/#280：审核门控字段（服务端尚未落地时不存在；存在即按契约展示）。 */
   review?: CqReview | null;
+  /** #332：可执行的处置动作（后端已按当前状态算好可用性）。 */
+  dispositions?: CqDispositionAction[];
 }
 
 export interface CqReview {
@@ -489,6 +491,28 @@ export interface CqReview {
   at?: string | null;
   /** #306：审核意见；同时沉淀为出题要求。 */
   comment?: string | null;
+}
+
+/** #332：处置动作（系统定义，前端只渲染与提交 action 码）。 */
+export interface CqDispositionAction {
+  action: 'approve_activate' | 'revise' | 'reject' | 'defer' | string;
+  label: string;
+  effect: string;
+  available: boolean;
+}
+
+export interface CqDispositionResult {
+  action: string;
+  label: string;
+  effect: string;
+  note?: string;
+  review?: CqReview | null;
+  status?: string;
+  next_action?: { action_id?: string; action?: string; case_id?: string; status?: string } | null;
+}
+
+export interface CqDispositionResponse extends CqSetResponse {
+  disposition: CqDispositionResult;
 }
 
 export interface CqSetSummary {
@@ -696,6 +720,14 @@ export interface CqLifecycleCase {
   actions?: CqAction[];
   pending_actions?: CqAction[];
   review?: CqReview | null;
+  /** #336：最近一次处置留痕（阶段条的「已处置」标记）。 */
+  last_disposition?: {
+    action?: string;
+    note?: string;
+    review_state?: string;
+    status?: string;
+    ts?: string;
+  } | null;
 }
 
 export interface CqDelivery {
@@ -1036,6 +1068,17 @@ export const api = {
     request<CqSetResponse & { deleted: CqSetCase }>(
       `/api/domains/current/cq/cases/${encodeURIComponent(caseId)}`,
       { method: 'DELETE' },
+    ),
+
+  /** #332：处置一道题（审核通过并启用 / 修改 / 拒绝出队 / 暂缓） */
+  cqDispose: (caseId: string, action: string, note = '') =>
+    request<CqDispositionResponse>(
+      `/api/domains/current/cq/cases/${encodeURIComponent(caseId)}/disposition`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, note }),
+      },
     ),
 
   /** 回归执行与历史（#156） */

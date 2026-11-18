@@ -46,8 +46,11 @@ def test_pending_resolved_followup_withdrawn():
             "decision_id": "d-1", "follow_up_with": "张三", "source": "direct",
         }, ts="2026-11-15T00:01:00+00:00"),
     ])
-    assert state["decisions"]["d-1"]["status"] == "followup"
-    assert state["pending_followups"][0]["follow_up_with"] == "张三"
+    assert state["decisions"]["d-1"]["status"] == "pending"
+    assert state["pending_followups"] == []
+    assert any(
+        item["decision_id"] == "d-1" for item in state["pending_decisions"]
+    )
 
     state = project_training_state([
         _asked(),
@@ -72,7 +75,7 @@ def test_latest_feedback_wins_and_trace_is_kept():
         }, ts="2026-11-15T00:02:00+00:00"),
     ])
     decision = state["decisions"]["d-1"]
-    assert decision["status"] == "followup"
+    assert decision["status"] == "pending"
     assert [item["event_id"] for item in decision["feedback"]] == ["e1", "e2"]
     assert decision["feedback"][-1]["superseded_by"] == "e1"
 

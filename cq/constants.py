@@ -70,12 +70,17 @@ ACTION_NAMES = (
     "rerun_regression", "lock_graduation", "generate_cases",
 )
 
-# 状态翻转族：只能经 cq_decision 写入，通用写工具拒绝。
+# 处置动作（#332）：人对一道题的业务动作，封闭枚举，经专用端点写入。
+# 与 DECISION_KINDS（智能体问什么）正交，不复用、不让调用方自由填。
+DISPOSITION_ACTIONS = ("approve_activate", "revise", "reject", "defer")
+
+# 状态翻转族：只能经 cq_decision / 专用处置端点写入，通用写工具拒绝。
 TRAINING_STATE_EVENTS = (
     "decision_asked",
     "feedback_received",
     "decision_resolved_by_self",
     "intent_pending_marked",
+    "case_disposed",
 )
 # 观测 / 证据族：可经 cq_training_write 写入；大体积证据落 evidence/。
 TRAINING_OBSERVATION_EVENTS = (
@@ -102,8 +107,8 @@ TRAINING_EVENT_SCHEMAS: dict[str, dict[str, tuple[type, bool, tuple | None]]] = 
         "decision_id": (str, True, None),
         "kind": (str, True, DECISION_KINDS),
         "question": (str, True, None),
-        "options": (list, True, None),
-        "recommended": (str, True, None),
+        "options": (list, False, None),
+        "recommended": (str, False, None),
         "reason": (str, True, None),
         "background": (str, True, None),
         "context": (str, False, None),
@@ -127,6 +132,13 @@ TRAINING_EVENT_SCHEMAS: dict[str, dict[str, tuple[type, bool, tuple | None]]] = 
     "intent_pending_marked": {
         "case_id": (str, True, None),
         "decision_id": (str, True, None),
+    },
+    "case_disposed": {
+        "case_id": (str, True, None),
+        "action": (str, True, DISPOSITION_ACTIONS),
+        "note": (str, False, None),
+        "review_state": (str, False, REVIEW_STATES),
+        "status": (str, False, STATUS_CONTRACT_VALUES),
     },
     "case_authored": {"case_id": (str, True, None)},
     "case_released": {"case_id": (str, True, None)},

@@ -70,7 +70,8 @@ def test_feedback_four_forms_and_status(ws):
             {"decision_id": decision_id, **form}, source="direct",
         )
         statuses.append(result["status"])
-    assert statuses == ["resolved", "resolved", "followup", "followup"]
+    # #334：只有选项 / 显式结论才算已回答；纯文字与空反馈保持待裁定。
+    assert statuses == ["resolved", "pending", "pending", "pending"]
     events = [item for item in read_events("agent_task")
               if item["event"] == "feedback_received"]
     assert [item["content"]["source"] for item in events] == ["direct"] * 4

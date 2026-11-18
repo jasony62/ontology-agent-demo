@@ -75,12 +75,15 @@ def validate_event(event: str, content: dict) -> dict:
         if kind is str and required and field not in {"option"} and not value.strip():
             raise _invalid(f"{event}.{field} 不能为空")
     if event == "decision_asked":
-        options = content["options"]
-        if len(options) < 2 or any(
-            not isinstance(item, str) or not item.strip() for item in options
+        # #334：选项与推荐项都可缺省；给了选项就至少 2 项，给了推荐项就必须属于选项。
+        options = content.get("options") or []
+        if options and (
+            len(options) < 2
+            or any(not isinstance(item, str) or not item.strip() for item in options)
         ):
-            raise _invalid("decision_asked.options 至少需要 2 个非空字符串")
-        if content["recommended"] not in options:
+            raise _invalid("decision_asked.options 至少需要 2 个非空字符串（也可以不传选项）")
+        recommended = content.get("recommended") or ""
+        if recommended and recommended not in options:
             raise _invalid("decision_asked.recommended 必须是 options 中的一项")
     return {**content, "event_id": str(content.get("event_id") or uuid.uuid4().hex)}
 

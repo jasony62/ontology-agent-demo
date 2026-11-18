@@ -38,7 +38,7 @@ const STAGE_LABELS: Record<string, string> = {
   pending: '待裁定',
   resolved: '已裁定',
   fixing: '修复中',
-  passed: '通过',
+  passed: '回归通过',
   followup: '待跟进',
 };
 const STAGE_ACTIONS: Record<string, string> = {
@@ -51,6 +51,14 @@ const STAGE_ACTIONS: Record<string, string> = {
 };
 
 type SortMode = 'action' | 'activity' | 'case';
+
+// #336：阶段条上的裁定 / 处置留痕（叠加在「当前阶段」之上，不是进度）。
+const DISPOSITION_LABELS: Record<string, string> = {
+  approve_activate: '审核通过并启用',
+  revise: '修改',
+  reject: '拒绝出队',
+  defer: '暂缓',
+};
 
 export default function CqTrainingPanel({
   focusCaseId, onFocusHandled, onGoToCases,
@@ -141,19 +149,12 @@ export default function CqTrainingPanel({
         context: decision.context ?? '',
         ...payload,
       });
-      const label = result.status === 'resolved' ? '已裁决' : '待跟进';
       const anchor = decision.case_id ? `#${decision.case_id}` : '';
-      const conclusionText = payload.conclusion === 'defer'
-        ? '暂缓'
-        : payload.conclusion === 'reject'
-          ? '驳回 / 改选'
-          : payload.conclusion === 'adopt'
-            ? '采纳推荐'
-            : '';
+      // #334 / #335：第一步只记录回答，不改题目状态；明确指向第二步处置区。
       setLastResult(
-        `已记录决策${anchor ? ` ${anchor}` : ''}`
-        + (conclusionText ? ` · ${conclusionText}` : ` · ${label}`)
-        + (result.status !== 'resolved' ? `（${label}）` : '')
+        (payload.option
+          ? `回答已记录${anchor ? ` ${anchor}` : ''}；请到题目详情 → 处置区决定这题怎么处理。`
+          : `说明已记录${anchor ? ` ${anchor}` : ''}；这题仍在待裁定，可继续选择回答或到处置区处理。`)
         + (result.intent_pending_marked ? ' · 题目意图待确认' : ''),
       );
       await load();
@@ -272,7 +273,7 @@ export default function CqTrainingPanel({
       )}
       {reviewPending > 0 && (
         <p className="guide-section-hint cq-training-todo">
-          有 {reviewPending} 题在等审核结论；先处理「待审核」再跑回归。
+          有 {reviewPending} 题在等审核结论；在题目详情 → 处置区点「审核通过并启用」或「修改」，不再拦回归。
         </p>
       )}
 
@@ -579,6 +580,18 @@ function CaseCard({
         {item.intent_pending && <span className="guide-badge">意图待确认</span>}
       </div>
       <StageBar stage={item.stage} onSelect={onHistory} />
+      {(item.latest_decision?.status === 'resolved' || item.last_disposition) && (
+        <div className="cq-stage-marks">
+          {item.latest_decision?.status === 'resolved' && (
+            <span className="cq-stage-mark">已裁定</span>
+          )}
+          {item.last_disposition && (
+            <span className="cq-stage-mark">
+              已处置 · {DISPOSITION_LABELS[String(item.last_disposition.action)] ?? '已记录'}
+            </span>
+          )}
+        </div>
+      )}
       {!item.graduated && ((item.missing ?? item.blockers)?.length ?? 0) > 0 && (
         <div className="cq-case-blockers">还差：{(item.missing ?? item.blockers)?.join(' / ')}</div>
       )}
@@ -742,8 +755,8 @@ function CaseHistory({
 }
 
 type PendingDecision =
-  | { kind: 'choice'; option: string; conclusion: 'adopt' | 'reject' }
-  | { kind: 'defer' }
+  | { kind: 'option'; option: string }
+  | { kind: 'other' }
   | { kind: 'text' };
 
 function DecisionCard({
@@ -792,16 +805,16 @@ function DecisionCard({
     const current = pending;
     clearPending();
     const note = text.trim() || undefined;
-    if (current.kind === 'choice') {
+    if (current.kind === 'option') {
       void onSubmit(decision, {
-        option: current.option, conclusion: current.conclusion,
-        feedback_text: note, ...receipt(),
+        option: current.option, feedback_text: note, ...receipt(),
       });
       return;
     }
-    if (current.kind === 'defer') {
+    if (current.kind === 'other') {
+      // 「其他」是合法回答出口：不写文字也能关闭第一步。
       void onSubmit(decision, {
-        conclusion: 'defer', feedback_text: note, ...receipt(),
+        option: '其他', feedback_text: note || '其他', ...receipt(),
       });
       return;
     }
@@ -809,22 +822,21 @@ function DecisionCard({
   };
 
   const choose = (option: string) => {
-    const nextConclusion: 'adopt' | 'reject' = option === decision.recommended ? 'adopt' : 'reject';
-    // #229 原本只在结论冲突时确认；#256 起任何选项都要确认，并明示不可撤销。
-    setPending({ kind: 'choice', option, conclusion: nextConclusion });
+    // #334：选项只是语义回答，不再推定「采纳 / 驳回」，也不改题目状态。
+    setPending({ kind: 'option', option });
     setNotice(
-      `你选了「${plainCopy(option)}」，将记为「${conclusionLabel(nextConclusion)}」；提交后不可撤销。`,
+      `回答将记录为「${plainCopy(option)}」；题目状态不变，下一步到处置区处理。`,
     );
   };
 
-  const defer = () => {
-    setPending({ kind: 'defer' });
-    setNotice('将记为「暂缓」；提交后不可撤销，之后仍可从待跟进区补充结论。');
+  const chooseOther = () => {
+    setPending({ kind: 'other' });
+    setNotice('将把这段回答记为「其他」；题目状态不变，下一步到处置区处理。');
   };
 
   const submitText = () => {
     setPending({ kind: 'text' });
-    setNotice('将记录这段反馈原文；提交后不可撤销。');
+    setNotice('将记录这段说明；如果还没选回答，这题仍停在待裁定。');
   };
 
   return (
@@ -887,6 +899,11 @@ function DecisionCard({
         </div>
       )}
 
+      {(decision.options || []).length === 0 && (
+        <p className="field-hint cq-training-no-options">
+          这道题没有给选项：把回答写进上面的说明框，再点「其他 / 自定义回答」。
+        </p>
+      )}
       <div className="cq-training-options">
         {(decision.options || []).map((option) => (
           <button
@@ -901,14 +918,15 @@ function DecisionCard({
             {decision.recommended === option && <span className="cq-training-rec">推荐</span>}
           </button>
         ))}
+        {/* #334：明确的「其他 / 自定义回答」出口；不写文字也算合法回答。 */}
         <button
           type="button"
           className="btn secondary"
           disabled={busy || !authorized}
           aria-describedby={authorized ? undefined : 'cq-authorize-hint'}
-          onClick={defer}
+          onClick={chooseOther}
         >
-          暂缓
+          其他 / 自定义回答
         </button>
       </div>
       {decision.reason && (

@@ -105,7 +105,11 @@ def test_g6_empty_feedback_is_gap_not_rejection(ws):
     training_service.decide("agent_task", "feedback", {"decision_id": decision_id},
                             source="direct")
     result = training_service.resume(_engine(), "agent_task")
-    assert result["pending_followups"][0]["decision_id"] == decision_id
+    # #334：空反馈只留痕，不再把决策移到待跟进。
+    assert result["pending_followups"] == []
+    assert any(
+        item["decision_id"] == decision_id for item in result["pending_decisions"]
+    )
     assert "G6" in [gap["gap_type"] for gap in result["context_gaps"]]
     # G6 只提示，不阻断：反馈已经落盘
     assert any(item["event"] == "feedback_received"

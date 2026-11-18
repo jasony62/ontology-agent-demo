@@ -258,6 +258,21 @@ class CqRequirementsRequest(BaseModel):
     )
 
 
+class CqDispositionRequest(BaseModel):
+    """题目处置（#332）：人对一道题的业务动作，封闭枚举。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: str = Field(
+        ...,
+        description=(
+            "处置码：approve_activate（审核通过并启用）/ revise（修改）/ "
+            "reject（拒绝出队）/ defer（暂缓）。枚举外返回 400。"
+        ),
+    )
+    note: str = Field("", description="可选说明，写入处置事件与修改待办。")
+
+
 class CqDecisionRequest(BaseModel):
     """CQ 决策入口（#195）：提问 / 反馈 / 自答撤问。"""
 

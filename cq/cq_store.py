@@ -528,6 +528,54 @@ def _review_blocking(case: dict) -> bool:
     return str(review.get("state") or "none") != "approved"
 
 
+# 处置动作（#332）：标签与效果由后端定义，前端只渲染与提交 action 码。
+DISPOSITION_SPECS = (
+    {
+        "action": "approve_activate",
+        "label": "审核通过并启用",
+        "effect": "审核：审核已通过；状态：启用。",
+    },
+    {
+        "action": "revise",
+        "label": "修改",
+        "effect": "审核：退回待审核；状态：草稿；并给智能体派一条修改待办。",
+    },
+    {
+        "action": "reject",
+        "label": "拒绝出队",
+        "effect": "审核：已驳回；状态：草稿（保留可恢复，不隐藏题目）。",
+    },
+    {
+        "action": "defer",
+        "label": "暂缓",
+        "effect": "审核 / 运营态不变；只记录一次暂缓，题留在原处。",
+    },
+)
+
+
+def disposition_actions(case: dict) -> list[dict]:
+    """当前题目可执行的处置动作 + 是否可点（#332）。
+
+    可用性只按业务前置判断；具体写入仍在 `dispose_case` 里做原子校验。
+    """
+    review = case.get("review") if isinstance(case.get("review"), dict) else {}
+    state = str(review.get("state") or "none")
+    status = str(case.get("status") or "")
+    results = []
+    for spec in DISPOSITION_SPECS:
+        action = spec["action"]
+        if action == "approve_activate":
+            available = not (status == "active" and state == "approved")
+        elif action == "revise":
+            available = status != "archived"
+        elif action == "reject":
+            available = not (status == "draft" and state == "rejected")
+        else:
+            available = True
+        results.append({**spec, "available": available})
+    return results
+
+
 def _substantive_signature(case: dict) -> str:
     """#312：实质变更 = 题干或断言内容变化（标签 / 需求 / 题型不算）。"""
     regression = case.get("regression") if isinstance(case.get("regression"), dict) else {}
@@ -1075,6 +1123,7 @@ def build_view(engine, data: dict) -> dict:
             "graduated": graduation["graduated"],
             "blockers": blockers,
             "missing": graduation["missing"],
+            "dispositions": disposition_actions(case),
             "location": location,
             "assertion_summary": assertion_summary(regression),
         })

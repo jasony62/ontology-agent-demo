@@ -224,8 +224,11 @@ describe('训练现场（#198 / #203）', () => {
     const body = JSON.parse(String((call![1] as RequestInit).body));
     expect(body).toMatchObject({
       action: 'feedback', decision_id: 'd-1', option: 'A',
-      conclusion: 'adopt', basis: 'self', authorized: true,
+      conclusion: 'adopt', authorized: true,
     });
+    expect(body).not.toHaveProperty('feedback_text');
+    expect(body).not.toHaveProperty('basis');
+    expect(body).not.toHaveProperty('follow_up_with');
     expect(container!.textContent).toContain('已记录决策 #Q1');
     const resumeCalls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/cq/resume'));
     expect(resumeCalls.length).toBeGreaterThanOrEqual(2);
@@ -262,40 +265,29 @@ describe('训练现场（#198 / #203）', () => {
     expect(body.authorized).toBe(true);
   });
 
-  it('补充反馈可写自由文本与跟进对象，并带结构化结论', async () => {
+  it('依据来源改为选填说明：无下拉、文字进 feedback_text（#330）', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
 
-    const selects = [...container!.querySelectorAll<HTMLSelectElement>('.cq-training-receipt select')];
-    const setSelect = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!;
+    // 下拉与「已问谁确认」输入框都不再出现；说明框就在授权勾选旁。
+    expect(container!.querySelectorAll('.cq-training-receipt select')).toHaveLength(0);
+    expect(container!.textContent).not.toContain('已问谁确认');
+    expect(container!.textContent).toContain('依据来源与说明（选填）');
+
+    const textarea = container!.querySelector<HTMLTextAreaElement>(
+      '.cq-training-basis textarea')!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
     act(() => {
-      setSelect.call(selects[0], 'expert');
-      selects[0].dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    const input = container!.querySelector<HTMLInputElement>(
-      '.cq-training-receipt input:not([type="checkbox"])')!;
-    const setInput = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
-    act(() => {
-      setInput.call(input, '李四');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
+      setValue.call(textarea, '查了本体定义，也问了李四');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
     const authorize = container!.querySelector<HTMLInputElement>('.cq-training-authorize input')!;
     await act(async () => { authorize.click(); });
-
-    const more = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '补充反馈 / 说明需要谁确认')!;
-    act(() => more.click());
-    const textarea = container!.querySelector<HTMLTextAreaElement>('.cq-training-free textarea')!;
-    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
-    act(() => {
-      setValue.call(textarea, '需要人工确认');
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    const submit = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-free button')]
-      .find((button) => button.textContent === '提交反馈')!;
-    await act(async () => { submit.click(); });
+    const option = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
+      .find((button) => button.textContent?.startsWith('A'))!;
+    await act(async () => { option.click(); });
     await flush();
     const confirm = container!.querySelector('.cq-decision-confirm')!;
     const confirmSubmit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
@@ -306,12 +298,23 @@ describe('训练现场（#198 / #203）', () => {
     const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
       String(url).includes('/cq/decision') && String(init?.method) === 'POST');
     const body = JSON.parse(String((call![1] as RequestInit).body));
-    expect(body.feedback_text).toBe('需要人工确认');
-    expect(body.follow_up_with).toBe('李四');
-    expect(body.basis).toBe('expert');
+    expect(body.option).toBe('A');
+    expect(body.feedback_text).toBe('查了本体定义，也问了李四');
+    expect(body).not.toHaveProperty('basis');
+    expect(body).not.toHaveProperty('follow_up_with');
     expect(body.authorized).toBe(true);
-    // #262：卡上不再有「结论」下拉，结论由选项推定
-    expect(container!.querySelectorAll('.cq-training-receipt select')).toHaveLength(1);
+  });
+
+  it('说明留空时仍可只提交说明或提交选项（#330）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const authorize = container!.querySelector<HTMLInputElement>('.cq-training-authorize input')!;
+    await act(async () => { authorize.click(); });
+    const note = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '只提交说明')!;
+    expect(note.disabled).toBe(true);
   });
 
   it('暂缓后的决策进入待跟进区，仍可继续提交结论（#212）', async () => {

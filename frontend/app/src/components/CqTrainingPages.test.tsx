@@ -70,7 +70,7 @@ const RESUME = {
     cases: [{
       case_id: 'Q1', cq: '期望口径是什么？', status: 'active', expected_type: 'expectation',
       assertion_summary: '应判定为「是」', located: true, answerable: true,
-      stage: 'pending', stage_label: '待我决', priority: 1, failure_triggered: false,
+      stage: 'pending', stage_label: '待裁定', priority: 1, failure_triggered: false,
       activity_at: '2026-11-15T00:00:00+00:00', last_run: null, intent_pending: false,
       decisions: [], pending_decision: {
         decision_id: 'd-1', kind: 'expectation', question: '期望口径是什么？',

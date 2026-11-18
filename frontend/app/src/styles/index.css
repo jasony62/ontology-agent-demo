@@ -1884,7 +1884,6 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   border: 1px solid var(--border); background: transparent; border-radius: 999px;
   padding: 2px 8px; font-size: 11px; color: var(--muted); cursor: pointer;
 }
-.cq-stage-step.visited { color: var(--text); border-color: var(--border-strong); }
 .cq-stage-step.active { background: var(--panel-2); color: var(--heading); font-weight: 600; }
 .cq-case-action p { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.6; }
 .cq-case-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }

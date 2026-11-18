@@ -281,3 +281,12 @@ def test_delivery_verdict_ready_when_target_reached():
     delivery = lifecycle.delivery_verdict(view)
     assert delivery["ready"] is True
     assert delivery["missing_questions"] == 0
+
+
+def test_stage_labels_use_neutral_names():
+    """#326：阶段名去个人化，key 与判定逻辑不变。"""
+    from cq import lifecycle
+
+    assert lifecycle.STAGE_LABELS["pending"] == "待裁定"
+    assert lifecycle.STAGE_LABELS["resolved"] == "已裁定"
+    assert "pending" in lifecycle.STAGES and "resolved" in lifecycle.STAGES

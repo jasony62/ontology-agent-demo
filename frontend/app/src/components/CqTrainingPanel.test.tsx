@@ -2,7 +2,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CqResumeResponse } from '../api/client';
+import type { CqDecision, CqResumeResponse } from '../api/client';
 import CqTrainingPanel from './CqTrainingPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -54,14 +54,14 @@ const RESUME: CqResumeResponse = {
     cases: [{
       case_id: 'Q1', cq: '期望口径是什么？', status: 'active', expected_type: 'expectation',
       assertion_summary: '应判定为「是」', located: true, answerable: true,
-      stage: 'pending', stage_label: '待我决', priority: 1, failure_triggered: false,
+      stage: 'pending', stage_label: '待裁定', priority: 1, failure_triggered: false,
       activity_at: '2026-11-15T00:00:00+00:00', last_run: null, intent_pending: false,
       decisions: [DECISION], pending_decision: DECISION, latest_decision: DECISION,
       iterations: [],
     }, {
       case_id: 'Q2', cq: '已决题怎么处理？', status: 'active', expected_type: 'expectation',
       assertion_summary: '应判定为「是」', located: true, answerable: true,
-      stage: 'resolved', stage_label: '已决', priority: 4, failure_triggered: false,
+      stage: 'resolved', stage_label: '已裁定', priority: 4, failure_triggered: false,
       activity_at: '2026-11-15T00:01:00+00:00', last_run: null, intent_pending: false,
       decisions: [RESOLVED], pending_decision: null, latest_decision: RESOLVED,
       iterations: [],
@@ -78,11 +78,20 @@ const RESUME: CqResumeResponse = {
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
-function stubFetch(resume: CqResumeResponse = RESUME, options: { failResume?: boolean } = {}) {
+function stubFetch(
+  resume: CqResumeResponse = RESUME,
+  options: { failResume?: boolean; decisionError?: unknown } = {},
+) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = String(init?.method || 'GET').toUpperCase();
     if (url.includes('/cq/decision') && method === 'POST') {
+      if (options.decisionError) {
+        return {
+          ok: false, status: 422, statusText: 'Unprocessable Entity',
+          json: async () => ({ detail: options.decisionError }),
+        } as unknown as Response;
+      }
       return {
         ok: true, status: 200,
         json: async () => ({ ontology_id: 'ws-1', action: 'feedback', decision_id: 'd-1', status: 'resolved' }),
@@ -341,18 +350,18 @@ describe('训练现场（#198 / #203）', () => {
     expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(1);
   });
 
-  it('概览按题 roll-up，点已决筛到已决题卡（#219 / V9）', async () => {
+  it('概览按题 roll-up，点已裁定筛到已裁定题卡（#219 / V9）', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
 
     const text = container!.textContent ?? '';
-    expect(text).toContain('1待决题 · 1 条决策');
-    expect(text).toContain('1已决题 · 1 条决策');
+    expect(text).toContain('1待裁定题 · 1 条决策');
+    expect(text).toContain('1已裁定题 · 1 条决策');
     expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(2);
 
     const resolvedStat = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-stat')]
-      .find((button) => button.textContent?.includes('已决题'))!;
+      .find((button) => button.textContent?.includes('已裁定题'))!;
     await act(async () => { resolvedStat.click(); });
     await flush();
 
@@ -361,19 +370,19 @@ describe('训练现场（#198 / #203）', () => {
     expect(cards[0].textContent).toContain('已决题怎么处理？');
   });
 
-  it('从待决直达「待我处理」，首题即答题卡（#219 / V11）', async () => {
+  it('从待决直达「逐题处理」，首题即答题卡（#219 / V11）', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
 
     const pendingStat = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-stat')]
-      .find((button) => button.textContent?.includes('待决题'))!;
+      .find((button) => button.textContent?.includes('待裁定题'))!;
     await act(async () => { pendingStat.click(); });
     await flush();
 
     const focus = container!.querySelector('.cq-focus-mode')!;
     expect(focus).not.toBeNull();
-    expect(focus.textContent).toContain('待我处理');
+    expect(focus.textContent).toContain('逐题处理');
     expect(focus.textContent).toContain('第 1 / 1 题');
     expect(focus.querySelector('.cq-training-authorize input')).not.toBeNull();
     expect(focus.querySelectorAll('.cq-case-card')).toHaveLength(1);
@@ -488,7 +497,7 @@ describe('训练现场（#198 / #203）', () => {
     const filters = [...container!.querySelectorAll<HTMLButtonElement>('.cq-stage-filters button')]
       .map((btn) => btn.textContent);
     // 0 值阶段 chip 不渲染（原始 fixture：pending 1 / resolved 1）
-    expect(filters).toEqual(['全部 1', '待我决 1', '已决 1']);
+    expect(filters).toEqual(['全部 1', '待裁定 1', '已裁定 1']);
     expect(filters).not.toContain('已建题 0');
     expect(filters).not.toContain('通过 0');
     expect(container!.querySelector('.cq-stage-bar')).toBeNull();
@@ -506,7 +515,7 @@ describe('训练现场（#198 / #203）', () => {
           decision_counts: { pending: 0, followup: 0, resolved: 2 },
         },
         cases: RESUME.lifecycle!.cases.map((item) => ({
-          ...item, stage: 'resolved', stage_label: '已决',
+          ...item, stage: 'resolved', stage_label: '已裁定',
           pending_decision: null,
         })),
       },
@@ -524,7 +533,7 @@ describe('训练现场（#198 / #203）', () => {
       case_id: `C${index + 1}`,
       short_id: `Q${String(index + 1).padStart(2, '0')}`,
       cq: `第 ${index + 1} 题`,
-      stage: 'resolved', stage_label: '已决',
+      stage: 'resolved', stage_label: '已裁定',
       pending_decision: null, latest_decision: null,
     }));
     stubFetch({
@@ -572,8 +581,8 @@ describe('训练现场（#198 / #203）', () => {
     const reviewStat = [...container!.querySelectorAll('.cq-training-stat')]
       .find((node) => node.textContent?.includes('待审核题'))!;
     expect(reviewStat.textContent).toContain('1');
-    // 与「待决题」分开命名，不共用「待审」
-    expect(text).toContain('待决题');
+    // 与「待裁定题」分开命名，不共用「待审」
+    expect(text).toContain('待裁定题');
     expect(text).not.toContain('待审题');
   });
 
@@ -674,5 +683,83 @@ describe('训练现场（#198 / #203）', () => {
     expect(expanded).toContain('d-1');
     expect(expanded).toContain('attribution_conclusion');
     expect(toggle.textContent).toBe('收起技术细节');
+  });
+
+  it('阶段条只高亮当前阶段，不把前序格子涂成「已走过」（#325）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const bars = [...container!.querySelectorAll('.cq-stage-bar')];
+    expect(bars.length).toBeGreaterThan(0);
+    for (const bar of bars) {
+      expect(bar.querySelectorAll('.cq-stage-step.active')).toHaveLength(1);
+      expect(bar.querySelectorAll('.cq-stage-step.visited')).toHaveLength(0);
+    }
+    const regression = [...bars[0].querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '回归中')!;
+    expect(regression.className).not.toContain('active');
+  });
+
+  it('无 context 的待裁定题提交后 context 为空串，不再 422（#327）', async () => {
+    const noContext: CqDecision = { ...DECISION };
+    delete noContext.context;
+    stubFetch({
+      ...RESUME,
+      pending_decisions: [noContext],
+      lifecycle: {
+        ...RESUME.lifecycle!,
+        cases: [{
+          ...RESUME.lifecycle!.cases[0],
+          decisions: [noContext], pending_decision: noContext, latest_decision: noContext,
+        }, RESUME.lifecycle!.cases[1]],
+      },
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const authorize = container!.querySelector<HTMLInputElement>('.cq-training-authorize input')!;
+    await act(async () => { authorize.click(); });
+    const option = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
+      .find((button) => button.textContent?.startsWith('A'))!;
+    await act(async () => { option.click(); });
+    await flush();
+
+    const confirm = container!.querySelector('.cq-decision-confirm')!;
+    const submit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '确认提交')!;
+    await act(async () => { submit.click(); });
+    await flush();
+
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/decision') && String(init?.method) === 'POST');
+    const body = JSON.parse(String((call![1] as RequestInit).body));
+    expect(body.context).toBe('');
+  });
+
+  it('裁决提交失败时展示可读原因，不静默（#327）', async () => {
+    stubFetch(RESUME, {
+      decisionError: [{
+        loc: ['body', 'context'],
+        msg: 'Input should be a valid string',
+        type: 'string_type',
+      }],
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const authorize = container!.querySelector<HTMLInputElement>('.cq-training-authorize input')!;
+    await act(async () => { authorize.click(); });
+    const option = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
+      .find((button) => button.textContent?.startsWith('A'))!;
+    await act(async () => { option.click(); });
+    await flush();
+    const confirm = container!.querySelector('.cq-decision-confirm')!;
+    const submit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '确认提交')!;
+    await act(async () => { submit.click(); });
+    await flush();
+
+    expect(container!.textContent).toContain('context：Input should be a valid string');
   });
 });

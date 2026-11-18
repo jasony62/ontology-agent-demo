@@ -4,8 +4,8 @@
 只做读时聚合，不落盘、不迁移老数据。
 
 阶段不是单向流水线，而是「当前最需要被看见的状态」：
-  authored（已建题）→ regression（回归中）→ pending（待我决）
-  → resolved（已决）→ fixing（修复中）→ passed（通过）；
+  authored（已建题）→ regression（回归中）→ pending（待裁定）
+  → resolved（已裁定）→ fixing（修复中）→ passed（通过）；
   followup（待跟进）单独成段。回归可能反复，阶段随数据重算。
 """
 
@@ -24,8 +24,8 @@ STAGES = STAGE_BAR + ("followup",)
 STAGE_LABELS = {
     "authored": "已建题",
     "regression": "回归中",
-    "pending": "待我决",
-    "resolved": "已决",
+    "pending": "待裁定",
+    "resolved": "已裁定",
     "fixing": "修复中",
     "passed": "通过",
     "followup": "待跟进",

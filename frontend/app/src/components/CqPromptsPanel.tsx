@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
-import type { CqPromptsConfig, CqPromptsResponse, CqRequirement } from '../api/client';
+import type { CqPromptsConfig, CqPromptsPreviewResponse, CqPromptsResponse, CqRequirement } from '../api/client';
 import { expectedTypeLabel } from '../lib/cqLabels';
 
 const MIX_KEYS = ['retrieval', 'derived', 'counting', 'negative'] as const;
@@ -44,6 +44,33 @@ export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
   const [editText, setEditText] = useState('');
   const [editRule, setEditRule] = useState('');
 
+  // #320 补充：指令预览（只读、默认折叠）
+  const [preview, setPreview] = useState<CqPromptsPreviewResponse | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewKey, setPreviewKey] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const buildConfig = (): CqPromptsConfig | null => {
+    if (!data) return null;
+    return {
+      ...data.config,
+      description: description.trim(),
+      cq_generation: {
+        ...(data.config.cq_generation ?? {}),
+        suggested_mix: Object.fromEntries(
+          MIX_KEYS.map((key) => [key, Number(mix[key]) || 0]),
+        ),
+        phrasing_rules: rules.split('\n').map((line) => line.trim()).filter(Boolean),
+      },
+    };
+  };
+
+  const previewInputKey = data
+    ? JSON.stringify({ config: buildConfig(), items: requirements })
+    : '';
+  const previewStale = Boolean(preview && previewKey !== previewInputKey);
+
   const apply = (next: CqPromptsResponse) => {
     setData(next);
     const generation = next.config.cq_generation ?? {};
@@ -75,22 +102,12 @@ export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
   );
 
   const save = async () => {
-    if (!data) return;
+    const config = buildConfig();
+    if (!config) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const config: CqPromptsConfig = {
-        ...data.config,
-        description: description.trim(),
-        cq_generation: {
-          ...(data.config.cq_generation ?? {}),
-          suggested_mix: Object.fromEntries(
-            MIX_KEYS.map((key) => [key, Number(mix[key]) || 0]),
-          ),
-          phrasing_rules: rules.split('\n').map((line) => line.trim()).filter(Boolean),
-        },
-      };
       const next = await api.cqSavePrompts(config);
       apply(next);
       setNotice('已保存到当前工作区；下一次出题指令会按新配置生成。');
@@ -98,6 +115,35 @@ export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
       setError(`保存失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const generatePreview = async () => {
+    const config = buildConfig();
+    if (!config) return;
+    setPreviewBusy(true);
+    setPreviewError(null);
+    setCopied(false);
+    try {
+      // 未保存的配比 / 措辞 / 描述 / 要求一起送去，预览的就是眼前这版。
+      const next = await api.cqPromptsPreview(config, requirements);
+      setPreview(next);
+      setPreviewKey(previewInputKey);
+    } catch (e) {
+      setPreviewError(`预览失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+
+  const copyPrompt = async () => {
+    if (!preview) return;
+    try {
+      if (!navigator.clipboard) throw new Error('浏览器不支持剪贴板');
+      await navigator.clipboard.writeText(preview.prompt);
+      setCopied(true);
+    } catch (e) {
+      setPreviewError(`复制失败：${e instanceof Error ? e.message : String(e)}；请手动选择文本复制。`);
     }
   };
 
@@ -340,6 +386,38 @@ export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
               {reqBusy ? '保存中…' : '保存要求'}
             </button>
           </div>
+        </section>
+
+        <section className="cq-prompts-section cq-preview">
+          <details>
+            <summary>指令预览（只读）</summary>
+            <p className="guide-muted">
+              与智能体真实出题使用同一个拼装函数；改完配比 / 措辞 / 描述 / 出题要求后先点「生成预览」，
+              看到的就是下一次会发出去的指令。
+            </p>
+            <div className="cq-preview-bar">
+              <button type="button" className="btn secondary" onClick={() => void generatePreview()} disabled={previewBusy || !data}>
+                {previewBusy ? '生成中…' : '生成预览'}
+              </button>
+              {preview && (
+                <>
+                  <span className={`cq-badge ${preview.dirty ? 'warn' : 'muted'}`}>
+                    {preview.dirty
+                      ? '未保存的编辑'
+                      : preview.source === 'workspace' ? '工作区自定义' : '出厂默认'}
+                  </span>
+                  <span className="guide-muted">本次加载 {preview.requirements_count} 条出题要求</span>
+                  <button type="button" className="btn secondary" onClick={() => void copyPrompt()}>复制</button>
+                </>
+              )}
+            </div>
+            {previewError && <div className="field-error" role="alert">{previewError}</div>}
+            {previewStale && (
+              <div className="notice-banner warn" role="status">配置已改动，请重新生成预览。</div>
+            )}
+            {copied && <div className="notice-banner" role="status">已复制完整指令。</div>}
+            {preview && <pre className="cq-preview-text">{preview.prompt}</pre>}
+          </details>
         </section>
       </div>
     </div>

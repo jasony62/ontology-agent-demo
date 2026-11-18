@@ -565,6 +565,18 @@ export interface CqRequirementsResponse {
   items: CqRequirement[];
 }
 
+/** #320 补充：出题指令预览（与真实出题同一拼装函数）。 */
+export interface CqPromptsPreviewResponse {
+  ontology_id: string;
+  /** 当前工作区已保存配置的来源；dirty 时面板另标「未保存的编辑」。 */
+  source: 'workspace' | 'default' | string;
+  dirty: boolean;
+  prompt: string;
+  mode?: string;
+  requirements_count: number;
+  requirements_loaded: CqRequirement[];
+}
+
 export interface CqEvidence {
   item: string;
   label: string;
@@ -881,6 +893,14 @@ export const api = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items }),
+    }),
+
+  /** #320 补充：预览出题指令；传草稿配置 / 要求可看未保存的编辑结果 */
+  cqPromptsPreview: (config: CqPromptsConfig, items: CqRequirement[]) =>
+    request<CqPromptsPreviewResponse>('/api/domains/current/cq/prompts/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config, items }),
     }),
 
   /** 训练现场自举（#196）：状态 / 待决 / 待跟进 / 缺口 / 下一步 */

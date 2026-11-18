@@ -5,13 +5,18 @@
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-11-19
+
+### Added
+
+- **单题回归调试（#338）**：新增 `POST /api/domains/current/cq/cases/{case_id}/regression/run`，复用 `cq_runner.run_case`；题目详情「测这一题」就地显示 pass / fail、判分细节与补救提示。结果不写 `runs/`、不算覆盖率、不产生回归事件、不更新最近回归；被审核驳回的题可测但标注「正式回归会排除它」。
+
 ## [0.9.5] - 2026-11-18
 
 ### Added
 
 - **处置动作闭环（#332）**：题目详情新增常驻处置区，封闭四动作——`审核通过并启用`（review approved + status active）、`修改`（pending + draft + 派 revise_case 待办）、`拒绝出队`（rejected + draft，保留可恢复）、`暂缓`（不改状态）。新增 `POST /api/domains/current/cq/cases/{case_id}/disposition`，动作与效果由后端定义、枚举外 400；所有改题处置走 `cq_store.save_set`，保留 #285 门控与 #312 退回机制。
 - **每一步都有反馈（#335）**：第一步回答后明确提示「请到题目详情 → 处置区」；处置后显示审核态 / 运营态 / 下一步四轨回执；审核列 pending 时给出可点路径，不再只写「待审核」。
-- **单题回归调试（#338）**：新增 `POST /api/domains/current/cq/cases/{case_id}/regression/run`，复用 `cq_runner.run_case`；题目详情「测这一题」就地显示 pass / fail、判分细节与补救提示。结果不写 `runs/`、不算覆盖率、不产生回归事件、不更新最近回归；被审核驳回的题可测但标注「正式回归会排除它」。
 
 ### Fixed
 

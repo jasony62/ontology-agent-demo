@@ -28,6 +28,7 @@ from pathlib import Path
 from rdflib import OWL, RDF
 
 from api import workspaces
+from cq import requirements
 from cq.constants import (
     DECISION_KINDS,
     REVIEW_FIELDS,
@@ -424,7 +425,7 @@ def _validate_review(case_ref: str, review) -> None:
     """#285：`review` 整对象强校验；显式 null 也拒绝（缺省才是免审）。"""
     if not isinstance(review, dict):
         raise ValueError(
-            f"{case_ref}.review 必须是对象（required / state / by / at），"
+            f"{case_ref}.review 必须是对象（required / state / by / at / comment），"
             f"实际为 {type(review).__name__}；合法 state：{' / '.join(REVIEW_STATES)}"
         )
     extra = sorted(set(review) - set(REVIEW_FIELDS))
@@ -447,10 +448,19 @@ def _validate_review(case_ref: str, review) -> None:
             f"{case_ref}.review 要求必审时必须给出 state；"
             f"合法值：{' / '.join(REVIEW_STATES)}"
         )
-    for key in ("by", "at"):
+    for key in ("by", "at", "comment"):
         value = review.get(key)
-        if value is not None and not isinstance(value, str):
+        if value is None:
+            # #306：comment 也是整对象强校验的一部分——显式 null 一律拒绝，
+            # 缺省才是「没写意见」，避免把 null 当成空字符串型要求收进去。
+            if key == "comment" and key in review:
+                raise ValueError(f"{case_ref}.review.comment 不能为 null；不写意见请省略该字段")
+            continue
+        if not isinstance(value, str):
             raise ValueError(f"{case_ref}.review.{key} 必须是字符串")
+    comment = review.get("comment")
+    if isinstance(comment, str) and len(comment) > 2000:
+        raise ValueError(f"{case_ref}.review.comment 过长（上限 2000 字）")
 
 
 def _validate_case(index: int, case: dict) -> None:
@@ -503,6 +513,11 @@ def _write_set(ontology_id: str, payload: dict) -> None:
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, path)
+    # #306：审核意见随题集落盘后沉淀为出题要求；失败不影响题集写入。
+    try:
+        requirements.collect_cases(ontology_id, payload.get("cases") or [])
+    except Exception:  # noqa: BLE001 —— 要求收集是附加工件
+        pass
 
 
 def _review_blocking(case: dict) -> bool:
@@ -788,6 +803,11 @@ def import_set(
     tmp = path.with_suffix(".json.tmp")
     tmp.write_bytes(raw)
     os.replace(tmp, path)
+    # #306：整集导入的直写分支同样收集审核意见。
+    try:
+        requirements.collect_cases(ontology_id, cases)
+    except Exception:  # noqa: BLE001 —— 要求收集是附加工件
+        pass
     _audit(
         ontology_id, "import", actor_type=actor_type, actor=actor,
         after={"cases": len(cases)},

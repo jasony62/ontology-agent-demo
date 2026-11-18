@@ -25,15 +25,40 @@ const CONFIG = {
 
 type Call = { url: string; method: string; body: unknown };
 
-function stubFetch(options: { source?: 'default' | 'workspace' } = {}) {
+const REQUIREMENTS = [
+  {
+    id: 'r-1', text: '问法太绕，一句话问一件事', rule: '问法避免绕口',
+    source: 'review', source_id: 'Q1', rule_auto: true, edited: false,
+  },
+  {
+    id: 'r-2', text: '别老问同一个属性', rule: '避免老问同一个属性',
+    source: 'feedback', source_id: 'd-1', rule_auto: true, edited: false,
+  },
+];
+
+function stubFetch(options: { source?: 'default' | 'workspace'; requirements?: typeof REQUIREMENTS } = {}) {
   const calls: Call[] = [];
   let source = options.source ?? 'default';
   let config = JSON.parse(JSON.stringify(CONFIG));
+  let requirements = JSON.parse(JSON.stringify(options.requirements ?? REQUIREMENTS));
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = String(init?.method || 'GET').toUpperCase();
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ url, method, body });
+    if (url.includes('/cq/requirements') && method === 'PUT') {
+      requirements = (body as { items: typeof REQUIREMENTS }).items;
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ontology_id: 'ws-1', count: requirements.length, items: requirements }),
+      } as unknown as Response;
+    }
+    if (url.includes('/cq/requirements')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ ontology_id: 'ws-1', count: requirements.length, items: requirements }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/prompts') && method === 'PUT') {
       config = { ...config, ...(body as { config: typeof CONFIG }).config };
       source = 'workspace';
@@ -181,5 +206,81 @@ describe('出题配置面板（#320）', () => {
     expect(text).toContain('读取失败');
     expect(text).toContain('配置后台错误');
     expect(container!.querySelector('.cq-prompts-mix')).toBeNull();
+  });
+
+  it('列出出题要求：原文与规则并列，并显示下次出题加载条数（#306）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPromptsPanel onClose={() => {}} />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('出题要求');
+    expect(text).toContain('下一次出题会加载 2 条规则');
+    expect(text).toContain('问法太绕，一句话问一件事');
+    expect(text).toContain('规则：问法避免绕口');
+    expect(text).toContain('审核意见');
+    expect(text).toContain('Q1');
+    expect(text).toContain('裁决反馈');
+    expect(text).toContain('d-1');
+  });
+
+  it('手写一条要求并保存，PUT 带上新增条目（#306）', async () => {
+    const calls = stubFetch();
+    act(() => root!.render(<CqPromptsPanel onClose={() => {}} />));
+    await flush();
+
+    await act(async () => { button('手写一条要求').click(); });
+    const textarea = container!.querySelector<HTMLTextAreaElement>('.cq-req-add textarea')!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype, 'value',
+      )!.set!;
+      setter.call(textarea, '不要问没有数据支撑的题');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { button('加入清单').click(); });
+    await act(async () => { button('保存要求').click(); });
+    await flush();
+
+    const put = calls.find((call) => call.method === 'PUT' && call.url.includes('/cq/requirements'));
+    expect(put).toBeTruthy();
+    const items = (put!.body as { items: typeof REQUIREMENTS }).items;
+    expect(items).toHaveLength(3);
+    expect(items[2].text).toBe('不要问没有数据支撑的题');
+    expect(items[2].source).toBe('manual');
+    expect((container!.textContent ?? '')).toContain('下一次出题会加载 3 条规则');
+  });
+
+  it('编辑与删除要求只在本地生效，保存时才 PUT（#306）', async () => {
+    const calls = stubFetch();
+    act(() => root!.render(<CqPromptsPanel onClose={() => {}} />));
+    await flush();
+
+    const editButtons = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .filter((item) => item.textContent === '编辑');
+    await act(async () => { editButtons[0].click(); });
+    const inputs = container!.querySelectorAll<HTMLInputElement>('.cq-req-item input');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype, 'value',
+      )!.set!;
+      setter.call(inputs[0], '问法避免绕口，一句一问');
+      inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { button('确定').click(); });
+
+    const deleteButtons = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .filter((item) => item.textContent === '删除');
+    await act(async () => { deleteButtons[1].click(); });
+
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+    expect(container!.textContent).not.toContain('避免老问同一个属性');
+
+    await act(async () => { button('保存要求').click(); });
+    await flush();
+    const put = calls.find((call) => call.method === 'PUT' && call.url.includes('/cq/requirements'));
+    const items = (put!.body as { items: typeof REQUIREMENTS }).items;
+    expect(items).toHaveLength(1);
+    expect(items[0].rule).toBe('问法避免绕口，一句一问');
   });
 });

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from api import workspaces
-from cq import agenda, cq_store, lifecycle, metrics as cq_metrics, training_log, training_state
+from cq import agenda, cq_store, lifecycle, metrics as cq_metrics, requirements, training_log, training_state
 from cq.constants import (
     DECISION_ACTIONS,
     DECISION_CONCLUSIONS,
@@ -246,6 +246,14 @@ def _feedback(ontology_id: str, payload: dict, *, actor_type: str, actor: str, s
         content["superseded_by"] = str(previous["event_id"])
     line = _append(ontology_id, "feedback_received", content,
                    actor_type=actor_type, actor=actor)
+    # #306 R2：裁决理由也沉淀为出题要求（审核意见与反馈共用同一资产）。
+    try:
+        requirements.collect_feedback(
+            ontology_id, decision_id, feedback_text,
+            option=option, conclusion=conclusion, by=actor,
+        )
+    except Exception:  # noqa: BLE001 —— 要求收集是附加工件
+        pass
 
     intent_marked = False
     if (

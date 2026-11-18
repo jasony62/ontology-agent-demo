@@ -8,6 +8,7 @@
 ### Added
 
 - **CQ 出题配置工作区化（#316–#321）**：出题提示词的题型配比、措辞规则与领域描述改存 `data/workspaces/<id>/cq_prompts.json`，按「框架默认 → 领域包 → 工作区」逐字段深合并读取，安装领域与导入本体一视同仁。新增 `GET/PUT/DELETE /api/domains/current/cq/prompts`（写操作只接受回环来源，非回环 403），CQ 页工具栏新增「出题配置」面板，只改当前工作区、不提供锚点手写表与全局套用。启动恢复、导入、另存新本体、切换领域与领域重载都会播种出厂配置，已有文件不覆盖；「恢复默认」只删该文件。MCP `cq_author` 读同一份配置，锚点仍来自运行时本体，`next_step` 仍指向 `cq_validate`。
+- **审核意见与裁决反馈回流出题要求（#306 第 1 期）**：`review` 新增可选 `comment`（整对象强校验不变，显式 null 仍拒绝）；审核意见与训练场驳回 / 反馈文本沉淀为独立资产 `data/workspaces/<id>/cq_requirements.json`，按来源题号 / 决策编号去重，人可改可删且改后不被自动覆盖。大白话意见机械转成正面祈使句（原文与规则并列），MCP `cq_author` 把规则注入出题指引「措辞规则」段并返回 `requirements_loaded` / `requirements_count`；新增 `GET/PUT /api/domains/current/cq/requirements`（写仅回环），CQ 页「出题配置」面板可管理清单并显示下次出题加载条数。第 1 期只保证加载、不保证智能体遵守，不做违反检测。
 
 ### Changed
 

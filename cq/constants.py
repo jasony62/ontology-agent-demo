@@ -56,7 +56,7 @@ DECISION_KINDS = ("semantic", "expectation", "priority", "term", "scope")
 # 审核门控（#279 / #285）：case 级 review.state 的合法枚举。
 # 缺省（字段不出现）= 免审；required=true 时 state 必须显式给出。
 REVIEW_STATES = ("none", "pending", "approved", "rejected")
-REVIEW_FIELDS = ("required", "state", "by", "at")
+REVIEW_FIELDS = ("required", "state", "by", "at", "comment")
 
 # 反馈结论（#212）：采纳推荐 / 驳回或改选 / 暂缓；缺省时沿用旧口径（有内容即裁决）。
 DECISION_CONCLUSIONS = ("adopt", "reject", "defer")

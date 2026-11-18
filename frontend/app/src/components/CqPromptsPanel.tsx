@@ -1,17 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
-import type { CqPromptsConfig, CqPromptsResponse } from '../api/client';
+import type { CqPromptsConfig, CqPromptsResponse, CqRequirement } from '../api/client';
 import { expectedTypeLabel } from '../lib/cqLabels';
 
 const MIX_KEYS = ['retrieval', 'derived', 'counting', 'negative'] as const;
 
+const SOURCE_LABELS: Record<string, string> = {
+  review: '审核意见',
+  feedback: '裁决反馈',
+  manual: '手写',
+};
+
 /**
- * 出题配置面板（#320）：只编辑当前工作区的出题口味项。
+ * 出题配置面板（#320 / #306）：只编辑当前工作区的出题口味项与出题要求。
  *
  * 边界：
  *  - 只写工作区，不提供「套用到其他工作区 / 存为全局模板」入口；
  *  - 不暴露锚点手写表——锚点来自运行时本体，手写表会让出题与质检口径打架；
- *  - 题型定义只读展示，配比 / 措辞规则 / 描述可改。
+ *  - 题型定义只读展示，配比 / 措辞规则 / 描述可改；
+ *  - 出题要求来自审核意见、裁决反馈与手写，原文与规则并列，可改可删；
+ *    第 1 期只保证「下次出题加载」，不保证智能体遵守。
  */
 export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
   const [data, setData] = useState<CqPromptsResponse | null>(null);
@@ -22,6 +30,19 @@ export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // #306：出题要求独立资产，单独保存（不随「恢复默认」清空）。
+  const [requirements, setRequirements] = useState<CqRequirement[]>([]);
+  const [reqLoading, setReqLoading] = useState(true);
+  const [reqBusy, setReqBusy] = useState(false);
+  const [reqError, setReqError] = useState<string | null>(null);
+  const [reqNotice, setReqNotice] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newText, setNewText] = useState('');
+  const [newRule, setNewRule] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editRule, setEditRule] = useState('');
 
   const apply = (next: CqPromptsResponse) => {
     setData(next);
@@ -38,6 +59,13 @@ export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
       .then((next) => { if (alive) apply(next); })
       .catch((e) => { if (alive) setError(`读取失败：${e instanceof Error ? e.message : String(e)}`); })
       .finally(() => { if (alive) setLoading(false); });
+
+    setReqLoading(true);
+    api.cqRequirements()
+      .then((next) => { if (alive) setRequirements(next.items ?? []); })
+      .catch((e) => { if (alive) setReqError(`读取要求失败：${e instanceof Error ? e.message : String(e)}`); })
+      .finally(() => { if (alive) setReqLoading(false); });
+
     return () => { alive = false; };
   }, []);
 
@@ -74,7 +102,7 @@ export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
   };
 
   const reset = async () => {
-    if (!window.confirm('恢复默认会删除当前工作区的出题配置；题目与本体会保留。继续？')) return;
+    if (!window.confirm('恢复默认会删除当前工作区的出题配置；题目、本体与出题要求都会保留。继续？')) return;
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -87,6 +115,64 @@ export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const saveRequirements = async () => {
+    setReqBusy(true);
+    setReqError(null);
+    setReqNotice(null);
+    try {
+      const next = await api.cqSaveRequirements(requirements);
+      setRequirements(next.items ?? []);
+      setReqNotice('出题要求已保存；下一次出题会加载这些规则。');
+    } catch (e) {
+      setReqError(`保存要求失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setReqBusy(false);
+    }
+  };
+
+  const addRequirement = () => {
+    const text = newText.trim();
+    if (!text) {
+      setReqError('要求原文不能为空');
+      return;
+    }
+    setRequirements((current) => ([
+      ...current,
+      { id: `local-${Date.now()}`, text, rule: newRule.trim(), source: 'manual' },
+    ]));
+    setNewText('');
+    setNewRule('');
+    setAdding(false);
+    setReqError(null);
+    setReqNotice('已加入清单，点「保存要求」后生效。');
+  };
+
+  const startEdit = (item: CqRequirement) => {
+    setEditing(String(item.id ?? ''));
+    setEditText(item.text);
+    setEditRule(item.rule ?? '');
+  };
+
+  const commitEdit = (item: CqRequirement) => {
+    if (!editText.trim()) {
+      setReqError('要求原文不能为空');
+      return;
+    }
+    setRequirements((current) => current.map((entry) => (
+      entry === item
+        ? { ...entry, text: editText.trim(), rule: editRule.trim() }
+        : entry
+    )));
+    setEditing(null);
+    setReqError(null);
+    setReqNotice('已修改，点「保存要求」后生效。');
+  };
+
+  const removeRequirement = (item: CqRequirement) => {
+    setRequirements((current) => current.filter((entry) => entry !== item));
+    setReqNotice('已从清单移除，点「保存要求」后生效。');
   };
 
   const taxonomy = data?.config.cq_generation?.type_taxonomy ?? {};
@@ -175,6 +261,86 @@ export default function CqPromptsPanel({ onClose }: { onClose: () => void }) {
           </button>
           <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>关闭</button>
         </div>
+
+        <section className="cq-prompts-section cq-requirements">
+          <h4>出题要求</h4>
+          <p className="guide-muted">
+            审核意见与裁决反馈会自动收进这里；原文与规则并列，人可改可删。
+            下一次出题会加载 <b>{requirements.length}</b> 条规则——第 1 期只保证加载，不保证智能体遵守，请抽查新题。
+          </p>
+          {reqLoading && <div className="guide-empty">正在读取出题要求…</div>}
+          {reqError && <div className="field-error" role="alert">{reqError}</div>}
+          {reqNotice && <div className="notice-banner" role="status">{reqNotice}</div>}
+
+          {requirements.length === 0 && !reqLoading && (
+            <p className="guide-muted">还没有出题要求。审核时写一句意见，或在这里手写一条。</p>
+          )}
+
+          <ul className="cq-req-list">
+            {requirements.map((item) => {
+              const key = String(item.id ?? `${item.source}-${item.source_id}-${item.text}`);
+              return (
+                <li className="cq-req-item" key={key}>
+                  {editing === key ? (
+                    <>
+                      <label className="field">
+                        <span className="field-label">原文</span>
+                        <textarea rows={2} value={editText} onChange={(event) => setEditText(event.target.value)} />
+                      </label>
+                      <label className="field">
+                        <span className="field-label">注入出题指引的规则</span>
+                        <input value={editRule} onChange={(event) => setEditRule(event.target.value)} placeholder="留空则按原文自动转换" />
+                      </label>
+                      <div className="cq-req-actions">
+                        <button type="button" className="btn" onClick={() => commitEdit(item)}>确定</button>
+                        <button type="button" className="btn secondary" onClick={() => setEditing(null)}>取消</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="cq-req-text">{item.text}</div>
+                      <div className="cq-req-rule">规则：{item.rule || '（保存时按原文转换）'}</div>
+                      <div className="cq-req-meta">
+                        <span className={`cq-badge muted`}>{SOURCE_LABELS[String(item.source)] ?? '来源未记录'}</span>
+                        {item.source_id && <span>来源：{item.source_id}</span>}
+                        {item.edited && <span>人已改过</span>}
+                      </div>
+                      <div className="cq-req-actions">
+                        <button type="button" className="btn link" onClick={() => startEdit(item)}>编辑</button>
+                        <button type="button" className="btn link" onClick={() => removeRequirement(item)}>删除</button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          {adding ? (
+            <div className="cq-req-add">
+              <label className="field">
+                <span className="field-label">要求原文</span>
+                <textarea rows={2} value={newText} onChange={(event) => setNewText(event.target.value)} placeholder="例如：问法太绕，尽量一句话问一件事" />
+              </label>
+              <label className="field">
+                <span className="field-label">规则（可留空，按原文自动转换）</span>
+                <input value={newRule} onChange={(event) => setNewRule(event.target.value)} placeholder="问法避免绕口" />
+              </label>
+              <div className="cq-req-actions">
+                <button type="button" className="btn" onClick={addRequirement}>加入清单</button>
+                <button type="button" className="btn secondary" onClick={() => setAdding(false)}>取消</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="btn secondary" onClick={() => setAdding(true)}>手写一条要求</button>
+          )}
+
+          <div className="cq-editor-actions">
+            <button type="button" className="btn" onClick={() => void saveRequirements()} disabled={reqBusy || reqLoading}>
+              {reqBusy ? '保存中…' : '保存要求'}
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );

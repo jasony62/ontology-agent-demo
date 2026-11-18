@@ -1385,7 +1385,13 @@ function CqDetail({
         <h4>审核</h4>
         <div className="cq-kv">
           <div><span>审核结论</span><b>{reviewLabel(item.review)}</b></div>
+          {item.review?.comment && (
+            <div><span>审核意见</span><b>{item.review.comment}</b></div>
+          )}
         </div>
+        {item.review?.comment && (
+          <p className="guide-muted">这条意见已收进「出题配置 → 出题要求」，下一次出题会加载。</p>
+        )}
         <p className="guide-muted">
           待审核不阻断毕业；因题干或断言改动而重开的题会自动退回草稿，在编辑弹窗翻回启用后再交付。
         </p>

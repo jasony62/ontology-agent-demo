@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 from api import workspaces
-from cq import agenda, cq_runner, cq_store, prompts_store, training_service
+from cq import agenda, cq_runner, cq_store, prompts_store, requirements as requirements_store, training_service
 from cq import coverage as cq_mention_coverage
 from cq.constants import EXPECTED_TYPES
 from ontology_plugin_sdk.cq import gen, tbox
@@ -202,6 +202,8 @@ def register_tools(server, get_engine, get_cq_context) -> None:
                 prompts = prompts_store.load(target)
             except ValueError as exc:
                 return _error("invalid_prompts", str(exc))
+            # #306：出题要求与 prompts 一样按工作区存；坏文件按空清单处理。
+            loaded = requirements_store.items(target)
             engine = get_engine()
             if draft:
                 return {"ok": True, "result": gen.validate_cqs(
@@ -209,7 +211,9 @@ def register_tools(server, get_engine, get_cq_context) -> None:
                     extra_terms=_extra_terms(engine),
                     allow_declared_anchors=True,
                 )}
-            guide = gen.guide_cq_generation(prompts=prompts, engine=engine, focus=focus)
+            guide = gen.guide_cq_generation(
+                prompts=prompts, engine=engine, focus=focus, requirements=loaded,
+            )
             # #175：SDK 默认文案指向已随 #172 收敛掉的 validate_cqs；
             # 改指本端点真实存在的 cq_validate，避免智能体按指引落空。
             guide["next_step"] = "将 LLM 输出交给 cq_validate 质检；通过后 cq_case_upsert 入题"

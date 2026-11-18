@@ -227,6 +227,22 @@ class CqPromptsRequest(BaseModel):
     )
 
 
+class CqRequirementsRequest(BaseModel):
+    """出题要求整份保存（#306）：人可见、可改、可删的约束清单。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[dict[str, Any]] = Field(
+        ...,
+        max_length=100,
+        description=(
+            "整份要求清单。条目字段：`text`（原文，必填）、`rule`（正面祈使句，"
+            "缺省由服务端按原文机械转换）、`source`（review / feedback / manual）、"
+            "`source_id`（来源题号或决策编号）。已有 `id` 保留创建时间。"
+        ),
+    )
+
+
 class CqDecisionRequest(BaseModel):
     """CQ 决策入口（#195）：提问 / 反馈 / 自答撤问。"""
 

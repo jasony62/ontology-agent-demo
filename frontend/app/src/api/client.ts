@@ -476,6 +476,8 @@ export interface CqReview {
   state?: 'none' | 'pending' | 'approved' | 'rejected' | string;
   by?: string | null;
   at?: string | null;
+  /** #306：审核意见；同时沉淀为出题要求。 */
+  comment?: string | null;
 }
 
 export interface CqSetSummary {
@@ -538,6 +540,29 @@ export interface CqPromptsResponse {
   /** workspace = 工作区自定义；default = 出厂种子 / 框架默认。 */
   source: 'workspace' | 'default' | string;
   config: CqPromptsConfig;
+}
+
+/** #306：出题要求（人沉淀的评价 → 下一次出题加载的规则）。 */
+export interface CqRequirement {
+  id?: string;
+  /** 人的原话；与 rule 并列展示，便于核对转换是否走样。 */
+  text: string;
+  /** 注入出题指引「措辞规则」段的正面祈使句。 */
+  rule?: string;
+  source?: 'review' | 'feedback' | 'manual' | string;
+  source_id?: string | null;
+  by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  /** 规则是否仍由原文自动转换（人改过后为 false）。 */
+  rule_auto?: boolean;
+  edited?: boolean;
+}
+
+export interface CqRequirementsResponse {
+  ontology_id: string;
+  count: number;
+  items: CqRequirement[];
 }
 
 export interface CqEvidence {
@@ -846,6 +871,17 @@ export const api = {
 
   cqResetPrompts: () =>
     request<CqPromptsResponse>('/api/domains/current/cq/prompts', { method: 'DELETE' }),
+
+  /** #306：出题要求（人可见、可改、可删，下一次出题生效） */
+  cqRequirements: () =>
+    request<CqRequirementsResponse>('/api/domains/current/cq/requirements'),
+
+  cqSaveRequirements: (items: CqRequirement[]) =>
+    request<CqRequirementsResponse>('/api/domains/current/cq/requirements', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    }),
 
   /** 训练现场自举（#196）：状态 / 待决 / 待跟进 / 缺口 / 下一步 */
   cqResume: (depth: 'snapshot' | 'full' = 'snapshot') =>

@@ -31,11 +31,6 @@ export const CONCLUSION_OPTIONS = [
   { value: 'defer', label: '暂缓' },
 ] as const;
 
-export const BASIS_OPTIONS = [
-  { value: 'self', label: '自己判断' },
-  { value: 'expert', label: '已问他人确认' },
-] as const;
-
 const CONCLUSION_LABELS: Record<string, string> = Object.fromEntries(
   CONCLUSION_OPTIONS.map((option) => [option.value, option.label]),
 );

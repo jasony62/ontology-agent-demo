@@ -1809,7 +1809,6 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .cq-training-evidence b { font-size: 11px; color: var(--muted); font-weight: 600; }
 .cq-training-evidence p { margin: 0 0 3px; }
-.cq-basis-hint { margin: -2px 0 2px; }
 .cq-decision-confirm {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 7px 9px; border: 1px solid #e6b36b; border-radius: 6px;
@@ -1934,6 +1933,12 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-training-context b { display: block; font-size: 11px; color: var(--muted); font-weight: 600; }
 .cq-training-receipt { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 4px 0; }
 .cq-training-receipt .field { min-width: 140px; }
+.cq-training-basis { flex: 1 1 100%; }
+.cq-training-basis textarea {
+  width: 100%; border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 9px; font-size: 12.5px; font-family: inherit; color: var(--text); background: var(--panel);
+  resize: vertical;
+}
 .cq-training-authorize {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--text); padding-bottom: 6px;
@@ -1987,13 +1992,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   margin-left: 6px; padding: 0 5px; border-radius: 3px;
   background: rgba(255, 255, 255, .24); font-size: 10px;
 }
-.cq-training-more { align-self: flex-start; }
-.cq-training-free { display: flex; flex-direction: column; gap: 6px; }
-.cq-training-free textarea, .cq-training-free input {
-  width: 100%; border: 1px solid var(--border); border-radius: 6px;
-  padding: 7px 9px; font-size: 12.5px; font-family: inherit; color: var(--text); background: var(--panel);
-}
-.cq-training-free button { align-self: flex-end; }
+.cq-training-note-submit { align-self: flex-start; }
 
 /* 训练标签（#203）：上区训练现场首屏可见，下区时间线只读 */
 .cq-training-page { display: flex; flex-direction: column; gap: 12px; min-height: 0; }

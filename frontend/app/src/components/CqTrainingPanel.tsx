@@ -8,7 +8,6 @@ import type {
 } from '../api/client';
 import { plainCopy, decisionKindLabel } from '../lib/cqCopy';
 import {
-  BASIS_OPTIONS,
   actionLabel,
   actorChannelText,
   actorIcon,
@@ -129,9 +128,7 @@ export default function CqTrainingPanel({
   const submit = async (decision: CqDecision, payload: {
     option?: string;
     feedback_text?: string;
-    follow_up_with?: string;
     conclusion?: 'adopt' | 'reject' | 'defer';
-    basis?: 'self' | 'expert';
     authorized?: boolean;
   }) => {
     setBusy(decision.decision_id);
@@ -563,9 +560,7 @@ function CaseCard({
   onSubmit: (decision: CqDecision, payload: {
     option?: string;
     feedback_text?: string;
-    follow_up_with?: string;
     conclusion?: 'adopt' | 'reject' | 'defer';
-    basis?: 'self' | 'expert';
     authorized?: boolean;
   }) => Promise<void>;
   onHistory: (stage?: string) => void;
@@ -761,17 +756,12 @@ function DecisionCard({
   onSubmit: (decision: CqDecision, payload: {
     option?: string;
     feedback_text?: string;
-    follow_up_with?: string;
     conclusion?: 'adopt' | 'reject' | 'defer';
-    basis?: 'self' | 'expert';
     authorized?: boolean;
   }) => Promise<void>;
 }) {
   const [text, setText] = useState('');
-  const [followUp, setFollowUp] = useState('');
-  const [basis, setBasis] = useState<'self' | 'expert'>('self');
   const [authorized, setAuthorized] = useState(false);
-  const [open, setOpen] = useState(false);
   // #256 / #262：任意提交（选项 / 暂缓 / 补充反馈）都先确认；
   // 结论由选项推定，卡上不再有第二个能改同一决策的控件。
   const [pending, setPending] = useState<PendingDecision | null>(null);
@@ -788,11 +778,9 @@ function DecisionCard({
   const anchorTitle = plainCopy(caseTitle || decision.question || '');
   const shortTitle = anchorTitle.length > 30 ? `${anchorTitle.slice(0, 30)}…` : anchorTitle;
 
-  const receipt = () => ({
-    basis,
-    authorized,
-    follow_up_with: basis === 'expert' ? followUp.trim() : '',
-  });
+  // #330：依据来源只保留一个选填说明，随任意提交路径一起写入 feedback_text；
+  // 「谁负责」由授权勾选框承担，不再用 basis / follow_up_with 两个枚举字段。
+  const receipt = () => ({ authorized });
 
   const clearPending = () => {
     setPending(null);
@@ -803,15 +791,17 @@ function DecisionCard({
     if (!pending) return;
     const current = pending;
     clearPending();
+    const note = text.trim() || undefined;
     if (current.kind === 'choice') {
       void onSubmit(decision, {
-        option: current.option, conclusion: current.conclusion, ...receipt(),
+        option: current.option, conclusion: current.conclusion,
+        feedback_text: note, ...receipt(),
       });
       return;
     }
     if (current.kind === 'defer') {
       void onSubmit(decision, {
-        conclusion: 'defer', feedback_text: text, ...receipt(),
+        conclusion: 'defer', feedback_text: note, ...receipt(),
       });
       return;
     }
@@ -859,28 +849,15 @@ function DecisionCard({
       <h4>{plainCopy(decision.question) || '未命名问题'}</h4>
 
       <div className="cq-training-receipt">
-
-        <label className="field">
-          <span className="field-label">依据来源</span>
-          <select
-            value={basis}
-            onChange={(event) => setBasis(event.target.value as 'self' | 'expert')}
-          >
-            {BASIS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
+        <label className="field cq-training-basis">
+          <span className="field-label">依据来源与说明（选填）</span>
+          <textarea
+            rows={2}
+            value={text}
+            placeholder="可写查了什么、问了谁、为什么这样判断"
+            onChange={(event) => setText(event.target.value)}
+          />
         </label>
-        {basis === 'expert' && (
-          <label className="field">
-            <span className="field-label">已问谁确认</span>
-            <input
-              value={followUp}
-              placeholder="如：王工"
-              onChange={(event) => setFollowUp(event.target.value)}
-            />
-          </label>
-        )}
         <label className={`cq-training-authorize${authorized ? '' : ' warn'}`}>
           <input
             type="checkbox"
@@ -890,9 +867,6 @@ function DecisionCard({
           我已确认可以按此决策执行
         </label>
       </div>
-      <p className="field-hint cq-basis-hint">
-        需要线下找专业的人确认？把「依据来源」改成「已问他人确认」并填写对方姓名；也可以补充反馈说明。
-      </p>
 
       {/* #263：未勾选授权时，把「为什么点不动」放在按钮上方，并关联到按钮。 */}
       {!authorized && (
@@ -941,32 +915,16 @@ function DecisionCard({
         <div className="guide-muted">推荐理由：{plainCopy(decision.reason)}</div>
       )}
 
+      {/* #330：说明可以单独提交（不选选项也算一次反馈），仍受授权闸门约束。 */}
       <button
         type="button"
-        className="btn link cq-training-more"
-        onClick={() => setOpen((value) => !value)}
+        className="btn secondary cq-training-note-submit"
+        disabled={busy || !authorized || !text.trim()}
+        aria-describedby={authorized ? undefined : 'cq-authorize-hint'}
+        onClick={submitText}
       >
-        {open ? '收起补充反馈' : '补充反馈 / 说明需要谁确认'}
+        只提交说明
       </button>
-      {open && (
-        <div className="cq-training-free">
-          <textarea
-            rows={3}
-            value={text}
-            placeholder="写下你的反馈原文（可以留空）"
-            onChange={(event) => setText(event.target.value)}
-          />
-          <button
-            type="button"
-            className="btn"
-            disabled={busy || !authorized}
-            aria-describedby={authorized ? undefined : 'cq-authorize-hint'}
-            onClick={submitText}
-          >
-            提交反馈
-          </button>
-        </div>
-      )}
 
       <TechDetails
         items={[{

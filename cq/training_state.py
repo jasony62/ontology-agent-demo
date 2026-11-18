@@ -16,11 +16,12 @@ from datetime import datetime, timezone
 
 
 def _feedback_status(content: dict) -> str:
-    """反馈形成的状态（#212）：结论优先，其次旧口径（有选项 / 原文即裁决）。
+    """反馈形成的状态（#212 / #334）：回答与处置分离。
 
     - 暂缓 / 未授权 → 待跟进（还没形成可执行结论）；
-    - 采纳 / 驳回 → 已裁决（人已拍板，智能体按结论行动）；
-    - 无结论时保持 #195 口径：有选项或原文 → 已裁决，否则待跟进。
+    - 显式采纳 / 驳回 → 已裁决（历史兼容；新界面不再产生这两个结论）；
+    - 选了选项 → 已裁决（语义问题已回答）；
+    - 只写了文字、没选项 → 仍是待裁决（只留反馈，不改变裁定状态）。
     """
     conclusion = str(content.get("conclusion") or "")
     if conclusion == "defer":
@@ -29,10 +30,9 @@ def _feedback_status(content: dict) -> str:
         return "followup"
     if conclusion in {"adopt", "reject"}:
         return "resolved"
-    return "resolved" if (
-        str(content.get("option") or "").strip()
-        or str(content.get("feedback_text") or "").strip()
-    ) else "followup"
+    if str(content.get("option") or "").strip():
+        return "resolved"
+    return "pending"
 
 
 def _now() -> str:
@@ -51,6 +51,7 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
     feedback = 0
     structured_feedback = 0
     iterations: dict[str, dict] = {}
+    dispositions: dict[str, dict] = {}
     breaker = None
     breaker_answered = False
     intent_pending: set[str] = set()
@@ -104,6 +105,10 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
                 intent_pending.add(case_id)
         elif event == "case_released":
             intent_pending.discard(str(content.get("case_id") or ""))
+        elif event == "case_disposed":
+            case_id = str(content.get("case_id") or "")
+            if case_id:
+                dispositions[case_id] = {**content, "ts": ts}
         elif event == "circuit_breaker":
             breaker = {**content, "ts": ts}
             breaker_answered = False
@@ -193,6 +198,7 @@ def project_training_state(events: list[dict], *, now: str | None = None) -> dic
         "iterations": list(iterations.values()),
         "intent_pending": sorted(intent_pending),
         "decisions": decisions,
+        "dispositions": dispositions,
         "actions": actions,
         "now": now,
     }

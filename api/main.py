@@ -96,6 +96,7 @@ from domains import DomainManager, DomainContractError, DomainNotFoundError
 from domains.imported import display_filename
 from . import workspaces
 from cq import cq_runner, cq_store, prompts_store, requirements as requirements_store, training_service
+from cq import disposition
 from cq import agenda as cq_agenda
 from cq import coverage as cq_coverage
 from cq import lifecycle as cq_lifecycle
@@ -103,7 +104,7 @@ from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
     DescribeRequest, SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
-    CqPromptsRequest, CqPromptsPreviewRequest, CqRequirementsRequest, CqDecisionRequest,
+    CqPromptsRequest, CqPromptsPreviewRequest, CqRequirementsRequest, CqDispositionRequest, CqDecisionRequest,
 )
 from .response_schemas import (
     ClassesResponse,
@@ -2466,6 +2467,41 @@ def cq_update_case(
         )
     data = cq_store.get_set(ontology_id)
     return {"case": item, **cq_store.build_view(ENGINE, data)}
+
+
+@app.post(
+    "/api/domains/current/cq/cases/{case_id}/disposition",
+    tags=["通用查询"],
+    summary="处置 CQ 题目（审核通过并启用 / 修改 / 拒绝出队 / 暂缓）",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "处置结果：实际写入的 review / status、下一步行动与刷新后的题集概览。"
+                "处置码封闭，枚举外返回 400。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def cq_dispose_case(
+    case_id: str = ApiPath(..., description="题目稳定 id"),
+    req: CqDispositionRequest = Body(..., description="处置动作与可选说明。"),
+    actor_type: str = Query("human", description="human / agent（审计用）"),
+    actor: str = Query("web", description="操作者标识（审计用）"),
+):
+    """按处置码原子写入审核态 / 运营态；只走 save_set 正规路径。"""
+    ontology_id, _ = _cq_identity()
+    actor_type, actor = _cq_actor(actor_type, actor)
+    try:
+        result = disposition.dispose_case(
+            ontology_id, case_id, req.action,
+            actor_type=actor_type, actor=actor, note=req.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    data = cq_store.get_set(ontology_id)
+    return {"disposition": result, **cq_store.build_view(ENGINE, data)}
 
 
 @app.delete(

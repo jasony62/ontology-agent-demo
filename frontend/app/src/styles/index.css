@@ -2078,3 +2078,20 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-inline-note > summary { cursor: pointer; color: var(--link); }
 .cq-inline-note[open] > summary { margin-bottom: 4px; }
 .cq-load-more { margin: 8px auto 0; display: block; }
+
+/* #332：题目详情处置区（常驻，动作与影响由后端给） */
+.cq-disposition-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cq-disposition-effects { margin-top: 6px; }
+.cq-disposition-effects summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.cq-disposition-effects ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cq-disposition-effects li { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); line-height: 1.55; }
+.cq-disposition-effects b { color: var(--text); }
+.cq-disposition-effects i { color: var(--warning); font-style: normal; }
+.cq-disposition-result { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+/* #336：阶段条的裁定 / 处置留痕 */
+.cq-stage-marks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.cq-stage-mark {
+  font-size: 11px; color: var(--heading); background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px;
+}
+.cq-training-no-options { margin: 2px 0; }

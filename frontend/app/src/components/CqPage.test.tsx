@@ -147,6 +147,23 @@ function stubFetch(
         }),
       } as unknown as Response;
     }
+    if (url.includes('/disposition') && method === 'POST') {
+      const payload = JSON.parse(String(init?.body || '{}'));
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          ...set,
+          disposition: {
+            action: payload.action,
+            label: '审核通过并启用',
+            effect: '审核：审核已通过；状态：启用。',
+            review: { required: true, state: 'approved', by: 'web', at: '2026-11-18T10:00:00+00:00' },
+            status: 'active',
+            next_action: null,
+          },
+        }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/actions/') && url.endsWith('/complete') && method === 'POST') {
       return {
         ok: true, status: 200,
@@ -777,7 +794,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-editor')).toBeNull();
   });
 
-  it('待审核仍拦住评估，但不再作为毕业缺口（#280 / #309 / #311）', async () => {
+  it('待审核不再拦住评估，但仍不作为毕业缺口（#280 / #309 / #311 / #333）', async () => {
     const set = {
       ...SET,
       cases: SET.cases.map((item, index) => (index === 1 ? {
@@ -800,9 +817,9 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const run = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((btn) => btn.textContent === '跑一轮评估')!;
-    expect(run.disabled).toBe(true);
-    expect(run.getAttribute('title')).toContain('待审核');
-    expect(container!.textContent).toContain('待审核 1（会拦住本次评估）');
+    // #333：前端不再比后端更严——待审核题照常参与回归。
+    expect(run.disabled).toBe(false);
+    expect(container!.textContent).toContain('待审核 1（仍会参与评估）');
   });
 
   it('详情 kv 显示审核状态与审核人 / 时间（#280）', async () => {
@@ -1335,5 +1352,37 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(strip.textContent).toContain('待响应 1 项');
     expect(strip.textContent).not.toContain('生成候选题');
     expect(container!.querySelector('.cq-waiting')!.textContent).toContain('生成候选题');
+  });
+
+  it('处置区提交动作并显示四轨结果（#332 / #335）', async () => {
+    const dispositions = [
+      { action: 'approve_activate', label: '审核通过并启用', effect: '审核：审核已通过；状态：启用。', available: true },
+      { action: 'revise', label: '修改', effect: '审核：退回待审核；状态：草稿。', available: true },
+      { action: 'reject', label: '拒绝出队', effect: '审核：已驳回；状态：草稿。', available: true },
+      { action: 'defer', label: '暂缓', effect: '状态不变。', available: true },
+    ];
+    const set = {
+      ...SET,
+      cases: SET.cases.map((item, index) => (index === 0 ? { ...item, dispositions } : item)),
+    };
+    stubFetch(set);
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const approve = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '审核通过并启用')!;
+    await act(async () => { approve.click(); });
+    await flush();
+
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/disposition') && String(init?.method) === 'POST');
+    expect(call).toBeTruthy();
+    expect(JSON.parse(String((call![1] as RequestInit).body)).action).toBe('approve_activate');
+
+    const result = container!.querySelector('.cq-disposition-result')!;
+    expect(result.textContent).toContain('处置结果：审核通过并启用');
+    expect(result.textContent).toContain('审核：审核已通过');
+    expect(result.textContent).toContain('状态：启用');
+    expect(result.textContent).toContain('下一步：跑回归验证');
   });
 });

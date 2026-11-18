@@ -89,16 +89,17 @@ def test_feedback_by_option_and_free_text(client):
         "feedback_text": "我觉得需要人工确认", "follow_up_with": "李四",
     })
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "resolved"
+    # #334：只写文字不改裁定状态，仍是待裁定。
+    assert r.json()["status"] == "pending"
 
 
-def test_feedback_without_content_is_followup(client):
+def test_feedback_without_content_stays_pending(client):
     decision_id = _ask(client)
     r = client.post("/api/domains/current/cq/decision", json={
         "action": "feedback", "decision_id": decision_id,
     })
     assert r.status_code == 200, r.text
-    assert r.json()["status"] == "followup"
+    assert r.json()["status"] == "pending"
 
 
 def test_status_and_source_are_rejected(client):

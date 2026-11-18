@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { CqAuditEntry, CqCoverageResponse, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse, DomainInfo } from '../api/client';
+import type { CqAuditEntry, CqCoverageResponse, CqDispositionResult, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse, DomainInfo } from '../api/client';
 import {
   EXPECTED_TYPE_OPTIONS,
   STATUS_OPTIONS,
@@ -113,6 +113,9 @@ export default function CqPage() {
   const [showGlossary, setShowGlossary] = useState(false);
   // #320：出题配置面板（只作用当前工作区）
   const [showPrompts, setShowPrompts] = useState(false);
+  // #332：处置结果（四轨回执）
+  const [dispositionBusy, setDispositionBusy] = useState(false);
+  const [dispositionResult, setDispositionResult] = useState<CqDispositionResult | null>(null);
   // #250 R6：点击整体缺口统计，把下方题目列表筛到对应题
   const [gapFilter, setGapFilter] = useState<string | null>(null);
 
@@ -231,6 +234,8 @@ export default function CqPage() {
     return counts;
   }, [cases]);
   useEffect(() => { setVisibleLimit(20); }, [query, gapFilter]);
+  // 换题时清掉上一题的处置回执，避免把结果挂在另一道题上。
+  useEffect(() => { setDispositionResult(null); }, [selected]);
   const visibleCases = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const numeric = needle.replace(/^#/, '').replace(/^q/, '');
@@ -345,12 +350,29 @@ export default function CqPage() {
     }
   };
 
+  const disposeCurrent = async (action: string) => {
+    if (!current?.id) return;
+    setDispositionBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await api.cqDispose(String(current.id), action);
+      setDispositionResult(result.disposition);
+      setNotice(`已处置：${result.disposition.label}。`);
+      setData(result);
+    } catch (e) {
+      setError(`处置失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setDispositionBusy(false);
+    }
+  };
+
   const runRegression = async () => {
     // #250 R3：写操作先讲后果，确认后再生效。
     const confirmed = window.confirm(
       `跑一轮评估会：\n`
-      + `· 跑 ${preflight.total - preflight.pendingReview} 道题`
-      + (preflight.pendingReview > 0 ? `（${preflight.pendingReview} 道待审核会被拦住）` : '')
+      + `· 跑 ${preflight.total} 道题`
+      + (preflight.pendingReview > 0 ? `（其中 ${preflight.pendingReview} 道待审核仍会参与）` : '')
       + '\n'
       + '· 写本轮记录到评估历史\n'
       + '· 更新每题「回归通过」与回归通过覆盖\n\n'
@@ -604,9 +626,9 @@ export default function CqPage() {
                       className="btn"
                       onClick={() => void runRegression()}
                       disabled={busy != null || !summary || summary.total === 0
-                        || preflight.pendingReview > 0}
-                      title={preflight.pendingReview > 0
-                        ? `有 ${preflight.pendingReview} 道题待审核，会拦住本轮评估；先在题目详情里处理审核`
+                        || (preflight.total > 0 && preflight.noAssertion === preflight.total)}
+                      title={preflight.total > 0 && preflight.noAssertion === preflight.total
+                        ? '所有题都没有回归断言，先补断言再评估'
                         : ''}
                     >
                       {busy === 'run' ? '评估中…' : '跑一轮评估'}
@@ -619,7 +641,7 @@ export default function CqPage() {
                       <span>
                         无断言 {preflight.noAssertion}、未确认 {preflight.unconfirmed}
                         {preflight.pendingReview > 0
-                          ? `、待审核 ${preflight.pendingReview}（会拦住本次评估）`
+                          ? `、待审核 ${preflight.pendingReview}（仍会参与评估）`
                           : ''}；
                         会写本轮记录并更新回归通过覆盖，不改本体和题干。
                       </span>
@@ -1119,6 +1141,9 @@ export default function CqPage() {
                         locate={locate}
                         error={locateError}
                         showTech={showTech}
+                        dispositionBusy={dispositionBusy}
+                        dispositionResult={dispositionResult}
+                        onDispose={(action) => void disposeCurrent(action)}
                       />
                     </div>
                   )}
@@ -1152,6 +1177,14 @@ function isReviewBlocking(item: CqSetCase): boolean {
   if (!review?.required) return false;
   const state = String(review.state || 'none');
   return state !== 'approved';
+}
+
+function dispositionReviewLabel(state?: string | null): string {
+  const value = String(state || 'none');
+  if (value === 'approved') return '审核已通过';
+  if (value === 'rejected') return '已驳回';
+  if (value === 'pending') return '待审核';
+  return '未要求审核';
 }
 
 function reviewLabel(review?: CqSetCase['review'] | null): string {
@@ -1349,12 +1382,16 @@ function CqEditor({
 
 function CqDetail({
   item, index, locate, error, showTech,
+  dispositionBusy, dispositionResult, onDispose,
 }: {
   item: CqSetCase;
   index: number;
   locate: CqLocateResult | null;
   error: string | null;
   showTech: boolean;
+  dispositionBusy: boolean;
+  dispositionResult: CqDispositionResult | null;
+  onDispose: (action: string) => void;
 }) {
   const cache = item.coverage_cache;
   const regression = item.regression || {};
@@ -1392,9 +1429,67 @@ function CqDetail({
         {item.review?.comment && (
           <p className="guide-muted">这条意见已收进「出题配置 → 出题要求」，下一次出题会加载。</p>
         )}
+        {String(item.review?.state || 'none') === 'pending' && (
+          <p className="guide-muted">
+            待审核不是死卡：还没回答语义问题，先到训练页回答；已回答但未处置，直接在下方处置区点
+            「审核通过并启用」或「修改」。
+          </p>
+        )}
         <p className="guide-muted">
           待审核不阻断毕业；因题干或断言改动而重开的题会自动退回草稿，在编辑弹窗翻回启用后再交付。
         </p>
+      </section>
+
+      {/* #332：处置区常驻，不依附决策卡；动作与前置由后端计算。 */}
+      <section className="cq-section cq-disposition">
+        <h4>处置</h4>
+        <p className="guide-muted">
+          处置只表达「这题怎么走」，由系统写入审核态与运营态；写入后可在变更记录里审计。
+        </p>
+        <div className="cq-disposition-actions">
+          {(item.dispositions ?? []).map((action) => (
+            <button
+              key={action.action}
+              type="button"
+              className={`btn ${action.action === 'approve_activate' ? '' : 'secondary'}`}
+              disabled={!action.available || dispositionBusy}
+              title={action.effect}
+              onClick={() => onDispose(action.action)}
+            >
+              {dispositionBusy ? '处理中…' : action.label}
+            </button>
+          ))}
+        </div>
+        <details className="cq-disposition-effects">
+          <summary>每个动作会改什么</summary>
+          <ul>
+            {(item.dispositions ?? []).map((action) => (
+              <li key={action.action}>
+                <b>{action.label}</b>
+                <span>{action.effect}</span>
+                {!action.available && <i>当前状态不可用</i>}
+              </li>
+            ))}
+          </ul>
+        </details>
+        {dispositionResult && (
+          <div className="notice-banner cq-disposition-result" role="status">
+            <b>处置结果：{dispositionResult.label}</b>
+            <span>
+              审核：{dispositionReviewLabel(dispositionResult.review?.state)}
+              {dispositionResult.review?.by ? `（${dispositionResult.review.by}` : ''}
+              {dispositionResult.review?.at ? ` · ${formatLocalTime(dispositionResult.review.at)}` : ''}
+              {dispositionResult.review?.by ? '）' : ''}
+            </span>
+            <span>状态：{statusLabel(dispositionResult.status)}</span>
+            <span>
+              下一步：
+              {dispositionResult.next_action
+                ? actionLabel(dispositionResult.next_action.action || '')
+                : '跑回归验证这题的断言'}
+            </span>
+          </div>
+        )}
       </section>
 
       <section className="cq-section">

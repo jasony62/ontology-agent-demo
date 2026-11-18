@@ -244,7 +244,7 @@ describe('训练标签（#203）', () => {
     await act(async () => { confirm.click(); });
     await flush();
 
-    expect(container!.textContent).toContain('已记录决策');
+    expect(container!.textContent).toContain('回答已记录');
     expect(timelineCalls()).toBeGreaterThan(before);
     const writes = vi.mocked(fetch).mock.calls
       .filter(([, init]) => String(init?.method || 'GET').toUpperCase() !== 'GET')

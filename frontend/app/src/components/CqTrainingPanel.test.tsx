@@ -204,10 +204,10 @@ describe('训练现场（#198 / #203）', () => {
     await act(async () => { option.click(); });
     await flush();
 
-    // 推荐项也要先确认，且明示不可撤销
+    // 推荐项也要先确认；#334 起只记录回答，不再推定采纳/驳回。
     const confirm = container!.querySelector('.cq-decision-confirm')!;
-    expect(confirm.textContent).toContain('不可撤销');
-    expect(confirm.textContent).toContain('采纳推荐');
+    expect(confirm.textContent).toContain('回答将记录为「A」');
+    expect(confirm.textContent).toContain('题目状态不变');
     // #271 / R23：确认条出现后焦点落在「确认提交」，键盘用户可直接回车
     expect(document.activeElement?.textContent).toBe('确认提交');
     expect(vi.mocked(fetch).mock.calls.some(([url, init]) =>
@@ -223,46 +223,34 @@ describe('训练现场（#198 / #203）', () => {
     expect(call).toBeTruthy();
     const body = JSON.parse(String((call![1] as RequestInit).body));
     expect(body).toMatchObject({
-      action: 'feedback', decision_id: 'd-1', option: 'A',
-      conclusion: 'adopt', authorized: true,
+      action: 'feedback', decision_id: 'd-1', option: 'A', authorized: true,
     });
     expect(body).not.toHaveProperty('feedback_text');
     expect(body).not.toHaveProperty('basis');
     expect(body).not.toHaveProperty('follow_up_with');
-    expect(container!.textContent).toContain('已记录决策 #Q1');
+    expect(container!.textContent).toContain('回答已记录 #Q1');
+    expect(body).not.toHaveProperty('conclusion');
     const resumeCalls = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/cq/resume'));
     expect(resumeCalls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('暂缓提交 defer 结论，未授权时选项不可提交（#212）', async () => {
+  it('未授权时选项与「其他」都不可提交（#212 / #334）', async () => {
     stubFetch();
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
 
-    const option = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+    const option = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
       .find((button) => button.textContent?.startsWith('A'))!;
     expect(option.disabled).toBe(true);
+    const other = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
+      .find((button) => button.textContent === '其他 / 自定义回答')!;
+    expect(other.disabled).toBe(true);
 
     const authorize = container!.querySelector<HTMLInputElement>(
       '.cq-training-authorize input')!;
     await act(async () => { authorize.click(); });
-    const defer = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
-      .find((button) => button.textContent === '暂缓')!;
-    await act(async () => { defer.click(); });
-    await flush();
-
-    const confirm = container!.querySelector('.cq-decision-confirm')!;
-    expect(confirm.textContent).toContain('暂缓');
-    const submit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '确认提交')!;
-    await act(async () => { submit.click(); });
-    await flush();
-
-    const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
-      String(url).includes('/cq/decision') && String(init?.method) === 'POST')!;
-    const body = JSON.parse(String((call[1] as RequestInit).body));
-    expect(body.conclusion).toBe('defer');
-    expect(body.authorized).toBe(true);
+    expect(option.disabled).toBe(false);
+    expect(other.disabled).toBe(false);
   });
 
   it('依据来源改为选填说明：无下拉、文字进 feedback_text（#330）', async () => {
@@ -450,8 +438,8 @@ describe('训练现场（#198 / #203）', () => {
     expect(vi.mocked(fetch).mock.calls.some(([url, init]) =>
       String(url).includes('/cq/decision') && String(init?.method) === 'POST')).toBe(false);
     const confirm = container!.querySelector('.cq-decision-confirm')!;
-    expect(confirm.textContent).toContain('驳回 / 改选');
-    expect(confirm.textContent).toContain('不可撤销');
+    expect(confirm.textContent).toContain('回答将记录为「B」');
+    expect(confirm.textContent).toContain('题目状态不变');
     const submit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '确认提交')!;
     await act(async () => { submit.click(); });
@@ -459,7 +447,8 @@ describe('训练现场（#198 / #203）', () => {
     const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
       String(url).includes('/cq/decision') && String(init?.method) === 'POST')!;
     const body = JSON.parse(String((call[1] as RequestInit).body));
-    expect(body).toMatchObject({ option: 'B', conclusion: 'reject' });
+    expect(body).toMatchObject({ option: 'B' });
+    expect(body).not.toHaveProperty('conclusion');
   });
 
   it('评估有效时训练页下一步改为请求生成更多题（#291）', async () => {
@@ -764,5 +753,73 @@ describe('训练现场（#198 / #203）', () => {
     await flush();
 
     expect(container!.textContent).toContain('context：Input should be a valid string');
+  });
+
+  it('无选项的决策也能用「其他 / 自定义回答」关闭第一步（#334）', async () => {
+    const noOptions: CqDecision = { ...DECISION, options: [], recommended: undefined };
+    stubFetch({
+      ...RESUME,
+      pending_decisions: [noOptions],
+      lifecycle: {
+        ...RESUME.lifecycle!,
+        cases: [{
+          ...RESUME.lifecycle!.cases[0],
+          decisions: [noOptions], pending_decision: noOptions, latest_decision: noOptions,
+        }, RESUME.lifecycle!.cases[1]],
+      },
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    expect(container!.textContent).toContain('这道题没有给选项');
+    const authorize = container!.querySelector<HTMLInputElement>('.cq-training-authorize input')!;
+    await act(async () => { authorize.click(); });
+    const textarea = container!.querySelector<HTMLTextAreaElement>('.cq-training-basis textarea')!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      setValue.call(textarea, '叫 has_assignment');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const other = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-options button')]
+      .find((button) => button.textContent === '其他 / 自定义回答')!;
+    await act(async () => { other.click(); });
+    await flush();
+    const confirm = container!.querySelector('.cq-decision-confirm')!;
+    const submit = [...confirm.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '确认提交')!;
+    await act(async () => { submit.click(); });
+    await flush();
+
+    const call = vi.mocked(fetch).mock.calls.find(([url, init]) =>
+      String(url).includes('/cq/decision') && String(init?.method) === 'POST');
+    const body = JSON.parse(String((call![1] as RequestInit).body));
+    expect(body.option).toBe('其他');
+    expect(body.feedback_text).toBe('叫 has_assignment');
+    expect(container!.textContent).toContain('请到题目详情 → 处置区');
+  });
+
+  it('阶段条保留「已裁定 / 已处置」标记，passed 显示「回归通过」（#336）', async () => {
+    const resolvedCase = {
+      ...RESUME.lifecycle!.cases[0],
+      stage: 'passed', stage_label: '回归通过',
+      pending_decision: null,
+      latest_decision: { ...DECISION, status: 'resolved' },
+      last_disposition: {
+        action: 'approve_activate', review_state: 'approved',
+        status: 'active', ts: '2026-11-18T10:00:00+00:00',
+      },
+    };
+    stubFetch({
+      ...RESUME,
+      pending_decisions: [],
+      lifecycle: { ...RESUME.lifecycle!, cases: [resolvedCase] },
+    });
+    act(() => root!.render(<CqTrainingPanel />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('回归通过');
+    expect(text).toContain('已裁定');
+    expect(text).toContain('已处置 · 审核通过并启用');
   });
 });

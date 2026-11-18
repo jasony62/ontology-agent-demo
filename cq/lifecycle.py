@@ -27,7 +27,7 @@ STAGE_LABELS = {
     "pending": "待裁定",
     "resolved": "已裁定",
     "fixing": "修复中",
-    "passed": "通过",
+    "passed": "回归通过",
     "followup": "待跟进",
 }
 
@@ -165,12 +165,15 @@ def build_lifecycle(
     case_ids = {str(item.get("id") or "") for item in cases if item.get("id")}
     decision_case: dict[str, str] = {}
     event_last: dict[str, str] = {}
+    disposed: dict[str, dict] = {}
     for event in events or []:
         if not isinstance(event, dict):
             continue
         content = event.get("content") if isinstance(event.get("content"), dict) else {}
         decision_id = str(content.get("decision_id") or "")
         case_id = str(content.get("case_id") or "")
+        if event.get("event") == "case_disposed" and case_id:
+            disposed[case_id] = {**content, "ts": str(event.get("ts") or "")}
         if event.get("event") == "decision_asked" and decision_id and case_id:
             decision_case[decision_id] = case_id
         linked = case_id or decision_case.get(decision_id) or ""
@@ -295,6 +298,7 @@ def build_lifecycle(
             ),
             "iterations": [_iteration_lite(item) for item in linked],
             "actions": case_actions,
+            "last_disposition": disposed.get(case_id),
             "pending_actions": [
                 action for action in case_actions if action.get("status") == "pending"
             ],

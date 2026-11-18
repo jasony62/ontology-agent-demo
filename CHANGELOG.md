@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-11-18
+
 ### Added
 
 - **处置动作闭环（#332）**：题目详情新增常驻处置区，封闭四动作——`审核通过并启用`（review approved + status active）、`修改`（pending + draft + 派 revise_case 待办）、`拒绝出队`（rejected + draft，保留可恢复）、`暂缓`（不改状态）。新增 `POST /api/domains/current/cq/cases/{case_id}/disposition`，动作与效果由后端定义、枚举外 400；所有改题处置走 `cq_store.save_set`，保留 #285 门控与 #312 退回机制。

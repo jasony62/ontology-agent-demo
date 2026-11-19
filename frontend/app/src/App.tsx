@@ -56,10 +56,12 @@ export default function App() {
   // 三个平级页面：图谱工作台 / 当前领域（正式单页，不用弹框）/ CQ 集。
   // #203：训练现场与时间线收进 CQ 集页内的「训练」标签，页头导航由 5 项收敛为 3 项；
   // 旧的 #cq-timeline / #cq-iterations 深链不做兼容跳转，一律落到默认页。
+  // #344：首屏判断必须与下方 hashchange 同口径——`#cq/training`、`#cq/cases`
+  // 都是 CQ 页深链，只认精确 `#cq` 会让分享链接冷启动落到图谱页。
   const [page, setPage] = useState<'graph' | 'guide' | 'cq'>(() => {
     const hash = window.location.hash;
     if (hash === '#guide') return 'guide';
-    if (hash === '#cq') return 'cq';
+    if (hash === '#cq' || hash.startsWith('#cq/')) return 'cq';
     return 'graph';
   });
   // #137：首次引导收敛到「当前领域」页的一个「带我试一题」入口（一次真试跑），

@@ -1220,6 +1220,11 @@ function dispositionReviewLabel(state?: string | null): string {
   return '未要求审核';
 }
 
+/** #343：回归未通过——内部 blocker 键仍是「未通过」（显示层映射见 #341）。 */
+function isRegressionFailed(item: CqSetCase): boolean {
+  return (item.missing ?? item.blockers ?? []).includes('未通过');
+}
+
 function reviewLabel(review?: CqSetCase['review'] | null): string {
   if (!review?.required) return '未要求';
   const state = String(review.state || 'none');
@@ -1483,6 +1488,16 @@ function CqDetail({
         <p className="guide-muted">
           处置只表达「这题怎么走」，由系统写入审核态与运营态；写入后可在变更记录里审计。
         </p>
+        {/* #343：质量态告知——启用是运营动作，不等于这题已经可交付。 */}
+        {isRegressionFailed(item) && (
+          <div className="cq-disposition-warn" role="note">
+            <b>该题回归未通过：可以启用，但启用后仍不满足毕业条件。</b>
+            <span>
+              「已启用」只代表进入运营队列；毕业还要求回归通过。建议先补断言或修本体，
+              再用下方「测这一题」验证，最后跑正式评估。
+            </span>
+          </div>
+        )}
         <div className="cq-disposition-actions">
           {(item.dispositions ?? []).map((action) => (
             <button

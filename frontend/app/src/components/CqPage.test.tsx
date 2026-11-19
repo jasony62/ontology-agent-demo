@@ -1446,4 +1446,42 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(rows[0].textContent).toContain('这条结论凭什么成立？');
     expect(rows[0].textContent).toContain('缺：回归未通过');
   });
+
+  it('回归未通过时处置区警告「启用≠可交付」，按钮仍可点（#343）', async () => {
+    const dispositions = [
+      { action: 'approve_activate', label: '审核通过并启用', effect: '审核：审核已通过；状态：启用。', available: true },
+    ];
+    stubFetch({
+      ...SET,
+      cases: SET.cases.map((item, index) => (index === 0
+        ? { ...item, answerable: false, blockers: ['未通过'], dispositions }
+        : item)),
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const warn = container!.querySelector('.cq-disposition-warn')!;
+    expect(warn.textContent).toContain('回归未通过');
+    expect(warn.textContent).toContain('启用后仍不满足毕业条件');
+    expect(warn.textContent).toContain('「已启用」只代表进入运营队列');
+
+    // 本单只改变告知，不改变写入语义：按钮依然可点。
+    const approve = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '审核通过并启用')!;
+    expect(approve.disabled).toBe(false);
+  });
+
+  it('回归通过的题不出现启用警示（#343）', async () => {
+    const dispositions = [
+      { action: 'approve_activate', label: '审核通过并启用', effect: '审核：审核已通过；状态：启用。', available: true },
+    ];
+    stubFetch({
+      ...SET,
+      cases: SET.cases.map((item, index) => (index === 0 ? { ...item, dispositions } : item)),
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelector('.cq-disposition-warn')).toBeNull();
+  });
 });

@@ -1280,7 +1280,7 @@ export default function DomainGuidePage({
                 <h4>什么会被拦</h4>
                 {runtime.rules ? (
                   <div className="guide-rules">
-                    <div className="guide-kv"><span>整体状态</span><b>{runtime.rules.ok ? '通过' : '有错误'}</b></div>
+                    <div className="guide-kv"><span>整体状态</span><b>{runtime.rules.ok ? '规则校验通过' : '有错误'}</b></div>
                     <div className="guide-kv"><span>派生三元组</span><b>{runtime.rules.total_derived ?? '—'}</b></div>
                     <div className="guide-kv"><span>物化 / 规则耗时</span><b>{runtime.rules.materialize_ms ?? '—'} ms / {runtime.rules.elapsed_ms ?? '—'} ms</b></div>
                     {runtime.rules.files.length > 0 && (
@@ -1297,7 +1297,7 @@ export default function DomainGuidePage({
                 ) : (
                   <div className="guide-empty-inline">
                     <TermText
-                      text="当前领域没有加载规则层（rules/*.ttl），因此没有业务约束要执行；带规则层的领域包会在这里显示「是否通过 / 派生多少条 / 哪个文件报错」。"
+                      text="当前领域没有加载规则层（rules/*.ttl），因此没有业务约束要执行；带规则层的领域包会在这里显示「是否规则校验通过 / 派生多少条 / 哪个文件报错」。"
                       scope="trust"
                       site="rules-empty"
                     />

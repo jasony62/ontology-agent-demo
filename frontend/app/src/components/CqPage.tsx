@@ -25,6 +25,16 @@ import TechDetails from './TechDetails';
 // 「未启用」是运营态门槛，不是质量 blocker；「待审核」已从缺口词表移除。
 const MISSING_ORDER = ['未启用', '未锚定', '未分型', '缺断言', '未通过', '已归档'];
 
+// #341：'未通过' 同时是后端 `blockers` 值、前端计数键与筛选键，
+// 不能直接改字符串。内部协议值保持不变，只在渲染 chip 时映射成显示名。
+const MISSING_LABELS: Record<string, string> = {
+  未通过: '回归未通过',
+};
+
+function missingLabel(key: string): string {
+  return MISSING_LABELS[key] ?? key;
+}
+
 // #278：与 cq/cq_store.py `_CASE_FIELDS` 对齐的落盘白名单。
 // 读视图字段（located / answerable / graduated / blockers / location /
 // assertion_summary / intent_pending / coverage_cache）绝不能回传：
@@ -404,7 +414,7 @@ export default function CqPage() {
     setNotice(null);
     try {
       const run = await api.cqRun('human');
-      setNotice(`评估完成：${run.pass}/${run.total} 通过（回归通过覆盖 ${Math.round(run.coverage_real * 100)}%）。`);
+      setNotice(`评估完成：${run.pass}/${run.total} 回归通过（回归通过覆盖 ${Math.round(run.coverage_real * 100)}%）。`);
       setRuns((currentRuns) => [run, ...currentRuns].slice(0, 20));
       await load();
     } catch (e) {
@@ -973,7 +983,7 @@ export default function CqPage() {
                   <span>覆盖（回归通过）{answerablePct}%</span>
                   {runs[0] && (
                     <span>
-                      最近评估：{runs[0].pass}/{runs[0].total} 通过 · {formatLocalTime(runs[0].ran_at)}
+                      最近评估：{runs[0].pass}/{runs[0].total} 回归通过 · {formatLocalTime(runs[0].ran_at)}
                       {trend === null
                         ? ''
                         : trend === 0
@@ -1001,7 +1011,7 @@ export default function CqPage() {
                       aria-pressed={gapFilter === label}
                       onClick={() => setGapFilter(gapFilter === label ? null : label)}
                     >
-                      {label} <b>{missingCounts[label] ?? 0}</b>
+                      {missingLabel(label)} <b>{missingCounts[label] ?? 0}</b>
                     </button>
                   ))}
                   {gapFilter && (
@@ -1109,7 +1119,7 @@ export default function CqPage() {
                             <span className={`cq-row-status${item.graduated ? ' ok' : ''}`}>
                               {item.graduated
                                 ? '已毕业'
-                                : `缺：${(item.missing ?? item.blockers ?? []).join('、') || '—'}`}
+                                : `缺：${(item.missing ?? item.blockers ?? []).map(missingLabel).join('、') || '—'}`}
                             </span>
                           </button>
                         </li>
@@ -1118,7 +1128,7 @@ export default function CqPage() {
                   </ul>
                   {visibleCases.length === 0 && (
                     <div className="guide-empty-inline">
-                      没有还差「{gapFilter}」的题目；再点一次统计项可取消筛选。
+                      没有还差「{gapFilter ? missingLabel(gapFilter) : ''}」的题目；再点一次统计项可取消筛选。
                     </div>
                   )}
                 </section>
@@ -1220,7 +1230,7 @@ function reviewLabel(review?: CqSetCase['review'] | null): string {
     const at = review.at ? formatLocalTime(String(review.at)) : '';
     const who = by ? ` · ${by}` : '';
     const when = at ? ` · ${at}` : '';
-    return `已通过${who}${when}`;
+    return `审核已通过${who}${when}`;
   }
   return '待审核';
 }
@@ -1254,7 +1264,7 @@ const GLOSSARY: Array<{ term: string; desc: string }> = [
   { term: '回归', desc: '按题目预设的检查自动跑一遍，看结果是否符合预期。' },
   { term: '断言', desc: '这道题的自动检查：查什么、期望什么；由智能体生成，专家可核对。' },
   { term: '题型', desc: '检索 / 推导 / 计数 / 反例四类，描述题目主要考什么。' },
-  { term: '阶段', desc: '这道题当前走到生命周期哪一段：已建题 / 回归中 / 待裁定 / 已裁定 / 修复中 / 通过 / 待跟进。' },
+  { term: '阶段', desc: '这道题当前走到生命周期哪一段：已建题 / 回归中 / 待裁定 / 已裁定 / 修复中 / 回归通过 / 待跟进。' },
   { term: '熔断', desc: '连续多轮没有进展时暂停自动流程，等你处理；0 表示未触发。' },
   { term: '意图待确认', desc: '这道题的期望口径需要你确认；确认后会进入后续回归。' },
   { term: '题集', desc: '当前这一组 CQ；同一本体可以有多份题集（当前版本单集）。' },
@@ -1655,7 +1665,7 @@ function CqDetail({
           </div>
         ) : (
           <div className="guide-muted">
-            尚未评估；运行一次评估后这里会显示通过 / 未通过。
+            尚未评估；运行一次评估后这里会显示回归通过 / 回归未通过。
           </div>
         )}
       </section>

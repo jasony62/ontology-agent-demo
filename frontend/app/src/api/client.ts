@@ -645,6 +645,21 @@ export interface CqLocateResult {
   hint: string;
 }
 
+/** #347：条目公理（图内还原，只读）。 */
+export interface CqAxiomItem {
+  predicate: string;
+  object: string;
+  literal: boolean;
+}
+
+export interface CqAxiomsResult {
+  item: string;
+  label: string;
+  count: number;
+  axioms: CqAxiomItem[];
+  turtle: string;
+}
+
 export interface CqAuditEntry {
   ts: string;
   ontology_id: string;
@@ -1133,6 +1148,12 @@ export const api = {
         ...(conclusionFields ? { conclusion_fields: conclusionFields } : {}),
       }),
     }),
+
+  /** #347：按条目取图内公理（只读，不进审计、不落盘） */
+  cqAxioms: (item: string) =>
+    request<CqAxiomsResult>(
+      `/api/domains/current/cq/axioms?item=${encodeURIComponent(item)}`,
+    ),
 
   /**
    * 当前本体原始 RDF/XML 文本。

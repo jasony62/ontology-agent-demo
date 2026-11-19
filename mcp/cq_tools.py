@@ -11,11 +11,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
 from api import workspaces
-from cq import agenda, cq_runner, cq_store, prompts_store, requirements as requirements_store, training_service
+from cq import agenda, assertion_namespace, cq_runner, cq_store, prompts_store, requirements as requirements_store, training_service
 from cq import coverage as cq_mention_coverage
 from cq.constants import EXPECTED_TYPES
 from ontology_plugin_sdk.cq import gen, tbox
@@ -65,6 +66,17 @@ def register_tools(server, get_engine, get_cq_context) -> None:
         if workspaces.meta_path(wanted).is_file():
             return wanted, None
         raise ValueError(f"未知 ontology_id：{wanted}（既不是当前身份，也不是已导入工作区）")
+
+    def namespace_error(cases) -> dict | None:
+        """#350：写入前拦下「断言前缀不属于当前本体」的题，避免注定不可答。"""
+        problem = assertion_namespace.first_mismatch(get_engine(), cases)
+        if not problem:
+            return None
+        return _error(
+            "namespace_mismatch", problem["message"],
+            namespace=problem["namespace"], expected=problem["expected"],
+            case_id=problem["case_id"], examples=problem["examples"],
+        )
 
     @server.tool(description=(
         "读取当前 CQ 集与概览（承诺 / 已定位 / 可答 / 缺口、两档覆盖率）。"
@@ -122,6 +134,18 @@ def register_tools(server, get_engine, get_cq_context) -> None:
             target, _ = resolve(ontology_id)
         except ValueError as exc:
             return _error("invalid_ontology", str(exc))
+        # #350：整集写入同样要过命名空间预检；content 解析失败交给 import_set 报格式错。
+        draft_cases = cases or []
+        if content.strip():
+            try:
+                parsed = json.loads(content)
+            except (TypeError, ValueError):
+                parsed = None
+            if isinstance(parsed, dict):
+                draft_cases = parsed.get("cases") or []
+        guard = namespace_error(draft_cases)
+        if guard:
+            return guard
         try:
             if content.strip():
                 data = cq_store.import_set(
@@ -148,6 +172,9 @@ def register_tools(server, get_engine, get_cq_context) -> None:
             target, _ = resolve(ontology_id)
         except ValueError as exc:
             return _error("invalid_ontology", str(exc))
+        guard = namespace_error(case)
+        if guard:
+            return guard
         try:
             case_id = str(case.get("id") or "")
             data = cq_store.get_set(target)

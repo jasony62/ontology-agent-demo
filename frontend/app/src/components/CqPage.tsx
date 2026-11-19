@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { CqAuditEntry, CqCaseRunResult, CqCoverageResponse, CqDispositionResult, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse, DomainInfo } from '../api/client';
+import type { CqAuditEntry, CqAxiomItem, CqAxiomsResult, CqCaseRunResult, CqCoverageResponse, CqDispositionResult, CqEvidence, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse, DomainInfo } from '../api/client';
 import {
   EXPECTED_TYPE_OPTIONS,
   STATUS_OPTIONS,
@@ -114,7 +114,7 @@ export default function CqPage() {
   const [coverageError, setCoverageError] = useState<string | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [resumePreview, setResumePreview] = useState<CqResumeResponse | null>(null);
-  const [resumeFailed, setResumeFailed] = useState(false);
+
   // #269 / R22：领域显示名（有中文标签时领导模式不露 snake_case 标识符）。
   const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null);
   // #255：辅助取数失败不再静默——汇总成一条可关闭、可重试的警告条。
@@ -159,7 +159,6 @@ export default function CqPage() {
     setLoading(true);
     setError(null);
     setPartialErrors([]);
-    setResumeFailed(false);
     try {
       const next = await api.cqSet();
       setData(next);
@@ -171,7 +170,7 @@ export default function CqPage() {
       if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
       else failed.push('服务健康');
       if (resumeResult.status === 'fulfilled') setResumePreview(resumeResult.value);
-      else { setResumeFailed(true); failed.push('待决状态'); }
+      else failed.push('待决状态');
       if (auditResult.status === 'fulfilled') setRecentAudit(auditResult.value.entries);
       else failed.push('最近变更');
       if (metricsResult.status === 'fulfilled') setMetrics(metricsResult.value);
@@ -197,36 +196,6 @@ export default function CqPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
-
-  // #264：请求发出后要能看见「在等谁、等多久」，并能催 / 取消。
-  const [actionBusy, setActionBusy] = useState(false);
-  const urgeAgent = useCallback(async () => {
-    setActionBusy(true);
-    setError(null);
-    try {
-      await api.cqRequestCases({ note: '（催促）请尽快生成候选题' });
-      setNotice('已再次提醒智能体；生成后在这里会显示进度。');
-      await load();
-    } catch (e) {
-      setError(`提醒失败：${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setActionBusy(false);
-    }
-  }, [load]);
-
-  const cancelRequest = useCallback(async (actionId: string) => {
-    setActionBusy(true);
-    setError(null);
-    try {
-      await api.cqActionComplete(actionId, 'cancelled', '人已取消请求');
-      setNotice('已取消这次请求；需要时再让智能体生成。');
-      await load();
-    } catch (e) {
-      setError(`取消失败：${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setActionBusy(false);
-    }
-  }, [load]);
 
   const cases = useMemo(() => data?.cases ?? [], [data]);
   const current = useMemo(() => {
@@ -446,11 +415,6 @@ export default function CqPage() {
   const summary = data?.summary;
   // #255：三态化——null 表示「还没取到」，绝不能用 0 兜底说成「没有待决」。
   const pendingQuestions = resumePreview?.lifecycle?.summary?.pending_questions ?? null;
-  const pendingState: 'loading' | 'unknown' | 'ready' = resumeFailed
-    ? 'unknown'
-    : pendingQuestions !== null
-      ? 'ready'
-      : loading ? 'loading' : 'unknown';
   const agentEntry = recentAudit.find((entry) => entry.actor_type === 'agent');
   const pendingAgentActions = resumePreview?.next_actions ?? [];
   const agentText = pendingAgentActions.length > 0
@@ -486,11 +450,6 @@ export default function CqPage() {
   const evaluation = resumePreview?.evaluation ?? null;
   const evaluationFresh = evaluation?.state === 'fresh';
   const pendingActions = resumePreview?.next_actions ?? [];
-  const waitingHours = pendingActions.reduce((max, item) => {
-    const started = Date.parse(String(item.requested_at || ''));
-    if (Number.isNaN(started)) return max;
-    return Math.max(max, Math.floor((Date.now() - started) / 3_600_000));
-  }, 0);
   // #288：界面与评审包用同一个真实套件名，不再兜底成「默认题集」。
   const suiteDisplay = data?.suite || '未命名题集';
   const lifecycleSummary = resumePreview?.lifecycle?.summary;
@@ -579,6 +538,13 @@ export default function CqPage() {
               </button>
             </div>
           </div>
+          {/* #351：术语入口移出「技术」组——普通用户不用先承认自己是专家。 */}
+          <div className="cq-tool-group">
+            <span className="cq-tool-group-label">帮助</span>
+            <button type="button" className="btn link" onClick={() => setShowGlossary((value) => !value)}>
+              {showGlossary ? '收起术语说明' : '术语说明'}
+            </button>
+          </div>
           {tab === 'cases' && (
             <>
               <div className="cq-tool-group">
@@ -597,9 +563,6 @@ export default function CqPage() {
                   />
                   显示技术细节
                 </label>
-                <button type="button" className="btn link" onClick={() => setShowGlossary((value) => !value)}>
-                  {showGlossary ? '收起术语说明' : '术语说明'}
-                </button>
               </div>
               <div className="cq-tool-group readonly">
                 <span className="cq-tool-group-label">只读工具</span>
@@ -690,6 +653,7 @@ export default function CqPage() {
         </div>
       </div>
 
+      <CqManagementGuide />
       {showGlossary && <CqGlossary onClose={() => setShowGlossary(false)} />}
       {showPrompts && <CqPromptsPanel onClose={() => setShowPrompts(false)} />}
 
@@ -706,63 +670,23 @@ export default function CqPage() {
               <button type="button" className="btn link" onClick={() => setPartialErrors([])}>知道了</button>
             </div>
           )}
-          {pendingActions.length > 0 && (
-            <div className="cq-waiting" role="status" aria-label="等待智能体">
-              <b>⏳ 等待中</b>
-              <span>
-                {pendingActions.map((item) => actionLabel(item.action)).join('、')}
-                {waitingHours >= 1 ? ` · 已等待 ${waitingHours} 小时` : ' · 刚刚请求'}
-                {' · 未响应'}
-              </span>
-              <button
-                type="button"
-                className="btn secondary"
-                disabled={actionBusy}
-                onClick={() => void urgeAgent()}
-              >
-                催一下
-              </button>
-              <button
-                type="button"
-                className="btn link"
-                disabled={actionBusy}
-                onClick={() => void cancelRequest(pendingActions[0].action_id)}
-              >
-                取消请求
-              </button>
-            </div>
-          )}
-
           {data && (
             <>
-              <div className="cq-role-strip" aria-label="人机分工">
-                <span className="cq-role agent">
-                  <b>🤖 智能体</b>
-                  {agentText}
-                </span>
-                <span className="cq-role human">
-                  <b>🧑 你</b>
-                  {pendingState === 'loading' && (
-                    <span className="guide-muted">正在读取待决…</span>
-                  )}
-                  {pendingState === 'unknown' && (
-                    <>
-                      <span className="cq-unknown">待决状态未知</span>
-                      <button type="button" className="btn link" onClick={() => void load()}>重试</button>
-                    </>
-                  )}
-                  {pendingState === 'ready' && pendingQuestions !== null && (
-                    pendingQuestions > 0
-                      ? `${pendingQuestions} 件待决定`
-                      : '当前没有待决；可确认题目或运行评估'
-                  )}
-                  {pendingState === 'ready' && pendingQuestions !== null && pendingQuestions > 0 && (
-                    <button type="button" className="btn link" onClick={() => selectTab('training')}>
-                      去训练页处理
-                    </button>
-                  )}
-                </span>
-              </div>
+              {/* #349：过程态归训练页；题库页只留一条只报数的窄入口。 */}
+              {(pendingActions.length > 0 || (pendingQuestions ?? 0) > 0) && (
+                <button
+                  type="button"
+                  className="cq-training-entry"
+                  onClick={() => selectTab('training')}
+                  title={agentText}
+                >
+                  <b>训练现场</b>
+                  {pendingActions.length > 0 && <span>{pendingActions.length} 项待响应</span>}
+                  {pendingActions.length > 0 && (pendingQuestions ?? 0) > 0 && <i>·</i>}
+                  {(pendingQuestions ?? 0) > 0 && <span>{pendingQuestions} 件待裁决</span>}
+                  <span className="cq-training-entry-go">去处理 →</span>
+                </button>
+              )}
               {mismatch && (
                 <div className="error-banner" role="alert">{mismatchText}</div>
               )}
@@ -1240,14 +1164,228 @@ function reviewLabel(review?: CqSetCase['review'] | null): string {
   return '待审核';
 }
 
-/** #268：领导模式下的一句话定位结论，不含工程术语，长度 ≤ 30 字。 */
+/** #346：结论句必须带数字与性质；术语保留为屏上可核对的锚点。 */
+function anchorText(locate: CqLocateResult): string {
+  const anchors = (locate.anchors ?? []).slice(0, 4);
+  if (!anchors.length) return '';
+  const suffix = (locate.anchors?.length ?? 0) > 4 ? ' 等' : '';
+  return `（${anchors.map((anchor) => `「${anchor}」`).join('、')}${suffix}）`;
+}
+
 function locateSummary(locate: CqLocateResult): string {
   const anchors = locate.anchors?.length ?? 0;
   const total = Number(locate.counts?.total ?? locate.evidence?.length ?? 0);
-  if (locate.coverage === 'scattered') return '对上了术语，但证据比较散。';
-  if (!anchors) return '还没对上本体里的术语。';
-  if (locate.coverage === 'gap' || total === 0) return '对上了术语，但还没有证据。';
-  return `对上 ${anchors} 个术语、${total} 条证据。`;
+  const conclusion = Number(locate.counts?.conclusion ?? 0);
+  const terms = anchorText(locate);
+  if (locate.coverage === 'no_anchors') return '题干没有对上本体里的任何术语。';
+  if (locate.coverage === 'gap' || total === 0) {
+    return `对上了 ${anchors} 个术语、0 条证据${terms}。`;
+  }
+  if (locate.coverage === 'scattered' || conclusion === 0) {
+    return `对上 ${anchors} 个术语、${total} 条证据${terms}——都是说明性文字，缺集中的定义字段。`;
+  }
+  return `对上 ${anchors} 个术语、${total} 条证据${terms}，其中结论性字段 ${conclusion} 条。`;
+}
+
+/** #346：四种覆盖状态各配一句固定解释，讲清「这意味着什么、下一步做什么」。 */
+function locateExplanation(coverage: string): string {
+  if (coverage === 'scattered') {
+    return '这不代表题目有问题：「散」只是说概念在本体多处出现、没有单一权威定义。概念存在，题目已锚定；能不能作答，以回归结果为准。';
+  }
+  if (coverage === 'has_candidates') {
+    return '术语对上了，本体里也有承载它的条目。证据列在下面，供你核对；能不能作答，以回归结果为准。';
+  }
+  if (coverage === 'gap') {
+    return '术语对上了，但本体里没有任何条目的文字包含它们——概念可能还没写进本体，或用了别的措辞。';
+  }
+  return '题干没有对上任何本体术语。定位器只认字面、不认同义或简称；可参考提示里的术语样例改问法。';
+}
+
+interface EvidenceGroup {
+  item: string;
+  label: string;
+  entries: CqEvidence[];
+}
+
+/** #346：同一条目的 label / comment 合成一张卡，消灭「智能体 智能体」自指行。 */
+function groupEvidence(evidence: CqEvidence[]): EvidenceGroup[] {
+  const groups = new Map<string, EvidenceGroup>();
+  for (const entry of evidence) {
+    const key = entry.item || entry.label || '—';
+    let group = groups.get(key);
+    if (!group) {
+      group = { item: key, label: entry.label || key, entries: [] };
+      groups.set(key, group);
+    }
+    group.entries.push(entry);
+  }
+  return [...groups.values()];
+}
+
+function visibleEvidenceEntries(group: EvidenceGroup): CqEvidence[] {
+  const label = group.label.trim();
+  const rest = group.entries.filter(
+    (entry) => !(entry.field === 'label' && entry.text.trim() === label),
+  );
+  return rest.length ? rest : group.entries;
+}
+
+/** #346：把命中的锚点词标黄；没有匹配词时原样返回。 */
+function renderHighlighted(text: string, matched: string) {
+  if (!matched || !text.includes(matched)) return text;
+  const parts = text.split(matched);
+  return parts.map((part, index) => (
+    <span key={`${matched}-${index}`}>
+      {part}
+      {index < parts.length - 1 ? <mark>{matched}</mark> : null}
+    </span>
+  ));
+}
+
+function axiomHit(row: CqAxiomItem, hits: CqEvidence[]): boolean {
+  return hits.some((entry) => {
+    const field = entry.field.split(/[#/:]/).pop() || entry.field;
+    const predicate = row.predicate.split(/[#/:]/).pop() || row.predicate;
+    return predicate === field || (typeof row.object === 'string' && row.object.includes(entry.text));
+  });
+}
+
+function annotateTurtle(turtle: string, hits: CqEvidence[]): string {
+  return turtle.split('\n').map((line) => {
+    const hit = hits.find((entry) => {
+      const field = entry.field.split(/[#/:]/).pop() || entry.field;
+      return (field && line.includes(field)) || (entry.text && line.includes(entry.text));
+    });
+    return hit ? `${line}   ← 命中「${hit.matched}」` : line;
+  }).join('\n');
+}
+
+/** #347：技术模式按需读取图内公理，默认模式永不发这个请求。 */
+function AxiomBlock({ item, hits }: { item: string; hits: CqEvidence[] }) {
+  const [data, setData] = useState<CqAxiomsResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const toggle = async () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    if (data || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setData(await api.cqAxioms(item));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const hitCount = data ? data.axioms.filter((row) => axiomHit(row, hits)).length : 0;
+  return (
+    <div className="cq-axioms">
+      <button type="button" className="btn link" onClick={() => void toggle()}>
+        {open ? '收起本体原文' : '查看本体原文（Turtle）'}
+      </button>
+      {open && loading && <div className="guide-muted">正在读取图内公理…</div>}
+      {open && error && <div className="element-readonly-note">读取失败：{error}</div>}
+      {open && data && (
+        <>
+          <p className="guide-muted">
+            本条目共 {data.count} 条公理，其中 {hitCount} 条被定位命中。
+          </p>
+          <pre className="cq-code cq-axioms-code">{annotateTurtle(data.turtle, hits)}</pre>
+          <p className="guide-muted cq-axioms-note">
+            Turtle 由图内公理还原，与源文件排版可能有差异。
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** #346：结论 → 解释 → 数据（按条目归组）→ 原文（技术模式）→ 边界声明。 */
+function LocateEvidence({ locate, showTech }: { locate: CqLocateResult; showTech: boolean }) {
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => { setShowAll(false); }, [locate]);
+
+  const groups = useMemo(() => groupEvidence(locate.evidence), [locate]);
+  const visible = showAll ? groups : groups.slice(0, 8);
+  const total = Number(locate.counts?.total ?? locate.evidence.length ?? 0);
+
+  return (
+    <>
+      <p className="cq-locate-conclusion">{locateSummary(locate)}</p>
+      <p className="cq-locate-explain">{locateExplanation(locate.coverage)}</p>
+      {locate.anchors.length > 0 && (
+        <p className="guide-muted">
+          已对上术语：{locate.anchors.map((anchor) => `「${anchor}」`).join('、')}
+        </p>
+      )}
+      {groups.length > 0 && (
+        <>
+          <p className="guide-muted">
+            证据共 {total} 条，归为 {groups.length} 个条目
+            {groups.length > 8 ? '；默认显示前 8 个条目。' : '。'}
+          </p>
+          <ul className="cq-evidence cq-evidence-groups">
+            {visible.map((group) => {
+              const entries = visibleEvidenceEntries(group);
+              const kinds = new Set(group.entries.map((entry) => entry.kind));
+              return (
+                <li key={group.item} className="cq-evidence-group">
+                  <div className="cq-evidence-head">
+                    <b>{group.label}</b>
+                    <span className="cq-evidence-badge">{group.entries.length} 条</span>
+                    {kinds.has('conclusion') && <span className="cq-evidence-badge ok">含结论性字段</span>}
+                    {showTech && <code>{group.item}</code>}
+                  </div>
+                  <ul className="cq-evidence-lines">
+                    {entries.map((entry, index) => (
+                      <li key={`${entry.field}-${index}`}>
+                        <span>{renderHighlighted(entry.text, entry.matched)}</span>
+                        {showTech && <code>{entry.field} · {entry.kind}</code>}
+                      </li>
+                    ))}
+                  </ul>
+                  {showTech && <AxiomBlock item={group.item} hits={group.entries} />}
+                </li>
+              );
+            })}
+          </ul>
+          {groups.length > 8 && (
+            <button type="button" className="btn link" onClick={() => setShowAll((value) => !value)}>
+              {showAll ? '收起其余条目' : `展开其余 ${groups.length - 8} 个条目`}
+            </button>
+          )}
+        </>
+      )}
+      <p className="cq-evidence-boundary">
+        证据只覆盖本体中的文字描述（类 / 属性 / 个体的标签与说明），不含实例数据与派生结论；
+        定位不判断「能不能答」，以回归为准。
+      </p>
+      {showTech && (
+        <TechDetails
+          label="展开看定位技术细节"
+          items={[{
+            label: '定位结果',
+            lines: [
+              `覆盖状态：${locate.coverage}`,
+              `证据条数：${total}（结论性 ${locate.counts?.conclusion ?? 0} / 描述性 ${locate.counts?.description ?? 0}）`,
+              '判定阈值：命中 >5 条且结论性字段为 0 时判为 scattered（有实无名）',
+              '生成方式：题干术语做最长字面匹配，锚点只作为字符串常量填入固定 SPARQL 模板，不生成查询语句。',
+              `系统提示：${locate.hint}`,
+              ...locate.anchors.map((anchor) => `锚点 ${anchor}（${locate.anchor_sources?.[anchor] || 'label'}）`),
+            ],
+          }]}
+        />
+      )}
+    </>
+  );
 }
 
 function percentOrNA(value?: number | null): string {
@@ -1265,15 +1403,117 @@ const GLOSSARY: Array<{ term: string; desc: string }> = [
   { term: '题干', desc: '题目的业务问题本身，例如「哪些智能体能执行登录模块开发？」。' },
   { term: '定位 / 锚点', desc: '系统在题干里找到的本体术语；锚点是「对上了哪个词」，定位是「能不能查到证据」。' },
   { term: '证据', desc: '本体里承载这道题的条目；有证据说明题目问的概念在本体里存在。' },
-  { term: '回归通过（即可答）', desc: '有回归断言，并且上次评估通过；与「缺口」不是互补分类。' },
-  { term: '回归', desc: '按题目预设的检查自动跑一遍，看结果是否符合预期。' },
-  { term: '断言', desc: '这道题的自动检查：查什么、期望什么；由智能体生成，专家可核对。' },
+  { term: '回归通过（即可答）', desc: '有回归断言，并且上次评估通过；单题验证不改变这个状态。' },
+  { term: '回归（总称）', desc: '分两种：单题验证当场看结果；整集评估写评估历史并更新题目状态。' },
+  { term: '单题验证', desc: '只测这一题、当场给结果，不写评估历史，也不改变题目状态。' },
+  { term: '评估', desc: '把全部题跑一遍，写评估历史、更新「回归通过」覆盖与题目状态。' },
+  { term: '回归断言', desc: '这道题的自动检查：查什么、期望什么；天生归单题，由智能体生成。' },
   { term: '题型', desc: '检索 / 推导 / 计数 / 反例四类，描述题目主要考什么。' },
   { term: '阶段', desc: '这道题当前走到生命周期哪一段：已建题 / 回归中 / 待裁定 / 已裁定 / 修复中 / 回归通过 / 待跟进。' },
   { term: '熔断', desc: '连续多轮没有进展时暂停自动流程，等你处理；0 表示未触发。' },
   { term: '意图待确认', desc: '这道题的期望口径需要你确认；确认后会进入后续回归。' },
   { term: '题集', desc: '当前这一组 CQ；同一本体可以有多份题集（当前版本单集）。' },
 ];
+
+const SWIMLANE_STEPS = ['1 建题', '2 修题', '3 处置', '4 单题验证', '5 整集评估'];
+const SWIMLANE_ROWS: Array<{ lane: string; cells: string[][] }> = [
+  {
+    lane: '🧑 人',
+    cells: [
+      ['[请求智能体生成候选题]', '另 [新增题目] [导入 JSON]'],
+      ['[编辑] → [保存]', '改完自动退回待审核'],
+      ['[审核通过并启用]', '另 [修改] [拒绝出队] [暂缓]'],
+      ['[测这一题]', '单题验证，不改题目状态'],
+      ['[跑一轮评估]', '先看清预检提示'],
+    ],
+  },
+  {
+    lane: '🤖 智能体',
+    cells: [
+      ['cq_author / cq_case_upsert', '生成候选题与断言'],
+      ['cq_locate / cq_validate', '补锚点 · 查断言'],
+      ['cq_decision / cq_agenda', '提问 · 回报依据'],
+      ['cq_regression', '读当场结果'],
+      ['cq_coverage / cq_metrics', '读覆盖与指标'],
+    ],
+  },
+  {
+    lane: '⚙️ 系统',
+    cells: [
+      ['cqSet / cqResume', '存题 · 待办落账'],
+      ['review.state=pending', '重开审核态'],
+      ['cq_set.audit.jsonl', '审核态落账'],
+      ['run_case()', '跑断言，不写缓存'],
+      ['record_run_cache', '更新通过态 · 落账'],
+    ],
+  },
+];
+
+/** #351：顶部可折叠泳道图——五步、三泳道，节点标真实按钮名或接口名。 */
+function CqManagementGuide() {
+  const [open, setOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem('oa.cq.guide.v1') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () => {
+    setOpen((value) => {
+      try {
+        window.localStorage.setItem('oa.cq.guide.v1', value ? '0' : '1');
+      } catch {
+        /* 本地存储不可用时只影响记忆，不影响本次展示 */
+      }
+      return !value;
+    });
+  };
+  return (
+    <section className={`cq-swimlane${open ? ' open' : ''}`} aria-label="CQ 集管理引导">
+      <div className="cq-swimlane-bar">
+        <b>怎么管这批题？</b>
+        <span>建题 → 修题 → 处置 → 单题验证 → 整集评估</span>
+        <button type="button" className="btn link" onClick={toggle} aria-expanded={open}>
+          {open ? '收起' : '展开看谁做什么'}
+        </button>
+      </div>
+      {open && (
+        <div className="cq-swimlane-body">
+          <table className="cq-swimlane-table">
+            <thead>
+              <tr>
+                <th scope="col">泳道</th>
+                {SWIMLANE_STEPS.map((step) => <th key={step} scope="col">{step}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {SWIMLANE_ROWS.map((row) => (
+                <tr key={row.lane}>
+                  <th scope="row">{row.lane}</th>
+                  {row.cells.map((cell, index) => (
+                    <td key={`${row.lane}-${index}`}>
+                      {cell.map((line, lineIndex) => (
+                        <span key={line} className={lineIndex === 0 ? 'cq-swimlane-main' : 'cq-swimlane-sub'}>
+                          {line}
+                        </span>
+                      ))}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="cq-swimlane-warning">
+            最常踩的坑：只走了第 4 步就以为题好了——单题验证通过不改题目状态，必须走第 5 步。
+          </p>
+          <p className="guide-muted">
+            方括号里是页面上真实显示的按钮；等宽字体是背后的 MCP 工具 / 接口，实际使用走页面按钮即可。
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function CqGlossary({ onClose }: { onClose: () => void }) {
   return (
@@ -1544,144 +1784,113 @@ function CqDetail({
         )}
       </section>
 
-      {/* #338：单题回归调试，与正式全量评估分离。 */}
-      <section className="cq-section cq-case-run">
-        <h4>单题回归</h4>
+      {/* #348：断言、单题验证、上次评估收成一组，按「标准 → 现在 → 上次」排列。 */}
+      <section className="cq-section cq-verification">
+        <h4>回归验证</h4>
         <p className="guide-muted">
-          只验证这一题，方便改完断言立刻确认；不写评估历史、不算覆盖率、不更新最近回归。
-          正式评估仍用工具栏「跑一轮评估」。
+          同一件事的三段信息：先看用什么标准判，再当场验证，最后对照上次正式结论。
         </p>
-        <button
-          type="button"
-          className="btn secondary"
-          disabled={caseRunBusy}
-          onClick={onRunCase}
-        >
-          {caseRunBusy ? '测试中…' : '测这一题'}
-        </button>
-        {caseRunResult && (
-          <div className={`cq-case-run-result state-${caseRunResult.state}`} role="status">
-            <b>
-              回归：
-              {caseRunResult.state === 'pass'
-                ? '回归通过'
-                : caseRunResult.state === 'fail'
-                  ? '回归未通过'
-                  : runStateLabel(caseRunResult.state)}
-            </b>
-            {caseRunResult.excluded_from_formal && (
-              <span className="guide-muted">{caseRunResult.excluded_reason}</span>
-            )}
-            {caseRunResult.hint && <p>{caseRunResult.hint}</p>}
-            {caseRunResult.detail !== undefined && (
-              <pre className="cq-case-run-detail">{JSON.stringify(caseRunResult.detail, null, 2)}</pre>
-            )}
-          </div>
-        )}
+
+        <div className="cq-verification-step">
+          <h4 className="cq-verification-sub">回归断言</h4>
+          <p className="guide-muted">{assertionSummaryText(item)}</p>
+          {item.regression?.query ? (
+            showTech ? (
+              <>
+                <div className="cq-assertion-label">查询（query）</div>
+                <pre className="cq-code">{item.regression.query}</pre>
+                <div className="cq-assertion-label">期望（expect）</div>
+                <pre className="cq-code">{expectText}</pre>
+              </>
+            ) : (
+              <TechDetails
+                items={[{
+                  label: '回归断言',
+                  lines: [
+                    '查询（SPARQL）：',
+                    ...String(item.regression.query).split('\n'),
+                    '期望（JSON）：',
+                    ...expectText.split('\n'),
+                  ],
+                }]}
+              />
+            )
+          ) : (
+            <div className="guide-muted">
+              {'该题还没有回归断言；可以在「编辑 → 技术设置」里补，或让智能体补。'}
+            </div>
+          )}
+        </div>
+
+        <div className="cq-verification-step cq-case-run">
+          <h4 className="cq-verification-sub">单题验证</h4>
+          <p className="guide-muted">
+            只验证这一题，方便改完断言立刻确认；不写评估历史、不算覆盖率、不更新最近回归。
+            正式评估仍用工具栏「跑一轮评估」。
+          </p>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={caseRunBusy}
+            onClick={onRunCase}
+          >
+            {caseRunBusy ? '测试中…' : '测这一题'}
+          </button>
+          {caseRunResult && (
+            <div className={`cq-case-run-result state-${caseRunResult.state}`} role="status">
+              <b>
+                回归：
+                {caseRunResult.state === 'pass'
+                  ? '回归通过'
+                  : caseRunResult.state === 'fail'
+                    ? '回归未通过'
+                    : runStateLabel(caseRunResult.state)}
+              </b>
+              {caseRunResult.excluded_from_formal && (
+                <span className="guide-muted">{caseRunResult.excluded_reason}</span>
+              )}
+              {caseRunResult.hint && <p>{caseRunResult.hint}</p>}
+              {caseRunResult.detail !== undefined && (
+                <pre className="cq-case-run-detail">{JSON.stringify(caseRunResult.detail, null, 2)}</pre>
+              )}
+            </div>
+          )}
+          {/* #348：用户最容易误解的一处——这次通过不等于题目状态变了。 */}
+          <p className="cq-run-scope">
+            单题验证只检验这一题、当场给结果，不写评估历史，也不改变题目状态。
+            题目状态来自「跑一轮评估」的结果；没跑过评估就显示「回归未通过」。
+            想让题目状态变成「回归通过」，请跑一轮评估。
+          </p>
+        </div>
+
+        <div className="cq-verification-step">
+          <h4 className="cq-verification-sub">上次评估</h4>
+          {cache ? (
+            <div className="cq-kv">
+              <div>
+                <span>结论</span>
+                <b className={cache.earl === 'pass' ? 'ok' : cache.earl === 'fail' ? 'warn' : ''}>
+                  {lastRunLabel(cache.earl, cache.conclusion)}
+                </b>
+              </div>
+              <div><span>时间</span><b>{formatLocalTime(cache.ran_at)}</b></div>
+            </div>
+          ) : (
+            <div className="guide-muted">
+              尚未评估；运行一次评估后这里会显示回归通过 / 回归未通过。
+            </div>
+          )}
+        </div>
       </section>
 
-      <section className="cq-section">
+      <section className="cq-section cq-locate-section">
         <h4>定位证据</h4>
         {error ? (
           <div className="element-readonly-note">{error}</div>
         ) : !locate ? (
           <div className="guide-muted">正在定位…</div>
         ) : (
-          <>
-            {locate.coverage === 'no_anchors' ? (
-              <div className="element-readonly-note">
-                这道题没有对上本体里的已有术语。可以改问法，或让智能体补术语 / 数据。
-              </div>
-            ) : locate.coverage === 'gap' ? (
-              <div className="element-readonly-note">
-                这道题能对上本体术语，但暂时查不到证据；可以让智能体补数据或调整问法。
-              </div>
-            ) : (
-              <p className="guide-muted">
-                {showTech ? locate.hint : locateSummary(locate)}
-              </p>
-            )}
-            {locate.anchors.length > 0 && (
-              <p className="guide-muted">
-                已对上术语：{locate.anchors.map((anchor) => `「${anchor}」`).join('、')}
-              </p>
-            )}
-            {locate.evidence.length > 0 && (
-              <ul className="cq-evidence">
-                {locate.evidence.slice(0, 8).map((entry, i) => (
-                  <li key={`${entry.item}-${entry.field}-${i}`}>
-                    <b>{entry.label}</b>
-                    {showTech && <code>{entry.field}</code>}
-                    <span>{entry.text}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {showTech && (
-              <TechDetails
-                label="展开看定位技术细节"
-                items={[{
-                  label: '定位结果',
-                  lines: [
-                    `覆盖状态：${locate.coverage}`,
-                    `证据条数：${locate.counts?.total ?? 0}`,
-                    `系统提示：${locate.hint}`,
-                    ...locate.anchors.map((anchor) => `锚点 ${anchor}（${locate.anchor_sources?.[anchor] || 'label'}）`),
-                  ],
-                }]}
-              />
-            )}
-          </>
-        )}
-      </section>
-
-      <section className="cq-section">
-        <h4>回归断言</h4>
-        <p className="guide-muted">{assertionSummaryText(item)}</p>
-        {item.regression?.query ? (
-          showTech ? (
-            <>
-              <div className="cq-assertion-label">查询（query）</div>
-              <pre className="cq-code">{item.regression.query}</pre>
-              <div className="cq-assertion-label">期望（expect）</div>
-              <pre className="cq-code">{expectText}</pre>
-            </>
-          ) : (
-            <TechDetails
-              items={[{
-                label: '回归断言',
-                lines: [
-                  '查询（SPARQL）：',
-                  ...String(item.regression.query).split('\n'),
-                  '期望（JSON）：',
-                  ...expectText.split('\n'),
-                ],
-              }]}
-            />
-          )
-        ) : (
-          <div className="guide-muted">
-            {'该题还没有回归断言；可以在「编辑 → 技术设置」里补，或让智能体补。'}
-          </div>
-        )}
-      </section>
-
-      <section className="cq-section">
-        <h4>上次评估</h4>
-        {cache ? (
-          <div className="cq-kv">
-            <div>
-              <span>结论</span>
-              <b className={cache.earl === 'pass' ? 'ok' : cache.earl === 'fail' ? 'warn' : ''}>
-                {lastRunLabel(cache.earl, cache.conclusion)}
-              </b>
-            </div>
-            <div><span>时间</span><b>{formatLocalTime(cache.ran_at)}</b></div>
-          </div>
-        ) : (
-          <div className="guide-muted">
-            尚未评估；运行一次评估后这里会显示回归通过 / 回归未通过。
-          </div>
+          <LocateEvidence locate={locate} showTech={showTech} />
         )}
       </section>
 

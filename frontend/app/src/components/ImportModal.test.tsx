@@ -109,6 +109,18 @@ describe('ImportModal（#126 成功提示 / #131 按钮文案）', () => {
     expect(primaryButton().textContent).toBe('再次导入');
   });
 
+  it('导入前说清通用推理边界与解决路径（#352）', () => {
+    act(() => root!.render(<ImportModal onClose={() => {}} />));
+
+    const hint = container!.querySelector('.import-hint')!.textContent ?? '';
+    // 缺口 1：把「推理」具体化为通用 OWL 2 RL 推理，避免误读成「全部推理可用」。
+    expect(hint).toContain('通用 OWL 2 RL 推理可用');
+    expect(hint).toContain('结构、物化、查询、依据');
+    // 缺口 2：给出解决路径——领域能力需要领域包 / 适配器。
+    expect(hint).toContain('需要领域包与适配器');
+    expect(hint).toContain('可切回默认领域或安装领域包');
+  });
+
   it('导入失败仍走红色错误横幅，不产生成功提示', async () => {
     vi.spyOn(api, 'loadOntology').mockRejectedValue(new Error('文件损坏'));
     act(() => root!.render(<ImportModal onClose={() => {}} />));

@@ -326,6 +326,30 @@ class CqLocateResponse(BaseModel):
     )
 
 
+class CqAxiomItem(BaseModel):
+    """条目的一条出边（公理）。"""
+
+    predicate: str = Field(..., description="谓词的可读写法（有前缀绑定则用 qname，否则完整 IRI）。")
+    object: str = Field(..., description="宾语的可读写法；字面量直接给文本，IRI 给 qname / 完整 IRI。")
+    literal: bool = Field(..., description="宾语是否为字面量；true 时 object 是文本值。")
+
+
+class CqAxiomsResponse(BaseModel):
+    """按条目取公理（只读，不进审计、不落盘）。"""
+
+    item: str = Field(..., description="解析后的完整 IRI。")
+    label: str = Field(..., description="条目的 rdfs:label；没有时回落到短名。")
+    count: int = Field(..., description="以该条目作主语的公理条数（不含匿名节点展开）。")
+    axioms: list[CqAxiomItem] = Field(
+        default_factory=list,
+        description="条目作主语的全部出边；按谓词 / 宾语稳定排序。",
+    )
+    turtle: str = Field(
+        ...,
+        description="图内公理还原的 Turtle 片段（含匿名节点展开），与源文件排版可能有差异。",
+    )
+
+
 # ---------------- 本体加载 / 保存 / 导出 ----------------
 
 class OntologyLoadResponse(BaseModel):

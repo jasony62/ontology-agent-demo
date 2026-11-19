@@ -79,6 +79,7 @@ from reasoner.engine import (
     get_engine,
     local,
 )
+from reasoner.cq_axioms import ItemInvalid, ItemNotFound, item_axioms
 from reasoner.cq_locate import locate_cq
 from reasoner.proof import build_proof
 from reasoner.protocol import (
@@ -108,6 +109,7 @@ from .schemas import (
 )
 from .response_schemas import (
     ClassesResponse,
+    CqAxiomsResponse,
     CqLocateResponse,
     DomainActivateResponse,
     DomainReloadResponse,
@@ -2021,6 +2023,36 @@ def cq_locate(req: CqLocateRequest):
             },
         )
     except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get(
+    "/api/domains/current/cq/axioms",
+    tags=["通用查询"],
+    summary="按条目取公理",
+    responses={
+        200: {
+            "model": CqAxiomsResponse,
+            "description": (
+                "条目作主语的全部出边、条数与图内 Turtle 还原；只读、不进审计、不落盘。"
+                "标注哪几行被定位命中由前端比对 evidence，后端不混入定位判定。"
+            ),
+        },
+        **ERROR_400,
+        **ERROR_404,
+    },
+)
+def cq_axioms(item: str = Query(..., min_length=1, description="条目短名或完整 IRI；必须是当前图内以它作主语的条目。")):
+    """按条目返回图内公理（#347），支撑「定位证据 → 本体原文」的 Turtle 展开。
+
+    边界：只还原图内公理，不做源文件逐字定位；只接受当前图内的主语，
+    图外 IRI 返回 400，条目不存在返回 404，不静默返回空数组。
+    """
+    try:
+        return item_axioms(ENGINE, item)
+    except ItemNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ItemInvalid as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 

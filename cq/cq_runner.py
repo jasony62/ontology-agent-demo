@@ -26,7 +26,16 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _hint(case: dict) -> str:
+def _hint(case: dict, engine=None) -> str:
+    # #350：先排除「断言前缀不属于当前本体」这一根因——它看起来像断言退化，
+    # 实际是题目建出来就不可答；泛泛提示会让用户去改本体。
+    regression = case.get("regression")
+    if engine is not None and isinstance(regression, dict):
+        from cq.assertion_namespace import first_mismatch
+
+        problem = first_mismatch(engine, case)
+        if problem:
+            return problem["message"]
     raw = str(case.get("rule") or case.get("expected_type") or "").strip()
     label = raw.split()[0] if raw else ""
     if label:
@@ -111,11 +120,11 @@ def run_case(engine, case: dict) -> dict:
         ok, detail = _judge_sparql(is_ask, actual, regression.get("expect"))
     except Exception as exc:  # noqa: BLE001 —— 单题失败不拖垮整集
         return {**base, "state": CANNOT_TELL,
-                "detail": {"error": f"{type(exc).__name__}: {exc}"}, "hint": _hint(case)}
+                "detail": {"error": f"{type(exc).__name__}: {exc}"}, "hint": _hint(case, engine)}
     state = PASS if ok else FAIL
     out = {**base, "state": state, "detail": detail}
     if not ok:
-        out["hint"] = _hint(case)
+        out["hint"] = _hint(case, engine)
     return out
 
 

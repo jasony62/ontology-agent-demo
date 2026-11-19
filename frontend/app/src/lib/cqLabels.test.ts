@@ -88,11 +88,11 @@ describe('事件文案中文化（#252）', () => {
     expect(eventLabel('weird')).toBe('weird');
     expect(actionLabel('generate_cases')).toBe('生成候选题');
     expect(actionLabel('update_ontology')).toBe('补本体 / 术语');
-    expect(runStateLabel('pass')).toBe('通过');
+    expect(runStateLabel('pass')).toBe('回归通过');
     expect(runStateLabel('cannot_tell')).toBe('无法判断');
     expect(runStateLabel('')).toBe('—');
-    expect(lastRunLabel(undefined, 3)).toBe('通过');
-    expect(lastRunLabel('fail', 3)).toBe('未通过');
+    expect(lastRunLabel(undefined, 3)).toBe('回归通过');
+    expect(lastRunLabel('fail', 3)).toBe('回归未通过');
   });
 
   it('历史时间线摘要兜底只翻译已知形态，不动题面英文', () => {
@@ -104,7 +104,7 @@ describe('事件文案中文化（#252）', () => {
     })).toBe('新增题目 Q1');
     expect(timelineSummaryText({
       source: 'regression', kind: 'regression_run', summary: '回归：20/20 pass',
-    })).toBe('回归：20/20 通过');
+    })).toBe('回归：20/20（回归通过）');
     expect(timelineSummaryText({
       source: 'regression', kind: 'regression_case', summary: '回归：cannot_tell',
     })).toBe('回归：无法判断');

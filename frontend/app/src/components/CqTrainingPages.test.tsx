@@ -170,7 +170,7 @@ describe('训练标签（#203）', () => {
     expect(text).toContain('系统');
     // 历史英文摘要兜底翻译
     expect(text).toContain('保存题集');
-    expect(text).toContain('回归：20/20 通过');
+    expect(text).toContain('回归：20/20（回归通过）');
     // 时间本地化：无 UTC 尾巴，形如 YYYY-MM-DD HH:mm:ss
     expect(text).not.toContain('+00:00');
     expect(text).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);

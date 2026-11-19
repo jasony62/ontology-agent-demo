@@ -89,9 +89,11 @@ export function actorChannelText(actorType?: string | null, actor?: string | nul
 }
 
 /** #252：回归结论中文；与 `cq/lifecycle.py` 的阶段口径一致。 */
+// #340：机器回归结论一律带限定词——页面上还有「审核已通过」「规则校验通过」，
+// 裸写「通过 / 未通过」读者只能靠位置猜是哪一种。
 export const RUN_STATE_LABELS: Record<string, string> = {
-  pass: '通过',
-  fail: '未通过',
+  pass: '回归通过',
+  fail: '回归未通过',
   cannot_tell: '无法判断',
   not_tested: '未测试',
 };
@@ -106,7 +108,7 @@ export function runStateLabel(value?: unknown): string {
 export function lastRunLabel(earl?: unknown, conclusion?: unknown): string {
   const raw = String(earl ?? '').trim();
   if (raw) return runStateLabel(raw);
-  return Number(conclusion || 0) > 0 ? '通过' : '未通过';
+  return Number(conclusion || 0) > 0 ? '回归通过' : '回归未通过';
 }
 
 /** #252：审计动作中文；未知动作也不回退成英文码。 */
@@ -232,7 +234,8 @@ export function timelineSummaryText(item: {
     return caseId ? `${label} ${caseId}` : label;
   }
   const run = summary.match(/^回归：(\d+)\/(\d+) pass$/);
-  if (run) return `回归：${run[1]}/${run[2]} 通过`;
+  // #340：裸「通过」改为限定写法，避免与审核 / 规则校验的通过混淆。
+  if (run) return `回归：${run[1]}/${run[2]}（${runStateLabel('pass')}）`;
   const single = summary.match(/^回归：(pass|fail|cannot_tell|not_tested)$/);
   if (single) return `回归：${runStateLabel(single[1])}`;
   return summary;

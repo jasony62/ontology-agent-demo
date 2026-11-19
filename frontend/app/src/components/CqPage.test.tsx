@@ -715,7 +715,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).toContain('50%');
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('登录模块开发');
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('上次评估');
-    expect(container!.querySelector('.cq-detail')?.textContent).toContain('通过');
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('回归通过');
     // #210：领导模式只给业务摘要，原始 SPARQL 默认收起
     const detail = container!.querySelector('.cq-detail')!;
     expect(detail.textContent).toContain('应判定为「是」');
@@ -850,7 +850,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const text = container!.textContent ?? '';
     expect(text).toContain('审核');
-    expect(text).toContain('已通过 · 杨工');
+    expect(text).toContain('审核已通过 · 杨工');
   });
 
   it('服务端返回结构化 review_pending 时给出可操作的错误（#280）', async () => {
@@ -983,7 +983,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('不改本体，也不改题干和断言'));
     const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/cq/regression/run'));
     expect(call).toBeTruthy();
-    expect(container!.textContent).toContain('评估完成：1/2 通过');
+    expect(container!.textContent).toContain('评估完成：1/2 回归通过');
     confirm.mockRestore();
   });
 
@@ -1417,5 +1417,33 @@ describe('CQ 集页（#151 / #203）', () => {
     const result = container!.querySelector('.cq-case-run-result')!;
     expect(result.textContent).toContain('回归：回归通过');
     expect(result.textContent).toContain('"actual": true');
+  });
+
+  it('缺口 chip 把内部键「未通过」显示为「回归未通过」，筛选仍按原键生效（#341）', async () => {
+    stubFetch({
+      ...SET,
+      cases: SET.cases.map((item, index) => (index === 1
+        ? { ...item, blockers: ['未通过'] }
+        : item)),
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const stats = container!.querySelector('.cq-gap-stats')!;
+    const labels = [...stats.querySelectorAll('.cq-gap-stat')]
+      .map((node) => node.textContent?.replace(/\s+/g, ' ').trim());
+    // 显示名带限定，内部匹配键仍是「未通过」。
+    expect(labels).toEqual(['回归未通过 1']);
+    expect(labels).not.toContain('未通过 1');
+
+    const chip = [...stats.querySelectorAll<HTMLButtonElement>('.cq-gap-stat')]
+      .find((node) => node.textContent?.startsWith('回归未通过'))!;
+    await act(async () => { chip.click(); });
+    await flush();
+
+    const rows = [...container!.querySelectorAll<HTMLButtonElement>('.cq-list .cq-row')];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('这条结论凭什么成立？');
+    expect(rows[0].textContent).toContain('缺：回归未通过');
   });
 });

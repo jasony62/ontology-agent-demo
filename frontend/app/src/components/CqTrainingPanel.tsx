@@ -43,7 +43,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 const STAGE_ACTIONS: Record<string, string> = {
   authored: '还没有可自动验收的检查；等智能体补断言，或到题目页核对。',
-  regression: '回归还没通过；等智能体归因或处理。',
+  regression: '回归未通过；等智能体归因或处理。',
   resolved: '已经拍板，等智能体按结论行动。',
   fixing: '智能体正在修复这轮改动。',
   passed: '上次回归通过，可以收口。',
@@ -324,7 +324,7 @@ export default function CqTrainingPanel({
                 <b>{reviewPending}</b>
                 <span>
                   待审核题
-                  <HelpTip text="必审的题在题干或断言改动后需要重新确认；未通过审核会拦住回归。" />
+                  <HelpTip text="必审的题在题干或断言改动后需要重新确认；审核未通过会拦住回归。" />
                 </span>
               </div>
             )}

@@ -111,6 +111,23 @@ function stubFetch(
     if (url.includes('/cq/locate')) {
       return { ok: true, status: 200, json: async () => locate } as unknown as Response;
     }
+    if (url.includes('/cq/axioms')) {
+      const params = new URL(url, 'http://localhost').searchParams;
+      const item = params.get('item') || '';
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          item: item.includes('#') ? item : `http://ontology.localhost/agent-task#${item}`,
+          label: '登录模块开发',
+          count: 2,
+          axioms: [
+            { predicate: 'rdfs:label', object: '登录模块开发', literal: true },
+            { predicate: 'rdfs:comment', object: '登录模块开发', literal: true },
+          ],
+          turtle: '@prefix : <http://ontology.localhost/agent-task#> .\n\nt_login_dev rdfs:label "登录模块开发" .',
+        }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/coverage')) {
       return { ok: true, status: 200, json: async () => COVERAGE } as unknown as Response;
     }
@@ -383,17 +400,23 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(text).toContain('成熟度仅供参考');
   });
 
-  it('智能体格兜底文案带上一版更新时间，不再说「准备中」（#265）', async () => {
+  it('题库页不再铺开过程态：等待条与角色条只在训练页出现（#349）', async () => {
     stubFetch(SET, LOCATE, { auditEntries: false });
     act(() => root!.render(<CqPage />));
     await flush();
 
-    const agent = container!.querySelector('.cq-role.agent')!;
-    expect(agent.textContent).toContain('上一版题集更新于');
-    expect(agent.textContent).not.toContain('等待你确认或运行评估');
+    expect(container!.querySelector('.cq-role')).toBeNull();
+    expect(container!.querySelector('.cq-waiting')).toBeNull();
+
+    const training = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '训练')!;
+    await act(async () => { training.click(); });
+    await flush();
+    expect(container!.querySelector('.cq-role.agent')).not.toBeNull();
+    expect(container!.querySelector('.cq-role.human')).not.toBeNull();
   });
 
-  it('请求智能体后常驻等待状态，可催可取消（#264）', async () => {
+  it('请求智能体后常驻等待状态，可催可取消（#264 / #349）', async () => {
     const requestedAt = new Date(Date.now() - 9 * 3_600_000).toISOString();
     stubFetch(SET, LOCATE, {
       agentActions: [{
@@ -402,6 +425,16 @@ describe('CQ 集页（#151 / #203）', () => {
       }],
     });
     act(() => root!.render(<CqPage />));
+    await flush();
+
+    // 题库页只留一条只报数的窄入口，放操作按钮属于训练页。
+    const entry = container!.querySelector('.cq-training-entry')!;
+    expect(entry.textContent).toContain('1 项待响应');
+    expect(container!.querySelector('.cq-waiting')).toBeNull();
+
+    const training = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '训练')!;
+    await act(async () => { training.click(); });
     await flush();
 
     const wait = container!.querySelector('.cq-waiting')!;
@@ -429,20 +462,26 @@ describe('CQ 集页（#151 / #203）', () => {
       .toMatchObject({ status: 'cancelled' });
   });
 
-  it('默认隐藏质量盲区，定位证据只给一句人话（#268 / #293）', async () => {
+  it('默认隐藏质量盲区，定位证据只给结论与边界（#268 / #293 / #346）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
     expect(container!.querySelector('.cq-mention-coverage')).toBeNull();
-    expect(container!.textContent).toContain('对上 1 个术语、1 条证据。');
+    expect(container!.textContent).toContain('对上 1 个术语、1 条证据');
+    expect(container!.textContent).toContain('都是说明性文字');
+    expect(container!.textContent).toContain('证据只覆盖本体中的文字描述');
     expect(container!.textContent).not.toContain('命中 1 条证据（结论性 0 条）');
 
     const tech = container!.querySelector<HTMLInputElement>('.cq-tech-switch input')!;
     await act(async () => { tech.click(); });
     await flush();
     expect(container!.querySelector('.cq-mention-coverage')).not.toBeNull();
-    expect(container!.textContent).toContain('命中 1 条证据（结论性 0 条）');
+    const details = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '展开看定位技术细节')!;
+    await act(async () => { details.click(); });
+    await flush();
+    expect(container!.textContent).toContain('证据条数：1（结论性 0 / 描述性 1）');
   });
 
   it('总题数与时间口径改成业务能读懂的说明（#269）', async () => {
@@ -639,24 +678,33 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.textContent).toContain('来源未知');
   });
 
-  it('待决数取不到时显示「待决状态未知」，不冒称「没有待决」（#255）', async () => {
+  it('待决数取不到时训练页显示「待决状态未知」，不冒称「没有待决」（#255 / #349）', async () => {
     stubFetch(SET, LOCATE, { failResume: true });
     act(() => root!.render(<CqPage />));
+    await flush();
+
+    // 题库页仍汇总可重试的取数失败。
+    expect(container!.textContent).toContain('部分数据未取到');
+    expect(container!.textContent).toContain('待决状态');
+
+    const training = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '训练')!;
+    await act(async () => { training.click(); });
     await flush();
 
     const strip = container!.querySelector('.cq-role.human')!;
     expect(strip.textContent).toContain('待决状态未知');
     expect(strip.textContent).not.toContain('没有待决');
-    // 辅助取数失败要汇总成可重试的警告条
-    expect(container!.textContent).toContain('部分数据未取到');
-    expect(container!.textContent).toContain('待决状态');
-    expect([...container!.querySelectorAll('button')].some((btn) => btn.textContent === '重试'))
-      .toBe(true);
   });
 
-  it('resume 尚未返回时显示「正在读取待决」，不提前下结论（#255）', async () => {
+  it('resume 尚未返回时训练页显示「正在读取待决」，不提前下结论（#255 / #349）', async () => {
     stubFetch(SET, LOCATE, { hangResume: true });
     act(() => root!.render(<CqPage />));
+    await flush();
+
+    const training = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '训练')!;
+    await act(async () => { training.click(); });
     await flush();
 
     const strip = container!.querySelector('.cq-role.human')!;
@@ -664,9 +712,14 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(strip.textContent).not.toContain('没有待决');
   });
 
-  it('明确返回 0 时才允许出现「当前没有待决」（#255）', async () => {
+  it('明确返回 0 时才允许出现「当前没有待决」（#255 / #349）', async () => {
     stubFetch(SET, LOCATE, { pending: 0 });
     act(() => root!.render(<CqPage />));
+    await flush();
+
+    const training = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '训练')!;
+    await act(async () => { training.click(); });
     await flush();
 
     const strip = container!.querySelector('.cq-role.human')!;
@@ -1010,7 +1063,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const labels = [...container!.querySelectorAll('.cq-tool-group-label')]
       .map((node) => node.textContent);
-    expect(labels).toEqual(['视图', '出题', '技术', '只读工具', '写操作']);
+    expect(labels).toEqual(['视图', '帮助', '出题', '技术', '只读工具', '写操作']);
     expect(container!.querySelector('.cq-export-menu')).not.toBeNull();
     const links = [...container!.querySelectorAll<HTMLAnchorElement>('.cq-export-list a')];
     const items = links.map((link) => link.textContent ?? '');
@@ -1183,11 +1236,12 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const detail = container!.querySelector('.cq-detail')!;
     const text = detail.textContent ?? '';
-    expect(text).toContain('没有对上本体里的已有术语');
+    expect(text).toContain('题干没有对上本体里的任何术语');
+    expect(text).toContain('定位器只认字面');
     expect(text).not.toContain('rdfs:label');
     expect(text).not.toContain('248 个中文术语');
     expect(text).not.toContain('没有命中证据（0 条）');
-    expect(text.split('没有对上本体里的已有术语').length - 1).toBe(1);
+    expect(text.split('题干没有对上本体里的任何术语').length - 1).toBe(1);
   });
 
   it('领导模式可请求智能体生成候选题（#243 / G11）', async () => {
@@ -1352,11 +1406,16 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(exportLinks[0].closest('.cq-export-menu')).not.toBeNull();
   });
 
-  it('等待条与角色条不再复述同一份待响应清单（#303 第 11 组）', async () => {
+  it('训练页等待条与角色条不再复述同一份待响应清单（#303 第 11 组）', async () => {
     stubFetch(SET, LOCATE, {
       agentActions: [{ action_id: 'a1', action: 'generate_cases', requested_at: '2026-11-17T00:00:00+00:00' }],
     });
     act(() => root!.render(<CqPage />));
+    await flush();
+
+    const training = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '训练')!;
+    await act(async () => { training.click(); });
     await flush();
 
     const strip = container!.querySelector('.cq-role.agent')!;
@@ -1483,5 +1542,155 @@ describe('CQ 集页（#151 / #203）', () => {
     await flush();
 
     expect(container!.querySelector('.cq-disposition-warn')).toBeNull();
+  });
+
+  it('定位证据按条目归组去自指，结论带数字、解释与命中高亮（#346）', async () => {
+    const locate = {
+      anchors: ['任务', '智能体'],
+      coverage: 'scattered',
+      evidence: [
+        { item: 'Task', label: '任务', field: 'label', kind: 'description', text: '任务', matched: '任务' },
+        { item: 'Task', label: '任务', field: 'comment', kind: 'description', text: '任务：被编排的工作单元', matched: '任务' },
+        { item: 'Agent', label: '智能体', field: 'comment', kind: 'description', text: '执行任务的智能体', matched: '智能体' },
+      ],
+      counts: { total: 3, conclusion: 0, description: 3 },
+      hint: '命中 3 条证据（结论性 0 条）。',
+    };
+    stubFetch(SET, locate);
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const conclusion = container!.querySelector('.cq-locate-conclusion')!.textContent ?? '';
+    expect(conclusion).toContain('2 个术语');
+    expect(conclusion).toContain('3 条证据');
+    expect(conclusion).toContain('都是说明性文字');
+
+    const explain = container!.querySelector('.cq-locate-explain')!.textContent ?? '';
+    expect(explain).toContain('这不代表题目有问题');
+
+    // 同一条目的 label / comment 合成一张卡：3 条证据 → 2 个条目组。
+    const groups = [...container!.querySelectorAll('.cq-evidence-group')];
+    expect(groups).toHaveLength(2);
+    const taskGroup = groups.find((node) => node.textContent?.includes('任务'))!;
+    expect(taskGroup.textContent).toContain('2 条');
+    expect(taskGroup.textContent?.split('任务：被编排的工作单元')).toHaveLength(2);
+
+    // 命中词用 <mark> 标出，用户能看出「这条为什么出现在这里」。
+    expect(container!.querySelectorAll('.cq-evidence-lines mark').length).toBeGreaterThan(0);
+    expect(container!.textContent).toContain('证据只覆盖本体中的文字描述');
+  });
+
+  it('证据超过 8 个条目时默认折叠，可展开其余（#346）', async () => {
+    const locate = {
+      anchors: ['条目'],
+      coverage: 'scattered',
+      evidence: Array.from({ length: 10 }, (_, index) => ({
+        item: `item${index}`,
+        label: `条目${index}`,
+        field: 'label',
+        kind: 'description',
+        text: `条目${index}的说明`,
+        matched: '条目',
+      })),
+      counts: { total: 10, conclusion: 0, description: 10 },
+      hint: '命中 10 条证据（结论性 0 条）。',
+    };
+    stubFetch(SET, locate);
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelectorAll('.cq-evidence-group')).toHaveLength(8);
+    const expand = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '展开其余 2 个条目')!;
+    await act(async () => { expand.click(); });
+    await flush();
+    expect(container!.querySelectorAll('.cq-evidence-group')).toHaveLength(10);
+  });
+
+  it('本体原文按需读取：默认模式不发请求，技术模式标注命中行（#346 / #347）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const axiomsCalls = () => vi.mocked(fetch).mock.calls
+      .filter(([url]) => String(url).includes('/cq/axioms'));
+    expect(axiomsCalls()).toHaveLength(0);
+
+    const tech = container!.querySelector<HTMLInputElement>('.cq-tech-switch input')!;
+    await act(async () => { tech.click(); });
+    await flush();
+
+    const open = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '查看本体原文（Turtle）')!;
+    await act(async () => { open.click(); });
+    await flush();
+
+    expect(axiomsCalls()).toHaveLength(1);
+    expect(String(axiomsCalls()[0][0])).toContain('item=t_login_dev');
+    const code = container!.querySelector('.cq-axioms-code')!.textContent ?? '';
+    expect(code).toContain('rdfs:label "登录模块开发"');
+    // 后端只给公理；命中标注由前端比对 evidence 完成。
+    expect(code).toContain('← 命中「登录模块开发」');
+  });
+
+  it('回归断言 / 单题验证 / 上次评估收成一组，并解释状态口径（#348）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const group = container!.querySelector('.cq-verification')!;
+    const text = group.textContent ?? '';
+    const assertion = text.indexOf('回归断言');
+    const single = text.indexOf('单题验证');
+    const lastRun = text.indexOf('上次评估');
+    expect(assertion).toBeGreaterThanOrEqual(0);
+    expect(single).toBeGreaterThan(assertion);
+    expect(lastRun).toBeGreaterThan(single);
+
+    // 旧名不再出现，且常驻解释「为什么验证通过、题目仍显示未通过」。
+    expect(container!.textContent).not.toContain('单题回归');
+    const scope = container!.querySelector('.cq-run-scope')!.textContent ?? '';
+    expect(scope).toContain('不改变题目状态');
+    expect(scope).toContain('请跑一轮评估');
+
+    // 「定位证据」在验证组之后（下移），不再横在断言与单题验证之间。
+    expect(container!.textContent!.indexOf('定位证据')).toBeGreaterThan(lastRun);
+  });
+
+  it('顶部给出五步三泳道引导，术语表与界面用词一致（#351）', async () => {
+    window.localStorage.clear();
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const guide = container!.querySelector('.cq-swimlane')!;
+    expect(guide.textContent).toContain('怎么管这批题？');
+    const open = [...guide.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '展开看谁做什么')!;
+    await act(async () => { open.click(); });
+    await flush();
+
+    const headers = [...container!.querySelectorAll('.cq-swimlane-table thead th')]
+      .map((node) => node.textContent);
+    expect(headers).toEqual(['泳道', '1 建题', '2 修题', '3 处置', '4 单题验证', '5 整集评估']);
+    const table = container!.querySelector('.cq-swimlane-table')!.textContent ?? '';
+    expect(table).toContain('🧑 人');
+    expect(table).toContain('🤖 智能体');
+    expect(table).toContain('⚙️ 系统');
+    expect(table).toContain('cq_case_upsert');
+    expect(table).toContain('run_case()');
+    expect(container!.querySelector('.cq-swimlane-warning')!.textContent)
+      .toContain('单题验证通过不改题目状态');
+
+    // 术语说明移出「技术」组，普通用户可直接打开。
+    const glossaryButton = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '术语说明')!;
+    await act(async () => { glossaryButton.click(); });
+    await flush();
+    const glossary = container!.querySelector('.cq-glossary')!.textContent ?? '';
+    expect(glossary).toContain('回归（总称）');
+    expect(glossary).toContain('单题验证');
+    expect(glossary).toContain('评估');
+    expect(glossary).toContain('单题验证不改变这个状态');
   });
 });

@@ -71,6 +71,8 @@ export default function CqTrainingPanel({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  // #349：等待条从题库页迁来，催办 / 取消能力一起搬，不能只搬界面。
+  const [actionBusy, setActionBusy] = useState(false);
   const [lastResult, setLastResult] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
   const [sortMode, setSortMode] = useState<SortMode>('action');
@@ -106,6 +108,34 @@ export default function CqTrainingPanel({
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  const urgeAgent = useCallback(async () => {
+    setActionBusy(true);
+    setError(null);
+    try {
+      await api.cqRequestCases({ note: '（催促）请尽快生成候选题' });
+      setLastResult('已再次提醒智能体；生成后这里会显示进度。');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActionBusy(false);
+    }
+  }, [load]);
+
+  const cancelRequest = useCallback(async (actionId: string) => {
+    setActionBusy(true);
+    setError(null);
+    try {
+      await api.cqActionComplete(actionId, 'cancelled', '人已取消请求');
+      setLastResult('已取消这次请求；需要时再让智能体生成。');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setActionBusy(false);
+    }
   }, [load]);
 
   const openHistory = useCallback(async (caseId: string, stage = '') => {
@@ -178,6 +208,16 @@ export default function CqTrainingPanel({
     (item) => item.review?.required
       && String(item.review.state || 'none') !== 'approved',
   ).length;
+  // #255：三态化——读不到就明说「未知」，不能拿 0 兜底说「没有待决」。
+  const resumeState: 'loading' | 'unknown' | 'ready' = resume
+    ? 'ready'
+    : error ? 'unknown' : 'loading';
+  const pendingAgentActions = resume?.next_actions ?? [];
+  const waitingHours = pendingAgentActions.reduce((max, item) => {
+    const started = Date.parse(String(item.requested_at || ''));
+    if (Number.isNaN(started)) return max;
+    return Math.max(max, Math.floor((Date.now() - started) / 3_600_000));
+  }, 0);
   const filtered = useMemo(() => {
     const rows = filter === 'all' ? [...cases] : cases.filter((item) => item.stage === filter);
     if (sortMode === 'activity') {
@@ -265,12 +305,68 @@ export default function CqTrainingPanel({
       <p className="guide-section-hint">
         以题为主语：每题一张卡，看它现在走到哪、需要你做什么。待裁定卡直接回答，已裁定会留在这道题的轨迹里。
       </p>
-      {(resume?.next_actions?.length ?? 0) > 0 && (
-        <p className="guide-section-hint cq-training-todo">
-          智能体待办 {resume?.next_actions?.length} 项：
-          {(resume?.next_actions ?? []).map((item) => actionLabel(item.action)).join('、')}
-        </p>
+      {pendingAgentActions.length > 0 && (
+        <div className="cq-waiting" role="status" aria-label="等待智能体">
+          <b>⏳ 等待中</b>
+          <span>
+            智能体待办 {pendingAgentActions.length} 项：
+            {pendingAgentActions.map((item) => actionLabel(item.action)).join('、')}
+            {waitingHours >= 1 ? ` · 已等待 ${waitingHours} 小时` : ' · 刚刚请求'}
+            {' · 未响应'}
+          </span>
+          <button
+            type="button"
+            className="btn secondary"
+            disabled={actionBusy}
+            onClick={() => void urgeAgent()}
+          >
+            催一下
+          </button>
+          <button
+            type="button"
+            className="btn link"
+            disabled={actionBusy}
+            onClick={() => void cancelRequest(pendingAgentActions[0].action_id)}
+          >
+            取消请求
+          </button>
+        </div>
       )}
+      <div className="cq-role-strip" aria-label="人机分工">
+        <span className="cq-role agent">
+          <b>🤖 智能体</b>
+          {pendingAgentActions.length > 0
+            ? `待响应 ${pendingAgentActions.length} 项（见上方等待条）`
+            : '当前没有待响应动作'}
+        </span>
+        <span className="cq-role human">
+          <b>🧑 你</b>
+          {resumeState === 'loading' && <span className="guide-muted">正在读取待决…</span>}
+          {resumeState === 'unknown' && (
+            <>
+              <span className="cq-unknown">待决状态未知</span>
+              <button type="button" className="btn link" onClick={() => void load()}>重试</button>
+            </>
+          )}
+          {resumeState === 'ready' && (
+            pendingCases.length > 0
+              ? `${pendingCases.length} 件待决定`
+              : '当前没有待决；可确认题目或运行评估'
+          )}
+          {resumeState === 'ready' && pendingCases.length > 0 && (
+            <button
+              type="button"
+              className="btn link"
+              onClick={() => {
+                setFilter('pending');
+                setFocusMode(true);
+              }}
+            >
+              去处理待裁定
+            </button>
+          )}
+        </span>
+      </div>
       {reviewPending > 0 && (
         <p className="guide-section-hint cq-training-todo">
           有 {reviewPending} 题在等审核结论；在题目详情 → 处置区点「审核通过并启用」或「修改」，不再拦回归。

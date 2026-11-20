@@ -354,16 +354,7 @@ export default function CqTrainingPanel({
               : '当前没有待决；可确认题目或运行评估'
           )}
           {resumeState === 'ready' && pendingCases.length > 0 && (
-            <button
-              type="button"
-              className="btn link"
-              onClick={() => {
-                setFilter('pending');
-                setFocusMode(true);
-              }}
-            >
-              去处理待裁定
-            </button>
+            <span className="guide-muted">用下方「逐题处理」开始</span>
           )}
         </span>
       </div>
@@ -450,11 +441,6 @@ export default function CqTrainingPanel({
             <span className="guide-muted">
               概览看总量 → 题看板看每题 → 点题卡看这道题的记录；全部事件记录在下方。
             </span>
-            {pendingCases.length > 0 && (
-              <button type="button" className="btn" onClick={() => setFocusMode(true)}>
-                开始裁定
-              </button>
-            )}
           </div>
 
           <div className="cq-training-next">

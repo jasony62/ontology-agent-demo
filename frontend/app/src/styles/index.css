@@ -25,7 +25,7 @@
   --success-bg: #eaf6ee;
   --success-border: #b7ddc3;
   --warn: #d83b01;
-  --warning: #b06000;
+  --warning: #9a5200;
   --danger: #d83b01;
   --danger-hover: #b8330a;
   --danger-bg: #fdf3f3;
@@ -1810,8 +1810,8 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-stage-bar-wrap { display: flex; flex-direction: column; gap: 3px; }
 .cq-stage-caption { font-size: var(--fs-xs); color: var(--muted); }
 .cq-training-evidence {
-  display: flex; flex-direction: column; gap: 2px; padding: 7px 9px;
-  border: 1px solid var(--border); background: var(--panel-2); border-radius: 4px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px 0 0;
+  border: 0; border-top: 1px dashed var(--border); background: transparent;
   font-size: 12px; color: var(--text); line-height: 1.6;
 }
 .cq-training-evidence b { font-size: 11px; color: var(--muted); font-weight: 600; }
@@ -2277,7 +2277,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   .domain-switch select { flex: 1 1 auto; max-width: none; }
   .domain-switch .domain-label { display: none; }
   .app-header-right { flex: 0 0 auto; margin-left: auto; }
-  .app-main { padding: 8px; gap: 8px; }
+  .app-main { padding: 12px 10px; gap: 8px; }
   .graph-side { min-width: 0; overflow-x: hidden; }
   .overview-legend, .overview-legend-group { flex-wrap: wrap; }
   .panel, .overview-section { min-width: 0; }

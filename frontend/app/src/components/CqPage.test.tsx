@@ -654,7 +654,9 @@ describe('CQ 集页（#151 / #203）', () => {
     const details = container!.querySelector<HTMLDetailsElement>('.cq-quality-detail')!;
     expect(details).not.toBeNull();
     expect(details.open).toBe(false);
-    expect(details.querySelector('.cq-meta')).not.toBeNull();
+    // 题集身份信息不再藏进「质量明细」折叠
+    expect(container!.querySelector('.cq-meta')).not.toBeNull();
+    expect(details.querySelector('.cq-meta')).toBeNull();
     expect(details.textContent).toContain('协同指标');
   });
 

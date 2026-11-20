@@ -730,18 +730,18 @@ export default function CqPage() {
                   <span className="guide-muted">导出评审包见工具栏「导出 ▾」</span>
                 </div>
               )}
+              <p className="cq-meta guide-muted">
+                当前题集：<b>{suiteDisplay}</b>
+                {provenance && !provenance.known && (
+                  <span className="cq-badge warn" title="这份题集没有播种来源记录（早于来源校验功能）">来源未记录</span>
+                )}
+                {data?.updated_at ? `（题集更新于 ${formatLocalTime(data.updated_at)}，含导入 / 编辑时间）` : ''}
+                {' '}· 当前领域：<b>{domainLabel}</b>
+                {ontologyLoadedAt ? ` · 本体加载于 ${formatLocalTime(ontologyLoadedAt)}（服务启动时间）` : ''}
+                {provenance && !provenance.known ? ' · 来源未记录（旧题集）' : ''}
+              </p>
               <details className="cq-quality-detail">
-                <summary>质量明细与集信息</summary>
-                <p className="cq-meta guide-muted">
-                  当前题集：<b>{suiteDisplay}</b>
-                  {provenance && !provenance.known && (
-                    <span className="cq-badge warn" title="这份题集没有播种来源记录（早于来源校验功能）">来源未记录</span>
-                  )}
-                  {data?.updated_at ? `（题集更新于 ${formatLocalTime(data.updated_at)}，含导入 / 编辑时间）` : ''}
-                  {' '}· 当前领域：<b>{domainLabel}</b>
-                  {ontologyLoadedAt ? ` · 本体加载于 ${formatLocalTime(ontologyLoadedAt)}（服务启动时间）` : ''}
-                  {provenance && !provenance.known ? ' · 来源未记录（旧题集）' : ''}
-                </p>
+                <summary>质量明细</summary>
                 {!lifecycleSummary && loading && (
                 <section className="cq-maturity cq-maturity-skeleton" aria-hidden="true">
                   <div className="cq-skeleton-line" />
@@ -1533,11 +1533,19 @@ function CqManagementGuide() {
 }
 
 function CqGlossary({ onClose }: { onClose: () => void }) {
+  // 浮层不是模态，但 Esc 必须能关；打开时焦点落在「收起」，关掉后由浏览器归还。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
   return (
-    <section className="cq-glossary" aria-label="术语说明">
+    <section className="cq-glossary" role="dialog" aria-label="术语说明">
       <div className="cq-glossary-head">
         <h3>术语说明</h3>
-        <button type="button" className="btn secondary" onClick={onClose}>收起</button>
+        <button type="button" className="btn secondary" onClick={onClose} autoFocus>收起</button>
       </div>
       <dl>
         {GLOSSARY.map((item) => (

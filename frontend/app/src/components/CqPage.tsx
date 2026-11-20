@@ -624,6 +624,7 @@ export default function CqPage() {
                 {!evaluationFresh && (
                   <>
                     <button
+                      id="cq-step-run"
                       type="button"
                       className="btn"
                       onClick={() => void runRegression()}
@@ -1098,6 +1099,17 @@ export default function CqPage() {
                       <div className="cq-detail-actions">
                         <button
                           type="button"
+                          className="btn ghost"
+                          onClick={() => {
+                            const el = document.getElementById('cq-step-evidence');
+                            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }}
+                        >
+                          定位证据 ↓
+                        </button>
+                        <button
+                          id="cq-step-edit"
+                          type="button"
                           className="btn secondary"
                           disabled={busy != null || !current.id}
                           onClick={() => setEditing({ mode: 'edit', draft: { ...current } })}
@@ -1497,7 +1509,31 @@ function CqManagementGuide() {
     <section className={`cq-swimlane${open ? ' open' : ''}`} aria-label="CQ 集管理引导">
       <div className="cq-swimlane-bar">
         <b>怎么管这批题？</b>
-        <span>建题 → 修题 → 处置 → 单题验证 → 整集评估</span>
+        <span className="cq-step-links">
+          {([
+            ['create', '建题', 'cq-step-create'],
+            ['edit', '修题', 'cq-step-edit'],
+            ['dispose', '处置', 'cq-step-dispose'],
+            ['verify', '单题验证', 'cq-step-verify'],
+            ['run', '整集评估', 'cq-step-run'],
+          ] as const).map(([key, label, id], index) => (
+            <span key={key}>
+              {index > 0 && <i aria-hidden="true">→</i>}
+              <button
+                type="button"
+                className="cq-step-link"
+                onClick={() => {
+                  const el = document.getElementById(id);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  el?.setAttribute('tabindex', '-1');
+                  (el as HTMLElement | null)?.focus?.();
+                }}
+              >
+                {label}
+              </button>
+            </span>
+          ))}
+        </span>
         <button type="button" className="btn link" onClick={toggle} aria-expanded={open}>
           {open ? '收起' : '展开看谁做什么'}
         </button>
@@ -1767,7 +1803,7 @@ function CqDetail({
       </section>
 
       {/* #332：处置区常驻，不依附决策卡；动作与前置由后端计算。 */}
-      <section className="cq-section cq-disposition">
+      <section id="cq-step-dispose" className="cq-section cq-disposition">
         <h4>处置</h4>
         <p className="guide-muted">
           处置只表达「这题怎么走」，由系统写入审核态与运营态；写入后可在变更记录里审计。
@@ -1858,7 +1894,7 @@ function CqDetail({
       </section>
 
       {/* #348：断言、单题验证、上次评估收成一组，按「标准 → 现在 → 上次」排列。 */}
-      <section className="cq-section cq-verification">
+      <section id="cq-step-verify" className="cq-section cq-verification">
         <h4>回归验证</h4>
         <p className="guide-muted">
           同一件事的三段信息：先看用什么标准判，再当场验证，最后对照上次正式结论。
@@ -1955,7 +1991,7 @@ function CqDetail({
         </div>
       </section>
 
-      <section className="cq-section cq-locate-section">
+      <section id="cq-step-evidence" className="cq-section cq-locate-section">
         <h4>定位证据</h4>
         {error ? (
           <div className="element-readonly-note">{error}</div>

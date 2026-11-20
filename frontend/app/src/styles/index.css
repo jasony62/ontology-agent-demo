@@ -2451,3 +2451,13 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   position: sticky; top: 0; z-index: 2;
   background: var(--panel); padding-top: 2px; padding-bottom: 8px;
 }
+
+/* 五步链路：从静态说明变成可点跳转 */
+.cq-step-links { display: inline-flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.cq-step-links i { font-style: normal; color: var(--muted); margin: 0 2px; }
+.cq-step-link {
+  border: 0; background: transparent; padding: 1px 3px; font: inherit;
+  color: var(--link); cursor: pointer; border-radius: 4px;
+}
+.cq-step-link:hover { background: var(--primary-soft); }
+.cq-step-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }

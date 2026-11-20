@@ -17,7 +17,6 @@ import SourceView from './components/SourceView';
 import ImportModal from './components/ImportModal';
 import ClearImportedModal from './components/ClearImportedModal';
 import ExportDialog from './components/ExportDialog';
-import CreateElementBar from './components/CreateElementBar';
 import OntologyEditor from './components/OntologyEditor';
 import DomainGuidePage from './components/DomainGuidePage';
 import CqPage from './components/CqPage';
@@ -112,6 +111,7 @@ export default function App() {
   const editorSetError = useEditorStore((s) => s.setError);
   const editorDirty = useEditorStore((s) => s.dirty);
   const editorCloseStore = useEditorStore((s) => s.closeEditor);
+  const setEditorRequest = useAppStore((s) => s.setEditorRequest);
 
   /** 打开在线编辑器：首次打开才拉取后端编辑模型（重复切 Tab 不能覆盖未保存修改） */
   const openEditor = async () => {
@@ -129,8 +129,13 @@ export default function App() {
     }
   };
 
-  const closeEditor = () => {
-    if (editorDirty && !window.confirm('有未保存的编辑修改，确定关闭编辑器？')) return;
+  /** 从画布跳转：记下定位请求，再打开在线编辑器（编辑器消费请求后自动切换分类并预填搜索） */
+  const openEditorFor = async (req: { id: string; name: string; kind: 'class' | 'relation' | 'instance' }) => {
+    setEditorRequest(req);
+    await openEditor();
+  };
+
+  const closeEditor = () => {    if (editorDirty && !window.confirm('有未保存的编辑修改，确定关闭编辑器？')) return;
     editorCloseStore();
     setRightTab(null);
   };
@@ -252,6 +257,32 @@ export default function App() {
     const timer = window.setTimeout(() => setNotice(null), 12000);
     return () => window.clearTimeout(timer);
   }, [notice, setNotice]);
+
+  // Esc 清除图谱选中：此前只能点空白处，键盘用户没有退路。
+  // 弹窗自己处理 Esc（useDialogA11y），输入框里的 Esc 保持浏览器默认。
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (document.querySelector('.modal-backdrop')) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (useAppStore.getState().selectedId) setSelectedId(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [setSelectedId]);
+
+  // 在线编辑有未保存修改时，刷新 / 关标签页要拦一道——图谱页不再是唯一的编辑入口，
+  // 浏览器的默认关闭行为不能绕过 dirty（P0：改动不许无声消失）。
+  useEffect(() => {
+    if (!editorDirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [editorDirty]);
 
   /**
    * 领域切换 / 重载的公共流程。
@@ -437,6 +468,13 @@ export default function App() {
               <button type="button" onClick={() => setClearImportedOpen(true)}>管理导入数据</button>
             )}
             <button type="button" onClick={() => setExportOpen(true)}>导出本体</button>
+            <button
+              type="button"
+              onClick={() => void runDomainAction('重载领域', () => api.reloadDomain())}
+              disabled={domainBusy || !domainInfo}
+            >
+              重载领域（重读领域代码）
+            </button>
             <button type="button" onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>
             <a href="/api-docs" target="_blank" rel="noreferrer">API 文档</a>
           </OverflowMenu>
@@ -511,17 +549,29 @@ export default function App() {
                               <ViewModeToggle />
                               {/* 恢复按钮与切换器并列但在组外：三格是互斥视图，不能混进第四个按钮 */}
                               <NoticeRestoreButton />
-                              {/* D9：新建入口常驻画布工具栏，不依赖选中态；窄屏收进「更多」 */}
-                              <span className="graph-toolbar-create"><CreateElementBar /></span>
+                              {/* 画布不承载写入：新建与修改统一走右侧在线编辑（唯一保存出口） */}
+                              <span className="graph-toolbar-create">
+                                <button type="button" className="btn secondary" onClick={() => void openEditor()}>
+                                  编辑本体
+                                </button>
+                              </span>
                             </>
                           }
-                          toolbarOverflow={<CreateElementBar />}
+                          toolbarOverflow={
+                            <button type="button" className="btn secondary" onClick={() => void openEditor()}>
+                              编辑本体
+                            </button>
+                          }
                           onSelect={(id) => setSelectedId(id)}
                         />
                       </GraphErrorBoundary>
                     </div>
                     <div className="graph-side">
-                      <GraphSidePanel focus={focus} onToggleFocus={toggleFocus} />
+                      <GraphSidePanel
+                        focus={focus}
+                        onToggleFocus={toggleFocus}
+                        onEditInPanel={(req) => void openEditorFor(req)}
+                      />
                     </div>
                   </div>
                 </div>

@@ -34,7 +34,7 @@ const STAGE_BAR = ['authored', 'regression', 'pending', 'resolved', 'fixing', 'p
 const STAGES = [...STAGE_BAR, 'followup'] as const;
 const STAGE_LABELS: Record<string, string> = {
   authored: '已建题',
-  regression: '回归中',
+  regression: '待评估',
   pending: '待裁定',
   resolved: '已裁定',
   fixing: '修复中',
@@ -43,7 +43,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 const STAGE_ACTIONS: Record<string, string> = {
   authored: '还没有可自动验收的检查；等智能体补断言，或到题目页核对。',
-  regression: '回归未通过；等智能体归因或处理。',
+  regression: '尚未评估或回归未通过；先跑一轮评估，或等智能体归因。',
   resolved: '已经拍板，等智能体按结论行动。',
   fixing: '智能体正在修复这轮改动。',
   passed: '上次回归通过，可以收口。',
@@ -79,7 +79,7 @@ export default function CqTrainingPanel({
   const [focusMode, setFocusMode] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
   const [gapsOpen, setGapsOpen] = useState(false);
-  const [visibleLimit, setVisibleLimit] = useState(20);
+  const [visibleLimit, setVisibleLimit] = useState(8);
   const sortTouched = useRef(false);
   const [openCaseId, setOpenCaseId] = useState<string | null>(null);
   const [historyStage, setHistoryStage] = useState('');
@@ -234,7 +234,7 @@ export default function CqTrainingPanel({
     }
   }, [resume, pendingCases.length, sortMode]);
   useEffect(() => {
-    setVisibleLimit(20);
+    setVisibleLimit(8);
   }, [filter, sortMode]);
   const visibleRows = filtered.slice(0, visibleLimit);
   const focusCase = pendingCases[Math.min(focusIndex, Math.max(0, pendingCases.length - 1))];
@@ -354,16 +354,7 @@ export default function CqTrainingPanel({
               : '当前没有待决；可确认题目或运行评估'
           )}
           {resumeState === 'ready' && pendingCases.length > 0 && (
-            <button
-              type="button"
-              className="btn link"
-              onClick={() => {
-                setFilter('pending');
-                setFocusMode(true);
-              }}
-            >
-              去处理待裁定
-            </button>
+            <span className="guide-muted">用下方「逐题处理」开始</span>
           )}
         </span>
       </div>
@@ -440,8 +431,8 @@ export default function CqTrainingPanel({
             </p>
           )}
 
-          <div className="cq-training-guide">
-            <b>从这里开始</b>
+          <details className="cq-training-guide">
+            <summary>从这里开始</summary>
             <span>
               {pendingCases.length > 0
                 ? `智能体已经把待决事项准备好了：先处理「待裁定」的 ${pendingCases.length} 题。`
@@ -450,13 +441,9 @@ export default function CqTrainingPanel({
             <span className="guide-muted">
               概览看总量 → 题看板看每题 → 点题卡看这道题的记录；全部事件记录在下方。
             </span>
-            {pendingCases.length > 0 && (
-              <button type="button" className="btn" onClick={() => setFocusMode(true)}>
-                开始裁定
-              </button>
-            )}
-          </div>
+          </details>
 
+          {!(nextAction === 'answer_decisions' && pendingCases.length > 0) && (
           <div className="cq-training-next">
             <b>下一步</b>
             <span>{nextText}</span>
@@ -477,6 +464,7 @@ export default function CqTrainingPanel({
                     : '去处理'}
             </button>
           </div>
+          )}
 
           {lastResult && <div className="notice-banner cq-training-result">{lastResult}</div>}
 
@@ -609,7 +597,7 @@ export default function CqTrainingPanel({
                   <button
                     type="button"
                     className="btn secondary cq-load-more"
-                    onClick={() => setVisibleLimit((limit) => limit + 20)}
+                    onClick={() => setVisibleLimit((limit) => limit + 8)}
                   >
                     显示更多（剩余 {filtered.length - visibleRows.length} 题）
                   </button>
@@ -671,7 +659,7 @@ function CaseCard({
         <span className="cq-case-id" title={`题目 ID：${item.case_id}`}>#{item.short_id || item.ordinal || item.case_id}</span>
         <h4>{plainCopy(item.cq) || '未命名题目'}</h4>
         <span className={`cq-stage-badge stage-${item.stage}`}>{item.stage_label}</span>
-        {item.graduated && <span className="cq-badge ok">已毕业</span>}
+        {item.graduated && <span className="cq-badge ok">已可交付</span>}
         {item.failure_triggered && <span className="cq-stage-alert">回归失败</span>}
         {item.intent_pending && <span className="guide-badge">意图待确认</span>}
       </div>

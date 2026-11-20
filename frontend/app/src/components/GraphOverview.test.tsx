@@ -64,7 +64,7 @@ describe('图谱概览四组信息（#134 R5）', () => {
     render();
     const text = container!.textContent ?? '';
 
-    for (const title of ['本体身份', '结构规模', '推理结果', '可用性与下一步']) {
+    for (const title of ['本体身份', '本体规模', '推理结果', '可用性与下一步']) {
       expect(text).toContain(title);
     }
     // 本体身份：真实文件名（不带 uuid）、来源、运行模式
@@ -86,12 +86,9 @@ describe('图谱概览四组信息（#134 R5）', () => {
     expect(container!.querySelector('a[href="#guide"]')).not.toBeNull();
   });
 
-  it('概览里的视图切换直接改 store，不再独占工具栏外一行', () => {
+  it('概览不再重复画布工具栏的视图切换（避免同屏两套控件）', () => {
     render();
-    const target = [...container!.querySelectorAll<HTMLButtonElement>('.overview-view-btn')]
-      .find((b) => b.textContent === '只看新推出的')!;
-    act(() => target.click());
-    expect(useAppStore.getState().viewMode).toBe('diff');
+    expect(container!.querySelectorAll('.overview-view-btn')).toHaveLength(0);
   });
 
   it('图例仍可点击聚焦', () => {

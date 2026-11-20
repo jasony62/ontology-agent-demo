@@ -1,18 +1,16 @@
-import { useMemo } from 'react';
 import { useAppStore } from '../store/appStore';
 import type { LegendFocus } from '../lib/graphGroups';
 import type { GraphData, GraphEdge } from '../api/client';
-import { findEntityByGraphId, findInstanceByGraphId, findRelationshipByEdge, mergeOntologyIntoGraph } from '../data/toGraphData';
-import { deleteClass, deleteInstance, deleteRelationship } from '../data/sketch';
-import { validateOntology } from '../data/validate';
-import type { Ontology } from '../data/ontology';
+import { findEntityByGraphId, findInstanceByGraphId, findRelationshipByEdge } from '../data/toGraphData';
 import GraphOverview from './GraphOverview';
 import Inspector from './Inspector';
-import ElementEditor from './ElementEditor';
+import ElementDetail from './ElementDetail';
 
 interface Props {
   focus: LegendFocus | null;
   onToggleFocus: (next: LegendFocus) => void;
+  /** 打开在线编辑器并定位到该元素（画布不再承载写入） */
+  onEditInPanel: (req: { id: string; name: string; kind: 'class' | 'relation' | 'instance' }) => void;
 }
 
 function findEdge(graph: GraphData | null, edgeId: string): GraphEdge | null {
@@ -26,74 +24,32 @@ function findEdge(graph: GraphData | null, edgeId: string): GraphEdge | null {
 }
 
 /**
- * 图谱右侧栏：未选中 → 概览；选中可写元素 → 同一张 ElementEditor；
+ * 图谱右侧栏：未选中 → 概览；选中本体元素 → 只读详情 + 跳转在线编辑；
  * 结构边 / 推理边 / 推理新增节点 / 模型外元素 → 只读 Inspector。
  *
- * 编辑框不是独立页面：它叠加在 `.graph-side` 上，标题跟随选中元素（类 / 关系 / 个体），
- * 顶部常驻「仅预览 · 不写入系统、不进查询与推理结果」（#91 D1 / D2、#102）。
+ * 画布不再提供第二套「长得像在线编辑、改动却不落盘」的表单：
+ * 所有写入只有一个出口——右侧「在线编辑」。
  */
-export default function GraphSidePanel({ focus, onToggleFocus }: Props) {
+export default function GraphSidePanel({ focus, onToggleFocus, onEditInPanel }: Props) {
   const selectedId = useAppStore((s) => s.selectedId);
   const ontology = useAppStore((s) => s.ontology);
   const graphData = useAppStore((s) => s.graphData);
-  const materialized = useAppStore((s) => s.materialized);
   const viewMode = useAppStore((s) => s.viewMode);
   const setSelectedId = useAppStore((s) => s.setSelectedId);
-  const setGraphData = useAppStore((s) => s.setGraphData);
-  const setOntology = useAppStore((s) => s.setOntology);
-  const editorFocusId = useAppStore((s) => s.editorFocusId);
-  const setEditorFocusId = useAppStore((s) => s.setEditorFocusId);
-
-  const issues = useMemo(() => (ontology ? validateOntology(ontology) : []), [ontology]);
 
   if (!selectedId) {
     return <GraphOverview focus={focus} onToggleFocus={onToggleFocus} />;
   }
 
-  // diff 视图只展示推理新增，编辑框一律降级为只读（验收标准）
+  // diff 视图只展示推理新增；本体元素一律不出可写表单
   if (!ontology || viewMode === 'diff') {
     return <Inspector onJump={setSelectedId} />;
   }
 
-  const commit = (next: Ontology) => {
-    setGraphData(mergeOntologyIntoGraph(materialized.asserted, ontology, next));
-    setOntology(next);
-  };
-  const handleDeleteClass = (id: string) => {
-    commit(deleteClass(ontology, id));
-    setSelectedId(null);
-  };
-  const handleDeleteRelation = (id: string) => {
-    commit(deleteRelationship(ontology, id));
-    setSelectedId(null);
-  };
-  const handleDeleteInstance = (id: string) => {
-    commit(deleteInstance(ontology, id));
-    setSelectedId(null);
-  };
-
-  // 新建关系草稿：还没落图（起止未填），用特殊选中 id 打开同一张表单
   if (selectedId.startsWith('sketch|rel|')) {
-    const relId = selectedId.slice('sketch|rel|'.length);
-    const rel = ontology.relationships.find((r) => r.id === relId);
+    const rel = ontology.relationships.find((r) => r.id === selectedId.slice('sketch|rel|'.length));
     if (!rel) return <Inspector onJump={setSelectedId} />;
-    const relIssues = issues.filter(
-      (i) => !i.targetId && (i.message.includes(rel.id) || (!!rel.name && i.message.includes(rel.name))),
-    );
-    return (
-      <ElementEditor
-        ontology={ontology}
-        target={{ kind: 'relation', rel }}
-        issues={relIssues}
-        focusKey={editorFocusId}
-        onFocusConsumed={() => setEditorFocusId(null)}
-        onCommit={commit}
-        onSelect={setSelectedId}
-        onDeleteClass={handleDeleteClass}
-        onDeleteRelation={handleDeleteRelation}
-        onDeleteInstance={handleDeleteInstance}
-      />
-    );
+    return <ElementDetail ontology={ontology} target={{ kind: 'relation', rel }} onEdit={onEditInPanel} />;
   }
 
   if (selectedId.startsWith('edge|')) {
@@ -101,66 +57,19 @@ export default function GraphSidePanel({ focus, onToggleFocus }: Props) {
     if (!edge || edge.kind === 'structure') return <Inspector onJump={setSelectedId} />;
     const rel = findRelationshipByEdge(ontology, edge);
     if (!rel) return <Inspector onJump={setSelectedId} />;
-    const relIssues = issues.filter(
-      (i) => !i.targetId && (i.message.includes(rel.id) || (!!rel.name && i.message.includes(rel.name))),
-    );
-    return (
-      <ElementEditor
-        ontology={ontology}
-        target={{ kind: 'relation', rel }}
-        issues={relIssues}
-        focusKey={editorFocusId}
-        onFocusConsumed={() => setEditorFocusId(null)}
-        onCommit={commit}
-        onSelect={setSelectedId}
-        onDeleteClass={handleDeleteClass}
-        onDeleteRelation={handleDeleteRelation}
-        onDeleteInstance={handleDeleteInstance}
-      />
-    );
+    return <ElementDetail ontology={ontology} target={{ kind: 'relation', rel }} onEdit={onEditInPanel} />;
   }
 
-  const node = graphData?.nodes.find((n) => n.id === selectedId)
-    ?? materialized.inferred?.nodes.find((n) => n.id === selectedId);
+  const node = graphData?.nodes.find((n) => n.id === selectedId);
   if (!node) return <Inspector onJump={setSelectedId} />;
 
   if (node.type === 'class') {
     const entity = findEntityByGraphId(ontology, selectedId);
     if (!entity) return <Inspector onJump={setSelectedId} />;
-    const entityIssues = issues.filter((i) => (i.targetId ?? '').toLowerCase() === entity.id.toLowerCase());
-    return (
-      <ElementEditor
-        ontology={ontology}
-        target={{ kind: 'class', entity }}
-        issues={entityIssues}
-        focusKey={editorFocusId}
-        onFocusConsumed={() => setEditorFocusId(null)}
-        onCommit={commit}
-        onSelect={setSelectedId}
-        onDeleteClass={handleDeleteClass}
-        onDeleteRelation={handleDeleteRelation}
-        onDeleteInstance={handleDeleteInstance}
-      />
-    );
+    return <ElementDetail ontology={ontology} target={{ kind: 'class', entity }} onEdit={onEditInPanel} />;
   }
 
   const instance = findInstanceByGraphId(ontology, selectedId);
   if (!instance) return <Inspector onJump={setSelectedId} />;
-  const instanceIssues = issues.filter(
-    (i) => (i.targetId ?? '').toLowerCase() === instance.id.toLowerCase(),
-  );
-  return (
-    <ElementEditor
-      ontology={ontology}
-      target={{ kind: 'instance', instance }}
-      issues={instanceIssues}
-      focusKey={editorFocusId}
-      onFocusConsumed={() => setEditorFocusId(null)}
-      onCommit={commit}
-      onSelect={setSelectedId}
-      onDeleteClass={handleDeleteClass}
-      onDeleteRelation={handleDeleteRelation}
-      onDeleteInstance={handleDeleteInstance}
-    />
-  );
+  return <ElementDetail ontology={ontology} target={{ kind: 'instance', instance }} onEdit={onEditInPanel} />;
 }

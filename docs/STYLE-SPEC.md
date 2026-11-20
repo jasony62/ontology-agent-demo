@@ -154,9 +154,9 @@
 - 建议层已删除（#91 D7）：不做底部常驻校验清单，只有节点 ⚠ 角标 + 表单内就地修复；
 - 导出前统一汇总 blocker / required 并拦截。
 
-### 3.5 在线编辑（OntologyEditor）与图谱编辑框（ElementEditor）对齐
+### 3.5 在线编辑（OntologyEditor）为唯一写入面
 
-两个编辑器消费同一套 token 与原语，任何原语改动两边同步：
+图谱侧栏已改为**只读详情 + 跳转**（`ElementDetail`）：选中元素只展示字段，写入统一在右侧在线编辑完成。两侧共用同一套 token 与原语，任何原语改动两边同步：
 
 - 工具栏 `.editor-toolbar` / `.element-status` 与区块标题同构：标题左、操作右、间距 `--sp-3`；
 - 按钮一律 `.btn` 变体，行内「删」用 `.btn.ghost.danger-text`；

@@ -47,6 +47,35 @@ export const TAB_LABELS: Record<WorkspaceTab, string> = {
 const TABS: WorkspaceTab[] = ['editor'];
 const TAB_ICONS: Record<WorkspaceTab, string> = { editor: '⌨' };
 
+/** 面板折叠/展开图标：18px 手写 SVG，替代 « » 这类随字体缩放的字符 */
+function ChevronIcon({ dir }: { dir: 'left' | 'right' }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={dir === 'left' ? 'M10 3 5 8l5 5' : 'M6 3l5 5-5 5'} />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+      strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <path d="M4 4l8 8M12 4l-8 8" />
+    </svg>
+  );
+}
+
+function KeyboardIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="4.5" width="12" height="7" rx="1.5" />
+      <path d="M4.5 7h.01M7 7h.01M9.5 7h.01M12 7h.01M5.5 9.5h5" />
+    </svg>
+  );
+}
+
 /** 宽度百分比收敛到 25–75，非有限值回落到 50 */
 export function clampLeftWidth(value: number): number {
   if (!Number.isFinite(value)) return RESET_LEFT_WIDTH;
@@ -300,7 +329,7 @@ export default function WorkspaceSplit({
               title="展开图谱面板"
               onClick={() => setLayout((cur) => expandSide(cur, 'left'))}
             >
-              »
+              <ChevronIcon dir="right" />
             </button>
             <span className="pane-rail-label">图谱</span>
           </div>
@@ -315,7 +344,7 @@ export default function WorkspaceSplit({
               title="收起图谱面板（另一侧将占满全宽）"
               onClick={() => setLayout((cur) => minimizeSide(cur, 'left'))}
             >
-              «
+              <ChevronIcon dir="left" />
             </button>
           </div>
         )}
@@ -352,7 +381,7 @@ export default function WorkspaceSplit({
               title="展开编辑面板"
               onClick={() => setLayout((cur) => expandSide(cur, 'right'))}
             >
-              «
+              <ChevronIcon dir="left" />
             </button>
             {TABS.map((tab) => (
               <button
@@ -363,7 +392,7 @@ export default function WorkspaceSplit({
                 title={`打开${TAB_LABELS[tab]}`}
                 onClick={() => openTab(tab)}
               >
-                {TAB_ICONS[tab]}
+                {tab === 'editor' ? <KeyboardIcon /> : TAB_ICONS[tab]}
               </button>
             ))}
             <span className="pane-rail-label">编辑</span>
@@ -394,7 +423,7 @@ export default function WorkspaceSplit({
                   title="关闭编辑区（已挂载状态保留，再次打开不丢未保存修改）"
                   onClick={onCloseTab}
                 >
-                  ✕
+                  <CloseIcon />
                 </button>
               )}
               <button
@@ -405,7 +434,7 @@ export default function WorkspaceSplit({
                 title="收起编辑面板（另一侧将占满全宽）"
                 onClick={() => setLayout((cur) => minimizeSide(cur, 'right'))}
               >
-                »
+                <ChevronIcon dir="right" />
               </button>
             </div>
           </div>

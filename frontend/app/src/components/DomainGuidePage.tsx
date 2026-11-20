@@ -910,7 +910,12 @@ export default function DomainGuidePage({
         <div className="guide-status-facts">
           <div><b>{businessClasses}</b><span><TermText text="业务类" scope="overview" site="status-business" /></span></div>
           <div><b>{runtime.counts.individuals}</b><span><TermText text="个体" scope="overview" site="status-individuals" /></span></div>
-          <div><b>{runtime.counts.inferred}</b><span><TermText text="推理新增" scope="overview" site="status-inferred" /></span></div>
+          <div><b>{runtime.counts.inferred}</b><span><TermText text="推理新增" scope="overview" site="status-inferred" /><span
+                      className="guide-unit"
+                      title="推理明细口径（含自反 / 元层），与图谱概览里「推出来的」物化三元组统计可能相差数十条"
+                    >
+                      明细
+                    </span></span></div>
         </div>
         {loading && <span className="guide-muted">刷新中…</span>}
       </div>
@@ -955,7 +960,7 @@ export default function DomainGuidePage({
 
         <div className="guide-content" ref={contentRef} onScroll={handleScroll}>
           <section id="guide-overview" className="guide-section">
-            <div className="guide-section-head"><span>01</span><h3>这个包是干什么的</h3></div>
+            <div className="guide-section-head"><span>01</span><h2>这个包是干什么的</h2></div>
             <div className="guide-hero">
               {/* #137 R3：profile.summary 全页只在这里渲染一次 */}
               <p className="guide-hero-summary">
@@ -1070,7 +1075,7 @@ export default function DomainGuidePage({
           </section>
 
           <section id="guide-examples" className="guide-section">
-            <div className="guide-section-head"><span>02</span><h3>能问它什么</h3></div>
+            <div className="guide-section-head"><span>02</span><h2>能问它什么</h2></div>
             <p className="guide-section-hint">
               <TermText
                 text="示例题随领域包预置，是「固定参数 + 只读请求」，不是自然语言问答；点开就能看到请求与真实返回。槽位来自领域声明的全部能力，题目只是挂在槽位下的示例。"
@@ -1164,7 +1169,7 @@ export default function DomainGuidePage({
           </section>
 
           <section id="guide-capabilities" className="guide-section">
-            <div className="guide-section-head"><span>03</span><h3>能让它做什么</h3></div>
+            <div className="guide-section-head"><span>03</span><h2>能让它做什么</h2></div>
             <p className="guide-section-hint">
               <TermText
                 text="只读能力可以反复调用；变更能力会改本体，页内不提供试跑。口径与「预览 / 写入 / 导出」一致：写入是不可逆的，必须走既有确认流程。"
@@ -1234,7 +1239,7 @@ export default function DomainGuidePage({
           </section>
 
           <section id="guide-trust" className="guide-section">
-            <div className="guide-section-head"><span>04</span><h3>凭什么可信、什么会被拦</h3></div>
+            <div className="guide-section-head"><span>04</span><h2>凭什么可信、什么会被拦</h2></div>
             <p className="guide-section-hint">
               <TermText
                 text="左边是可核验的证据，右边是真正会拦住写操作的那一层——不是作者声明的边界清单。"
@@ -1318,7 +1323,7 @@ export default function DomainGuidePage({
           </section>
 
           <section id="guide-integrations" className="guide-section">
-            <div className="guide-section-head"><span>05</span><h3>怎么接进去</h3></div>
+            <div className="guide-section-head"><span>05</span><h2>怎么接进去</h2></div>
             {profile.integrations.length ? (
               <ul className="guide-list">
                 {profile.integrations.map((item) => (
@@ -1429,7 +1434,7 @@ export default function DomainGuidePage({
           </section>
 
           <section id="guide-runtime" className="guide-section">
-            <div className="guide-section-head"><span>06</span><h3>现在跑的是哪一份</h3></div>
+            <div className="guide-section-head"><span>06</span><h2>现在跑的是哪一份</h2></div>
             <div className="guide-runtime-grid">
               <div className="guide-kv"><span>领域</span><b>{profile.display_name || guide.display_name || guide.domain}</b></div>
               <div className="guide-kv"><span>已加载本体</span><b title={runtime.ontology}>{runtime.ontology_display ?? runtime.ontology}</b></div>

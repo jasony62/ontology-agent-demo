@@ -256,7 +256,8 @@ def test_delivery_verdict_counts_missing_and_unanchored():
         "cases": [
             {"id": "A", "graduated": True, "located": True, "blockers": []},
             {"id": "B", "graduated": False, "located": False, "blockers": ["未锚定", "缺断言"]},
-            {"id": "C", "graduated": False, "located": True, "blockers": ["未通过"]},
+            {"id": "C", "graduated": False, "located": True, "blockers": ["未通过"],
+             "last_run": {"state": "fail"}},
         ],
     }
     delivery = lifecycle.delivery_verdict(view)
@@ -268,6 +269,20 @@ def test_delivery_verdict_counts_missing_and_unanchored():
     assert delivery["failed_cases"] == ["C"]
     assert delivery["cqm"] == pytest.approx(0.05)
     assert delivery["cqm_if_unanchored_fixed"] == pytest.approx(0.1)
+
+
+def test_delivery_verdict_does_not_call_unrun_cases_failed():
+    """没跑过评估的题只算「未评估」，不能进 failed 清单。"""
+    view = {
+        "summary": {"target_questions": 20},
+        "cases": [
+            {"id": "A", "graduated": False, "located": True, "blockers": ["未通过"]},
+            {"id": "B", "graduated": False, "located": True, "blockers": ["未通过"]},
+        ],
+    }
+    delivery = lifecycle.delivery_verdict(view)
+    assert delivery["failed_cases"] == []
+    assert delivery["verdict"].startswith("尚未评估")
 
 
 def test_delivery_verdict_ready_when_target_reached():

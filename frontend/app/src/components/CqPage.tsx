@@ -23,16 +23,30 @@ import TechDetails from './TechDetails';
 
 // #308 / #309 / #310：与 cq/graduation.py 同一组词、同一顺序。
 // 「未启用」是运营态门槛，不是质量 blocker；「待审核」已从缺口词表移除。
-const MISSING_ORDER = ['未启用', '未锚定', '未分型', '缺断言', '未通过', '已归档'];
+const MISSING_ORDER = ['未启用', '未锚定', '未分型', '缺断言', '未评估', '未通过', '已归档'];
 
 // #341：'未通过' 同时是后端 `blockers` 值、前端计数键与筛选键，
 // 不能直接改字符串。内部协议值保持不变，只在渲染 chip 时映射成显示名。
 const MISSING_LABELS: Record<string, string> = {
+  未评估: '未评估',
   未通过: '回归未通过',
 };
 
 function missingLabel(key: string): string {
   return MISSING_LABELS[key] ?? key;
+}
+
+/**
+ * 没跑过评估的题不应该显示「回归未通过」——那是结论，不是状态。
+ * 以 coverage_cache.ran_at 判断是否评估过：没有就显示「未评估」。
+ */
+function hasRun(item: CqSetCase): boolean {
+  return Boolean(item.coverage_cache?.ran_at);
+}
+
+function blockerKeys(item: CqSetCase): string[] {
+  return (item.missing ?? item.blockers ?? []).map((key) =>
+    key === '未通过' && !hasRun(item) ? '未评估' : key);
 }
 
 // #278：与 cq/cq_store.py `_CASE_FIELDS` 对齐的落盘白名单。
@@ -126,10 +140,17 @@ export default function CqPage() {
   const [showPrompts, setShowPrompts] = useState(false);
   // #332：处置结果（四轨回执）
   const [dispositionBusy, setDispositionBusy] = useState(false);
+  // 批量处置：勾选题 → 只提供所有已选题都支持的动作
+  const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set());
+  const [batchAction, setBatchAction] = useState('');
+  const [batchNote, setBatchNote] = useState('');
+  const [batchBusy, setBatchBusy] = useState(false);
   const [dispositionResult, setDispositionResult] = useState<CqDispositionResult | null>(null);
   // #338：单题回归调试结果（不写评估历史）
   const [caseRunBusy, setCaseRunBusy] = useState(false);
   const [caseRunResult, setCaseRunResult] = useState<CqCaseRunResult | null>(null);
+  // 0/20 的结果不该用成功色播报
+  const [noticeTone, setNoticeTone] = useState<'ok' | 'warn'>('ok');
   // #250 R6：点击整体缺口统计，把下方题目列表筛到对应题
   const [gapFilter, setGapFilter] = useState<string | null>(null);
 
@@ -203,6 +224,7 @@ export default function CqPage() {
     return cases.find((item, index) => caseKey(item, index) === selected) ?? null;
   }, [cases, selected]);
 
+
   // #250 R6 / #310：与训练页「还差」同一组词，逐项计数、可点击筛题。
   // 列表口径用 missing（含未启用），不再把「待审核」当缺口。
   const missingCounts = useMemo(() => {
@@ -210,7 +232,7 @@ export default function CqPage() {
       MISSING_ORDER.map((label) => [label, 0]),
     );
     for (const item of cases) {
-      for (const blocker of item.missing ?? item.blockers ?? []) {
+      for (const blocker of blockerKeys(item)) {
         if (blocker in counts) counts[blocker] += 1;
       }
     }
@@ -229,7 +251,7 @@ export default function CqPage() {
     return cases
       .map((item, index) => ({ item, index }))
       .filter(({ item, index }) => {
-        if (gapFilter && !(item.missing ?? item.blockers ?? []).includes(gapFilter)) return false;
+        if (gapFilter && !blockerKeys(item).includes(gapFilter)) return false;
         if (!needle) return true;
         const short = String(item.short_id || `Q${String(index + 1).padStart(2, '0')}`).toLowerCase();
         if (looksLikeNumber) {
@@ -238,13 +260,98 @@ export default function CqPage() {
         }
         return [
           item.cq,
+          item.id,
           statusLabel(item.status),
           expectedTypeLabel(item.expected_type),
-          ...(item.missing ?? item.blockers ?? []),
+          ...blockerKeys(item),
+          ...blockerKeys(item).map(missingLabel),
           short,
         ].some((value) => String(value || '').toLowerCase().includes(needle));
       });
   }, [cases, gapFilter, query]);
+
+  // 审核者逐题走：下一题 / 上一题按当前筛选后的列表顺序移动
+  const currentIndexInVisible = useMemo(
+    () => visibleCases.findIndex(({ item, index }) => caseKey(item, index) === selected),
+    [visibleCases, selected],
+  );
+  const goToOffset = useCallback((offset: number) => {
+    if (currentIndexInVisible < 0) return;
+    const next = visibleCases[currentIndexInVisible + offset];
+    if (!next) return;
+    setSelected(caseKey(next.item, next.index));
+    requestAnimationFrame(() => {
+      const detail = document.querySelector<HTMLElement>('.cq-detail');
+      if (!detail) return;
+      if (typeof detail.scrollTo === 'function') detail.scrollTo({ top: 0 });
+      else detail.scrollTop = 0;
+    });
+  }, [visibleCases, currentIndexInVisible]);
+
+  const batchCases = useMemo(
+    () => visibleCases.filter(({ item, index }) => batchSelected.has(caseKey(item, index))),
+    [visibleCases, batchSelected],
+  );
+  const batchCandidates = useMemo(() => {
+    if (batchCases.length === 0) return [];
+    const first = batchCases[0].item.dispositions ?? [];
+    return first.filter((action) => action.available
+      && batchCases.every(({ item }) => (item.dispositions ?? []).some((a) => a.action === action.action && a.available)));
+  }, [batchCases]);
+  useEffect(() => { setBatchAction(batchCandidates[0]?.action ?? ''); }, [batchCandidates]);
+  const batchLabel = (action: string, label: string) => (action === 'revise' ? '交回改写' : label);
+
+  const toggleBatch = (key: string, on: boolean) => {
+    setBatchSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key); else next.delete(key);
+      return next;
+    });
+  };
+  const allVisibleSelected = visibleCases.length > 0
+    && visibleCases.every(({ item, index }) => batchSelected.has(caseKey(item, index)));
+
+  const runBatch = async () => {
+    if (batchCases.length === 0 || !batchAction) return;
+    const action = batchCandidates.find((a) => a.action === batchAction);
+    if (!action) return;
+    const label = batchLabel(batchAction, action.label);
+    if (!window.confirm(`将对 ${batchCases.length} 题执行「${label}」，写入审计且不可撤销。继续？`)) return;
+    setBatchBusy(true);
+    setError(null);
+    let ok = 0;
+    const failed: string[] = [];
+    for (const { item } of batchCases) {
+      if (!item.id) continue;
+      try {
+        await api.cqDispose(String(item.id), batchAction, batchNote.trim());
+        ok += 1;
+      } catch (e) {
+        failed.push(item.short_id ? `#${item.short_id}` : String(item.id));
+      }
+    }
+    setBatchBusy(false);
+    setBatchSelected(new Set());
+    setBatchNote('');
+    setNoticeTone(failed.length ? 'warn' : 'ok');
+    setNotice(`批量处置完成：成功 ${ok} 题${failed.length ? `，失败 ${failed.length} 题（${failed.join('、')}）` : ''}。`);
+    await load();
+  };
+
+  // ↑/↓ 或 j/k 切题；输入框、弹窗、术语浮层里不抢键
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+        || target.tagName === 'SELECT' || target.isContentEditable)) return;
+      if (document.querySelector('.modal-backdrop, .cq-glossary')) return;
+      if (event.key === 'ArrowDown' || event.key === 'j') { event.preventDefault(); goToOffset(1); }
+      if (event.key === 'ArrowUp' || event.key === 'k') { event.preventDefault(); goToOffset(-1); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [goToOffset]);
   // #250 R3：运行评估前的预检口径，必须与后端「全量跑」一致。
   const preflight = useMemo(() => ({
     total: cases.length,
@@ -320,7 +427,8 @@ export default function CqPage() {
 
   const deleteCurrent = async () => {
     if (!current?.id) return;
-    if (!window.confirm(`删除题目「${current.id}」？此操作会写入审计日志。`)) return;
+    const visibleId = current.short_id ? `#${current.short_id}` : current.id;
+    if (!window.confirm(`删除题目「${visibleId}」？此操作会写入审计日志。`)) return;
     setBusy('delete');
     setError(null);
     try {
@@ -349,13 +457,13 @@ export default function CqPage() {
     }
   };
 
-  const disposeCurrent = async (action: string) => {
+  const disposeCurrent = async (action: string, note = '') => {
     if (!current?.id) return;
     setDispositionBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const result = await api.cqDispose(String(current.id), action);
+      const result = await api.cqDispose(String(current.id), action, note);
       setDispositionResult(result.disposition);
       setNotice(`已处置：${result.disposition.label}。`);
       setData(result);
@@ -383,6 +491,7 @@ export default function CqPage() {
     setNotice(null);
     try {
       const run = await api.cqRun('human');
+      setNoticeTone(run.pass > 0 ? 'ok' : 'warn');
       setNotice(`评估完成：${run.pass}/${run.total} 回归通过（回归通过覆盖 ${Math.round(run.coverage_real * 100)}%）。`);
       setRuns((currentRuns) => [run, ...currentRuns].slice(0, 20));
       await load();
@@ -430,20 +539,9 @@ export default function CqPage() {
     || coverage?.summary?.likely_mismatch
     || (summary && summary.total > 0 && summary.located === 0),
   );
-  const unanchoredCases = cases.filter((item) => !item.located).map((item, index) => (
-    item.id || `第 ${index + 1} 题`
-  ));
-  // #266：部分错配（未锚定占比 > 10% 或 ≥ 2 题）此前落在「沉默区」，现在单独告警。
-  const partialMismatch = !mismatch && Boolean(
-    summary && summary.total > 0
-    && (unanchoredCases.length >= 2 || unanchoredCases.length / summary.total > 0.1),
-  );
   const mismatchText = provenance?.stale
     ? `这份题集是从「${provenance.seed_ontology || '另一个本体'}」播种的，当前加载的是「${provenance.current_ontology || '另一个本体'}」，不能作为成熟度依据。请让智能体按当前本体重新生成题目。`
     : '当前题集与加载的本体可能不是同一套：所有题目都没有命中本体术语。请先确认「当前题集 / 当前领域」是否匹配，或让智能体按当前本体重新生成题目。';
-  const partialMismatchText = summary
-    ? `有 ${unanchoredCases.length} 道题没有对上本体术语（${unanchoredCases.slice(0, 5).map((id) => `#${id}`).join('、')}${unanchoredCases.length > 5 ? ' 等' : ''}），成熟度会偏低；建议改问法或补术语后重跑。`
-    : '';
   const ontologyLoadedAt = String(health?.loaded_at || '');
   const domainName = String(health?.domain || domainInfo?.name || '');
   const domainLabel = domainInfo?.display_name || domainName;
@@ -615,6 +713,7 @@ export default function CqPage() {
                 {!evaluationFresh && (
                   <>
                     <button
+                      id="cq-step-run"
                       type="button"
                       className="btn"
                       onClick={() => void runRegression()}
@@ -661,8 +760,8 @@ export default function CqPage() {
         <CqTrainingPage onGoToCases={() => selectTab('cases')} />
       ) : (
         <>
-          {notice && <div className="notice-banner" role="status">{notice}</div>}
-          {error && <div className="error-banner">{error}</div>}
+          {notice && <div className={`notice-banner${noticeTone === 'warn' ? ' warn' : ''}`} role="status">{notice}</div>}
+          {error && <div className="error-banner" role="alert">{error}</div>}
           {partialErrors.length > 0 && (
             <div className="notice-banner warn" role="status">
               <span>部分数据未取到：{partialErrors.join(' / ')}。</span>
@@ -690,9 +789,6 @@ export default function CqPage() {
               {mismatch && (
                 <div className="error-banner" role="alert">{mismatchText}</div>
               )}
-              {partialMismatch && (
-                <div className="notice-banner warn" role="status">{partialMismatchText}</div>
-              )}
               {delivery && summary && summary.total > 0 && (
                 <div
                   className={`cq-delivery${delivery.ready ? ' ok' : ' warn'}`}
@@ -703,38 +799,47 @@ export default function CqPage() {
                   <span>
                     {delivery.verdict
                       || (delivery.ready
-                        ? `达到交付线：${delivery.graduated_questions} 题已全部毕业`
-                        : `未达交付线：差 ${delivery.missing_questions} 题毕业`)}
+                        ? `达到交付线：${delivery.graduated_questions} 题已全部可交付`
+                        : `未达交付线：还差 ${delivery.missing_questions} 题达到交付线`)}
                     {provenance && !provenance.known ? '（来源未记录，仅供参考）' : ''}
+
                   </span>
+                  {/* 一条状态条只给一个动作：没评估过就先跑评估，评估过再谈补题 */}
                   {!delivery.ready && (
-                    <button type="button" className="btn secondary" onClick={() => void requestCases()}>
-                      请求智能体生成候选题
-                    </button>
+                    delivery.verdict?.startsWith('尚未评估') ? (
+                      <button type="button" className="btn" onClick={() => void runRegression()} disabled={busy === 'run'}>
+                        {busy === 'run' ? '评估中…' : '跑一轮评估'}
+                      </button>
+                    ) : (
+                      <button type="button" className="btn secondary" onClick={() => void requestCases()}>
+                        请求智能体生成候选题
+                      </button>
+                    )
                   )}
-                  {!evaluationFresh && (
-                    <span className="guide-muted" title={evaluation?.reason || '还没有跑过评估'}>
+                  <span
+                    className="cq-delivery-note"
+                    title={`${evaluation?.reason || '还没有跑过评估'}；去工具栏「跑一轮评估」重新验证；导出评审包见工具栏「导出 ▾」`}
+                  >
+                    {!evaluationFresh && (
                       <span className="cq-stale-badge">
-                        评估{evaluation?.state === 'none' ? '未生成' : '可能过期'}
+                        {evaluation?.state === 'none' ? '未评估' : '评估可能过期'}
                       </span>
-                      {' '}去工具栏「跑一轮评估」重新验证
-                    </span>
-                  )}
-                  <span className="guide-muted">导出评审包见工具栏「导出 ▾」</span>
+                    )}
+                  </span>
                 </div>
               )}
+              <p className="cq-meta guide-muted">
+                当前题集：<b>{suiteDisplay}</b>
+                {provenance && !provenance.known && (
+                  <span className="cq-badge warn" title="这份题集没有播种来源记录（早于来源校验功能）">来源未记录</span>
+                )}
+                {data?.updated_at ? `（题集更新于 ${formatLocalTime(data.updated_at)}，含导入 / 编辑时间）` : ''}
+                {' '}· 当前领域：<b>{domainLabel}</b>
+                {ontologyLoadedAt ? ` · 本体加载于 ${formatLocalTime(ontologyLoadedAt)}（服务启动时间）` : ''}
+                {provenance && !provenance.known ? ' · 来源未记录（旧题集）' : ''}
+              </p>
               <details className="cq-quality-detail">
-                <summary>质量明细与集信息</summary>
-                <p className="cq-meta guide-muted">
-                  当前题集：<b>{suiteDisplay}</b>
-                  {provenance && !provenance.known && (
-                    <span className="cq-badge warn" title="这份题集没有播种来源记录（早于来源校验功能）">来源未记录</span>
-                  )}
-                  {data?.updated_at ? `（题集更新于 ${formatLocalTime(data.updated_at)}，含导入 / 编辑时间）` : ''}
-                  {' '}· 当前领域：<b>{domainLabel}</b>
-                  {ontologyLoadedAt ? ` · 本体加载于 ${formatLocalTime(ontologyLoadedAt)}（服务启动时间）` : ''}
-                  {provenance && !provenance.known ? ' · 来源未记录（旧题集）' : ''}
-                </p>
+                <summary>质量明细</summary>
                 {!lifecycleSummary && loading && (
                 <section className="cq-maturity cq-maturity-skeleton" aria-hidden="true">
                   <div className="cq-skeleton-line" />
@@ -747,28 +852,28 @@ export default function CqPage() {
                   <div className="cq-maturity-main">
                     <span>
                       成熟度 CQM
-                      <HelpTip text="CQ 成熟度：已毕业题数 ÷ 目标题量；100% 即全部毕业。" />
+                      <HelpTip text="CQ 成熟度：已可交付题数 ÷ 目标题量；100% 即全部可交付。" />
                     </span>
                     <b>{cqmAvailable ? `${Math.round((cqm ?? 0) * 100)}%` : '不可用'}</b>
                     {provenance && !provenance.known && (
                       <span className="cq-badge warn" title="旧题集没有播种来源记录；成熟度仅供参考">来源未知</span>
                     )}
                     <span className="guide-muted">
-                      已毕业 {graduatedQuestions} / 目标 {targetQuestions} 题 · 交付线 100%（全部毕业）
+                      已可交付 {graduatedQuestions} / 目标 {targetQuestions} 题 · 交付线 100%（全部可交付）
                     </span>
                   </div>
                   {delivery && (
                     <p className="cq-maturity-gap">
                       {delivery.ready
-                        ? '已达交付线：全部题都已毕业。'
-                        : `当前差 ${delivery.missing_questions} 题毕业`}
+                        ? '已达交付线：全部题都已可交付。'
+                        : `当前还差 ${delivery.missing_questions} 题达到交付线`}
                       {delivery.unanchored_questions > 0 && !delivery.ready
-                        ? `；把未锚定的 ${delivery.unanchored_questions} 题补齐到毕业 → ${Math.round(delivery.cqm_if_unanchored_fixed * 100)}%`
+                        ? `；把未锚定的 ${delivery.unanchored_questions} 题补齐到可交付 → ${Math.round(delivery.cqm_if_unanchored_fixed * 100)}%`
                         : ''}
                     </p>
                   )}
                   <p className="guide-muted">
-                    目标题量按本体规模估算（当前 {data?.summary?.schema_terms ?? '—'} 个关键术语，最低 20 题），可调，不随删题变化；毕业 = 已锚定 + 已分型 + 有断言 + 回归通过 + 未归档。
+                    目标题量按本体规模估算（当前 {data?.summary?.schema_terms ?? '—'} 个关键术语，最低 20 题），可调，不随删题变化；可交付 = 已锚定 + 已分型 + 有断言 + 回归通过 + 未归档。
                     {!cqmAvailable && mismatch ? ' 当前题集与本体可能不匹配，CQM 暂不可用。' : ''}
                     {provenance && !provenance.known ? ' 来源未记录（旧题集），成熟度仅供参考。' : ''}
                   </p>
@@ -787,7 +892,7 @@ export default function CqPage() {
                     <span>回归通过 {quality.answerable ?? 0}</span>
                     <span>留存 {quality.retained ?? 0}</span>
                     <span>
-                      毕业 <HelpTip text="已锚定 + 已分型 + 有断言 + 回归通过 + 未归档；全部题毕业才算可交付。" />
+                      可交付 <HelpTip text="已锚定 + 已分型 + 有断言 + 回归通过 + 未归档；全部题可交付才算可交付。" />
                       {quality.graduated ?? 0}
                     </span>
                   </div>
@@ -891,6 +996,10 @@ export default function CqPage() {
             )
           ) : (
             <>
+              <details className="cq-quality-detail cq-fold">
+                <summary>
+                  已可交付 {graduatedQuestions}/{targetQuestions} · 现有 {summary.total} 题 · 回归通过 {summary.answerable}
+                </summary>
               <section className="cq-funnel" aria-label="质量漏斗">
                 <div className="cq-funnel-steps">
                   <span><b>{summary.total}</b> 总题数</span>
@@ -899,7 +1008,7 @@ export default function CqPage() {
                   <i>→</i>
                   <span><b>{summary.answerable}</b> 回归通过</span>
                   <i>→</i>
-                  <span><b>{graduatedQuestions}</b> 毕业 <em>/ 目标 {targetQuestions}</em></span>
+                  <span><b>{graduatedQuestions}</b> 可交付 <em>/ 目标 {targetQuestions}</em></span>
                   {summary.gap > 0 && <span className="cq-funnel-gap">没对上 {summary.gap}</span>}
                 </div>
                 <div className="cq-funnel-meta">
@@ -918,10 +1027,10 @@ export default function CqPage() {
                 </div>
               </section>
 
-              {/* #250 R6 / #311：与训练页题卡「还差」一一对应的毕业条件统计，可点击筛题。 */}
-              <section className="cq-gap-stats" aria-label="毕业条件">
+              {/* #250 R6 / #311：与训练页题卡「还差」一一对应的交付条件统计，可点击筛题。 */}
+              <section className="cq-gap-stats" aria-label="交付条件">
                 <div className="cq-gap-stats-head">
-                  <b>毕业条件</b>
+                  <b>交付条件</b>
                   <span className="guide-muted">
                     回归通过（即质量区的「可答」）是同一判据；未启用是运营态门槛，不是质量 blocker。0 值不占位，点一项筛出对应题目。
                   </span>
@@ -945,6 +1054,7 @@ export default function CqPage() {
                   )}
                 </div>
               </section>
+              </details>
 
               {showTech && (
                 <section className="panel cq-mention-coverage" aria-label="题干提及覆盖">
@@ -1004,7 +1114,22 @@ export default function CqPage() {
               <div className="cq-body">
                 <section className="panel cq-list" aria-label="CQ 列表">
                   <div className="cq-list-head">
-                    <span>{gapFilter ? `题目 · 还差「${gapFilter}」` : '题目'}</span>
+                    <label className="cq-batch-all">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        aria-label="全选当前列表"
+                        onChange={(event) => {
+                          const next = new Set(batchSelected);
+                          for (const { item, index } of visibleCases) {
+                            const key = caseKey(item, index);
+                            if (event.target.checked) next.add(key); else next.delete(key);
+                          }
+                          setBatchSelected(next);
+                        }}
+                      />
+                      <span>{gapFilter ? `题目 · 还差「${gapFilter}」` : '题目'}</span>
+                    </label>
                     <div className="cq-list-tools">
                       <input
                         type="search"
@@ -1017,11 +1142,60 @@ export default function CqPage() {
                       <span>{visibleCases.length} 道</span>
                     </div>
                   </div>
+                  {batchSelected.size > 0 && (
+                    <div className="cq-batch-bar" role="region" aria-label="批量处置">
+                      <b>已选 {batchCases.length} 题</b>
+                      {batchCandidates.length > 0 ? (
+                        <>
+                          <select
+                            aria-label="批量动作"
+                            value={batchAction}
+                            onChange={(event) => setBatchAction(event.target.value)}
+                          >
+                            {batchCandidates.map((action) => (
+                              <option key={action.action} value={action.action}>
+                                {batchLabel(action.action, action.label)}
+                              </option>
+                            ))}
+                          </select>
+                          {batchAction === 'revise' && (
+                            <input
+                              className="cq-batch-note"
+                              value={batchNote}
+                              onChange={(event) => setBatchNote(event.target.value)}
+                              placeholder="修改意见（会交给智能体）"
+                              aria-label="批量修改意见"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={batchBusy || (batchAction === 'revise' && !batchNote.trim())}
+                            onClick={() => void runBatch()}
+                          >
+                            {batchBusy ? '处理中…' : '执行'}
+                          </button>
+                        </>
+                      ) : (
+                        <span className="guide-muted">所选题目没有共同可用的处置动作</span>
+                      )}
+                      <button type="button" className="btn ghost" onClick={() => setBatchSelected(new Set())}>
+                        取消选择
+                      </button>
+                    </div>
+                  )}
                   <ul>
                     {visibleCases.slice(0, visibleLimit).map(({ item, index }) => {
                       const key = caseKey(item, index);
                       return (
-                        <li key={key}>
+                        <li key={key} className="cq-row-wrap">
+                          <input
+                            type="checkbox"
+                            className="cq-batch-check"
+                            checked={batchSelected.has(key)}
+                            aria-label={`选择 #${item.short_id || `Q${String(index + 1).padStart(2, '0')}`}`}
+                            onChange={(event) => toggleBatch(key, event.target.checked)}
+                          />
                           <button
                             type="button"
                             className={`cq-row${selected === key ? ' active' : ''}`}
@@ -1042,8 +1216,8 @@ export default function CqPage() {
                             {/* #310 / #311：状态独占一行、右对齐；审核信息只放详情区「审核」组。 */}
                             <span className={`cq-row-status${item.graduated ? ' ok' : ''}`}>
                               {item.graduated
-                                ? '已毕业'
-                                : `缺：${(item.missing ?? item.blockers ?? []).map(missingLabel).join('、') || '—'}`}
+                                ? '已可交付'
+                                : `缺：${blockerKeys(item).map(missingLabel).join('、') || '—'}`}
                             </span>
                           </button>
                         </li>
@@ -1052,7 +1226,11 @@ export default function CqPage() {
                   </ul>
                   {visibleCases.length === 0 && (
                     <div className="guide-empty-inline">
-                      没有还差「{gapFilter ? missingLabel(gapFilter) : ''}」的题目；再点一次统计项可取消筛选。
+                      {query.trim()
+                        ? `没有匹配「${query.trim()}」的题目；试试 #Q16 或题干关键词。`
+                        : gapFilter
+                          ? `当前筛选（${missingLabel(gapFilter)}）下没有题目；再点一次统计项可取消筛选。`
+                          : '还没有题目；可以手动新增，或让智能体生成候选题。'}
                     </div>
                   )}
                 </section>
@@ -1068,11 +1246,40 @@ export default function CqPage() {
                       onSave={saveCase}
                     />
                   ) : !current ? (
-                    <div className="guide-empty">左侧选一道题看定位证据。</div>
+                    <div className="guide-empty">在列表里选一道题看定位证据。</div>
                   ) : (
                     <div className="cq-detail-body">
                       <div className="cq-detail-actions">
                         <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => goToOffset(-1)}
+                          disabled={currentIndexInVisible <= 0}
+                          title="上一题（↑ 或 k）"
+                        >
+                          上一题
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => goToOffset(1)}
+                          disabled={currentIndexInVisible < 0 || currentIndexInVisible >= visibleCases.length - 1}
+                          title="下一题（↓ 或 j）"
+                        >
+                          下一题
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => {
+                            const el = document.getElementById('cq-step-evidence');
+                            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }}
+                        >
+                          定位证据 ↓
+                        </button>
+                        <button
+                          id="cq-step-edit"
                           type="button"
                           className="btn secondary"
                           disabled={busy != null || !current.id}
@@ -1124,7 +1331,7 @@ function hasLatinIdentifier(text?: string | null): boolean {
 
 const GUARDRAIL_LABELS: Record<string, string> = {
   tool_error_rate: '工具报错率',
-  graduation_retention: '毕业留存率',
+  graduation_retention: '交付留存率',
   cq_test_ci_rate: 'cq-test 纳入 CI 率',
 };
 
@@ -1144,9 +1351,10 @@ function dispositionReviewLabel(state?: string | null): string {
   return '未要求审核';
 }
 
-/** #343：回归未通过——内部 blocker 键仍是「未通过」（显示层映射见 #341）。 */
+/** #343：回归未通过——内部 blocker 键仍是「未通过」。
+ *  没跑过评估的题只是「未评估」，不能据此给出「可以启用但不满足交付条件」的警告。 */
 function isRegressionFailed(item: CqSetCase): boolean {
-  return (item.missing ?? item.blockers ?? []).includes('未通过');
+  return hasRun(item) && (item.missing ?? item.blockers ?? []).includes('未通过');
 }
 
 function reviewLabel(review?: CqSetCase['review'] | null): string {
@@ -1472,7 +1680,31 @@ function CqManagementGuide() {
     <section className={`cq-swimlane${open ? ' open' : ''}`} aria-label="CQ 集管理引导">
       <div className="cq-swimlane-bar">
         <b>怎么管这批题？</b>
-        <span>建题 → 修题 → 处置 → 单题验证 → 整集评估</span>
+        <span className="cq-step-links">
+          {([
+            ['create', '建题', 'cq-step-create'],
+            ['edit', '修题', 'cq-step-edit'],
+            ['dispose', '处置', 'cq-step-dispose'],
+            ['verify', '单题验证', 'cq-step-verify'],
+            ['run', '整集评估', 'cq-step-run'],
+          ] as const).map(([key, label, id], index) => (
+            <span key={key}>
+              {index > 0 && <i aria-hidden="true">→</i>}
+              <button
+                type="button"
+                className="cq-step-link"
+                onClick={() => {
+                  const el = document.getElementById(id);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  el?.setAttribute('tabindex', '-1');
+                  (el as HTMLElement | null)?.focus?.();
+                }}
+              >
+                {label}
+              </button>
+            </span>
+          ))}
+        </span>
         <button type="button" className="btn link" onClick={toggle} aria-expanded={open}>
           {open ? '收起' : '展开看谁做什么'}
         </button>
@@ -1516,11 +1748,21 @@ function CqManagementGuide() {
 }
 
 function CqGlossary({ onClose }: { onClose: () => void }) {
+  // 浮层不是模态，但 Esc 必须能关；打开时焦点落在「收起」，关掉后由浏览器归还。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
   return (
-    <section className="cq-glossary" aria-label="术语说明">
+    <>
+    <div className="cq-glossary-backdrop" onClick={onClose} aria-hidden="true" />
+    <section className="cq-glossary" role="dialog" aria-label="术语说明">
       <div className="cq-glossary-head">
         <h3>术语说明</h3>
-        <button type="button" className="btn secondary" onClick={onClose}>收起</button>
+        <button type="button" className="btn secondary" onClick={onClose} autoFocus>收起</button>
       </div>
       <dl>
         {GLOSSARY.map((item) => (
@@ -1531,6 +1773,7 @@ function CqGlossary({ onClose }: { onClose: () => void }) {
         ))}
       </dl>
     </section>
+    </>
   );
 }
 
@@ -1670,13 +1913,21 @@ function CqDetail({
   showTech: boolean;
   dispositionBusy: boolean;
   dispositionResult: CqDispositionResult | null;
-  onDispose: (action: string) => void;
+  onDispose: (action: string, note?: string) => void;
   caseRunBusy: boolean;
   caseRunResult: CqCaseRunResult | null;
   onRunCase: () => void;
 }) {
   const cache = item.coverage_cache;
   const regression = item.regression || {};
+  const [reviseOpen, setReviseOpen] = useState(false);
+  const [reviseNote, setReviseNote] = useState('');
+  // 「交回改写」只在题还没过关时才是主色；已可交付的题，主色应该回到「启用」。
+  const needsRewrite = !hasRun(item) || (item.missing ?? item.blockers ?? []).includes('未通过');
+  const canRevise = (item.dispositions ?? []).some((a) => a.action === 'revise');
+  const primaryDisposition = needsRewrite && canRevise ? 'revise' : 'approve_activate';
+  const dispositionLabel = (action: string, label: string) =>
+    action === 'revise' ? '交回改写' : label;
   const expectText = regression.expect === undefined
     ? '—'
     : JSON.stringify(regression.expect, null, 2);
@@ -1699,7 +1950,18 @@ function CqDetail({
         <div><span>来自哪个需求</span><b>{item.requirement || '—'}</b></div>
       </div>
 
-      {/* #311：审核信息单独成组；不并进毕业条件，也不叫「状态 / 许可」。 */}
+      <section id="cq-step-evidence" className="cq-section cq-locate-section">
+        <h4>定位证据</h4>
+        {error ? (
+          <div className="element-readonly-note">{error}</div>
+        ) : !locate ? (
+          <div className="guide-muted">正在定位…</div>
+        ) : (
+          <LocateEvidence locate={locate} showTech={showTech} />
+        )}
+      </section>
+
+      {/* #311：审核信息单独成组；不并进交付条件，也不叫「状态 / 许可」。 */}
       <section className="cq-section">
         <h4>审核</h4>
         <div className="cq-kv">
@@ -1711,19 +1973,20 @@ function CqDetail({
         {item.review?.comment && (
           <p className="guide-muted">这条意见已收进「出题配置 → 出题要求」，下一次出题会加载。</p>
         )}
-        {String(item.review?.state || 'none') === 'pending' && (
+        <details className="cq-tech-entry">
+          <summary>审核口径</summary>
           <p className="guide-muted">
             待审核不是死卡：还没回答语义问题，先到训练页回答；已回答但未处置，直接在下方处置区点
-            「审核通过并启用」或「修改」。
+            「审核通过并启用」或「交回改写」。
           </p>
-        )}
-        <p className="guide-muted">
-          待审核不阻断毕业；因题干或断言改动而重开的题会自动退回草稿，在编辑弹窗翻回启用后再交付。
-        </p>
+          <p className="guide-muted">
+            待审核不阻断可交付；因题干或断言改动而重开的题会自动退回草稿，在编辑弹窗翻回启用后再交付。
+          </p>
+        </details>
       </section>
 
       {/* #332：处置区常驻，不依附决策卡；动作与前置由后端计算。 */}
-      <section className="cq-section cq-disposition">
+      <section id="cq-step-dispose" className="cq-section cq-disposition">
         <h4>处置</h4>
         <p className="guide-muted">
           处置只表达「这题怎么走」，由系统写入审核态与运营态；写入后可在变更记录里审计。
@@ -1731,9 +1994,9 @@ function CqDetail({
         {/* #343：质量态告知——启用是运营动作，不等于这题已经可交付。 */}
         {isRegressionFailed(item) && (
           <div className="cq-disposition-warn" role="note">
-            <b>该题回归未通过：可以启用，但启用后仍不满足毕业条件。</b>
+            <b>该题回归未通过：可以启用，但启用后仍不满足交付条件。</b>
             <span>
-              「已启用」只代表进入运营队列；毕业还要求回归通过。建议先补断言或修本体，
+              「已启用」只代表进入运营队列；可交付还要求回归通过。建议先补断言或修本体，
               再用下方「测这一题」验证，最后跑正式评估。
             </span>
           </div>
@@ -1743,15 +2006,44 @@ function CqDetail({
             <button
               key={action.action}
               type="button"
-              className={`btn ${action.action === 'approve_activate' ? '' : 'secondary'}`}
+              className={`btn ${action.action === primaryDisposition ? '' : 'secondary'}`}
               disabled={!action.available || dispositionBusy}
               title={action.effect}
-              onClick={() => onDispose(action.action)}
+              onClick={() => {
+                if (action.action === 'revise') { setReviseOpen(true); return; }
+                onDispose(action.action);
+              }}
             >
-              {dispositionBusy ? '处理中…' : action.label}
+              {dispositionBusy ? '处理中…' : dispositionLabel(action.action, action.label)}
             </button>
           ))}
         </div>
+        {reviseOpen && (
+          <div className="cq-revise-form" role="group" aria-label="交回改写">
+            <label className="field">
+              <span className="field-label">要改成什么（会交给智能体改写）</span>
+              <textarea
+                value={reviseNote}
+                onChange={(event) => setReviseNote(event.target.value)}
+                placeholder="例如：把问法收窄到「登录模块开发」，并补一条 can_execute 断言"
+                rows={3}
+              />
+            </label>
+            <div className="cq-revise-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={dispositionBusy || !reviseNote.trim()}
+                onClick={() => { onDispose('revise', reviseNote.trim()); setReviseOpen(false); }}
+              >
+                提交修改意见
+              </button>
+              <button type="button" className="btn secondary" onClick={() => setReviseOpen(false)}>
+                取消
+              </button>
+            </div>
+          </div>
+        )}
         <details className="cq-disposition-effects">
           <summary>每个动作会改什么</summary>
           <ul>
@@ -1785,7 +2077,7 @@ function CqDetail({
       </section>
 
       {/* #348：断言、单题验证、上次评估收成一组，按「标准 → 现在 → 上次」排列。 */}
-      <section className="cq-section cq-verification">
+      <section id="cq-step-verify" className="cq-section cq-verification">
         <h4>回归验证</h4>
         <p className="guide-muted">
           同一件事的三段信息：先看用什么标准判，再当场验证，最后对照上次正式结论。
@@ -1825,8 +2117,7 @@ function CqDetail({
         <div className="cq-verification-step cq-case-run">
           <h4 className="cq-verification-sub">单题验证</h4>
           <p className="guide-muted">
-            只验证这一题，方便改完断言立刻确认；不写评估历史、不算覆盖率、不更新最近回归。
-            正式评估仍用工具栏「跑一轮评估」。
+            只验证这一题，方便改完断言立刻确认；正式评估仍用工具栏「跑一轮评估」。
           </p>
           <button
             type="button"
@@ -1858,7 +2149,7 @@ function CqDetail({
           {/* #348：用户最容易误解的一处——这次通过不等于题目状态变了。 */}
           <p className="cq-run-scope">
             单题验证只检验这一题、当场给结果，不写评估历史，也不改变题目状态。
-            题目状态来自「跑一轮评估」的结果；没跑过评估就显示「回归未通过」。
+            题目状态来自「跑一轮评估」的结果；没跑过评估时显示「未评估」。
             想让题目状态变成「回归通过」，请跑一轮评估。
           </p>
         </div>
@@ -1883,16 +2174,6 @@ function CqDetail({
         </div>
       </section>
 
-      <section className="cq-section cq-locate-section">
-        <h4>定位证据</h4>
-        {error ? (
-          <div className="element-readonly-note">{error}</div>
-        ) : !locate ? (
-          <div className="guide-muted">正在定位…</div>
-        ) : (
-          <LocateEvidence locate={locate} showTech={showTech} />
-        )}
-      </section>
 
       <TechDetails
         label="展开看题目技术信息"

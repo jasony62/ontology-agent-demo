@@ -14,15 +14,19 @@ import type { GraphGroup } from '../api/client';
 
 /** 分组调色板：顺序稳定，第 n 组取第 n 色，与领域声明顺序一致 */
 export const GROUP_PALETTE = [
-  '#2f8f6b', // 绿
-  '#d98a2b', // 橙
-  '#4a7fb5', // 蓝
-  '#b5585b', // 砖红
-  '#7a6fb0', // 紫
-  '#5c8a3f', // 橄榄
-  '#a06a3f', // 棕
-  '#3f7f8f', // 青
+  '#3f6f8a', // 石青
+  '#c07f36', // 赭黄
+  '#4f6fa8', // 靛蓝
+  '#a9545c', // 砖红
+  '#6f7a3f', // 橄榄
+  '#8a6142', // 棕
+  '#4f7d7a', // 灰青
+  '#7d7f8a', // 石墨
 ] as const;
+
+// 语义色（推理青 #2f8f6b / 结构紫 #7a6fb0 / 警示锈红 #d83b01 / 成功绿 #107c10）
+// 不进入这张调色板：节点色只表示"属于哪个分组"，线色才表示"从哪来"。
+// 两者共用同一个绿或紫，会让刚学会"绿=推出来的"的读者立刻推翻自己的理解。
 
 /** 超出调色板长度的分组循环取色：宁可两组同色，也不让后来的组无声无色 */
 export function groupColor(index: number): string {
@@ -38,6 +42,9 @@ export function groupColor(index: number): string {
  */
 export const CLASS_COLOR = '#4a90a4';
 export const INDIVIDUAL_COLOR = '#c98a3d';
+
+/** 推理新增（边 + 节点）的语义色；与分组调色板严格不重叠 */
+export const INFERRED_COLOR = '#2f8f6b';
 
 /** 结构边（subClassOf 类层级 / rdf:type 实例归类）配色，图例与画布共用 */
 export const STRUCTURE_EDGE_COLOR = '#7a6fb0';

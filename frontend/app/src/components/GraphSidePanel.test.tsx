@@ -51,7 +51,7 @@ afterEach(() => {
 
 describe('图谱右侧栏', () => {
   it('未选中元素时展示图谱概览：三元组统计与图例', () => {
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={() => {}} />);
     const text = el.textContent ?? '';
 
     expect(text).toContain('图谱概览');
@@ -68,7 +68,7 @@ describe('图谱右侧栏', () => {
 
   it('点击图例项回传聚焦目标', () => {
     const onToggleFocus = vi.fn();
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={onToggleFocus} />);
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={onToggleFocus} onEditInPanel={() => {}} />);
     const button = Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('执行者'));
     expect(button).toBeTruthy();
     act(() => button!.click());
@@ -77,7 +77,7 @@ describe('图谱右侧栏', () => {
 
   it('选中节点后切换为检视器，不再显示概览', () => {
     useAppStore.setState({ selectedId: 'RequirementAnalysis' });
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={() => {}} />);
     const text = el.textContent ?? '';
 
     expect(text).not.toContain('图谱概览');
@@ -86,7 +86,7 @@ describe('图谱右侧栏', () => {
 
   it('选中边后保留检视器，关系详情不被概览顶掉', () => {
     useAppStore.setState({ selectedId: 'edge|A--rel--B' });
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={() => {}} />);
     const text = el.textContent ?? '';
 
     expect(text).not.toContain('图谱概览');
@@ -105,7 +105,7 @@ describe('图谱右侧栏', () => {
         suggestion: '切到「只看推理新增」看结论。',
       },
     });
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={() => {}} />);
     const text = el.textContent ?? '';
 
     expect(text).not.toContain('点击「导入并开始推理」');
@@ -119,7 +119,7 @@ describe('图谱右侧栏', () => {
 
   it('#131 图例解释 Thing 是什么', () => {
     useAppStore.setState({ ontologyMode: 'default' });
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={() => {}} />);
     expect(el.textContent).toContain('Thing');
     expect(el.textContent).toContain('兜底类');
   });
@@ -166,67 +166,40 @@ describe('图谱右侧编辑框（#91 融合重构）', () => {
     });
   }
 
-  it('选中可写的类 → 同一块 panel 出现表单与常驻预览标识', () => {
+  it('选中可写的类 → 只读详情 + 在线编辑入口', () => {
     seed('agent');
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={() => {}} />);
     const text = el.textContent ?? '';
-    expect(text).toContain('类 · Agent');
-    expect(text).toContain('仅预览 · 不写入系统、不进查询与推理结果');
+    expect(text).toContain('Agent');
+    expect(text).toContain('只读');
+    expect(text).toContain('去在线编辑修改');
     expect(text).toContain('父类');
     expect(text).not.toContain('图谱概览');
+    expect(el.querySelector('input')).toBeNull();
+    expect(el.querySelector('select')).toBeNull();
   });
 
-  it('选中可写的个体 → 个体表单，改所属类型后结构边按字段重算', () => {
+  it('个体详情只读，不提供删除与改类型控件', () => {
     seed('dev_agent');
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
-    expect(el.textContent).toContain('个体 · 研发Agent');
-    expect(el.textContent).toContain('属性名从模型已声明的对象 / 数据属性里选');
-    expect(el.textContent).not.toContain('要写入当前本体');
-
-    const typeSelect = Array.from(el.querySelectorAll('select')).find((s) =>
-      Array.from(s.options).some((o) => o.value === 'task'));
-    expect(typeSelect).toBeTruthy();
-    act(() => {
-      typeSelect!.value = 'task';
-      typeSelect!.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-
-    const edges = useAppStore.getState().graphData?.edges.map((e) => e.id) ?? [];
-    expect(edges).toContain('dev_agent--rdf:type--task');
-    expect(edges).not.toContain('dev_agent--rdf:type--agent');
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={() => {}} />);
+    expect(el.textContent).toContain('研发Agent');
+    expect(el.textContent).toContain('所属类型');
+    expect(el.querySelector('select')).toBeNull();
+    const deleters = Array.from(el.querySelectorAll('button')).filter((b) => b.textContent?.includes('删除'));
+    expect(deleters).toHaveLength(0);
   });
 
-  it('删除个体后从模型移除，并清掉其它个体指向它的对象断言（#102）', () => {
-    seed('dev_agent');
-    act(() => {
-      useAppStore.setState({
-        ontology: {
-          ...ontology,
-          instances: [
-            { id: 'dev_agent', entityTypeId: 'agent', types: ['agent'], label: '研发Agent', assertions: [] },
-            {
-              id: 'lead_agent', entityTypeId: 'agent', types: ['agent'], label: '负责人',
-              assertions: [{ prop: 'can_execute', value: 'dev_agent', isObject: true }],
-            },
-          ],
-        },
-      });
-    });
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
-
-    const del = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === '删除这个个体')!;
-    act(() => del.click());
-    const confirm = Array.from(el.querySelectorAll('button')).find((b) => b.textContent === '删除')!;
-    act(() => confirm.click());
-
-    const state = useAppStore.getState();
-    expect(state.ontology?.instances?.map((i) => i.id)).toEqual(['lead_agent']);
-    expect(state.ontology?.instances?.[0].assertions).toEqual([]);
-    expect(state.selectedId).toBeNull();
+  it('点「去在线编辑修改」回传定位请求', () => {
+    seed('agent');
+    const onEdit = vi.fn();
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={onEdit} />);
+    const cta = Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('去在线编辑修改'))!;
+    act(() => cta.click());
+    expect(onEdit).toHaveBeenCalledWith({ id: 'agent', name: 'Agent', kind: 'class' });
   });
 
   it('选中结构边 → 只读指路，不出现输入框', () => {    seed('edge|agent--subClassOf--task');
-    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} />);
+    const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={() => {}} />);
     const text = el.textContent ?? '';
     expect(text).toContain('结构边 · 父类');
     expect(text).toContain('改「父类」字段');

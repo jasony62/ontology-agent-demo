@@ -38,6 +38,9 @@ interface AppState {
   selectedId: string | null;
   // 新建元素后需要聚焦的编辑框（ElementEditor 消费一次）
   editorFocusId: string | null;
+  // 从画布「在在线编辑器中修改 →」跳转时的定位请求：打开编辑器后切到对应分类并预填搜索。
+  // null 表示没有待处理的跳转；OntologyEditor 消费一次后清空。
+  editorRequest: { id: string; name: string; kind: 'class' | 'relation' | 'instance' } | null;
   // 本体模式（default=预置领域，imported=导入的本体，generic=旧版通用模式；null=未知）
   ontologyMode: 'default' | 'imported' | 'generic' | null;
   // #55：推理提示横幅的关闭标记。一个全局开关（不按视图分别记忆）——三个文案
@@ -61,6 +64,7 @@ interface AppState {
   setGuideHealth: (h: GuideHealth | null) => void;
   setSelectedId: (id: string | null) => void;
   setEditorFocusId: (id: string | null) => void;
+  setEditorRequest: (r: AppState['editorRequest']) => void;
   setOntologyMode: (m: 'default' | 'imported' | 'generic' | null) => void;
   setNoticeDismissed: (v: boolean) => void;
   setOpenOverflow: (id: string | null) => void;
@@ -84,6 +88,7 @@ export const useAppStore = create<AppState>((set) => ({
   guideHealth: null,
   selectedId: null,
   editorFocusId: null,
+  editorRequest: null,
   ontologyMode: null,
   noticeDismissed: isNoticeDismissed(),
   openOverflow: null,
@@ -101,6 +106,7 @@ export const useAppStore = create<AppState>((set) => ({
   setGuideHealth: (h) => set({ guideHealth: h }),
   setSelectedId: (id) => set({ selectedId: id }),
   setEditorFocusId: (id) => set({ editorFocusId: id }),
+  setEditorRequest: (r) => set({ editorRequest: r }),
   setOntologyMode: (m) => set({ ontologyMode: m }),
   setNoticeDismissed: (v) => set({ noticeDismissed: v }),
   setOpenOverflow: (id) => set({ openOverflow: id }),

@@ -242,7 +242,7 @@ function stubFetch(
               graduated_questions: 2, target_questions: 20, cqm: 0.1,
               quality: { anchored: 1, validated: 1, answerable: 1, retained: 2, graduated: 2 },
               delivery: {
-                verdict: '未达交付线：差 18 题毕业；其中 1 题未锚定（#Q2），建议改问法或补术语后重跑',
+                verdict: '未达交付线：差 18 题可交付；其中 1 题未锚定（#Q2），建议改问法或补术语后重跑',
                 ready: false, target_questions: 20, graduated_questions: 2,
                 missing_questions: 18, unanchored_questions: 1,
                 unanchored_cases: (set.cases ?? []).filter((item) => !item.located).map((item) => item.id),
@@ -347,11 +347,11 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const text = container!.textContent ?? '';
     expect(text).toContain('未达交付线');
-    expect(text).toContain('差 18 题毕业');
+    expect(text).toContain('差 18 题可交付');
     expect(text).toContain('未锚定（#Q2）');
     // 达标线与差距换算在 CQM 区可见，且公式收进技术细节
     expect(text).toContain('交付线 100%');
-    expect(text).toContain('补齐到毕业 → 15%');
+    expect(text).toContain('补齐到可交付 → 15%');
     expect(text).not.toContain('× 0.5（最低 20）');
     expect([...container!.querySelectorAll('summary')]
       .some((node) => node.textContent === '目标题量怎么算')).toBe(false);
@@ -395,7 +395,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const text = container!.textContent ?? '';
     expect(text).toContain('来源未记录');
-    expect(text).toContain('没有对上本体术语');
+    expect(text).toContain('未锚定');
     expect(text).toContain('#Q2');
     expect(text).toContain('成熟度仅供参考');
   });
@@ -616,7 +616,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(delivery.textContent).toContain('请求智能体生成候选题');
     // #303：判定条不再复制导出 / 评估按钮，只给去向提示
     expect(delivery.querySelectorAll('a')).toHaveLength(0);
-    expect(delivery.textContent).toContain('导出评审包见工具栏');
+    expect(delivery.querySelector('.cq-delivery-note')?.getAttribute('title')).toContain('导出评审包见工具栏');
     expect(container!.textContent).toContain('评估有效');
   });
 
@@ -633,7 +633,7 @@ describe('CQ 集页（#151 / #203）', () => {
     const delivery = container!.querySelector('.cq-delivery')!;
     expect(delivery.textContent).toContain('评估可能过期');
     // #303：判定条只留文字指引，评估入口唯一在工具栏
-    expect(delivery.textContent).toContain('去工具栏「跑一轮评估」重新验证');
+    expect(delivery.querySelector('.cq-delivery-note')?.getAttribute('title')).toContain('去工具栏「跑一轮评估」重新验证');
     expect([...delivery.querySelectorAll('button')]
       .some((btn) => btn.textContent === '重新验证')).toBe(false);
     expect([...container!.querySelectorAll<HTMLButtonElement>('.cq-tool-group.writes button')]
@@ -654,8 +654,30 @@ describe('CQ 集页（#151 / #203）', () => {
     const details = container!.querySelector<HTMLDetailsElement>('.cq-quality-detail')!;
     expect(details).not.toBeNull();
     expect(details.open).toBe(false);
-    expect(details.querySelector('.cq-meta')).not.toBeNull();
+    // 题集身份信息不再藏进「质量明细」折叠
+    expect(container!.querySelector('.cq-meta')).not.toBeNull();
+    expect(details.querySelector('.cq-meta')).toBeNull();
     expect(details.textContent).toContain('协同指标');
+  });
+
+  it('详情头「下一题」按列表顺序切题（审核者逐题走）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const next = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '下一题')!;
+    expect(next).toBeTruthy();
+    await act(async () => { next.click(); });
+    await flush();
+
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('#Q02');
+
+    const prev = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '上一题')!;
+    await act(async () => { prev.click(); });
+    await flush();
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('#Q01');
   });
 
   it('页面说明只出现一处，旧欢迎横幅已删除（#303）', async () => {
@@ -858,7 +880,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-editor')).toBeNull();
   });
 
-  it('待审核不再拦住评估，但仍不作为毕业缺口（#280 / #309 / #311 / #333）', async () => {
+  it('待审核不再拦住评估，但仍不作为可交付缺口（#280 / #309 / #311 / #333）', async () => {
     const set = {
       ...SET,
       cases: SET.cases.map((item, index) => (index === 1 ? {
@@ -1175,7 +1197,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const tip = container!.querySelector<HTMLButtonElement>('.cq-help')!;
     expect(tip.getAttribute('aria-label')).toContain('CQ 成熟度');
-    expect(tip.querySelector('.cq-help-pop')?.textContent).toContain('已毕业题数 ÷ 目标题量');
+    expect(tip.querySelector('.cq-help-pop')?.textContent).toContain('已可交付题数 ÷ 目标题量');
   });
 
   it('题集与本体全部未命中时显式告警（#232）', async () => {
@@ -1221,7 +1243,7 @@ describe('CQ 集页（#151 / #203）', () => {
     await flush();
 
     const text = container!.textContent ?? '';
-    expect(text).toContain('已毕业 2 / 目标 20');
+    expect(text).toContain('已可交付 2 / 目标 20');
     expect(text).toContain('10%');
     expect(text).toContain('协同指标');
     expect(text).toContain('决策面填充率');
@@ -1317,7 +1339,7 @@ describe('CQ 集页（#151 / #203）', () => {
     act(() => root!.render(<CqPage />));
     await flush();
 
-    // 列表行只留题型 / 含本体标识符徽标 + 独占一行的毕业状态。
+    // 列表行只留题型 / 含本体标识符徽标 + 独占一行的可交付状态。
     expect(container!.querySelector('.cq-row-meta span[title="题库状态"]')).toBeNull();
     const rows = container!.textContent ?? '';
     expect(rows).not.toContain('题库状态：');
@@ -1478,12 +1500,12 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(result.textContent).toContain('"actual": true');
   });
 
-  it('缺口 chip 把内部键「未通过」显示为「回归未通过」，筛选仍按原键生效（#341）', async () => {
+  it('跑过评估的失败题显示「回归未通过」，筛选仍按内部键生效（#341）', async () => {
     stubFetch({
       ...SET,
       cases: SET.cases.map((item, index) => (index === 1
-        ? { ...item, blockers: ['未通过'] }
-        : item)),
+        ? { ...item, blockers: ['未通过'], coverage_cache: { conclusion: 0, ran_at: '2026-11-20T00:00:00Z' } }
+        : item)) as typeof SET.cases,
     });
     act(() => root!.render(<CqPage />));
     await flush();
@@ -1506,6 +1528,27 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(rows[0].textContent).toContain('缺：回归未通过');
   });
 
+  it('没跑过评估的题显示「未评估」，不冒充「回归未通过」', async () => {
+    stubFetch({
+      ...SET,
+      cases: SET.cases.map((item, index) => (index === 1
+        ? { ...item, blockers: ['未通过'], coverage_cache: null }
+        : item)) as typeof SET.cases,
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const stats = container!.querySelector('.cq-gap-stats')!;
+    const labels = [...stats.querySelectorAll('.cq-gap-stat')]
+      .map((node) => node.textContent?.replace(/\s+/g, ' ').trim());
+    expect(labels).toEqual(['未评估 1']);
+    expect(labels).not.toContain('回归未通过 1');
+
+    const rows = [...container!.querySelectorAll<HTMLButtonElement>('.cq-list .cq-row')];
+    const target = rows.find((row) => row.textContent?.includes('这条结论凭什么成立？'))!;
+    expect(target.textContent).toContain('缺：未评估');
+  });
+
   it('回归未通过时处置区警告「启用≠可交付」，按钮仍可点（#343）', async () => {
     const dispositions = [
       { action: 'approve_activate', label: '审核通过并启用', effect: '审核：审核已通过；状态：启用。', available: true },
@@ -1513,21 +1556,67 @@ describe('CQ 集页（#151 / #203）', () => {
     stubFetch({
       ...SET,
       cases: SET.cases.map((item, index) => (index === 0
-        ? { ...item, answerable: false, blockers: ['未通过'], dispositions }
-        : item)),
+        ? { ...item, answerable: false, blockers: ['未通过'], coverage_cache: { conclusion: 0, ran_at: '2026-11-20T00:00:00Z' }, dispositions }
+        : item)) as typeof SET.cases,
     });
     act(() => root!.render(<CqPage />));
     await flush();
 
     const warn = container!.querySelector('.cq-disposition-warn')!;
     expect(warn.textContent).toContain('回归未通过');
-    expect(warn.textContent).toContain('启用后仍不满足毕业条件');
+    expect(warn.textContent).toContain('启用后仍不满足交付条件');
     expect(warn.textContent).toContain('「已启用」只代表进入运营队列');
 
     // 本单只改变告知，不改变写入语义：按钮依然可点。
     const approve = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '审核通过并启用')!;
     expect(approve.disabled).toBe(false);
+  });
+
+  it('没跑过评估的题不出现「回归未通过」警示（P0 口径统一）', async () => {
+    const dispositions = [
+      { action: 'approve_activate', label: '审核通过并启用', effect: '审核：审核已通过；状态：启用。', available: true },
+    ];
+    stubFetch({
+      ...SET,
+      cases: SET.cases.map((item, index) => (index === 0
+        ? { ...item, answerable: false, blockers: ['未通过'], coverage_cache: null, dispositions }
+        : item)) as typeof SET.cases,
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelector('.cq-disposition-warn')).toBeNull();
+  });
+
+  it('批量处置：全选后对每题各调用一次 disposition', async () => {
+    const dispositions = [
+      { action: 'approve_activate', label: '审核通过并启用', effect: '审核：审核已通过；状态：启用。', available: true },
+      { action: 'defer', label: '暂缓', effect: '保持待决。', available: true },
+    ];
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    stubFetch({
+      ...SET,
+      cases: SET.cases.map((item) => ({ ...item, dispositions })) as typeof SET.cases,
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const all = container!.querySelector<HTMLInputElement>('.cq-batch-all input')!;
+    await act(async () => { all.click(); });
+    await flush();
+    expect(container!.querySelector('.cq-batch-bar')?.textContent).toContain(`已选 ${SET.cases.length} 题`);
+
+    const run = [...container!.querySelectorAll<HTMLButtonElement>('.cq-batch-bar button')]
+      .find((button) => button.textContent === '执行')!;
+    await act(async () => { run.click(); });
+    await flush();
+
+    const posts = vi.mocked(fetch).mock.calls.filter(([url, init]) =>
+      String(url).includes('/disposition') && String(init?.method) === 'POST');
+    expect(posts).toHaveLength(SET.cases.length);
+    expect(container!.textContent).toContain('批量处置完成：成功');
+    confirmSpy.mockRestore();
   });
 
   it('回归通过的题不出现启用警示（#343）', async () => {

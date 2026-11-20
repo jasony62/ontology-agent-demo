@@ -34,26 +34,26 @@ describe('buildInferenceNotice：计数全部来自数据，禁止常量', () =>
   it('文案 A（全貌）：并集连线数、新增数、can_execute 条数正确，口径说明在悬浮提示', () => {
     const text = buildInferenceNotice(snapshotWith(10), 'materialized')!;
 
-    expect(text.lead).toContain('图上 86 条连线里，22 条不在本体文件里');
+    expect(text.lead).toContain('画布共 86 条连线：声明 64 条 + 推理新增 22 条');
     expect(text.lead).toContain('其中 10 条是「谁能做这个任务」');
-    expect(text.action).toContain('点任意虚线看依据');
+    expect(text.action).toContain('点它看依据');
     // 三元组与连线的口径差不占正文，收进悬浮提示（#131）
-    expect(text.detail).toContain('545 条新增三元组里，类型与父子类等骨架已折叠进节点，图上表现为 22 条连线');
-    expect(text.lead).not.toContain('545 条新增三元组');
+    expect(text.detail).toContain('545 个推理三元组在图上表现为 22 条连线');
+    expect(text.lead).not.toContain('545 个推理三元组');
   });
 
   it('文案 B（原始）：断言数 / 隐藏的推理数正确，指向「显示推理全貌」', () => {
     const text = buildInferenceNotice(snapshotWith(10), 'asserted')!;
 
-    expect(text.lead).toContain('你现在只看得到本体里声明的 64 条');
-    expect(text.lead).toContain('另有 22 条是推出来的（10 条「谁能做这个任务」）');
+    expect(text.lead).toContain('当前只显示声明过的 64 条连线');
+    expect(text.lead).toContain('另有 22 条推理新增（10 条「谁能做这个任务」）');
     expect(text.action).toContain('点「显示推理全貌」可见');
   });
 
   it('文案 C（新增）：只讲推理边与缺失的断言边', () => {
     const text = buildInferenceNotice(snapshotWith(10), 'diff')!;
 
-    expect(text.lead).toContain('这里只有推出来的 22 条，本体里声明的那 64 条不在图中');
+    expect(text.lead).toContain('这里只有推理新增的 22 条连线；声明过的 64 条已隐藏');
     expect(text.action).toContain('点「显示推理全貌」看全貌');
   });
 
@@ -64,10 +64,10 @@ describe('buildInferenceNotice：计数全部来自数据，禁止常量', () =>
     other.stats = { triples_asserted: 100, triples_materialized: 180, inferred_added: 80 };
 
     const a = buildInferenceNotice(other, 'materialized')!;
-    expect(a.lead).toContain('图上 38 条连线里，7 条不在本体文件里');
+    expect(a.lead).toContain('画布共 38 条连线：声明 31 条 + 推理新增 7 条');
     // 没有 can_execute 边（如 fault_diag）→ 不出现领域句，也不出现 0 条的空话
     expect(a.lead).not.toContain('谁能做这个任务');
-    expect(a.detail).toContain('80 条新增三元组里');
+    expect(a.detail).toContain('80 个推理三元组');
   });
 
   it('generic 模式：三个视图都不出现领域措辞，数字保留', () => {

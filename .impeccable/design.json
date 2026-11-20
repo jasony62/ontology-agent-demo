@@ -1,0 +1,358 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-20T03:18:56Z",
+  "title": "Design System: 本体智能体协作系统 · 图谱工作台",
+  "extensions": {
+    "colorMeta": {
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "Signal Blue 信号蓝",
+        "canonical": "#0078d4",
+        "tonalRamp": [
+          "#003a6b",
+          "#00508f",
+          "#0066b0",
+          "#0078d4",
+          "#2f97e0",
+          "#66b6ea",
+          "#99cef2",
+          "#d6ebfb"
+        ]
+      },
+      "deep-harbour": {
+        "role": "secondary",
+        "displayName": "Deep Harbour 深港蓝",
+        "canonical": "#1f3a52",
+        "tonalRamp": [
+          "#081420",
+          "#112230",
+          "#1a3044",
+          "#1f3a52",
+          "#2c4d66",
+          "#456b85",
+          "#6e90a8",
+          "#bcd3e4"
+        ]
+      },
+      "cool-paper": {
+        "role": "neutral",
+        "displayName": "Cool Paper 冷纸",
+        "canonical": "#f3f5f7",
+        "tonalRamp": [
+          "#2a2f35",
+          "#454c55",
+          "#646d78",
+          "#8b939d",
+          "#b3bac2",
+          "#d2d7dc",
+          "#e6e9ed",
+          "#f3f5f7"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink 墨",
+        "canonical": "#1a1a2e",
+        "tonalRamp": [
+          "#0a0a12",
+          "#12121f",
+          "#1a1a2e",
+          "#2b2b45",
+          "#3f3f5e",
+          "#5c5c7d",
+          "#8a8aa5",
+          "#d9d9e5"
+        ]
+      },
+      "alert-rust": {
+        "role": "semantic",
+        "displayName": "Alert Rust 警示锈红",
+        "canonical": "#d83b01",
+        "tonalRamp": [
+          "#4a1500",
+          "#6d2000",
+          "#942c00",
+          "#b8330a",
+          "#d83b01",
+          "#f06024",
+          "#f78d5c",
+          "#fdd3bf"
+        ]
+      },
+      "field-green": {
+        "role": "semantic",
+        "displayName": "Field Green 实证绿",
+        "canonical": "#107c10",
+        "tonalRamp": [
+          "#083d08",
+          "#0b520b",
+          "#0d660d",
+          "#107c10",
+          "#279b27",
+          "#59bd59",
+          "#8fd88f",
+          "#d6f0d6"
+        ]
+      },
+      "inference-teal": {
+        "role": "semantic",
+        "displayName": "Inference Teal 推理青",
+        "canonical": "#2f8f6b",
+        "tonalRamp": [
+          "#0d2b20",
+          "#164434",
+          "#1f5f49",
+          "#2f8f6b",
+          "#45ac86",
+          "#6fc7a6",
+          "#9bdbc2",
+          "#d8f2e8"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "page-title": {
+        "displayName": "Page Title",
+        "purpose": "页面级标题，极少使用。"
+      },
+      "dialog-title": {
+        "displayName": "Dialog Title",
+        "purpose": "弹窗标题。"
+      },
+      "panel-title": {
+        "displayName": "Panel Title",
+        "purpose": "面板与引导页区块标题。"
+      },
+      "section-title": {
+        "displayName": "Section Title",
+        "purpose": "编辑区分组、卡片标题。"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "正文、控件文字、表格内容；13px 是工作台默认字号。"
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "次级说明、时间戳、状态文字。"
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "字段标签、图例说明、错误文案。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "rest-hairline",
+        "value": "0 1px 4px rgba(0,0,0,.06)",
+        "purpose": "卡片与面板的最小落地感，几乎不可见。"
+      },
+      {
+        "name": "selected-lift",
+        "value": "0 1px 3px rgba(0,0,0,.12)",
+        "purpose": "激活 Tab、选中项的轻浮起。"
+      },
+      {
+        "name": "pop-layer",
+        "value": "0 8px 24px rgba(0,0,0,.12)",
+        "purpose": "弹窗、下拉浮层、拖拽中的浮起元素。"
+      },
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 3px rgba(0,120,212,.15)",
+        "purpose": "输入控件焦点环。"
+      },
+      {
+        "name": "focus-ring-danger",
+        "value": "0 0 0 3px rgba(216,59,1,.14)",
+        "purpose": "错误态焦点环。"
+      }
+    ],
+    "motion": [
+      {
+        "name": "t-base",
+        "value": "0.15s ease",
+        "purpose": "常规过渡：底色、描边、阴影。"
+      },
+      {
+        "name": "t-fast",
+        "value": "0.12s ease",
+        "purpose": "快速过渡：按钮按下位移、微交互。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "editor-nav-stack",
+        "value": "720px",
+        "note": "在线编辑：≥720px 竖排导航；480–720px 顶部横向 Tab。"
+      },
+      {
+        "name": "editor-single-column",
+        "value": "480px",
+        "note": "在线编辑：<480px 表单单列。"
+      },
+      {
+        "name": "graph-side-dual",
+        "value": "340px",
+        "note": "图谱编辑框：容器 ≥340px 由单列切双列。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "承载页面唯一的主行动（保存、执行、应用）。",
+      "html": "<button class=\"ds-btn-primary\">保存修改</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 14px; border: 1px solid transparent; border-radius: var(--radius-sm, 6px); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 13px; font-weight: 500; line-height: 1; color: #ffffff; background: var(--primary, #0078d4); cursor: pointer; white-space: nowrap; transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease; } .ds-btn-primary:hover { background: var(--primary-hover, #0069bd); } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: 2px solid var(--primary, #0078d4); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: .45; cursor: not-allowed; transform: none; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "次要动作：与主按钮并排，白底描边，不抢焦点。",
+      "html": "<button class=\"ds-btn-secondary\">撤销</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 30px; padding: 0 14px; border: 1px solid var(--border, #dde5f0); border-radius: var(--radius-sm, 6px); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 13px; font-weight: 500; line-height: 1; color: var(--primary, #0078d4); background: #ffffff; cursor: pointer; white-space: nowrap; transition: background 0.15s ease, border-color 0.15s ease; } .ds-btn-secondary:hover { background: var(--primary-soft, #eaf1fb); border-color: var(--border-strong, #c3d0e0); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--primary, #0078d4); outline-offset: 2px; } .ds-btn-secondary:disabled { opacity: .45; cursor: not-allowed; }"
+    },
+    {
+      "name": "Danger Text Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "行内删除：无底色，hover 才显红底。",
+      "html": "<button class=\"ds-btn-danger-text\">删除</button>",
+      "css": ".ds-btn-danger-text { display: inline-flex; align-items: center; justify-content: center; height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-sm, 6px); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 12px; font-weight: 500; color: var(--danger, #d83b01); background: transparent; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; } .ds-btn-danger-text:hover { background: var(--danger-bg, #fdf3f3); color: var(--danger, #d83b01); } .ds-btn-danger-text:focus-visible { outline: 2px solid var(--danger, #d83b01); outline-offset: 2px; }"
+    },
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "面板头与画布上的无文字操作，28px 方块，必须带 title。",
+      "html": "<button class=\"ds-btn-icon\" title=\"收起\" aria-label=\"收起\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M15 6l-6 6 6 6\"/></svg></button>",
+      "css": ".ds-btn-icon { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-sm, 6px); color: var(--muted, #5a6b7f); background: transparent; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; } .ds-btn-icon:hover { background: var(--surface-hover, #eef2f8); color: var(--text, #1a1a2e); } .ds-btn-icon:focus-visible { outline: 2px solid var(--primary, #0078d4); outline-offset: 1px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "11px 标签 + 30px 控件 + 辅助/错误文案的三段式字段。",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">名称<span class=\"ds-req\">*</span></span><input class=\"ds-input\" value=\"研究员\" /><span class=\"ds-field-hint\">用于图谱节点显示名</span></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 4px; min-width: 240px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; } .ds-field-label { font-size: 11px; font-weight: 500; color: var(--muted, #5a6b7f); } .ds-req { color: var(--danger, #d83b01); margin-left: 2px; } .ds-input { width: 100%; height: 30px; padding: 0 9px; box-sizing: border-box; font-size: 13px; color: var(--text, #1a1a2e); background: #ffffff; border: 1px solid var(--border, #dde5f0); border-radius: var(--radius-sm, 6px); transition: border-color 0.15s ease, box-shadow 0.15s ease; } .ds-input:hover { border-color: var(--border-strong, #c3d0e0); } .ds-input:focus { outline: none; border-color: var(--primary, #0078d4); box-shadow: var(--ring, 0 0 0 3px rgba(0,120,212,.15)); } .ds-field-hint { font-size: 11px; line-height: 1.5; color: var(--muted, #5a6b7f); }"
+    },
+    {
+      "name": "Card Panel",
+      "kind": "card",
+      "refersTo": "card-panel",
+      "description": "主容器：白底、1px 石板描边、10px 圆角、几乎不可见的落地阴影。",
+      "html": "<section class=\"ds-panel\"><h2 class=\"ds-panel-title\">当前领域</h2><p class=\"ds-panel-body\">本体已加载，共 42 个类、18 个个体。</p></section>",
+      "css": ".ds-panel { background: #ffffff; border: 1px solid var(--border, #dde5f0); border-radius: var(--radius-lg, 10px); padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; } .ds-panel-title { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--heading, #33455f); } .ds-panel-body { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text, #1a1a2e); }"
+    },
+    {
+      "name": "Segmented Tabs",
+      "kind": "nav",
+      "refersTo": "tab-active",
+      "description": "灰洗托盘 + 白底激活项，用于检查器的视图切换。",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-tab-active\">属性</button><button class=\"ds-tab\">证据</button><button class=\"ds-tab\">CQ</button></div>",
+      "css": ".ds-tabs { display: inline-flex; gap: 4px; padding: 3px; background: #eef2f8; border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; } .ds-tab { border: none; background: transparent; border-radius: 6px; padding: 5px 12px; font-size: 13px; color: var(--muted, #5a6b7f); cursor: pointer; transition: background 0.15s ease, color 0.15s ease; } .ds-tab:hover { color: var(--text, #1a1a2e); } .ds-tab:focus-visible { outline: 2px solid var(--primary, #0078d4); outline-offset: 1px; } .ds-tab-active { background: #ffffff; color: var(--text, #1a1a2e); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }"
+    },
+    {
+      "name": "Tag Pill",
+      "kind": "chip",
+      "refersTo": "tag-pill",
+      "description": "场景与分类标签，14px 胶囊，可点击时 hover 显描边。",
+      "html": "<button class=\"ds-tag\">任务分配</button>",
+      "css": ".ds-tag { border: 1px solid transparent; border-radius: var(--radius-pill, 14px); padding: 3px 9px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 11px; font-weight: 500; color: var(--link, #0b57a0); background: #eef2f8; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; } .ds-tag:hover { background: #e3eef8; border-color: #b9d5e8; } .ds-tag:focus-visible { outline: 2px solid var(--primary, #0078d4); outline-offset: 2px; }"
+    },
+    {
+      "name": "Success Notice",
+      "kind": "custom",
+      "refersTo": "card-panel",
+      "description": "成功/已保存提示条：绿底绿边，出现 4 秒后自动消失。",
+      "html": "<div class=\"ds-notice\">已保存到领域包 <b>agent_task</b></div>",
+      "css": ".ds-notice { padding: 8px 12px; border: 1px solid var(--success-border, #b7ddc3); border-radius: var(--radius, 8px); background: var(--success-bg, #eaf6ee); color: var(--success, #107c10); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 13px; line-height: 1.5; }"
+    },
+    {
+      "name": "Toolbar Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "图谱工具栏里的元素 / 标签 / 缩放 / 更多，30px 高、白底描边。",
+      "html": "<button class=\"ds-btn-toolbar\">元素</button>",
+      "css": ".ds-btn-toolbar { height: 30px; padding: 0 10px; border: 1px solid var(--border, #dde5f0); border-radius: var(--radius-sm, 6px); background: #fff; color: var(--primary, #0078d4); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; font-size: 12.5px; font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap; transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease; } .ds-btn-toolbar:hover { background: var(--primary-soft, #eaf1fb); border-color: var(--border-strong, #c3d0e0); } .ds-btn-toolbar:active { transform: translateY(1px); } .ds-btn-toolbar:focus-visible { outline: 2px solid var(--primary, #0078d4); outline-offset: 2px; }"
+    },
+    {
+      "name": "Canvas Element Detail",
+      "kind": "custom",
+      "refersTo": "card-panel",
+      "description": "画布右侧的只读详情：元数据 + 关系段 + 唯一写入出口。",
+      "html": "<section class=\"ds-detail\"><div class=\"ds-detail-head\"><span class=\"ds-detail-kind\">类</span><b>智能体</b><span class=\"ds-detail-chip\">只读</span></div><p class=\"ds-detail-id\">agent</p><p class=\"ds-detail-note\">画布只用于查看与定位。要修改本体，请到在线编辑器，改完保存才会写入本体文件。</p><dl><dt>父类</dt><dd>顶层类（无父类）</dd><dt>关系</dt><dd>→ can_execute 任务</dd></dl><button class=\"ds-detail-cta\">去在线编辑修改 →</button></section>",
+      "css": ".ds-detail { background:#fff; border:1px solid var(--border,#dde5f0); border-radius:var(--radius-lg,10px); padding:14px; display:flex; flex-direction:column; gap:10px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; } .ds-detail-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap} .ds-detail-kind{font-size:11px;color:var(--muted,#5a6b7f);background:var(--panel-2,#f8fafc);border:1px solid var(--border,#dde5f0);border-radius:14px;padding:2px 8px} .ds-detail-head b{font-size:15px;color:var(--heading,#33455f)} .ds-detail-chip{margin-left:auto;font-size:11px;color:var(--muted,#5a6b7f);border:1px solid var(--border,#dde5f0);border-radius:14px;padding:2px 8px} .ds-detail-id{font-size:11px;color:var(--muted,#5a6b7f);margin:0} .ds-detail-note{font-size:12px;line-height:1.6;color:var(--muted,#5a6b7f);background:var(--panel-2,#f8fafc);border:1px solid var(--border,#dde5f0);border-radius:8px;padding:8px 10px;margin:0} dl{margin:0;display:flex;flex-direction:column;gap:8px} dt{font-size:11px;color:var(--muted,#5a6b7f)} dd{margin:2px 0 0;font-size:13px;color:var(--text,#1a1a2e)} .ds-detail-cta{align-self:flex-start;height:32px;padding:0 14px;border:1px solid transparent;border-radius:6px;background:var(--primary,#0078d4);color:#fff;font-size:13px;cursor:pointer} .ds-detail-cta:hover{background:var(--primary-hover,#0069bd)} .ds-detail-cta:focus-visible{outline:2px solid var(--primary,#0078d4);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Reasoning Bench",
+    "overview": "这是一张推理台，不是一块宣传板。界面把「本体、证据、推理结果」三样东西摊在同一张桌面上：左边是画布，右边是检查器，顶部是当前领域与状态。所有装饰都必须让位给「我现在看到的是什么、它从哪条规则来、下一步能做什么」。\n\n工作台默认高密度。正文 13px、标签 11px、控件 30px 高、间距按 4px 网格走——这不是为了显得专业，而是因为用户会在一屏里同时比对节点、属性、断言与错误。密度是功能，不是风格。留白只在分区之间出现，从不在信息之间。\n\n色彩上只允许一个声音。#0078d4 的信号蓝负责「可执行 / 已选中 / 有焦点」，其余位置一律由纸白、冷灰与深港蓝承担。深港蓝页头（#1f3a52）把导航与状态压成一条恒定的 52px 带子，让下方的画布成为唯一主角。语义色（绿 / 红 / 橙）只在表达结果时出现，绝不用于装饰。",
+    "keyCharacteristics": [
+      "高密度、低噪音：13px 正文 + 4px 间距网格 + 1px 边框分层",
+      "单一强调色：信号蓝只标记可执行、选中与焦点",
+      "边框优先：卡片静止时几乎无阴影，深度靠描边与底色差",
+      "语义色有明确职责：绿=成功/已保存，红=阻断/危险，橙=建议/警告，青=推理新增",
+      "双栏可拖拽工作区：图谱 ⇄ 检查器，宽度变化用容器查询而非视口断点"
+    ],
+    "rules": [
+      {
+        "name": "The One Signal Rule",
+        "body": "信号蓝只用于可执行、已选中、有焦点三件事。它是稀缺资源：一屏内若有两个同等强调的蓝色块，删掉一个。",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic-Only Rule",
+        "body": "绿、红、橙、青只承载状态语义。禁止把它们当分类色、装饰色或图表配色使用（图谱分组色是独立调色板，不与语义色混用）。",
+        "section": "colors"
+      },
+      {
+        "name": "The 13px Floor Rule",
+        "body": "正文永远 13px 起步，11–12px 只允许出现在标签、辅助说明与错误文案里。不要为了「塞更多」把正文压到 12px。",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Display Rule",
+        "body": "没有展示型大字号。18px 已是上限；界面不靠字号制造层级，靠位置、字重与底色。",
+        "section": "typography"
+      },
+      {
+        "name": "The Locked Viewport Rule",
+        "body": "页面本身不滚动。任何新页面要滚，就给它自己的滚动容器（overflow-y: auto; overscroll-behavior: contain），不要撑高 body。",
+        "section": "layout"
+      },
+      {
+        "name": "The Container-Query Rule",
+        "body": "编辑类面板的响应式一律用 @container，不写 @media。断点跟着面板宽度走，不跟着窗口走。",
+        "section": "layout"
+      },
+      {
+        "name": "The Border-Before-Shadow Rule",
+        "body": "需要区分层次时先加 1px 描边或调整底色；描边解决不了才允许加阴影，且阴影必须对应某个状态变化。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 用 --sp-* 的 4px 网格取值，面板内边距 14px、卡内间距 8–12px。",
+      "Do 新控件先复用 .btn / .field / .panel 原语；缺值先在 :root 加 token，再在调用处引用。",
+      "Do 用 1px --border 与三档底色差建立层次，只有状态变化时才加阴影。",
+      "Do 保持信号蓝稀缺：一屏之内，可执行动作与选中态合计不超过 10% 面积。",
+      "Do 用容器查询处理编辑面板响应式；用 tabular-nums 对齐数字列。",
+      "Do 推理产生的内容用青绿虚线明确标注，与用户输入的内容区分；节点种类用形状表达，不要再用颜色兼做分类。",
+      "Do 画布保持只读：选中后给「去在线编辑修改 →」，不要在图谱侧再放一套可写表单。",
+      "Do 图标用 18px 描边 SVG（currentColor、1.8 描边），折叠 / 展开 / 缩放 / 重排都走同一套；按钮点击区不小于 28×28。"
+    ],
+    "donts": [
+      "Don't 引入大圆角营销卡片、渐变主视觉、彩色实心大标题或玻璃拟态背景——这套界面是操作台，不是落地页。",
+      "Don't 用深色霓虹、发光描边、全屏动效，或红蓝对撞的双主色仪表盘风格。",
+      "Don't 在 JSX 的 style={{}} 或散落 CSS 里写死颜色、间距、字号。",
+      "Don't 把正文压到 12px 以下；11px 只留给标签与错误文案。",
+      "Don't 用 @media 给编辑面板做断点，也不要让 body 出现滚动条。",
+      "Don't 把语义色（绿/红/橙/青）当装饰色或分类配色使用，也不要把它们放回分组调色板。",
+      "Don't 给边标签默认常显：137 条边会连成一片，标签只在悬停、选中或显式打开时出现。",
+      "Don't 用 « » ✕ ⌨ ⟳ ⛶ 这类 Unicode 字形当图标：它们在 24px 按钮里只有约 10px 视觉大小，且随字体变化。"
+    ]
+  }
+}

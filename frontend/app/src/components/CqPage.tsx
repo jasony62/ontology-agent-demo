@@ -761,7 +761,7 @@ export default function CqPage() {
       ) : (
         <>
           {notice && <div className={`notice-banner${noticeTone === 'warn' ? ' warn' : ''}`} role="status">{notice}</div>}
-          {error && <div className="error-banner">{error}</div>}
+          {error && <div className="error-banner" role="alert">{error}</div>}
           {partialErrors.length > 0 && (
             <div className="notice-banner warn" role="status">
               <span>部分数据未取到：{partialErrors.join(' / ')}。</span>
@@ -1246,7 +1246,7 @@ export default function CqPage() {
                       onSave={saveCase}
                     />
                   ) : !current ? (
-                    <div className="guide-empty">左侧选一道题看定位证据。</div>
+                    <div className="guide-empty">在列表里选一道题看定位证据。</div>
                   ) : (
                     <div className="cq-detail-body">
                       <div className="cq-detail-actions">

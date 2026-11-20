@@ -1454,7 +1454,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-toolbar { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .cq-toolbar-main { min-width: 0; flex: 0 0 auto; }
 .cq-toolbar h2 { font-size: var(--fs-page); color: var(--heading); margin-bottom: 3px; }
-.cq-abbr { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--muted); }
+.cq-abbr { margin-left: 8px; font-size: var(--fs-sm); font-weight: 400; color: var(--muted); }
 .cq-intro { margin: 2px 0 4px; font-size: 13px; color: var(--text); line-height: 1.65; }
 .cq-meta { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--muted); line-height: 1.6; }
 .cq-meta-tech { margin-left: 4px; color: var(--muted); }
@@ -1805,8 +1805,8 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-training-next .btn { margin-left: auto; }
 .cq-training-guide {
   display: flex; flex-direction: column; gap: 4px; margin: 8px 0;
-  padding: 9px 12px; border: 1px dashed var(--border-strong);
-  border-radius: 8px; background: var(--panel-2); font-size: 12.5px; color: var(--text);
+  padding: 4px 0; border: 0; border-radius: 0; background: transparent;
+  font-size: 12.5px; color: var(--text);
 }
 .cq-training-guide b { color: var(--heading); }
 .cq-training-guide .btn { align-self: flex-start; margin-top: 2px; }
@@ -2083,7 +2083,6 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-tech-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
 .cq-tech-section { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--panel-2); }
 .cq-tech-section > summary { cursor: pointer; color: var(--link); font-size: 12.5px; }
-.cq-tabs { border-bottom: 1px solid var(--border); }
 .cq-tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; }
 .cq-tab.active { border-bottom-color: var(--primary); color: var(--heading); font-weight: 600; background: transparent; }
 .cq-stale-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: #fff4e5; border: 1px solid #e6b36b; color: #8a5a00; }
@@ -2280,7 +2279,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   .domain-switch select { flex: 1 1 auto; max-width: none; }
   .domain-switch .domain-label { display: none; }
   .app-header-right { flex: 0 0 auto; margin-left: auto; }
-  .app-main { padding: 12px 10px; gap: 8px; }
+  .app-main { padding: 12px; gap: 8px; }
   .graph-side { min-width: 0; overflow-x: hidden; }
   .overview-legend, .overview-legend-group { flex-wrap: wrap; }
   .panel, .overview-section { min-width: 0; }

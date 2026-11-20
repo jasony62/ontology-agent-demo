@@ -1,0 +1,9 @@
+{
+  "detector": {
+    "ignoreRules": [
+      "flat-type-hierarchy"
+    ],
+    "ignoreFiles": [],
+    "ignoreValues": []
+  }
+}

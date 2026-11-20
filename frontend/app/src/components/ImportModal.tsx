@@ -109,7 +109,7 @@ export default function ImportModal({ onClose, onSynced }: Props) {
           （结构、物化、查询、依据）。领域专属推理（能力匹配 / 任务编排 / 合规检测）
           需要领域包与适配器，导入的裸本体没有；想用这些能力，可切回默认领域或安装领域包。
           这是一份<b>只读副本</b>：可查看与推理，不能新建或覆盖保存；需要修改请先导出。
-          可在页头「清除导入的本体」切回默认领域，无需重启。
+          可在页头「管理导入数据」退出导入态或清理磁盘数据，无需重启。
         </div>
         <div
           className={`drop-zone ${dragging ? 'dragging' : ''}`}

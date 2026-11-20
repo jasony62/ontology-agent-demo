@@ -418,8 +418,8 @@ export default function App() {
           <div className="toolbar header-actions">
             <button onClick={() => setImportOpen(true)}>导入</button>
             {ontologyMode === 'imported' && (
-              <button onClick={() => setClearImportedOpen(true)} title="退出导入态，或按粒度清理磁盘数据（不会误删 CQ 题库）">
-                清除导入的本体
+              <button onClick={() => setClearImportedOpen(true)} title="退出导入态，或按粒度清理磁盘数据（写清题集去留与重新导入结果）">
+                管理导入数据
               </button>
             )}
             <button onClick={() => setExportOpen(true)}>导出</button>
@@ -434,7 +434,7 @@ export default function App() {
             <button type="button" className="menu-nav-item" onClick={gotoCq}>CQ 集</button>
             <button type="button" onClick={() => setImportOpen(true)}>导入本体</button>
             {ontologyMode === 'imported' && (
-              <button type="button" onClick={() => setClearImportedOpen(true)}>清除导入的本体</button>
+              <button type="button" onClick={() => setClearImportedOpen(true)}>管理导入数据</button>
             )}
             <button type="button" onClick={() => setExportOpen(true)}>导出本体</button>
             <button type="button" onClick={() => setSourceOpen(true)} disabled={!sourceName}>OWL 源码</button>

@@ -34,7 +34,7 @@ const STAGE_BAR = ['authored', 'regression', 'pending', 'resolved', 'fixing', 'p
 const STAGES = [...STAGE_BAR, 'followup'] as const;
 const STAGE_LABELS: Record<string, string> = {
   authored: '已建题',
-  regression: '回归中',
+  regression: '待评估',
   pending: '待裁定',
   resolved: '已裁定',
   fixing: '修复中',
@@ -43,7 +43,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 const STAGE_ACTIONS: Record<string, string> = {
   authored: '还没有可自动验收的检查；等智能体补断言，或到题目页核对。',
-  regression: '回归未通过；等智能体归因或处理。',
+  regression: '尚未评估或回归未通过；先跑一轮评估，或等智能体归因。',
   resolved: '已经拍板，等智能体按结论行动。',
   fixing: '智能体正在修复这轮改动。',
   passed: '上次回归通过，可以收口。',
@@ -671,7 +671,7 @@ function CaseCard({
         <span className="cq-case-id" title={`题目 ID：${item.case_id}`}>#{item.short_id || item.ordinal || item.case_id}</span>
         <h4>{plainCopy(item.cq) || '未命名题目'}</h4>
         <span className={`cq-stage-badge stage-${item.stage}`}>{item.stage_label}</span>
-        {item.graduated && <span className="cq-badge ok">已毕业</span>}
+        {item.graduated && <span className="cq-badge ok">已可交付</span>}
         {item.failure_triggered && <span className="cq-stage-alert">回归失败</span>}
         {item.intent_pending && <span className="guide-badge">意图待确认</span>}
       </div>

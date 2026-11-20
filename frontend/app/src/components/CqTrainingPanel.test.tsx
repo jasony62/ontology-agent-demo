@@ -689,7 +689,7 @@ describe('训练现场（#198 / #203）', () => {
       expect(bar.querySelectorAll('.cq-stage-step.visited')).toHaveLength(0);
     }
     const regression = [...bars[0].querySelectorAll<HTMLButtonElement>('button')]
-      .find((button) => button.textContent === '回归中')!;
+      .find((button) => button.textContent === '待评估')!;
     expect(regression.className).not.toContain('active');
   });
 

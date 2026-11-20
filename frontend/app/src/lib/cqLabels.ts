@@ -168,7 +168,7 @@ export const ACTION_LABELS: Record<string, string> = {
   revise_case: '改问法',
   delete_case: '删题',
   rerun_regression: '重跑回归',
-  lock_graduation: '锁定毕业',
+  lock_graduation: '锁定交付',
   generate_cases: '生成候选题',
 };
 

@@ -23,16 +23,30 @@ import TechDetails from './TechDetails';
 
 // #308 / #309 / #310：与 cq/graduation.py 同一组词、同一顺序。
 // 「未启用」是运营态门槛，不是质量 blocker；「待审核」已从缺口词表移除。
-const MISSING_ORDER = ['未启用', '未锚定', '未分型', '缺断言', '未通过', '已归档'];
+const MISSING_ORDER = ['未启用', '未锚定', '未分型', '缺断言', '未评估', '未通过', '已归档'];
 
 // #341：'未通过' 同时是后端 `blockers` 值、前端计数键与筛选键，
 // 不能直接改字符串。内部协议值保持不变，只在渲染 chip 时映射成显示名。
 const MISSING_LABELS: Record<string, string> = {
+  未评估: '未评估',
   未通过: '回归未通过',
 };
 
 function missingLabel(key: string): string {
   return MISSING_LABELS[key] ?? key;
+}
+
+/**
+ * 没跑过评估的题不应该显示「回归未通过」——那是结论，不是状态。
+ * 以 coverage_cache.ran_at 判断是否评估过：没有就显示「未评估」。
+ */
+function hasRun(item: CqSetCase): boolean {
+  return Boolean(item.coverage_cache?.ran_at);
+}
+
+function blockerKeys(item: CqSetCase): string[] {
+  return (item.missing ?? item.blockers ?? []).map((key) =>
+    key === '未通过' && !hasRun(item) ? '未评估' : key);
 }
 
 // #278：与 cq/cq_store.py `_CASE_FIELDS` 对齐的落盘白名单。
@@ -210,7 +224,7 @@ export default function CqPage() {
       MISSING_ORDER.map((label) => [label, 0]),
     );
     for (const item of cases) {
-      for (const blocker of item.missing ?? item.blockers ?? []) {
+      for (const blocker of blockerKeys(item)) {
         if (blocker in counts) counts[blocker] += 1;
       }
     }
@@ -229,7 +243,7 @@ export default function CqPage() {
     return cases
       .map((item, index) => ({ item, index }))
       .filter(({ item, index }) => {
-        if (gapFilter && !(item.missing ?? item.blockers ?? []).includes(gapFilter)) return false;
+        if (gapFilter && !blockerKeys(item).includes(gapFilter)) return false;
         if (!needle) return true;
         const short = String(item.short_id || `Q${String(index + 1).padStart(2, '0')}`).toLowerCase();
         if (looksLikeNumber) {
@@ -703,8 +717,8 @@ export default function CqPage() {
                   <span>
                     {delivery.verdict
                       || (delivery.ready
-                        ? `达到交付线：${delivery.graduated_questions} 题已全部毕业`
-                        : `未达交付线：差 ${delivery.missing_questions} 题毕业`)}
+                        ? `达到交付线：${delivery.graduated_questions} 题已全部可交付`
+                        : `未达交付线：还差 ${delivery.missing_questions} 题达到交付线`)}
                     {provenance && !provenance.known ? '（来源未记录，仅供参考）' : ''}
                   </span>
                   {!delivery.ready && (
@@ -747,28 +761,28 @@ export default function CqPage() {
                   <div className="cq-maturity-main">
                     <span>
                       成熟度 CQM
-                      <HelpTip text="CQ 成熟度：已毕业题数 ÷ 目标题量；100% 即全部毕业。" />
+                      <HelpTip text="CQ 成熟度：已可交付题数 ÷ 目标题量；100% 即全部可交付。" />
                     </span>
                     <b>{cqmAvailable ? `${Math.round((cqm ?? 0) * 100)}%` : '不可用'}</b>
                     {provenance && !provenance.known && (
                       <span className="cq-badge warn" title="旧题集没有播种来源记录；成熟度仅供参考">来源未知</span>
                     )}
                     <span className="guide-muted">
-                      已毕业 {graduatedQuestions} / 目标 {targetQuestions} 题 · 交付线 100%（全部毕业）
+                      已可交付 {graduatedQuestions} / 目标 {targetQuestions} 题 · 交付线 100%（全部可交付）
                     </span>
                   </div>
                   {delivery && (
                     <p className="cq-maturity-gap">
                       {delivery.ready
-                        ? '已达交付线：全部题都已毕业。'
-                        : `当前差 ${delivery.missing_questions} 题毕业`}
+                        ? '已达交付线：全部题都已可交付。'
+                        : `当前还差 ${delivery.missing_questions} 题达到交付线`}
                       {delivery.unanchored_questions > 0 && !delivery.ready
-                        ? `；把未锚定的 ${delivery.unanchored_questions} 题补齐到毕业 → ${Math.round(delivery.cqm_if_unanchored_fixed * 100)}%`
+                        ? `；把未锚定的 ${delivery.unanchored_questions} 题补齐到可交付 → ${Math.round(delivery.cqm_if_unanchored_fixed * 100)}%`
                         : ''}
                     </p>
                   )}
                   <p className="guide-muted">
-                    目标题量按本体规模估算（当前 {data?.summary?.schema_terms ?? '—'} 个关键术语，最低 20 题），可调，不随删题变化；毕业 = 已锚定 + 已分型 + 有断言 + 回归通过 + 未归档。
+                    目标题量按本体规模估算（当前 {data?.summary?.schema_terms ?? '—'} 个关键术语，最低 20 题），可调，不随删题变化；可交付 = 已锚定 + 已分型 + 有断言 + 回归通过 + 未归档。
                     {!cqmAvailable && mismatch ? ' 当前题集与本体可能不匹配，CQM 暂不可用。' : ''}
                     {provenance && !provenance.known ? ' 来源未记录（旧题集），成熟度仅供参考。' : ''}
                   </p>
@@ -787,7 +801,7 @@ export default function CqPage() {
                     <span>回归通过 {quality.answerable ?? 0}</span>
                     <span>留存 {quality.retained ?? 0}</span>
                     <span>
-                      毕业 <HelpTip text="已锚定 + 已分型 + 有断言 + 回归通过 + 未归档；全部题毕业才算可交付。" />
+                      可交付 <HelpTip text="已锚定 + 已分型 + 有断言 + 回归通过 + 未归档；全部题可交付才算可交付。" />
                       {quality.graduated ?? 0}
                     </span>
                   </div>
@@ -899,7 +913,7 @@ export default function CqPage() {
                   <i>→</i>
                   <span><b>{summary.answerable}</b> 回归通过</span>
                   <i>→</i>
-                  <span><b>{graduatedQuestions}</b> 毕业 <em>/ 目标 {targetQuestions}</em></span>
+                  <span><b>{graduatedQuestions}</b> 可交付 <em>/ 目标 {targetQuestions}</em></span>
                   {summary.gap > 0 && <span className="cq-funnel-gap">没对上 {summary.gap}</span>}
                 </div>
                 <div className="cq-funnel-meta">
@@ -918,10 +932,10 @@ export default function CqPage() {
                 </div>
               </section>
 
-              {/* #250 R6 / #311：与训练页题卡「还差」一一对应的毕业条件统计，可点击筛题。 */}
-              <section className="cq-gap-stats" aria-label="毕业条件">
+              {/* #250 R6 / #311：与训练页题卡「还差」一一对应的交付条件统计，可点击筛题。 */}
+              <section className="cq-gap-stats" aria-label="交付条件">
                 <div className="cq-gap-stats-head">
-                  <b>毕业条件</b>
+                  <b>交付条件</b>
                   <span className="guide-muted">
                     回归通过（即质量区的「可答」）是同一判据；未启用是运营态门槛，不是质量 blocker。0 值不占位，点一项筛出对应题目。
                   </span>
@@ -1042,8 +1056,8 @@ export default function CqPage() {
                             {/* #310 / #311：状态独占一行、右对齐；审核信息只放详情区「审核」组。 */}
                             <span className={`cq-row-status${item.graduated ? ' ok' : ''}`}>
                               {item.graduated
-                                ? '已毕业'
-                                : `缺：${(item.missing ?? item.blockers ?? []).map(missingLabel).join('、') || '—'}`}
+                                ? '已可交付'
+                                : `缺：${blockerKeys(item).map(missingLabel).join('、') || '—'}`}
                             </span>
                           </button>
                         </li>
@@ -1124,7 +1138,7 @@ function hasLatinIdentifier(text?: string | null): boolean {
 
 const GUARDRAIL_LABELS: Record<string, string> = {
   tool_error_rate: '工具报错率',
-  graduation_retention: '毕业留存率',
+  graduation_retention: '交付留存率',
   cq_test_ci_rate: 'cq-test 纳入 CI 率',
 };
 
@@ -1699,7 +1713,7 @@ function CqDetail({
         <div><span>来自哪个需求</span><b>{item.requirement || '—'}</b></div>
       </div>
 
-      {/* #311：审核信息单独成组；不并进毕业条件，也不叫「状态 / 许可」。 */}
+      {/* #311：审核信息单独成组；不并进交付条件，也不叫「状态 / 许可」。 */}
       <section className="cq-section">
         <h4>审核</h4>
         <div className="cq-kv">
@@ -1718,7 +1732,7 @@ function CqDetail({
           </p>
         )}
         <p className="guide-muted">
-          待审核不阻断毕业；因题干或断言改动而重开的题会自动退回草稿，在编辑弹窗翻回启用后再交付。
+          待审核不阻断可交付；因题干或断言改动而重开的题会自动退回草稿，在编辑弹窗翻回启用后再交付。
         </p>
       </section>
 
@@ -1731,9 +1745,9 @@ function CqDetail({
         {/* #343：质量态告知——启用是运营动作，不等于这题已经可交付。 */}
         {isRegressionFailed(item) && (
           <div className="cq-disposition-warn" role="note">
-            <b>该题回归未通过：可以启用，但启用后仍不满足毕业条件。</b>
+            <b>该题回归未通过：可以启用，但启用后仍不满足交付条件。</b>
             <span>
-              「已启用」只代表进入运营队列；毕业还要求回归通过。建议先补断言或修本体，
+              「已启用」只代表进入运营队列；可交付还要求回归通过。建议先补断言或修本体，
               再用下方「测这一题」验证，最后跑正式评估。
             </span>
           </div>
@@ -1858,7 +1872,7 @@ function CqDetail({
           {/* #348：用户最容易误解的一处——这次通过不等于题目状态变了。 */}
           <p className="cq-run-scope">
             单题验证只检验这一题、当场给结果，不写评估历史，也不改变题目状态。
-            题目状态来自「跑一轮评估」的结果；没跑过评估就显示「回归未通过」。
+            题目状态来自「跑一轮评估」的结果；没跑过评估时显示「未评估」。
             想让题目状态变成「回归通过」，请跑一轮评估。
           </p>
         </div>

@@ -704,9 +704,6 @@ export default function CqPage() {
               {mismatch && (
                 <div className="error-banner" role="alert">{mismatchText}</div>
               )}
-              {partialMismatch && (
-                <div className="notice-banner warn" role="status">{partialMismatchText}</div>
-              )}
               {delivery && summary && summary.total > 0 && (
                 <div
                   className={`cq-delivery${delivery.ready ? ' ok' : ' warn'}`}
@@ -720,6 +717,11 @@ export default function CqPage() {
                         ? `达到交付线：${delivery.graduated_questions} 题已全部可交付`
                         : `未达交付线：还差 ${delivery.missing_questions} 题达到交付线`)}
                     {provenance && !provenance.known ? '（来源未记录，仅供参考）' : ''}
+                    {partialMismatch ? (
+                      <span className="guide-muted"> {partialMismatchText}</span>
+                    ) : delivery.unanchored_questions > 0
+                      ? `（其中 ${delivery.unanchored_questions} 题未锚定）`
+                      : ''}
                   </span>
                   {!delivery.ready && (
                     <button type="button" className="btn secondary" onClick={() => void requestCases()}>
@@ -905,6 +907,10 @@ export default function CqPage() {
             )
           ) : (
             <>
+              <details className="cq-quality-detail cq-fold">
+                <summary>
+                  {summary.total} 题 · 回归通过 {summary.answerable} · 还差 {delivery?.missing_questions ?? 0} 题达到交付线
+                </summary>
               <section className="cq-funnel" aria-label="质量漏斗">
                 <div className="cq-funnel-steps">
                   <span><b>{summary.total}</b> 总题数</span>
@@ -959,6 +965,7 @@ export default function CqPage() {
                   )}
                 </div>
               </section>
+              </details>
 
               {showTech && (
                 <section className="panel cq-mention-coverage" aria-label="题干提及覆盖">

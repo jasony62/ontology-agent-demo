@@ -1483,7 +1483,7 @@ describe('CQ 集页（#151 / #203）', () => {
       ...SET,
       cases: SET.cases.map((item, index) => (index === 1
         ? { ...item, blockers: ['未通过'], coverage_cache: { conclusion: 0, ran_at: '2026-11-20T00:00:00Z' } }
-        : item)),
+        : item)) as typeof SET.cases,
     });
     act(() => root!.render(<CqPage />));
     await flush();
@@ -1511,7 +1511,7 @@ describe('CQ 集页（#151 / #203）', () => {
       ...SET,
       cases: SET.cases.map((item, index) => (index === 1
         ? { ...item, blockers: ['未通过'], coverage_cache: null }
-        : item)),
+        : item)) as typeof SET.cases,
     });
     act(() => root!.render(<CqPage />));
     await flush();

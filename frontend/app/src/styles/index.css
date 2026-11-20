@@ -2412,3 +2412,18 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   }
 }
+
+/* CQ 首屏收口：质量漏斗与交付条件折叠成一行，默认收起 */
+.cq-fold > summary {
+  cursor: pointer; padding: 6px 2px; font-size: var(--fs-md);
+  color: var(--heading); font-weight: 600;
+}
+.cq-fold > summary:hover { color: var(--text); }
+.cq-fold[open] > summary { margin-bottom: 8px; }
+
+/* CQ 首屏再压一档：减少块间距与工具栏内距，把列表整体上提 */
+.cq-page { gap: 8px; }
+.cq-toolbar { gap: 4px; }
+.cq-intro { margin: 0; }
+.cq-meta { margin: 2px 0 0; }
+.cq-training-entry { padding: 5px 10px; }

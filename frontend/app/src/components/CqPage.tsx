@@ -1950,6 +1950,17 @@ function CqDetail({
         <div><span>来自哪个需求</span><b>{item.requirement || '—'}</b></div>
       </div>
 
+      <section id="cq-step-evidence" className="cq-section cq-locate-section">
+        <h4>定位证据</h4>
+        {error ? (
+          <div className="element-readonly-note">{error}</div>
+        ) : !locate ? (
+          <div className="guide-muted">正在定位…</div>
+        ) : (
+          <LocateEvidence locate={locate} showTech={showTech} />
+        )}
+      </section>
+
       {/* #311：审核信息单独成组；不并进交付条件，也不叫「状态 / 许可」。 */}
       <section className="cq-section">
         <h4>审核</h4>
@@ -1962,15 +1973,16 @@ function CqDetail({
         {item.review?.comment && (
           <p className="guide-muted">这条意见已收进「出题配置 → 出题要求」，下一次出题会加载。</p>
         )}
-        {String(item.review?.state || 'none') === 'pending' && (
+        <details className="cq-tech-entry">
+          <summary>审核口径</summary>
           <p className="guide-muted">
             待审核不是死卡：还没回答语义问题，先到训练页回答；已回答但未处置，直接在下方处置区点
-            「审核通过并启用」或「修改」。
+            「审核通过并启用」或「交回改写」。
           </p>
-        )}
-        <p className="guide-muted">
-          待审核不阻断可交付；因题干或断言改动而重开的题会自动退回草稿，在编辑弹窗翻回启用后再交付。
-        </p>
+          <p className="guide-muted">
+            待审核不阻断可交付；因题干或断言改动而重开的题会自动退回草稿，在编辑弹窗翻回启用后再交付。
+          </p>
+        </details>
       </section>
 
       {/* #332：处置区常驻，不依附决策卡；动作与前置由后端计算。 */}
@@ -2162,16 +2174,6 @@ function CqDetail({
         </div>
       </section>
 
-      <section id="cq-step-evidence" className="cq-section cq-locate-section">
-        <h4>定位证据</h4>
-        {error ? (
-          <div className="element-readonly-note">{error}</div>
-        ) : !locate ? (
-          <div className="guide-muted">正在定位…</div>
-        ) : (
-          <LocateEvidence locate={locate} showTech={showTech} />
-        )}
-      </section>
 
       <TechDetails
         label="展开看题目技术信息"

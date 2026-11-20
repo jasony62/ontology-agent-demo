@@ -2478,3 +2478,13 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   border-radius: var(--radius-sm); background: #fff; font-size: var(--fs-md);
 }
 .cq-batch-note { flex: 1 1 180px; min-width: 120px; }
+
+/* ≥1200px：页面只保留一层滚动（列表与详情不再各自滚） */
+@media (min-width: 1200px) {
+  .cq-list ul { max-height: none; overflow: visible; }
+  .cq-detail { max-height: none; overflow: visible; }
+  .cq-page { overflow: auto; }
+}
+/* 「从这里开始」折叠后仍需可读的摘要行 */
+.cq-training-guide > summary { cursor: pointer; font-weight: 600; color: var(--heading); padding: 4px 0; }
+.cq-training-guide[open] > summary { margin-bottom: 6px; }

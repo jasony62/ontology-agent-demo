@@ -431,8 +431,8 @@ export default function CqTrainingPanel({
             </p>
           )}
 
-          <div className="cq-training-guide">
-            <b>从这里开始</b>
+          <details className="cq-training-guide">
+            <summary>从这里开始</summary>
             <span>
               {pendingCases.length > 0
                 ? `智能体已经把待决事项准备好了：先处理「待裁定」的 ${pendingCases.length} 题。`
@@ -441,7 +441,7 @@ export default function CqTrainingPanel({
             <span className="guide-muted">
               概览看总量 → 题看板看每题 → 点题卡看这道题的记录；全部事件记录在下方。
             </span>
-          </div>
+          </details>
 
           {!(nextAction === 'answer_decisions' && pendingCases.length > 0) && (
           <div className="cq-training-next">

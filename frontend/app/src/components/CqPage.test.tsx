@@ -660,6 +660,26 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(details.textContent).toContain('协同指标');
   });
 
+  it('详情头「下一题」按列表顺序切题（审核者逐题走）', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const next = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '下一题')!;
+    expect(next).toBeTruthy();
+    await act(async () => { next.click(); });
+    await flush();
+
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('#Q02');
+
+    const prev = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '上一题')!;
+    await act(async () => { prev.click(); });
+    await flush();
+    expect(container!.querySelector('.cq-detail')?.textContent).toContain('#Q01');
+  });
+
   it('页面说明只出现一处，旧欢迎横幅已删除（#303）', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));

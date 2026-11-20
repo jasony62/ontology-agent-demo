@@ -219,6 +219,7 @@ export default function CqPage() {
     return cases.find((item, index) => caseKey(item, index) === selected) ?? null;
   }, [cases, selected]);
 
+
   // #250 R6 / #310：与训练页「还差」同一组词，逐项计数、可点击筛题。
   // 列表口径用 missing（含未启用），不再把「待审核」当缺口。
   const missingCounts = useMemo(() => {
@@ -263,6 +264,39 @@ export default function CqPage() {
         ].some((value) => String(value || '').toLowerCase().includes(needle));
       });
   }, [cases, gapFilter, query]);
+
+  // 审核者逐题走：下一题 / 上一题按当前筛选后的列表顺序移动
+  const currentIndexInVisible = useMemo(
+    () => visibleCases.findIndex(({ item, index }) => caseKey(item, index) === selected),
+    [visibleCases, selected],
+  );
+  const goToOffset = useCallback((offset: number) => {
+    if (currentIndexInVisible < 0) return;
+    const next = visibleCases[currentIndexInVisible + offset];
+    if (!next) return;
+    setSelected(caseKey(next.item, next.index));
+    requestAnimationFrame(() => {
+      const detail = document.querySelector<HTMLElement>('.cq-detail');
+      if (!detail) return;
+      if (typeof detail.scrollTo === 'function') detail.scrollTo({ top: 0 });
+      else detail.scrollTop = 0;
+    });
+  }, [visibleCases, currentIndexInVisible]);
+
+  // ↑/↓ 或 j/k 切题；输入框、弹窗、术语浮层里不抢键
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+        || target.tagName === 'SELECT' || target.isContentEditable)) return;
+      if (document.querySelector('.modal-backdrop, .cq-glossary')) return;
+      if (event.key === 'ArrowDown' || event.key === 'j') { event.preventDefault(); goToOffset(1); }
+      if (event.key === 'ArrowUp' || event.key === 'k') { event.preventDefault(); goToOffset(-1); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [goToOffset]);
   // #250 R3：运行评估前的预检口径，必须与后端「全量跑」一致。
   const preflight = useMemo(() => ({
     total: cases.length,
@@ -1097,6 +1131,24 @@ export default function CqPage() {
                   ) : (
                     <div className="cq-detail-body">
                       <div className="cq-detail-actions">
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => goToOffset(-1)}
+                          disabled={currentIndexInVisible <= 0}
+                          title="上一题（↑ 或 k）"
+                        >
+                          上一题
+                        </button>
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => goToOffset(1)}
+                          disabled={currentIndexInVisible < 0 || currentIndexInVisible >= visibleCases.length - 1}
+                          title="下一题（↓ 或 j）"
+                        >
+                          下一题
+                        </button>
                         <button
                           type="button"
                           className="btn ghost"

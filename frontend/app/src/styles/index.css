@@ -1562,7 +1562,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .cq-gap-stats-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .cq-gap-stats-head b { font-size: 12.5px; color: var(--heading); }
-.cq-gap-stats-head .guide-muted { font-size: 11px; }
+.cq-gap-stats-head .guide-muted { font-size: var(--fs-sm); }
 .cq-gap-stats-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .cq-gap-stat {
   padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border-strong);
@@ -1595,7 +1595,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-glossary dl > div { border-top: 1px solid var(--border); padding-top: 6px; }
 .cq-glossary dt { font-size: 12.5px; font-weight: 600; color: var(--heading); }
 .cq-glossary dd { margin: 2px 0 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
-.cq-row-cq { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cq-row-cq { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); }
 .cq-badge.muted { color: var(--muted); border-color: var(--border); background: var(--panel-2); }
 .cq-import { cursor: pointer; }
 .cq-import input { display: none; }
@@ -1621,9 +1621,9 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .cq-waiting .btn { height: var(--control-h-sm); padding: 0 10px; }
 .cq-waiting .btn.link { margin-left: auto; }
-.cq-training-normal { margin: 2px 0 0; font-size: 11px; }
+.cq-training-normal { margin: 2px 0 0; font-size: var(--fs-sm); }
 .cq-training-todo { margin: 2px 0 6px; color: #8a5a00; }
-.cq-training-stat.zero { opacity: .62; }
+.cq-training-stat.zero { color: var(--muted); }
 .cq-maturity-skeleton { min-height: 132px; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
 .cq-skeleton-line { height: 14px; width: 55%; border-radius: 6px; background: linear-gradient(90deg, #eef2f8 25%, #e2e8f2 37%, #eef2f8 63%); background-size: 400% 100%; animation: cq-skeleton 1.2s ease infinite; }
 .cq-skeleton-line.short { width: 32%; }
@@ -1997,7 +1997,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-training-options { display: flex; flex-wrap: wrap; gap: 6px; }
 .cq-training-rec {
   margin-left: 6px; padding: 0 5px; border-radius: 3px;
-  background: rgba(255, 255, 255, .24); font-size: 10px;
+  background: rgba(255, 255, 255, .24); font-size: var(--fs-xs);
 }
 .cq-training-note-submit { align-self: flex-start; }
 

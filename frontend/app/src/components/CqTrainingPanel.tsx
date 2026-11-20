@@ -79,7 +79,7 @@ export default function CqTrainingPanel({
   const [focusMode, setFocusMode] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
   const [gapsOpen, setGapsOpen] = useState(false);
-  const [visibleLimit, setVisibleLimit] = useState(20);
+  const [visibleLimit, setVisibleLimit] = useState(8);
   const sortTouched = useRef(false);
   const [openCaseId, setOpenCaseId] = useState<string | null>(null);
   const [historyStage, setHistoryStage] = useState('');
@@ -234,7 +234,7 @@ export default function CqTrainingPanel({
     }
   }, [resume, pendingCases.length, sortMode]);
   useEffect(() => {
-    setVisibleLimit(20);
+    setVisibleLimit(8);
   }, [filter, sortMode]);
   const visibleRows = filtered.slice(0, visibleLimit);
   const focusCase = pendingCases[Math.min(focusIndex, Math.max(0, pendingCases.length - 1))];
@@ -609,7 +609,7 @@ export default function CqTrainingPanel({
                   <button
                     type="button"
                     className="btn secondary cq-load-more"
-                    onClick={() => setVisibleLimit((limit) => limit + 20)}
+                    onClick={() => setVisibleLimit((limit) => limit + 8)}
                   >
                     显示更多（剩余 {filtered.length - visibleRows.length} 题）
                   </button>

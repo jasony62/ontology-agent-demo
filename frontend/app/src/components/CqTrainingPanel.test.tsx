@@ -519,7 +519,7 @@ describe('训练现场（#198 / #203）', () => {
     expect(select.value).toBe('case');
   });
 
-  it('大集分页：先显示 20 题，可继续加载（#297）', async () => {
+  it('大集分页：先显示 8 题，可继续加载（#297）', async () => {
     const cases = Array.from({ length: 25 }, (_, index) => ({
       ...RESUME.lifecycle!.cases[0],
       case_id: `C${index + 1}`,
@@ -547,12 +547,12 @@ describe('训练现场（#198 / #203）', () => {
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
 
-    expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(20);
+    expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(8);
     const more = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((btn) => btn.textContent?.includes('显示更多'))!;
-    expect(more.textContent).toContain('剩余 5 题');
+    expect(more.textContent).toContain('剩余 17 题');
     await act(async () => { more.click(); });
-    expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(25);
+    expect(container!.querySelectorAll('.cq-case-card')).toHaveLength(16);
   });
 
   it('有待审核题时训练页出独立提示与统计，不混进「待决」（#280）', async () => {

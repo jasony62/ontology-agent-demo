@@ -144,6 +144,8 @@ export default function CqPage() {
   // #338：单题回归调试结果（不写评估历史）
   const [caseRunBusy, setCaseRunBusy] = useState(false);
   const [caseRunResult, setCaseRunResult] = useState<CqCaseRunResult | null>(null);
+  // 0/20 的结果不该用成功色播报
+  const [noticeTone, setNoticeTone] = useState<'ok' | 'warn'>('ok');
   // #250 R6：点击整体缺口统计，把下方题目列表筛到对应题
   const [gapFilter, setGapFilter] = useState<string | null>(null);
 
@@ -400,6 +402,7 @@ export default function CqPage() {
     setNotice(null);
     try {
       const run = await api.cqRun('human');
+      setNoticeTone(run.pass > 0 ? 'ok' : 'warn');
       setNotice(`评估完成：${run.pass}/${run.total} 回归通过（回归通过覆盖 ${Math.round(run.coverage_real * 100)}%）。`);
       setRuns((currentRuns) => [run, ...currentRuns].slice(0, 20));
       await load();
@@ -678,7 +681,7 @@ export default function CqPage() {
         <CqTrainingPage onGoToCases={() => selectTab('cases')} />
       ) : (
         <>
-          {notice && <div className="notice-banner" role="status">{notice}</div>}
+          {notice && <div className={`notice-banner${noticeTone === 'warn' ? ' warn' : ''}`} role="status">{notice}</div>}
           {error && <div className="error-banner">{error}</div>}
           {partialErrors.length > 0 && (
             <div className="notice-banner warn" role="status">

@@ -100,6 +100,47 @@ CHECKS = [
 ]
 
 
+def _mcp_tool_counts() -> dict[str, int]:
+    """真建两个 MCPServer 读 `tools/list`（#357）。
+
+    工具数会随注册表漂移，与端点数一样是「可从代码推导的数字」，不该靠人眼。
+    返回：
+      - `ontology`：`/mcp/ontology` 全部工具（领域 10 + 通用 16 = 26）；
+      - `generic`：引擎通用工具（导入态无领域包时的工具数，16）；
+      - `cq`：`/mcp/cq`（18）；
+      - `imported`：导入态 `/mcp/ontology`（与 `generic` 同值，保留语义便于文档直接对号）。
+    """
+    import asyncio
+    import importlib.util
+
+    from api.main import ADAPTER, DOMAINS, ENGINE
+
+    path = ROOT / "mcp" / "mcp_server.py"
+    spec = importlib.util.spec_from_file_location("_docs_mcp_server", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["_docs_mcp_server"] = module
+    spec.loader.exec_module(module)
+
+    handle = DOMAINS.current()
+    server = module.build_server(
+        lambda: ENGINE, lambda: ADAPTER, handle.name, handle.description or ""
+    )
+    module.register_status_tool(server, lambda: {})
+    ontology = len(asyncio.run(server.list_tools()))
+
+    imported = module.build_server(
+        lambda: ENGINE, lambda: ADAPTER, handle.name, handle.description or "",
+        with_domain_tools=False,
+    )
+    module.register_status_tool(imported, lambda: {})
+    generic = len(asyncio.run(imported.list_tools()))
+
+    cq = len(asyncio.run(
+        module.build_cq_server(lambda: ENGINE, lambda: (handle.name, None)).list_tools()
+    ))
+    return {"ontology": ontology, "generic": generic, "cq": cq, "imported": generic}
+
+
 def main() -> int:
     client = TestClient(app)
     health = client.get("/api/health").json()
@@ -158,6 +199,34 @@ def main() -> int:
                 failures.append(
                     f"{rel}: 端点总数写 {got}，实际 {endpoint_count}"
                 )
+
+    # MCP 工具数（#357）：通用 16 / CQ 18（导入态 16）。与端点数同构，
+    # 真建 server 读 tools/list，不维护第二份常量。
+    counts = _mcp_tool_counts()
+    for rel in (
+        "README.md",
+        "docs/DESIGN.md",
+        "docs/manual/README.md",
+        "docs/manual/03-前端与MCP.md",
+        "docs/manual/06-二次开发指南.md",
+        "docs/manual/附录-速查表.md",
+        "docs/guide/06-MCP接入智能体.md",
+        "docs/guide/assets/06-mcp-arch.html",
+    ):
+        text = read(rel)
+        rules = (
+            (r"通用 (\d+)", "generic", "引擎通用工具数"),
+            (r"CQ (\d+)", "cq", "CQ 工具数"),
+            (r"导入本体时为 (\d+)", "imported", "导入态工具数"),
+        )
+        for pattern, key, label in rules:
+            for match in re.finditer(pattern, text):
+                checked += 1
+                got = int(match.group(1))
+                if got != counts[key]:
+                    failures.append(
+                        f"{rel}: {label}写 {got}，实际 {counts[key]}"
+                    )
 
     if failures:
         print(f"发现 {len(failures)} 处过期数字（共校验 {checked} 处）：")

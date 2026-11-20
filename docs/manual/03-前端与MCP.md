@@ -72,8 +72,8 @@ docker compose up -d mcp
 
 | 端点 | 工具数 | 组成 |
 |---|---|---|
-| `/mcp/ontology` | 25（agent_task） | 领域业务 10 + 引擎通用 15；导入本体时为 15（无领域包） |
-| `/mcp/cq` | 15 | CQ 集管理 / 训练决策 / 现场 / 时间线 / 定位 / 质检 / 出题 / TBox 校验 / 回归 / 审计（不依赖领域包） |
+| `/mcp/ontology` | 26（agent_task） | 领域业务 10 + 引擎通用 16；导入本体时为 16（无领域包） |
+| `/mcp/cq` | 18 | CQ 集管理 / 训练决策 / 现场 / 时间线 / 定位 / 质检 / 出题 / TBox 校验 / 回归 / 审计（不依赖领域包） |
 | `/mcp` | 同 `/mcp/ontology` | 旧路径别名，兼容既有客户端 |
 
 **通用工具**（`mcp/mcp_server.py`，与本体无关，任意 `.owl` 可用）：
@@ -94,6 +94,7 @@ docker compose up -d mcp
 | `run_rules(max_iterations?, dry_run?, rules?)` | **SHACL 规则执行**：执行领域包 rules/*.ttl 规则（W3C 标准、pyshacl 原生），CONSTRUCT 产出派生三元组 |
 | `list_rules(rules?)` | **SHACL 规则清单**：列出规则 id/类型/语义标注（只解析不执行） |
 | `merge_check(rdf_content, format?)` | **合并冲突预检**：外部本体与当前图做同义异定义/名称冲突/公理矛盾三类扫描，分级返回处置建议 |
+| `mcp_status()` | **MCP 自省**：当前领域 / 来源（installed / imported）/ 已注册领域与通用工具数 / 载入时间 / 可切换领域 |
 
 **领域工具**（`domains/agent_task/mcp.py`，绑定默认领域包，语义配置化）：
 

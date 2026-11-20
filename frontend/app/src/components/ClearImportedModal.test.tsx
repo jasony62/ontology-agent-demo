@@ -59,8 +59,19 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('清除导入的本体（#276）', () => {
-  it('列出本体大小、CQ 题数、跑分与日志，默认动作是退出导入', async () => {
+describe('管理导入数据（#276 / #354）', () => {
+  it('弹窗用准确名称，并说明重新导入会不会带回复旧题集', async () => {
+    act(() => root!.render(<ClearImportedModal onClose={() => undefined} />));
+    await flush();
+
+    const text = container!.textContent ?? '';
+    expect(text).toContain('管理导入数据');
+    expect(text).not.toContain('清除导入的本体');
+    expect(text).toContain('重新导入同一份文件就会回到同一个工作区');
+    expect(text).toContain('下面每种操作都写明题集去留与重新导入的结果');
+  });
+
+  it('列出本体大小、CQ 题数、跑分与日志，默认动作是退出导入且不删数据', async () => {
     const onSynced = vi.fn(async () => undefined);
     const onClose = vi.fn();
     act(() => root!.render(<ClearImportedModal onClose={onClose} onSynced={onSynced} />));
@@ -72,9 +83,12 @@ describe('清除导入的本体（#276）', () => {
     expect(text).toContain('8 道题');
     expect(text).toContain('3 次');
     expect(text).toContain('只读副本');
+    // 退出档也写清磁盘数据和重新导入的结果。
+    expect(text).toContain('不删任何文件');
+    expect(text).toContain('重新导入同一份本体会再次看到它们');
 
     const exit = [...container!.querySelectorAll<HTMLButtonElement>('button')]
-      .find((btn) => btn.textContent === '退出导入并切回默认领域')!;
+      .find((btn) => btn.textContent === '退出导入并切回默认领域（不删数据）')!;
     await act(async () => { exit.click(); });
     await flush();
 
@@ -82,10 +96,13 @@ describe('清除导入的本体（#276）', () => {
     expect(api.deleteWorkspaceSource).not.toHaveBeenCalled();
     expect(onSynced).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(useAppStore.getState().notice).toContain('已切回默认领域');
+    const notice = useAppStore.getState().notice ?? '';
+    expect(notice).toContain('已切回默认领域');
+    expect(notice).toContain('CQ 题集 8 道');
+    expect(notice).toContain('再次看到');
   });
 
-  it('默认只删本体源文件，保留 CQ 题库', async () => {
+  it('保留题的档位必须勾选知晓具体题数与跑分数才能确认', async () => {
     act(() => root!.render(<ClearImportedModal onClose={() => undefined} />));
     await flush();
 
@@ -97,23 +114,40 @@ describe('清除导入的本体（#276）', () => {
     const radios = [...container!.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
     expect(radios).toHaveLength(2);
     expect(radios[0].checked).toBe(true);
-    expect(container!.textContent).toContain('仅删本体源文件（推荐）');
+    const retained = container!.textContent ?? '';
+    expect(retained).toContain('仅删本体源文件（推荐）');
+    expect(retained).toContain('保留 CQ 题集 8 道、跑分记录 3 次');
+    expect(retained).toContain('重新导入同一份本体会再次出现');
 
     const remove = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((btn) => btn.textContent === '删除磁盘数据')!;
     await act(async () => { remove.click(); });
+    await flush();
+
+    expect(container!.textContent).toContain('不可撤销');
+    expect(container!.textContent).toContain('重新导入同一份本体');
+
     const confirm = [...container!.querySelectorAll<HTMLButtonElement>('.cq-decision-confirm button')]
       .find((btn) => btn.textContent === '确认删除')!;
-    expect(container!.textContent).toContain('不可撤销');
+    // 未勾选知晓前不可静默通过。
+    expect(confirm.disabled).toBe(true);
+
+    const ack = container!.querySelector<HTMLInputElement>('.clear-import-ack input')!;
+    expect(ack.checked).toBe(false);
+    await act(async () => { ack.click(); });
+    expect(confirm.disabled).toBe(false);
+
     await act(async () => { confirm.click(); });
     await flush();
 
     expect(api.deleteWorkspaceSource).toHaveBeenCalledWith('ws-1');
     expect(api.deleteWorkspace).not.toHaveBeenCalled();
-    expect(useAppStore.getState().notice).toContain('CQ 题集 8 道');
+    const notice = useAppStore.getState().notice ?? '';
+    expect(notice).toContain('CQ 题集 8 道');
+    expect(notice).toContain('再次看到');
   });
 
-  it('全部删除走 cascade_cq=true，并在确认前给出不可逆说明', async () => {
+  it('全部删除写明题数与「不会恢复」，走 cascade_cq=true', async () => {
     act(() => root!.render(<ClearImportedModal onClose={() => undefined} />));
     await flush();
 
@@ -125,15 +159,27 @@ describe('清除导入的本体（#276）', () => {
     const radios = [...container!.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
     await act(async () => { radios[1].click(); });
     expect(radios[1].checked).toBe(true);
+    expect(container!.textContent).toContain('重新导入不会恢复');
 
     const remove = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((btn) => btn.textContent === '删除磁盘数据')!;
     await act(async () => { remove.click(); });
+    await flush();
+
+    // 全删档不要求勾选，但确认文案必须带具体数量与恢复结果。
+    const warning = container!.querySelector('.cq-decision-confirm')!.textContent ?? '';
+    expect(warning).toContain('题集 8 道');
+    expect(warning).toContain('跑分记录 3 次');
+    expect(warning).toContain('不会恢复');
+
     const confirm = [...container!.querySelectorAll<HTMLButtonElement>('.cq-decision-confirm button')]
       .find((btn) => btn.textContent === '确认删除')!;
+    expect(confirm.disabled).toBe(false);
     await act(async () => { confirm.click(); });
     await flush();
 
     expect(api.deleteWorkspace).toHaveBeenCalledWith('ws-1', true);
+    const notice = useAppStore.getState().notice ?? '';
+    expect(notice).toContain('重新导入不会恢复');
   });
 });

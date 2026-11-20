@@ -6,6 +6,13 @@ import { useDialogA11y } from '../lib/useDialogA11y';
 
 type DeleteScope = 'source' | 'all';
 
+/** #354：把「同一份本体按内容哈希复用工作区」的后果说清楚。 */
+function reimportText(scope: DeleteScope): string {
+  return scope === 'source'
+    ? '重新导入同一份本体时，这个工作区会被再次命中，题集与跑分记录会一起回来。'
+    : '重新导入同一份本体时会得到空工作区，题集与跑分记录不会恢复。';
+}
+
 interface Props {
   onClose: () => void;
   /** 切换 / 删除成功后整体重拉工作区（页头、说明页、图谱、CQ 页） */
@@ -13,9 +20,11 @@ interface Props {
 }
 
 /**
- * 清除导入的本体（#276）：两层语义分开——
+ * 管理导入数据（#276 / #354）：两层语义分开——
  * 「退出导入态」可逆、不删数据；「删除磁盘数据」不可逆、需二次确认。
- * 默认只删本体源文件，CQ 题库默认保留。
+ * 默认只删本体源文件，CQ 题库默认保留。同一份本体按内容哈希复用工作区，
+ * 所以弹窗必须写清「题集会不会留、重新导入会不会再出现」；保留题的档位
+ * 还要求勾选知晓才能确认（#354）。
  */
 export default function ClearImportedModal({ onClose, onSynced }: Props) {
   const setNotice = useAppStore((s) => s.setNotice);
@@ -27,6 +36,7 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
   const [expandDelete, setExpandDelete] = useState(false);
   const [scope, setScope] = useState<DeleteScope>('source');
   const [confirming, setConfirming] = useState(false);
+  const [ack, setAck] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,7 +70,9 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
     try {
       const result = await api.exitImported();
       await finish(
-        `已切回默认领域「${result.domain}」；磁盘上的导入数据仍保留，可随时重新导入。`,
+        `已切回默认领域「${result.domain}」；磁盘上的导入数据仍保留`
+        + (workspace ? `（CQ 题集 ${workspace.cq_cases} 道、跑分记录 ${workspace.runs} 次）` : '')
+        + '，重新导入同一份本体会再次看到它们。',
       );
     } catch (e) {
       setLocalError(`退出导入失败：${e instanceof Error ? e.message : String(e)}`);
@@ -78,13 +90,13 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
         await api.deleteWorkspaceSource(workspace.id);
         await finish(
           `已删除「${workspace.display_name}」的本体源文件；CQ 题集 ${workspace.cq_cases} 道、`
-          + `跑分记录 ${workspace.runs} 次仍保留。`,
+          + `跑分记录 ${workspace.runs} 次仍保留，重新导入同一份本体会再次看到它们。`,
         );
       } else {
         await api.deleteWorkspace(workspace.id, true);
         await finish(
           `已删除「${workspace.display_name}」的整个工作区（含 CQ 题集 ${workspace.cq_cases} 道、`
-          + `跑分记录 ${workspace.runs} 次）；此操作不可撤销。`,
+          + `跑分记录 ${workspace.runs} 次）；重新导入不会恢复，此操作不可撤销。`,
         );
       }
     } catch (e) {
@@ -99,8 +111,8 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal clear-import" role="dialog" aria-modal="true" aria-label="清除导入的本体" tabIndex={-1} ref={dialogRef} onClick={(e) => e.stopPropagation()}>
-        <h3>清除导入的本体</h3>
+      <div className="modal clear-import" role="dialog" aria-modal="true" aria-label="管理导入数据" tabIndex={-1} ref={dialogRef} onClick={(e) => e.stopPropagation()}>
+        <h3>管理导入数据</h3>
         {loading ? (
           <p className="guide-muted">正在读取导入记录…</p>
         ) : localError && !workspace ? (
@@ -125,6 +137,11 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
             <p className="guide-muted">
               这是只读副本，删除后不能就地编辑；要修改本体请先「导出 → 编辑 → 再导入」。
             </p>
+            {/* #354：同一份本体按内容识别，保留题集的档位会让旧题在重新导入时再次出现。 */}
+            <p className="clear-import-reimport">
+              同一份本体按内容识别：只要题集还在，<b>重新导入同一份文件就会回到同一个工作区</b>，
+              题集与跑分记录会一起回来。下面每种操作都写明题集去留与重新导入的结果。
+            </p>
 
             <div className="clear-import-actions">
               <button
@@ -133,18 +150,22 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
                 disabled={busy !== null}
                 onClick={() => void exitOnly()}
               >
-                {busy === 'exit' ? '切换中…' : '退出导入并切回默认领域'}
+                {busy === 'exit' ? '切换中…' : '退出导入并切回默认领域（不删数据）'}
               </button>
               <button
                 type="button"
                 className="btn secondary"
                 disabled={busy !== null}
-                onClick={() => { setExpandDelete((value) => !value); setConfirming(false); }}
+                onClick={() => { setExpandDelete((value) => !value); setConfirming(false); setAck(false); }}
               >
                 {expandDelete ? '收起磁盘清理' : '一并删除磁盘数据'}
               </button>
               <button type="button" className="btn link" onClick={onClose}>取消</button>
             </div>
+            <p className="clear-import-note">
+              退出只清激活态，不删任何文件：CQ 题集 {workspace.cq_cases} 道、跑分记录 {workspace.runs} 次
+              仍留在磁盘，重新导入同一份本体会再次看到它们。
+            </p>
 
             {expandDelete && (
               <div className="clear-import-delete">
@@ -153,37 +174,50 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
                     type="radio"
                     name="clear-scope"
                     checked={scope === 'source'}
-                    onChange={() => { setScope('source'); setConfirming(false); }}
+                    onChange={() => { setScope('source'); setConfirming(false); setAck(false); }}
                   />
-                  仅删本体源文件（推荐）：保留 CQ 题集、跑分与日志
+                  仅删本体源文件（推荐）：保留 CQ 题集 {workspace.cq_cases} 道、跑分记录 {workspace.runs} 次；
+                  重新导入同一份本体会再次出现
                 </label>
                 <label>
                   <input
                     type="radio"
                     name="clear-scope"
                     checked={scope === 'all'}
-                    onChange={() => { setScope('all'); setConfirming(false); }}
+                    onChange={() => { setScope('all'); setConfirming(false); setAck(false); }}
                   />
-                  全部删除：连同 CQ 题集、跑分与审计一起删除
+                  全部删除：连同 CQ 题集 {workspace.cq_cases} 道、跑分记录 {workspace.runs} 次与日志一起删除；
+                  重新导入不会恢复
                 </label>
                 {!confirming ? (
                   <button
                     type="button"
                     className="btn danger"
                     disabled={busy !== null}
-                    onClick={() => setConfirming(true)}
+                    onClick={() => { setConfirming(true); setAck(false); }}
                   >
                     删除磁盘数据
                   </button>
                 ) : (
                   <div className="cq-decision-confirm" role="alert">
                     <span>
-                      将{scopeText(scope)}，删除后不可撤销。确认删除吗？
+                      将{scopeText(scope, workspace)}。{reimportText(scope)}删除后不可撤销。确认删除吗？
                     </span>
+                    {scope === 'source' && (
+                      <label className="clear-import-ack">
+                        <input
+                          type="checkbox"
+                          checked={ack}
+                          onChange={(event) => setAck(event.target.checked)}
+                        />
+                        我已知晓：CQ 题集 {workspace.cq_cases} 道、跑分记录 {workspace.runs} 次会保留，
+                        重新导入同一份本体会再次出现
+                      </label>
+                    )}
                     <button
                       type="button"
                       className="btn danger"
-                      disabled={busy !== null}
+                      disabled={busy !== null || (scope === 'source' && !ack)}
                       onClick={() => void deleteData()}
                     >
                       {busy === 'confirm' ? '删除中…' : '确认删除'}
@@ -191,7 +225,7 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
                     <button
                       type="button"
                       className="btn secondary"
-                      onClick={() => setConfirming(false)}
+                      onClick={() => { setConfirming(false); setAck(false); }}
                     >
                       取消
                     </button>
@@ -207,8 +241,8 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
   );
 }
 
-function scopeText(scope: DeleteScope): string {
+function scopeText(scope: DeleteScope, workspace: OntologyWorkspaceSummary): string {
   return scope === 'source'
-    ? '删除本体源文件并保留 CQ 题集'
-    : '删除整个工作区（含 CQ 题集）';
+    ? `删除本体源文件，保留 CQ 题集 ${workspace.cq_cases} 道与跑分记录 ${workspace.runs} 次`
+    : `删除整个工作区（含 CQ 题集 ${workspace.cq_cases} 道、跑分记录 ${workspace.runs} 次与日志）`;
 }

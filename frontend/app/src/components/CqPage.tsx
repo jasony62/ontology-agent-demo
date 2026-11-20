@@ -140,6 +140,11 @@ export default function CqPage() {
   const [showPrompts, setShowPrompts] = useState(false);
   // #332：处置结果（四轨回执）
   const [dispositionBusy, setDispositionBusy] = useState(false);
+  // 批量处置：勾选题 → 只提供所有已选题都支持的动作
+  const [batchSelected, setBatchSelected] = useState<Set<string>>(new Set());
+  const [batchAction, setBatchAction] = useState('');
+  const [batchNote, setBatchNote] = useState('');
+  const [batchBusy, setBatchBusy] = useState(false);
   const [dispositionResult, setDispositionResult] = useState<CqDispositionResult | null>(null);
   // #338：单题回归调试结果（不写评估历史）
   const [caseRunBusy, setCaseRunBusy] = useState(false);
@@ -282,6 +287,56 @@ export default function CqPage() {
       else detail.scrollTop = 0;
     });
   }, [visibleCases, currentIndexInVisible]);
+
+  const batchCases = useMemo(
+    () => visibleCases.filter(({ item, index }) => batchSelected.has(caseKey(item, index))),
+    [visibleCases, batchSelected],
+  );
+  const batchCandidates = useMemo(() => {
+    if (batchCases.length === 0) return [];
+    const first = batchCases[0].item.dispositions ?? [];
+    return first.filter((action) => action.available
+      && batchCases.every(({ item }) => (item.dispositions ?? []).some((a) => a.action === action.action && a.available)));
+  }, [batchCases]);
+  useEffect(() => { setBatchAction(batchCandidates[0]?.action ?? ''); }, [batchCandidates]);
+  const batchLabel = (action: string, label: string) => (action === 'revise' ? '交回改写' : label);
+
+  const toggleBatch = (key: string, on: boolean) => {
+    setBatchSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(key); else next.delete(key);
+      return next;
+    });
+  };
+  const allVisibleSelected = visibleCases.length > 0
+    && visibleCases.every(({ item, index }) => batchSelected.has(caseKey(item, index)));
+
+  const runBatch = async () => {
+    if (batchCases.length === 0 || !batchAction) return;
+    const action = batchCandidates.find((a) => a.action === batchAction);
+    if (!action) return;
+    const label = batchLabel(batchAction, action.label);
+    if (!window.confirm(`将对 ${batchCases.length} 题执行「${label}」，写入审计且不可撤销。继续？`)) return;
+    setBatchBusy(true);
+    setError(null);
+    let ok = 0;
+    const failed: string[] = [];
+    for (const { item } of batchCases) {
+      if (!item.id) continue;
+      try {
+        await api.cqDispose(String(item.id), batchAction, batchNote.trim());
+        ok += 1;
+      } catch (e) {
+        failed.push(item.short_id ? `#${item.short_id}` : String(item.id));
+      }
+    }
+    setBatchBusy(false);
+    setBatchSelected(new Set());
+    setBatchNote('');
+    setNoticeTone(failed.length ? 'warn' : 'ok');
+    setNotice(`批量处置完成：成功 ${ok} 题${failed.length ? `，失败 ${failed.length} 题（${failed.join('、')}）` : ''}。`);
+    await load();
+  };
 
   // ↑/↓ 或 j/k 切题；输入框、弹窗、术语浮层里不抢键
   useEffect(() => {
@@ -1059,7 +1114,22 @@ export default function CqPage() {
               <div className="cq-body">
                 <section className="panel cq-list" aria-label="CQ 列表">
                   <div className="cq-list-head">
-                    <span>{gapFilter ? `题目 · 还差「${gapFilter}」` : '题目'}</span>
+                    <label className="cq-batch-all">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        aria-label="全选当前列表"
+                        onChange={(event) => {
+                          const next = new Set(batchSelected);
+                          for (const { item, index } of visibleCases) {
+                            const key = caseKey(item, index);
+                            if (event.target.checked) next.add(key); else next.delete(key);
+                          }
+                          setBatchSelected(next);
+                        }}
+                      />
+                      <span>{gapFilter ? `题目 · 还差「${gapFilter}」` : '题目'}</span>
+                    </label>
                     <div className="cq-list-tools">
                       <input
                         type="search"
@@ -1072,11 +1142,60 @@ export default function CqPage() {
                       <span>{visibleCases.length} 道</span>
                     </div>
                   </div>
+                  {batchSelected.size > 0 && (
+                    <div className="cq-batch-bar" role="region" aria-label="批量处置">
+                      <b>已选 {batchCases.length} 题</b>
+                      {batchCandidates.length > 0 ? (
+                        <>
+                          <select
+                            aria-label="批量动作"
+                            value={batchAction}
+                            onChange={(event) => setBatchAction(event.target.value)}
+                          >
+                            {batchCandidates.map((action) => (
+                              <option key={action.action} value={action.action}>
+                                {batchLabel(action.action, action.label)}
+                              </option>
+                            ))}
+                          </select>
+                          {batchAction === 'revise' && (
+                            <input
+                              className="cq-batch-note"
+                              value={batchNote}
+                              onChange={(event) => setBatchNote(event.target.value)}
+                              placeholder="修改意见（会交给智能体）"
+                              aria-label="批量修改意见"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={batchBusy || (batchAction === 'revise' && !batchNote.trim())}
+                            onClick={() => void runBatch()}
+                          >
+                            {batchBusy ? '处理中…' : '执行'}
+                          </button>
+                        </>
+                      ) : (
+                        <span className="guide-muted">所选题目没有共同可用的处置动作</span>
+                      )}
+                      <button type="button" className="btn ghost" onClick={() => setBatchSelected(new Set())}>
+                        取消选择
+                      </button>
+                    </div>
+                  )}
                   <ul>
                     {visibleCases.slice(0, visibleLimit).map(({ item, index }) => {
                       const key = caseKey(item, index);
                       return (
-                        <li key={key}>
+                        <li key={key} className="cq-row-wrap">
+                          <input
+                            type="checkbox"
+                            className="cq-batch-check"
+                            checked={batchSelected.has(key)}
+                            aria-label={`选择 #${item.short_id || `Q${String(index + 1).padStart(2, '0')}`}`}
+                            onChange={(event) => toggleBatch(key, event.target.checked)}
+                          />
                           <button
                             type="button"
                             className={`cq-row${selected === key ? ' active' : ''}`}

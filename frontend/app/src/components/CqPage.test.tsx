@@ -1589,6 +1589,36 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-disposition-warn')).toBeNull();
   });
 
+  it('批量处置：全选后对每题各调用一次 disposition', async () => {
+    const dispositions = [
+      { action: 'approve_activate', label: '审核通过并启用', effect: '审核：审核已通过；状态：启用。', available: true },
+      { action: 'defer', label: '暂缓', effect: '保持待决。', available: true },
+    ];
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    stubFetch({
+      ...SET,
+      cases: SET.cases.map((item) => ({ ...item, dispositions })) as typeof SET.cases,
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const all = container!.querySelector<HTMLInputElement>('.cq-batch-all input')!;
+    await act(async () => { all.click(); });
+    await flush();
+    expect(container!.querySelector('.cq-batch-bar')?.textContent).toContain(`已选 ${SET.cases.length} 题`);
+
+    const run = [...container!.querySelectorAll<HTMLButtonElement>('.cq-batch-bar button')]
+      .find((button) => button.textContent === '执行')!;
+    await act(async () => { run.click(); });
+    await flush();
+
+    const posts = vi.mocked(fetch).mock.calls.filter(([url, init]) =>
+      String(url).includes('/disposition') && String(init?.method) === 'POST');
+    expect(posts).toHaveLength(SET.cases.length);
+    expect(container!.textContent).toContain('批量处置完成：成功');
+    confirmSpy.mockRestore();
+  });
+
   it('回归通过的题不出现启用警示（#343）', async () => {
     const dispositions = [
       { action: 'approve_activate', label: '审核通过并启用', effect: '审核：审核已通过；状态：启用。', available: true },

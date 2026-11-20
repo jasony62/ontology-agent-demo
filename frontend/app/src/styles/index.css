@@ -2461,3 +2461,20 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .cq-step-link:hover { background: var(--primary-soft); }
 .cq-step-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+
+/* 批量处置：行首复选框 + 列表头上的批量条 */
+.cq-row-wrap { display: flex; align-items: flex-start; gap: 6px; padding-left: 6px; }
+.cq-row-wrap .cq-row { flex: 1 1 auto; min-width: 0; }
+.cq-batch-check { margin-top: 12px; flex: 0 0 auto; accent-color: var(--primary); }
+.cq-batch-all { display: inline-flex; align-items: center; gap: 6px; }
+.cq-batch-all input { accent-color: var(--primary); }
+.cq-batch-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--primary-soft);
+}
+.cq-batch-bar select,
+.cq-batch-note {
+  height: 30px; padding: 0 8px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: #fff; font-size: var(--fs-md);
+}
+.cq-batch-note { flex: 1 1 180px; min-width: 120px; }

@@ -252,9 +252,11 @@ export default function CqPage() {
         }
         return [
           item.cq,
+          item.id,
           statusLabel(item.status),
           expectedTypeLabel(item.expected_type),
-          ...(item.missing ?? item.blockers ?? []),
+          ...blockerKeys(item),
+          ...blockerKeys(item).map(missingLabel),
           short,
         ].some((value) => String(value || '').toLowerCase().includes(needle));
       });
@@ -334,7 +336,8 @@ export default function CqPage() {
 
   const deleteCurrent = async () => {
     if (!current?.id) return;
-    if (!window.confirm(`删除题目「${current.id}」？此操作会写入审计日志。`)) return;
+    const visibleId = current.short_id ? `#${current.short_id}` : current.id;
+    if (!window.confirm(`删除题目「${visibleId}」？此操作会写入审计日志。`)) return;
     setBusy('delete');
     setError(null);
     try {
@@ -445,7 +448,7 @@ export default function CqPage() {
     || (summary && summary.total > 0 && summary.located === 0),
   );
   const unanchoredCases = cases.filter((item) => !item.located).map((item, index) => (
-    item.id || `第 ${index + 1} 题`
+    item.short_id ? `#${item.short_id}` : item.id || `第 ${index + 1} 题`
   ));
   // #266：部分错配（未锚定占比 > 10% 或 ≥ 2 题）此前落在「沉默区」，现在单独告警。
   const partialMismatch = !mismatch && Boolean(
@@ -456,7 +459,7 @@ export default function CqPage() {
     ? `这份题集是从「${provenance.seed_ontology || '另一个本体'}」播种的，当前加载的是「${provenance.current_ontology || '另一个本体'}」，不能作为成熟度依据。请让智能体按当前本体重新生成题目。`
     : '当前题集与加载的本体可能不是同一套：所有题目都没有命中本体术语。请先确认「当前题集 / 当前领域」是否匹配，或让智能体按当前本体重新生成题目。';
   const partialMismatchText = summary
-    ? `有 ${unanchoredCases.length} 道题没有对上本体术语（${unanchoredCases.slice(0, 5).map((id) => `#${id}`).join('、')}${unanchoredCases.length > 5 ? ' 等' : ''}），成熟度会偏低；建议改问法或补术语后重跑。`
+    ? `有 ${unanchoredCases.length} 道题没有对上本体术语（${unanchoredCases.slice(0, 5).join('、')}${unanchoredCases.length > 5 ? ' 等' : ''}），成熟度会偏低；建议改问法或补术语后重跑。`
     : '';
   const ontologyLoadedAt = String(health?.loaded_at || '');
   const domainName = String(health?.domain || domainInfo?.name || '');
@@ -1073,7 +1076,11 @@ export default function CqPage() {
                   </ul>
                   {visibleCases.length === 0 && (
                     <div className="guide-empty-inline">
-                      没有还差「{gapFilter ? missingLabel(gapFilter) : ''}」的题目；再点一次统计项可取消筛选。
+                      {query.trim()
+                        ? `没有匹配「${query.trim()}」的题目；试试 #Q16、T2-16 或题干关键词。`
+                        : gapFilter
+                          ? `当前筛选（${missingLabel(gapFilter)}）下没有题目；再点一次统计项可取消筛选。`
+                          : '还没有题目；可以手动新增，或让智能体生成候选题。'}
                     </div>
                   )}
                 </section>

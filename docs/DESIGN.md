@@ -131,6 +131,59 @@
 
 `domains/__init__.py` 只做导出，业务逻辑在 `registry.py`——两级 `__init__.py` 均为纯导出。
 
+### 3.5 通用机制层：事务 / 证明 / 规则
+
+`reasoner/` 除引擎与配置外还有一层「与领域无关的机制」：
+
+| 文件 | 职责 |
+|---|---|
+| `abox.py` | ABox 事务仓库（实现已迁 `ontology_plugin_sdk.abox`，此处兼容导出）：删除 / 撤回 / 批量导入 / 增量落盘，变更计数交给适配器 |
+| `proof.py` | 结构化证明导出：asserted / derived / unproven，供 `/api/ontology/proof` 与 `explain_proof` |
+| `rules.py` | SHACL 业务规则层：执行 `rules/*.ttl`（pyshacl CONSTRUCT），激活时按序产出派生三元组 |
+| `merge_check.py` | 合并冲突预检：同义异定义 / 名称冲突 / 公理矛盾三类扫描 |
+| `protocol.py` / `plugin.py` | 领域插件契约与门面的兼容导出（实现已在 SDK） |
+| `cq_axioms.py` / `cq_locate.py` | CQ 依据定位：题干 → 命中条目 → 图内公理 / Turtle 原文 |
+
+### 3.6 CQ 子系统 `cq/`
+
+CQ 集（能力问题集）是「本体到底能不能回答业务问题」的可执行清单，与图表页、领域页平级。
+`cq/` 是框架级实现，**不依赖任何领域包**（`--domain imported` 下同样可用）。
+
+| 文件 | 职责 |
+|---|---|
+| `cq_store.py` | **题目定义的权威存储**：原子写 `cq_set.json` + 追加审计 `cq_set.audit.jsonl`；按 `ontology_id` 隔离 |
+| `constants.py` / `assertion_namespace.py` | 题型 / 状态受控词表；建题期的断言命名空间预检（写入前拦住必然不可答的题） |
+| `lifecycle.py` / `graduation.py` | 生命周期读时投影；毕业判定的单一事实源（运营态启用 + 五项质量条件全过） |
+| `disposition.py` | 处置动作：人的业务动作 → 审核态 + 运营态的唯一写入路径 |
+| `cq_runner.py` | LLM-free 回归执行器：只跑 `regression.query` 的 SPARQL ASK / SELECT，确定性、可复现 |
+| `training_service.py` / `training_state.py` / `training_log.py` | 训练现场、决策入口、四源时间线；`training_log.jsonl` 只追加，状态全部读时投影 |
+| `agenda.py` | 决策议程：把当前题集状态翻译成「现在要决什么」 |
+| `metrics.py` / `coverage.py` / `guardrails.py` | 协同 / 质量指标、题干提及覆盖、护栏门禁（无数据源时如实标 `available=false`） |
+| `prompts_store.py` / `requirements.py` | 出题配置与人沉淀的出题要求，与 `cq_set.json` 共址于工作区 |
+| `__init__.py` | 纯导出 |
+
+数据流：
+
+```text
+写入（REST / MCP）──► 审核门控（按写入 diff 判定，seed / import 显式豁免）
+                              │
+                              ▼
+                    cq_store（原子写 + 审计 jsonl）
+                              │
+        ┌─────────────┬───────┴────────┬──────────────┐
+        ▼             ▼                ▼              ▼
+   lifecycle      metrics /         training_log   cq_runner
+  （状态 / 毕业）  coverage        （事件流 / 时间线） （回归）
+```
+
+三条只有架构层才讲得清的边界：
+
+1. **隔离粒度是 `ontology_id`**：预置领域用领域名，导入的本体用工作区 id，与 `data/workspaces/<id>/` 一一对应；
+2. **共享同一份引擎图**：回归跑的是当前内存引擎（与 REST / MCP 同一个 `get_engine()`、同一份 `cq_store`），不吃过期图；
+3. **不依赖领域包**：`/mcp/cq` 与 `/api/domains/current/cq/*` 在导入裸 OWL 时仍可用；写路径一律先过审核门控。
+
+字段规格、页面用法与状态机不在这里重复，见 [09 CQ 集管理](manual/09-CQ集管理.md) 与 [10 CQ 状态与毕业](manual/10-CQ状态与毕业.md)。
+
 ---
 
 ## 4. 为什么只有本体（.owl）不够：必须补充的业务信息
@@ -402,6 +455,20 @@ curl -s -X POST http://127.0.0.1:8000/api/individuals \
   -d '{"class_name":"Task"}'
 ```
 
+### 8.3 CQ 端点（框架级，任意本体可用）
+
+CQ 相关 REST 共 24 个路径 / 29 个方法，全部挂在 `/api/domains/current/cq/` 下，按功能五组：
+
+| 分组 | 覆盖操作 | 端点前缀 |
+|---|---|---|
+| 集与题目 | 读 / 整集保存 / 增删改单题 / 导入导出 / 依据定位 / 公理回取 | `cq/set`、`cq/cases`、`cq/import`、`cq/export`、`cq/locate`、`cq/axioms` |
+| 出题配置与要求 | 出题配比与措辞、指令预览、人沉淀的出题要求 | `cq/prompts*`、`cq/requirements` |
+| 训练与决策 | 训练现场、题干覆盖、指标、工作台遥测、候选题请求、行动完成、单题事件、时间线、决策提交 | `cq/resume`、`cq/coverage`、`cq/metrics`、`cq/telemetry/view`、`cq/cases/request`、`cq/actions/{id}/complete`、`cq/cases/{id}/events`、`cq/timeline`、`cq/decision` |
+| 审核与处置 | 处置动作（审核通过并启用 / 交回改写 / 拒绝出队 / 暂缓） | `cq/cases/{id}/disposition` |
+| 回归与观测 | 整集 / 单题回归、历史、审计 | `cq/regression/run`、`cq/cases/{id}/regression/run`、`cq/runs`、`cq/audit` |
+
+全集索引与逐条说明见 [09 CQ 集管理](manual/09-CQ集管理.md) §9.5；状态流转与毕业口径见 [10 CQ 状态与毕业](manual/10-CQ状态与毕业.md)。
+
 ---
 
 ## 9. MCP 接入（智能体直接调用，端口 9000）
@@ -489,11 +556,18 @@ python scripts/query.py capability_match --task t_login_dev --local  # 内嵌引
 
 ## 11. 测试
 
-`tests/` 自动化测试（项数以 pytest 实测为准），覆盖：
+后端 `tests/` 按「守护对象」分组（项数以 `pytest --collect-only -q` 末行为准，不在文档里写死）：
 
-- `test_reasoning.py`：R1 属性链匹配、R2 复合任务委派、R3 传递闭包、R4 冲突、
-  推导链结构（fact/rule/conclusion）、分类、语义覆盖；
-- `test_api.py`：全部端点行为、通用接口、图谱导出。
+| 组 | 守什么 |
+|---|---|
+| 推理与规则 | R1–R6 规则、OWL 2 RL 物化、推导链结构、SHACL 规则层、管线闸门 G1–G4 |
+| API 与 OpenAPI 契约 | 端点行为、参数说明、路径前缀、错误码、health / 版本字段 |
+| 领域包与 SDK | 插件契约、适配器 7 方法、领域包脱离主仓库可运行、guide 契约校验 |
+| 热切换与运行时 | 领域激活 / reload / 导入态、引擎与 MCP 同步、workspaces 分级清理 |
+| CQ | 存储与审计、审核门控、回归执行器、生命周期 / 毕业、训练事件与决策 |
+| 文档护栏 | 端点总数、MCP 工具数、手册运行快照（`scripts/check_docs_numbers.py`） |
+
+前端单独一套（`frontend/app`，vitest）：组件行为、状态口径与可访问性。
 
 新增领域 / 改规则后跑全量：
 
@@ -547,14 +621,29 @@ adapter = create_adapter_ctx(ctx)   # 领域包唯一工厂：create_adapter_ctx
 
 ```
 <项目根目录>/
-├── reasoner/                       # 通用机制层（零领域词汇）
+├── reasoner/                       # 通用机制层（零领域词汇，13 个文件）
 │   ├── engine.py                   #   通用引擎（加载/推理/通用查询原语）
 │   ├── semantic.py                 #   语义配置容器 + JSON 加载器
 │   ├── derivation.py               #   推导链声明式规则解释器
 │   ├── pipeline_gate.py            #   G1–G4 建模闸门（规格见 docs/MODELING_GATES.md）
+│   ├── abox.py                     #   ABox 事务仓库（实现已迁 SDK，此处兼容导出）
+│   ├── proof.py                    #   结构化证明导出（asserted / derived / unproven）
+│   ├── rules.py                    #   SHACL 业务规则层（rules/*.ttl）
+│   ├── merge_check.py              #   合并冲突预检（三类扫描）
+│   ├── protocol.py / plugin.py     #   领域插件契约 / 门面的兼容导出（实现已在 SDK）
+│   ├── cq_axioms.py / cq_locate.py #   CQ 依据定位与公理回取
 │   └── __init__.py                 #   导出
 ├── packages/ontology-plugin-sdk/   # 领域插件 SDK（领域包唯一可依赖的宿主无关包）
-├── domains/                        # 领域层（运行时动态加载）
+├── cq/                             # CQ 子系统（框架级、领域无关，17 个文件，见 §3.6）
+│   ├── cq_store.py                 #   题目定义权威存储（原子写 + 审计 jsonl）
+│   ├── cq_runner.py                #   LLM-free 回归执行器
+│   ├── lifecycle.py / graduation.py#   生命周期投影 / 毕业判定
+│   ├── training_*.py               #   训练现场、事件流、读时状态
+│   ├── disposition.py / agenda.py  #   处置动作 / 决策议程
+│   ├── metrics.py / coverage.py / guardrails.py  # 指标 / 覆盖 / 护栏
+│   ├── prompts_store.py / requirements.py        # 出题配置 / 出题要求
+│   └── __init__.py                 #   纯导出
+├── domains/                        # 领域层（运行时动态加载；源码模板在 examples/）
 │   ├── __init__.py                 #   纯导出
 │   ├── registry.py                 #   注册表（list_domains / load_domain）
 │   └── agent_task/                 # 「智能体任务编排」领域（自包含）
@@ -567,12 +656,26 @@ adapter = create_adapter_ctx(ctx)   # 领域包唯一工厂：create_adapter_ctx
 │       ├── rules/                  #   SHACL 规则层（R2 委派 / R5 / R6 / R6a 复核候选，加载流水线执行）
 │       ├── shapes/                 #   SHACL 形状（G4 与 validate_shapes 用）
 │       └── agent_task_ontology.owl #   本体定义
-├── api/                            # REST API（FastAPI，:8000，领域端点走适配器）
-├── mcp/mcp_server.py               # MCP Server 通用出口（:9000，--domain 动态加载领域工具）
+├── api/                            # REST API（FastAPI，:8000）
+│   ├── main.py                     #   路由、运行时快照、health / CQ / workspaces 端点
+│   ├── schemas.py / response_schemas.py  # 请求 / 响应模型（OpenAPI 数据源）
+│   └── workspaces.py               #   导入工作区身份（内容哈希复用）与分级清理
+├── mcp/                            # MCP Server（:9000，4 个文件）
+│   ├── mcp_server.py               #   通用出口（--domain 动态加载领域工具）
+│   ├── cq_tools.py                 #   /mcp/cq 的 18 个 CQ 工具
+│   ├── policy.py                   #   语义白名单门禁
+│   └── tool_guard.py               #   调用护栏（预算 / 循环 / 缓存 / 审计）
+├── config/                         # 运行态配置
+│   ├── domain.json                 #   领域根与默认领域（模板 domain.example.json）
+│   └── version.py                  #   系统版本单一事实源（读 pyproject.toml）
+├── data/                           # 运行态数据（gitignore）
+│   ├── uploads/                    #   保存的本体文件
+│   └── workspaces/<id>/            #   导入本体、CQ 题集 / 审计 / 回归 / 训练日志
 ├── pipeline/gates.json             # G1–G4 闸门配置
 ├── frontend/app/                   # 图谱工作台（React/Vite，构建产物由 API 托管）
 ├── scripts/build_ontology.py       # 一键重建本体（含结构自检）
-├── tests/                          # 自动化测试套件（项数以 pytest 实测为准）
+├── tests/                          # 自动化测试套件（按包分组，项数以 pytest 实测为准）
+├── backups/                        # backup.sh 快照（gitignore）
 └── requirements.txt
 ```
 

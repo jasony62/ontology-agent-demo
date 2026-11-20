@@ -2388,3 +2388,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .graph-toolbar button.secondary.active { background: var(--primary-soft); border-color: var(--primary); color: var(--link); }
 .graph-zoom-btns button { min-width: 30px; padding: 0 8px; }
 .graph-toolbar .overflow-toggle { height: 30px; padding: 0 12px; border-radius: var(--radius-sm); }
+
+/* 工具栏 SVG 图标：统一尺寸与垂直居中 */
+.graph-icon { display: block; width: 18px; height: 18px; }
+.graph-zoom-btns button { display: inline-flex; align-items: center; justify-content: center; }

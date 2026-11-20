@@ -41,6 +41,20 @@ function fcoseOptions(): LayoutOptions {
   return { name: 'fcose', animate: false, randomize: true, nodeSeparation: 60 } as LayoutOptions;
 }
 
+/** 工具栏图标：手写 SVG，统一 16px / 1.8 描边，避免 Unicode 字形在不同字体下忽大忽小 */
+function Icon({ children }: { children: React.ReactNode }) {
+  return (
+    <svg className="graph-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+const IconZoomIn = () => <Icon><circle cx="7" cy="7" r="4.2" /><path d="M10.2 10.2 14 14M7 5.2v3.6M5.2 7h3.6" /></Icon>;
+const IconZoomOut = () => <Icon><circle cx="7" cy="7" r="4.2" /><path d="M10.2 10.2 14 14M5.2 7h3.6" /></Icon>;
+const IconFit = () => <Icon><path d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3" /></Icon>;
+const IconRelayout = () => <Icon><path d="M13 8a5 5 0 1 1-1.6-3.7" /><path d="M13 2.5V6h-3.5" /></Icon>;
+
 const stylesheet: StylesheetStyle[] = [
   {
     selector: 'node',
@@ -591,10 +605,10 @@ export default function GraphView({
           标签
         </button>
         <span className="graph-zoom-btns">
-          <button className="secondary" onClick={() => zoomBy(1.25)} title="放大">＋</button>
-          <button className="secondary" onClick={() => zoomBy(0.8)} title="缩小">－</button>
-          <button className="secondary" onClick={() => cyRef.current?.fit(undefined, 28)} title="适应画布">⛶</button>
-          <button className="secondary" onClick={relayout} title="重新计算节点位置并适应画布">⟳</button>
+          <button className="secondary" onClick={() => zoomBy(1.25)} title="放大" aria-label="放大"><IconZoomIn /></button>
+          <button className="secondary" onClick={() => zoomBy(0.8)} title="缩小" aria-label="缩小"><IconZoomOut /></button>
+          <button className="secondary" onClick={() => cyRef.current?.fit(undefined, 28)} title="适应画布" aria-label="适应画布"><IconFit /></button>
+          <button className="secondary" onClick={relayout} title="重新计算节点位置并适应画布" aria-label="重新布局"><IconRelayout /></button>
         </span>
         {/* #134 R3/R6：缩放（最低优先级）与新建入口在窄屏收进「更多」，工具栏保持单行 */}
         <OverflowMenu id="graph-toolbar" className="graph-more" label="更多" title="收起的缩放与新建入口" closeOnAction={false}>
@@ -606,10 +620,10 @@ export default function GraphView({
             <button type="button" onClick={() => setEdgeLabels((v) => !v)}>
               {edgeLabels ? '✓ 连线标签' : '连线标签'}
             </button>
-            <button type="button" onClick={() => zoomBy(1.25)}>＋ 放大</button>
-            <button type="button" onClick={() => zoomBy(0.8)}>－ 缩小</button>
-            <button type="button" onClick={() => cyRef.current?.fit(undefined, 28)}>⛶ 适应画布</button>
-            <button type="button" onClick={relayout}>⟳ 重新布局</button>
+            <button type="button" onClick={() => zoomBy(1.25)}>放大</button>
+            <button type="button" onClick={() => zoomBy(0.8)}>缩小</button>
+            <button type="button" onClick={() => cyRef.current?.fit(undefined, 28)}>适应画布</button>
+            <button type="button" onClick={relayout}>重新布局</button>
           </div>
         </OverflowMenu>
       </div>

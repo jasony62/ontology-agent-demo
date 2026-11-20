@@ -368,13 +368,13 @@ export default function CqPage() {
     }
   };
 
-  const disposeCurrent = async (action: string) => {
+  const disposeCurrent = async (action: string, note = '') => {
     if (!current?.id) return;
     setDispositionBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const result = await api.cqDispose(String(current.id), action);
+      const result = await api.cqDispose(String(current.id), action, note);
       setDispositionResult(result.disposition);
       setNotice(`已处置：${result.disposition.label}。`);
       setData(result);
@@ -714,20 +714,28 @@ export default function CqPage() {
                     {provenance && !provenance.known ? '（来源未记录，仅供参考）' : ''}
 
                   </span>
+                  {/* 一条状态条只给一个动作：没评估过就先跑评估，评估过再谈补题 */}
                   {!delivery.ready && (
-                    <button type="button" className="btn secondary" onClick={() => void requestCases()}>
-                      请求智能体生成候选题
-                    </button>
+                    delivery.verdict?.startsWith('尚未评估') ? (
+                      <button type="button" className="btn" onClick={() => void runRegression()} disabled={busy === 'run'}>
+                        {busy === 'run' ? '评估中…' : '跑一轮评估'}
+                      </button>
+                    ) : (
+                      <button type="button" className="btn secondary" onClick={() => void requestCases()}>
+                        请求智能体生成候选题
+                      </button>
+                    )
                   )}
-                  {!evaluationFresh && (
-                    <span className="guide-muted" title={evaluation?.reason || '还没有跑过评估'}>
+                  <span
+                    className="cq-delivery-note"
+                    title={`${evaluation?.reason || '还没有跑过评估'}；去工具栏「跑一轮评估」重新验证；导出评审包见工具栏「导出 ▾」`}
+                  >
+                    {!evaluationFresh && (
                       <span className="cq-stale-badge">
-                        评估{evaluation?.state === 'none' ? '未生成' : '可能过期'}
+                        {evaluation?.state === 'none' ? '未评估' : '评估可能过期'}
                       </span>
-                      {' '}去工具栏「跑一轮评估」重新验证
-                    </span>
-                  )}
-                  <span className="guide-muted">导出评审包见工具栏「导出 ▾」</span>
+                    )}
+                  </span>
                 </div>
               )}
               <p className="cq-meta guide-muted">
@@ -900,7 +908,7 @@ export default function CqPage() {
             <>
               <details className="cq-quality-detail cq-fold">
                 <summary>
-                  {summary.total} 题 · 回归通过 {summary.answerable} · 还差 {delivery?.missing_questions ?? 0} 题达到交付线
+                  已可交付 {graduatedQuestions}/{targetQuestions} · 现有 {summary.total} 题 · 回归通过 {summary.answerable}
                 </summary>
               <section className="cq-funnel" aria-label="质量漏斗">
                 <div className="cq-funnel-steps">
@@ -1065,7 +1073,7 @@ export default function CqPage() {
                   {visibleCases.length === 0 && (
                     <div className="guide-empty-inline">
                       {query.trim()
-                        ? `没有匹配「${query.trim()}」的题目；试试 #Q16、T2-16 或题干关键词。`
+                        ? `没有匹配「${query.trim()}」的题目；试试 #Q16 或题干关键词。`
                         : gapFilter
                           ? `当前筛选（${missingLabel(gapFilter)}）下没有题目；再点一次统计项可取消筛选。`
                           : '还没有题目；可以手动新增，或让智能体生成候选题。'}
@@ -1698,17 +1706,21 @@ function CqDetail({
   showTech: boolean;
   dispositionBusy: boolean;
   dispositionResult: CqDispositionResult | null;
-  onDispose: (action: string) => void;
+  onDispose: (action: string, note?: string) => void;
   caseRunBusy: boolean;
   caseRunResult: CqCaseRunResult | null;
   onRunCase: () => void;
 }) {
   const cache = item.coverage_cache;
   const regression = item.regression || {};
-  // 0 可交付时最该做的是「修改」；把实心蓝从「启用」挪到「修改」
-  const primaryDisposition = (item.dispositions ?? []).some((a) => a.action === 'revise')
-    ? 'revise'
-    : 'approve_activate';
+  const [reviseOpen, setReviseOpen] = useState(false);
+  const [reviseNote, setReviseNote] = useState('');
+  // 「交回改写」只在题还没过关时才是主色；已可交付的题，主色应该回到「启用」。
+  const needsRewrite = !hasRun(item) || (item.missing ?? item.blockers ?? []).includes('未通过');
+  const canRevise = (item.dispositions ?? []).some((a) => a.action === 'revise');
+  const primaryDisposition = needsRewrite && canRevise ? 'revise' : 'approve_activate';
+  const dispositionLabel = (action: string, label: string) =>
+    action === 'revise' ? '交回改写' : label;
   const expectText = regression.expect === undefined
     ? '—'
     : JSON.stringify(regression.expect, null, 2);
@@ -1778,12 +1790,41 @@ function CqDetail({
               className={`btn ${action.action === primaryDisposition ? '' : 'secondary'}`}
               disabled={!action.available || dispositionBusy}
               title={action.effect}
-              onClick={() => onDispose(action.action)}
+              onClick={() => {
+                if (action.action === 'revise') { setReviseOpen(true); return; }
+                onDispose(action.action);
+              }}
             >
-              {dispositionBusy ? '处理中…' : action.label}
+              {dispositionBusy ? '处理中…' : dispositionLabel(action.action, action.label)}
             </button>
           ))}
         </div>
+        {reviseOpen && (
+          <div className="cq-revise-form" role="group" aria-label="交回改写">
+            <label className="field">
+              <span className="field-label">要改成什么（会交给智能体改写）</span>
+              <textarea
+                value={reviseNote}
+                onChange={(event) => setReviseNote(event.target.value)}
+                placeholder="例如：把问法收窄到「登录模块开发」，并补一条 can_execute 断言"
+                rows={3}
+              />
+            </label>
+            <div className="cq-revise-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={dispositionBusy || !reviseNote.trim()}
+                onClick={() => { onDispose('revise', reviseNote.trim()); setReviseOpen(false); }}
+              >
+                提交修改意见
+              </button>
+              <button type="button" className="btn secondary" onClick={() => setReviseOpen(false)}>
+                取消
+              </button>
+            </div>
+          </div>
+        )}
         <details className="cq-disposition-effects">
           <summary>每个动作会改什么</summary>
           <ul>
@@ -1857,8 +1898,7 @@ function CqDetail({
         <div className="cq-verification-step cq-case-run">
           <h4 className="cq-verification-sub">单题验证</h4>
           <p className="guide-muted">
-            只验证这一题，方便改完断言立刻确认；不写评估历史、不算覆盖率、不更新最近回归。
-            正式评估仍用工具栏「跑一轮评估」。
+            只验证这一题，方便改完断言立刻确认；正式评估仍用工具栏「跑一轮评估」。
           </p>
           <button
             type="button"

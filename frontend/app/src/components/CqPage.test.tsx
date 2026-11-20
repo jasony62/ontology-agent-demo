@@ -616,7 +616,7 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(delivery.textContent).toContain('请求智能体生成候选题');
     // #303：判定条不再复制导出 / 评估按钮，只给去向提示
     expect(delivery.querySelectorAll('a')).toHaveLength(0);
-    expect(delivery.textContent).toContain('导出评审包见工具栏');
+    expect(delivery.querySelector('.cq-delivery-note')?.getAttribute('title')).toContain('导出评审包见工具栏');
     expect(container!.textContent).toContain('评估有效');
   });
 
@@ -633,7 +633,7 @@ describe('CQ 集页（#151 / #203）', () => {
     const delivery = container!.querySelector('.cq-delivery')!;
     expect(delivery.textContent).toContain('评估可能过期');
     // #303：判定条只留文字指引，评估入口唯一在工具栏
-    expect(delivery.textContent).toContain('去工具栏「跑一轮评估」重新验证');
+    expect(delivery.querySelector('.cq-delivery-note')?.getAttribute('title')).toContain('去工具栏「跑一轮评估」重新验证');
     expect([...delivery.querySelectorAll('button')]
       .some((btn) => btn.textContent === '重新验证')).toBe(false);
     expect([...container!.querySelectorAll<HTMLButtonElement>('.cq-tool-group.writes button')]

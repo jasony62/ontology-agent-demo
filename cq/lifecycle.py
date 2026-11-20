@@ -75,7 +75,7 @@ def delivery_verdict(view: dict) -> dict:
         optimistic = 0.0
     if not evaluated and cases:
         verdict = (
-            f"尚未评估：先跑一轮评估再判断交付线（题量 {len(cases)}/{target}）"
+            f"尚未评估：先跑一轮评估再判断交付线（现有 {len(cases)} 题，目标 {target} 题）"
         )
         if unanchored:
             verdict += (

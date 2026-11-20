@@ -2436,3 +2436,18 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   .cq-toolbar-actions { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
   .cq-tool-group { flex: 0 0 auto; }
 }
+
+/* 「交回改写」的意见输入：仅在点击后出现，避免误触直接降级 */
+.cq-revise-form {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 8px;
+  padding: 10px; border: 1px dashed var(--border-strong); border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.cq-revise-actions { display: flex; gap: 8px; }
+.cq-delivery-note { margin-left: auto; }
+.cq-delivery-note:empty { display: none; }
+/* 详情滚动时保留题号与题干 */
+.cq-detail-head {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--panel); padding-top: 2px; padding-bottom: 8px;
+}

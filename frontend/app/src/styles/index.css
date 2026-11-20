@@ -2318,3 +2318,36 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .graph-node-kind { flex: 0 0 auto; font-size: var(--fs-xs); color: var(--muted); }
 .graph-node-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .graph-node-item code { flex: 0 0 auto; margin-left: auto; font-size: var(--fs-xs); color: var(--muted); }
+
+/* ============================================================
+   图谱左栏容器查询（P0 编辑落点）
+   左栏被编辑区挤窄时（打开在线编辑、拖宽右栏），详情改为上下堆叠，
+   工具栏把次要控件收进「更多」——不再出现 17px 竖排按钮与压盖。
+   ============================================================ */
+.workspace-graph { container-type: inline-size; container-name: graph-pane; }
+
+.workspace-graph .graph-toolbar { padding-right: 28px; }
+
+.graph-toolbar > button,
+.graph-toolbar .graph-toolbar-create,
+.graph-toolbar .graph-zoom-btns { flex: 0 0 auto; }
+.graph-index-toggle,
+.graph-label-toggle { white-space: nowrap; flex: 0 0 auto; }
+.graph-search { white-space: nowrap; }
+
+@container graph-pane (max-width: 900px) {
+  .workspace-graph .graph-row { flex-direction: column; gap: 8px; }
+  .workspace-graph .graph-col { flex: 1 1 auto; min-height: 260px; }
+  .workspace-graph .graph-side {
+    flex: 0 0 auto; width: 100%; min-width: 0; max-height: 46%;
+    border-top: 1px solid var(--border); padding-top: 8px;
+  }
+  /* 次要开关与重复入口收进「更多」：它们在菜单里仍可点 */
+  .graph-index-toggle,
+  .graph-label-toggle,
+  .graph-toolbar-create,
+  .graph-zoom-btns { display: none; }
+  /* 被收起的开关都在「更多」里，所以它必须出现（默认只有窄视口才显示） */
+  .graph-more { display: block; }
+  .graph-search { flex: 1 1 80px; min-width: 70px; }
+}

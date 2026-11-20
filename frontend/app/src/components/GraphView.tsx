@@ -46,7 +46,9 @@ const stylesheet: StylesheetStyle[] = [
     selector: 'node',
     style: {
       'background-color': 'data(color)',
-      label: 'data(label)',
+      // 标签默认不常显：类保留名字（读者靠它认图），个体只在悬停/选中/放大后出现。
+      // 137 条边 + 55 个常显标签挤在一起时，读图的第一眼是"字压字"。
+      label: '',
       'text-valign': 'bottom',
       'text-halign': 'center',
       color: '#33455f',
@@ -58,7 +60,16 @@ const stylesheet: StylesheetStyle[] = [
   {
     // 形状承载"类 / 个体"这一维，颜色只承载分组：两套编码不抢同一个通道
     selector: 'node.kind-class',
-    style: { shape: 'round-rectangle', width: 34, height: 24 },
+    style: { shape: 'round-rectangle', width: 34, height: 24, label: 'data(label)' },
+  },
+  {
+    selector: 'node.show-label',
+    style: { label: 'data(label)' },
+  },
+  {
+    // 放大到能看清细节时，个体标签才值得占位置
+    selector: 'node.zoom-near',
+    style: { label: 'data(label)' },
   },
   {
     selector: 'node.inferred',
@@ -77,13 +88,8 @@ const stylesheet: StylesheetStyle[] = [
     style: { 'border-width': 3, 'border-style': 'solid', 'border-color': '#c62828' },
   },
   {
-    // 语义缩放：缩得很远时节点标签会糊成一团，只保留选中的那个
-    selector: 'node.zoom-far',
-    style: { 'text-opacity': 0 },
-  },
-  {
     selector: 'node:selected',
-    style: { 'border-width': 3, 'border-color': '#0078d4', 'text-opacity': 1 },
+    style: { 'border-width': 3, 'border-color': '#0078d4', 'text-opacity': 1, label: 'data(label)' },
   },
   {
     selector: 'node.highlight',
@@ -266,6 +272,8 @@ export default function GraphView({
   }
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   const [search, setSearch] = useState('');
   const nodeIndex = useMemo(() => {
     const map = new Map<string, { id: string; label: string; kind: 'class' | 'individual' }>();
@@ -310,6 +318,9 @@ export default function GraphView({
     cy.on('mouseout', 'edge', (evt) => {
       if (!edgeLabelsRef.current) evt.target.removeClass('show-label');
     });
+    // 个体的名字按需出现：指针经过即显示，移开就收
+    cy.on('mouseover', 'node', (evt) => evt.target.addClass('show-label'));
+    cy.on('mouseout', 'node', (evt) => evt.target.removeClass('show-label'));
     cyRef.current = cy;
     return () => {
       cy.destroy();
@@ -317,11 +328,11 @@ export default function GraphView({
     };
   }, []);
 
-  // 语义缩放：缩得太远时只保留选中节点的标签，避免 55 个标签糊成一团
+  // 语义缩放：默认只显示类名；放大到 1.1 以上再显示个体标签
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const apply = () => cy.nodes().toggleClass('zoom-far', cy.zoom() < 0.75);
+    const apply = () => cy.nodes().toggleClass('zoom-near', cy.zoom() >= 1.1);
     cy.on('zoom', apply);
     apply();
     return () => { cy.off('zoom', apply); };
@@ -347,6 +358,17 @@ export default function GraphView({
       const height = box?.height ?? el.clientHeight;
       if (width < MIN_RESIZE_WIDTH || height <= 0) return;
       cy.resize();
+      // 分栏变窄后选中节点可能已经滑出视口：只把「看不见的」拉回中央，
+      // 不打断用户正在看的位置
+      const id = selectedIdRef.current;
+      const id2 = id?.startsWith('edge|') ? null : id;
+      if (id2) {
+        const node = cy.getElementById(id2);
+        if (node.nonempty()) {
+          const bb = node.renderedBoundingBox();
+          if (bb.x2 < 0 || bb.x1 > cy.width() || bb.y2 < 0 || bb.y1 > cy.height()) cy.center(node);
+        }
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -433,7 +455,7 @@ export default function GraphView({
 
     // 新增元素不继承旧元素上的状态类：视图切换 / 增删后按当前开关重新同步
     cy.edges().toggleClass('show-label', edgeLabelsRef.current);
-    cy.nodes().toggleClass('zoom-far', cy.zoom() < 0.75);
+    cy.nodes().toggleClass('zoom-near', cy.zoom() >= 1.1);
   }, [viewMode, asserted, inferred, groupView, issueLevels]);
 
   // 聚焦淡化：选中节点时看「节点 + 直连邻域」，否则沿用图例聚焦（详见 lib/graphSelection）。
@@ -522,6 +544,9 @@ export default function GraphView({
         <OverflowMenu id="graph-toolbar" className="graph-more" label="更多" title="收起的缩放与新建入口" closeOnAction={false}>
           {toolbarOverflow && <div className="graph-more-create">{toolbarOverflow}</div>}
           <div className="graph-more-zoom">
+            <button type="button" onClick={() => setNodeIndexOpen((v) => !v)}>
+              {nodeIndexOpen ? '✓ 元素清单' : '元素清单'}
+            </button>
             <button type="button" onClick={() => setEdgeLabels((v) => !v)}>
               {edgeLabels ? '✓ 连线标签' : '连线标签'}
             </button>

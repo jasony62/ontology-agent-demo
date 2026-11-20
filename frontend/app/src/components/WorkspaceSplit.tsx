@@ -434,7 +434,7 @@ export default function WorkspaceSplit({
                 title="收起编辑面板（另一侧将占满全宽）"
                 onClick={() => setLayout((cur) => minimizeSide(cur, 'right'))}
               >
-                »
+                <ChevronIcon dir="right" />
               </button>
             </div>
           </div>

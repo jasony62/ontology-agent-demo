@@ -2368,3 +2368,23 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 /* 推理新增的统计口径提示 */
 .guide-unit { font-size: var(--fs-xs); color: var(--muted); margin-left: 4px; }
+
+/* 图谱工具栏的次级按钮统一走 .btn.secondary 的观感（此前是浏览器默认按钮） */
+.graph-toolbar button.secondary {
+  height: 30px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: #fff; color: var(--primary);
+  font-size: var(--fs-sm2); font-weight: 500; line-height: 1;
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--t-base), border-color var(--t-base), transform var(--t-fast);
+}
+.graph-toolbar button.secondary:hover:not(:disabled) {
+  background: var(--primary-soft); border-color: var(--border-strong);
+}
+.graph-toolbar button.secondary:active { transform: translateY(1px); }
+.graph-toolbar button.secondary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.graph-toolbar button.secondary:disabled { opacity: .45; cursor: not-allowed; }
+.graph-toolbar button.secondary[aria-pressed='true'],
+.graph-toolbar button.secondary.active { background: var(--primary-soft); border-color: var(--primary); color: var(--link); }
+.graph-zoom-btns button { min-width: 30px; padding: 0 8px; }
+.graph-toolbar .overflow-toggle { height: 30px; padding: 0 12px; border-radius: var(--radius-sm); }

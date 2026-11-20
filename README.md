@@ -28,7 +28,7 @@
 | **OWL 2 RL 推理引擎** | 加载 OWL 本体并物化推理；SPARQL / 类层次 / 个体 / 属性查询 | `scripts/query.py classes --local` |
 | **业务规则 R1 / R2 / R2a / R2b / R5 / R6** | 能力匹配、任务委派、认证有效期、担责判定、人工介入、双人复核与复核候选；R4 合规冲突由适配器在分配时校验。规则层可审查、可改口径，输出可解释推导链 | `make demo` |
 | **REST API** | 70 个端点：能力查询 / 能力变更 / 解释 / 一致性 / SPARQL / CQ 集管理与依据定位 / OWL 上传 | `http://127.0.0.1:8000/api-docs`（在线文档，含请求与响应说明） |
-| **MCP Server** | 同进程双端点：`/mcp/ontology`（领域业务 10 + 引擎通用 15）与 `/mcp/cq`（CQ 18），智能体（豆包等）一行配置接入 | `make mcp` |
+| **MCP Server** | 同进程双端点：`/mcp/ontology`（领域业务 10 + 引擎通用 16）与 `/mcp/cq`（CQ 18），合计 44，智能体（豆包等）一行配置接入 | `make mcp` |
 | **当前领域单页** | 六问导航：定位 / 能问什么 / 能做什么 / 凭什么可信 / 怎么接入 / 现在跑的是哪一份；示例题按「看一次编排 / 预测一次变化 / 其余示例」分组 | 页头「当前领域」 |
 | **CQ 集页** | 题库总览（承诺 / 已定位 / 可答 / 缺口 + 两档覆盖率）、逐题增删改（题干 / 题型 / 状态 / SPARQL 断言）、变更审计、运行评估、导入导出（JSON / cq-test / JUnit） | 页头「CQ 集」 |
 | **图谱工作台** | React 工作台：三档视图图谱、OWL 源码查看、导入导出、图谱右侧编辑框（草图预览）+ 在线编辑（写盘） | `npm run dev` |
@@ -83,7 +83,7 @@ python3 -m venv .venv
 ### 运行测试与一键演示
 
 ```bash
-.venv/bin/python -m pytest tests/ -v      # 自动化测试套件（约 430 项，以 pytest 实测为准）
+.venv/bin/python -m pytest tests/ -v      # 自动化测试套件（全绿即可；项数以末行 passed 为准）
 make demo                                  # 按顺序跑一遍核心接口（需服务已启动）
 ```
 
@@ -413,9 +413,10 @@ adapter = AgentTaskAdapter(get_engine(), DEFAULT_CONFIG.update(
 - `/mcp/ontology`——本体推理：
   - **领域业务工具 10 个**随领域包走（`domains/<name>/mcp.py` 注册）：`capability_match` / `orchestrate` /
     `assign` / `classify` / `consistency` / `explain` / `ontology` / `status` / `entities` / `validate_shapes`
-  - **引擎通用工具 15 个**任意 `.owl` 可用：`query_sparql` / `individuals` / `classes` / `types_of` /
+  - **引擎通用工具 16 个**任意 `.owl` 可用：`query_sparql` / `individuals` / `classes` / `types_of` /
     `property_values` / `infer` / `explain_proof` / `predefined_queries` / `run_predefined_query` /
-    `active_facts` / `guard_status` / `pipeline_gate` / `run_rules` / `list_rules` / `merge_check`
+    `active_facts` / `guard_status` / `pipeline_gate` / `run_rules` / `list_rules` / `merge_check` /
+    `mcp_status`（MCP 自省：当前领域 / 来源 / 工具数 / 可切换领域）
 - `/mcp/cq`——CQ 集全生命周期 + 训练过程（框架级，**不依赖领域包**，导入裸 OWL 也可用）：
   `cq_set_read` / `cq_set_write` / `cq_case_upsert` / `cq_case_remove` / `cq_locate` /
   `cq_validate` / `cq_author` / `cq_to_schema` / `cq_regression` / `cq_audit` /
@@ -465,7 +466,7 @@ URL 填 `http://127.0.0.1:9000/mcp/ontology`（本体推理）或 `http://127.0.
 
 ## 开发与贡献
 
-- **测试**：`make test`（pytest，约 430 项，含推理规则、插件契约、热切换与 SDK 边界）；CI 在 push / PR 时对 Python 3.10–3.12 全量跑。
+- **测试**：`make test`（pytest，覆盖推理规则、插件契约、热切换与 SDK 边界；全绿即可，项数以末行 passed 为准）；CI 在 push / PR 时对 Python 3.10–3.12 全量跑。
 - **文档**：指南用 MkDocs 构建，推送 `main` 后由 CI 自动构建并部署文档站；本地 `make docs` 预览需 Python 3.10–3.12（当前机器 3.14 暂无 watchdog 轮子，故本地构建在 CI 上验证）。
 - **可安装包**：`pip install -e .`（pyproject.toml，依赖与 requirements.txt 一致）。领域插件 SDK 是
   同仓库的 workspace 包，`requirements.txt` 已含 `-e ./packages/ontology-plugin-sdk`，会一起装上。

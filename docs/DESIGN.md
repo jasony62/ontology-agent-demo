@@ -474,7 +474,7 @@ CQ 相关 REST 共 24 个路径 / 29 个方法，全部挂在 `/api/domains/curr
 ## 9. MCP 接入（智能体直接调用，端口 9000）
 
 推理服务封装为标准 **MCP Server**（`mcp/mcp_server.py`，streamable-http），同进程双端点：
-`/mcp/ontology`（领域业务 10 + 引擎通用 15）与 `/mcp/cq`（CQ 18）；`/mcp` 是 `/mcp/ontology`
+`/mcp/ontology`（领域业务 10 + 引擎通用 16，合计 26）与 `/mcp/cq`（CQ 18），共 44 个工具；`/mcp` 是 `/mcp/ontology`
 的旧路径别名。两个端点共享同一 `get_engine()` 工厂与同一份 `cq_store`，不新起进程/引擎。
 
 `mcp/mcp_server.py` 是**通用出口层**（不含领域词汇）：10 个领域业务工具随领域包走
@@ -484,10 +484,10 @@ CQ 18 个工具由框架 `mcp/cq_tools.py` 独立注册，**不依赖领域包**
 - **10 个领域业务工具**（走适配器，默认 `domains/agent_task/mcp.py`）：capability_match /
   orchestrate / assign / classify / consistency / explain / ontology（图谱）/ status（状态自检）/
   entities（实体清单）/ validate_shapes；
-- **15 个引擎通用工具**（走引擎，任意 `.owl` 可用）：query_sparql / individuals / classes / types_of /
+- **16 个引擎通用工具**（走引擎，任意 `.owl` 可用）：query_sparql / individuals / classes / types_of /
   property_values / infer / explain_proof / predefined_queries / run_predefined_query / active_facts /
-  guard_status / pipeline_gate / run_rules / list_rules / merge_check；
-- **16 个 CQ 工具**（`/mcp/cq`）：cq_set_read / cq_set_write / cq_case_upsert / cq_case_remove /
+  guard_status / pipeline_gate / run_rules / list_rules / merge_check / mcp_status（MCP 自省）；
+- **18 个 CQ 工具**（`/mcp/cq`）：cq_set_read / cq_set_write / cq_case_upsert / cq_case_remove /
   cq_locate / cq_validate / cq_author / cq_to_schema / cq_regression / cq_audit /
   cq_action_complete / cq_coverage / cq_decision / cq_agenda / cq_resume / cq_timeline / cq_training_write / cq_iteration_write。错误统一 `{ok: false, error: {code, message}}`。
 

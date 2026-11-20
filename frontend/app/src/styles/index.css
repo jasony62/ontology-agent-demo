@@ -197,7 +197,7 @@ body {
 .ef-class-id { font-size: 11px; color: var(--muted); background: #f0f3f8; padding: 1px 6px; border-radius: 8px; }
 .ef-class-parent { font-size: 11px; color: #0b57a0; }
 
-.app-main { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.app-main { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
 .panel h2 { font-size: 15px; color: #33455f; margin-bottom: 8px; }
@@ -1203,7 +1203,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-list { padding-left: 18px; font-size: var(--fs-sm2); line-height: 1.8; }
 .guide-list.muted { color: var(--muted); }
 .guide-empty, .guide-empty-inline {
-  font-size: var(--fs-sm2); color: #7b8797; background: #f8fafc;
+  font-size: var(--fs-sm2); color: var(--muted); background: #f8fafc;
   border: 1px dashed var(--border); border-radius: var(--radius); padding: 12px;
 }
 .guide-empty-inline { padding: 8px 10px; }
@@ -1589,6 +1589,9 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
 }
 .cq-glossary dl { grid-template-columns: 1fr; }
+.cq-glossary-backdrop {
+  position: fixed; inset: 0; z-index: 55; background: rgba(15, 32, 51, .18);
+}
 .cq-glossary-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .cq-glossary-head h3 { font-size: var(--fs-title); color: var(--heading); }
 .cq-glossary dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px 16px; margin: 8px 0 0; }
@@ -1926,8 +1929,8 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-training-result { margin: 8px 0; }
 .cq-training-cards { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
 .cq-training-card {
-  border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 10px 12px; background: var(--panel); display: flex; flex-direction: column; gap: 6px;
+  border: 0; border-top: 1px dashed var(--border); border-radius: 0;
+  padding: 8px 0 0; background: transparent; display: flex; flex-direction: column; gap: 6px;
 }
 .cq-training-card-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cq-training-card-head code { font-size: 11px; color: var(--muted); }

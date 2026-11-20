@@ -1542,6 +1542,8 @@ function CqGlossary({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (
+    <>
+    <div className="cq-glossary-backdrop" onClick={onClose} aria-hidden="true" />
     <section className="cq-glossary" role="dialog" aria-label="术语说明">
       <div className="cq-glossary-head">
         <h3>术语说明</h3>
@@ -1556,6 +1558,7 @@ function CqGlossary({ onClose }: { onClose: () => void }) {
         ))}
       </dl>
     </section>
+    </>
   );
 }
 

@@ -443,6 +443,7 @@ export default function CqTrainingPanel({
             </span>
           </div>
 
+          {!(nextAction === 'answer_decisions' && pendingCases.length > 0) && (
           <div className="cq-training-next">
             <b>下一步</b>
             <span>{nextText}</span>
@@ -463,6 +464,7 @@ export default function CqTrainingPanel({
                     : '去处理'}
             </button>
           </div>
+          )}
 
           {lastResult && <div className="notice-banner cq-training-result">{lastResult}</div>}
 

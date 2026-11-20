@@ -408,7 +408,7 @@ describe('训练现场（#198 / #203）', () => {
     expect(history.textContent).not.toContain('提问：期望口径是什么？');
   });
 
-  it('「下一步」可点直达待决处理（#228）', async () => {
+  it('有待决时只保留「逐题处理」入口，点击进入逐题（#228）', async () => {
     stubFetch({
       ...RESUME,
       next_suggested: { action: 'answer_decisions', count: 1, text: '回答 1 个待决问题' },
@@ -416,9 +416,11 @@ describe('训练现场（#198 / #203）', () => {
     act(() => root!.render(<CqTrainingPanel />));
     await flush();
 
-    const next = [...container!.querySelectorAll<HTMLButtonElement>('.cq-training-next button')]
-      .find((button) => button.textContent === '去处理')!;
-    await act(async () => { next.click(); });
+    // 「下一步 → 去处理」与看板的「逐题处理」重复，默认收起
+    expect(container!.querySelector('.cq-training-next')).toBeNull();
+    const entry = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.startsWith('逐题处理'))!;
+    await act(async () => { entry.click(); });
     await flush();
     expect(container!.querySelector('.cq-focus-mode')).not.toBeNull();
   });

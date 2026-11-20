@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **系统版本收敛到单一事实源（#364）**：`GET /api/health` 不再用含混的 `version` 报本体版本，改为同时给出 `system_version`（发版号，读 `pyproject.toml`，与 git tag 一致）与 `ontology_version`（本体自身版本）。OpenAPI `info.version` 与 MCP Server 版本也改为同一来源，不再手写 `1.4.0` / `1.3.0` / `1.0.0`。回归记录的「版本」字段现在一轮一个值、可跨轮比较。
+- **SPARQL 结果短名不再返回空串（#365）**：本体自身 IRI 常以命名空间分隔符结尾（如 `http://example.org/onto#`），此前短名解析会切成空串，让「查询成功」看起来像「值缺失」。现在依次回退到去掉尾部分隔符后的本地名、最后是完整 IRI，始终返回非空标识。
+
+### Changed
+
+- **`POST /api/ontology/exit-imported` 改名为 `switch-to-default-domain`（#366）**：旧名字容易被读成「回到上一个导入工作区」，实际目标始终是配置里的默认领域。新路径、摘要与响应说明都直说「切回默认领域，不恢复导入工作区指针」，响应新增 `switched` 与 `note`。旧路径不保留别名；前端调用同步改名。
+
 ## [0.10.0] - 2026-11-20
 
 ### Fixed

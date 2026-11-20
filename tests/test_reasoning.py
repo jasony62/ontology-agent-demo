@@ -336,3 +336,30 @@ def test_semantic_config_switch(engine):
     # 能力匹配等核心行为不受影响
     m = alt.capability_match(alt.NS["t_login_dev"])
     assert {x["agent"] for x in m["matches"]} == {"dev_agent", "junior_dev"}
+
+
+def test_sparql_short_name_is_non_empty_for_ontology_iri(tmp_path):
+    """本体自身 IRI 以命名空间分隔符结尾时，短名不能是空串（#365）。
+
+    说明页的「自然语言转查询」示例会查各类个体，其中一行主语是本体自身
+    （`owl:Ontology`）。此前 `local()` 把这个 IRI（`.../onto#`）切成空串，
+    查询成功却显示空值，看起来像数据缺失。
+    """
+    onto = tmp_path / "onto.owl"
+    onto.write_text(
+        """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Ontology rdf:about="http://example.org/onto#"/>
+  <owl:Class rdf:about="http://example.org/onto#Person"/>
+</rdf:RDF>
+""",
+        encoding="utf-8",
+    )
+    e = OntologyEngine(str(onto))
+    rows = e.query_sparql(
+        "SELECT ?s WHERE { ?s a owl:Ontology }"
+    )
+    assert rows, "查询本身应当成功"
+    assert rows[0]["s"] == "onto"
+    assert all(row["s"] for row in rows), "短名不得为空串"

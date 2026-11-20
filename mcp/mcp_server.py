@@ -19,7 +19,8 @@
     通用工具（引擎直接提供，与本体定义无关，任意 .owl 可用）：
         query_sparql / individuals / classes / types_of / property_values / infer /
         explain_proof / predefined_queries / run_predefined_query / active_facts /
-        guard_status / pipeline_gate / run_rules / list_rules / merge_check
+        guard_status / pipeline_gate / run_rules / list_rules / merge_check /
+        mcp_status（MCP 自省：#277）
         +（护栏启用时）全部通用工具附带预算/循环/缓存/审计防护
 
 领域包约定（domains/<name>/ 必须暴露）：
@@ -78,6 +79,7 @@ from reasoner.pipeline_gate import run_gates
 from reasoner.proof import build_proof
 from reasoner import rules as rules_mod
 from config import load_config
+from config.version import project_version
 from cq import cq_store
 from domains import load_domain, load_domain_module, package_onto_path
 from mcp.server.mcpserver import MCPServer
@@ -144,7 +146,7 @@ def build_server(get_engine, get_adapter, domain_name: str, description: str,
         name="ontology-reasoning",
         title=f"本体推理服务（{get_adapter().NAME} 领域）",
         description=f"基于 OWL 2 本体的确定性推理：{description}；通用查询（SPARQL/个体/类/类型/属性/重推理）",
-        version="1.3.0",
+        version=project_version(),  # 与发版号同源（#364），不再手写版本
     )
 
     if with_domain_tools:
@@ -219,7 +221,7 @@ def build_cq_server(get_engine, get_cq_context) -> MCPServer:
         name="cq-set",
         title="CQ 集管理（本体能力问题）",
         description="CQ 集的读写 / 出题质检 / TBox 建模校验 / 回归 / 审计；与本体推理共享当前内存引擎",
-        version="1.0.0",
+        version=project_version(),  # 与发版号同源（#364）
     )
     cq_tools_mod.register_tools(_ToolNameGuard(server), get_engine, get_cq_context)
     return server

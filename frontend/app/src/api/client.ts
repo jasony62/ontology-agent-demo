@@ -1193,9 +1193,17 @@ export const api = {
     request<OntologyWorkspaceSummary>(
       `/api/ontology/workspaces/${encodeURIComponent(workspaceId)}`,
     ),
-  exitImported: () =>
-    request<{ status: string; exited: boolean; domain: string; workspace?: string }>(
-      '/api/ontology/exit-imported',
+  // #366：名字直说目标——切回**默认领域**，不会回到上一个导入工作区。
+  switchToDefaultDomain: () =>
+    request<{
+      status: string;
+      exited: boolean;
+      switched?: boolean;
+      domain: string;
+      workspace?: string;
+      note?: string;
+    }>(
+      '/api/ontology/switch-to-default-domain',
       { method: 'POST' },
     ),
   deleteWorkspaceSource: (workspaceId: string) =>

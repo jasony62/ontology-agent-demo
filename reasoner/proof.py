@@ -33,16 +33,11 @@ from rdflib import BNode, Graph, OWL, RDF, RDFS, URIRef
 # 领域的规则归属（R1/R2）各写一份迟早漂移，这里直接复用 SDK 的纯图函数。
 from ontology_plugin_sdk import chain_properties as _chain_properties
 from ontology_plugin_sdk import find_chain_path as _find_chain_path
+from ontology_plugin_sdk.engine import local as local
 
 from reasoner.engine import NameNotFound
 
 __all__ = ["build_proof", "diff_materialized"]
-
-
-def local(iri) -> str:
-    """取 IRI 的短名（最后一个 # 或 / 之后）。"""
-    s = str(iri)
-    return s.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
 
 
 _STD_SHORT = {

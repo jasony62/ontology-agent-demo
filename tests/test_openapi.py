@@ -62,7 +62,7 @@ def test_domain_endpoints_are_namespaced_under_current():
     #219 新增 cases/{case_id}/events，
     #235 新增 metrics / telemetry/view / cases/request，
     #264 新增 actions/{action_id}/complete，
-    #276 新增 ontology/workspaces* / exit-imported，
+    #276 新增 ontology/workspaces* / switch-to-default-domain（#366 由 exit-imported 改名），
     #277 新增 domains/current/mcp-sync，
     #319 新增 cq/prompts，
     #306 新增 cq/requirements，

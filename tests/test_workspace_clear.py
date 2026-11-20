@@ -88,13 +88,13 @@ def test_missing_and_traversal_ids_are_404(workspace_root):
     assert client.get("/api/ontology/workspaces/..%2Fetc").status_code == 404
 
 
-def test_exit_imported_keeps_files_and_clears_restore_pointer(
+def test_switch_to_default_domain_keeps_files_and_clears_restore_pointer(
     workspace_root, restore_engine,
 ):
     workspace_id = _upload()
     _seed_artifacts(workspace_id)
 
-    response = client.post("/api/ontology/exit-imported")
+    response = client.post("/api/ontology/switch-to-default-domain")
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["exited"] is True
@@ -106,12 +106,21 @@ def test_exit_imported_keeps_files_and_clears_restore_pointer(
     # V9：退出动作有审计
     audit = workspaces.workspace_dir(workspace_id) / "cq_set.audit.jsonl"
     assert "exit_import" in audit.read_text(encoding="utf-8")
+    # #366：目标永远是默认领域，响应里明确说清，不再有「切回原工作区」的歧义。
+    assert body["switched"] is True
+    assert body["domain"] == M._default_domain_name()
+    assert "默认领域" in body["note"]
+
+
+def test_old_exit_imported_path_is_gone(workspace_root, restore_engine):
+    """#366：改名不保留别名——旧名字正是歧义来源，留着等于没改。"""
+    assert client.post("/api/ontology/exit-imported").status_code == 404
 
 
 def test_delete_source_keeps_cq_artifacts(workspace_root, restore_engine):
     workspace_id = _upload()
     _seed_artifacts(workspace_id)
-    client.post("/api/ontology/exit-imported")
+    client.post("/api/ontology/switch-to-default-domain")
 
     response = client.delete(f"/api/ontology/workspaces/{workspace_id}/source")
     assert response.status_code == 200, response.text
@@ -129,7 +138,7 @@ def test_delete_source_keeps_cq_artifacts(workspace_root, restore_engine):
 def test_delete_workspace_requires_explicit_cascade(workspace_root, restore_engine):
     workspace_id = _upload()
     _seed_artifacts(workspace_id)
-    client.post("/api/ontology/exit-imported")
+    client.post("/api/ontology/switch-to-default-domain")
 
     refused = client.delete(f"/api/ontology/workspaces/{workspace_id}")
     assert refused.status_code == 400, refused.text

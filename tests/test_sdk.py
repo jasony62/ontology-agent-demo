@@ -96,6 +96,16 @@ def test_local_takes_short_name():
     assert sdk.local("Pump") == "Pump"
 
 
+def test_local_never_returns_empty_for_namespace_root_iri():
+    """本体自身 IRI 常以分隔符结尾；短名为空会让「查询成功」看起来像「值缺失」（#365）。"""
+    assert sdk.local("http://example.org/onto#") == "onto"
+    assert sdk.local("http://example.org/onto/") == "onto"
+    assert sdk.local("http://example.org/") == "example.org"
+    # 连去掉分隔符后都取不到名字时，回退完整 IRI——绝不返回空串。
+    assert sdk.local("#") == "#"
+    assert sdk.local("/") == "/"
+
+
 def test_resolve_ns_prefers_frequent_prefix():
     from rdflib import Graph, URIRef
 

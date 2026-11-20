@@ -40,7 +40,7 @@ beforeEach(() => {
     current: 'ws-1', workspaces: [WORKSPACE],
   } as never);
   vi.spyOn(api, 'ontologyWorkspace').mockResolvedValue(WORKSPACE as never);
-  vi.spyOn(api, 'exitImported').mockResolvedValue({
+  vi.spyOn(api, 'switchToDefaultDomain').mockResolvedValue({
     status: 'ok', exited: true, domain: 'agent_task', workspace: 'ws-1',
   } as never);
   vi.spyOn(api, 'deleteWorkspaceSource').mockResolvedValue({
@@ -92,7 +92,7 @@ describe('管理导入数据（#276 / #354）', () => {
     await act(async () => { exit.click(); });
     await flush();
 
-    expect(api.exitImported).toHaveBeenCalledTimes(1);
+    expect(api.switchToDefaultDomain).toHaveBeenCalledTimes(1);
     expect(api.deleteWorkspaceSource).not.toHaveBeenCalled();
     expect(onSynced).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);

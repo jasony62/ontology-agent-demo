@@ -42,9 +42,19 @@ def local(iri: Any) -> str:
 
     纯字符串操作，不校验参数是不是合法 IRI——它在上游已经被 rdflib 保证过，
     这里再校验一次只会让调用点在每个分支上都加 try。
+
+    本体自身的 IRI 常常就以命名空间分隔符结尾（如 `http://example.org/onto#`）：
+    直接切分只剩空串，于是「查询成功」在结果里看起来像「值缺失」（#365）。
+    拿不到短名时依次回退到**去掉尾部分隔符后的本地名**、最后是完整 IRI——
+    始终返回非空标识，绝不静默给空串。
     """
     text = str(iri)
-    return text.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+    name = text.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+    if name:
+        return name
+    trimmed = text.rstrip("#/")
+    tail = trimmed.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+    return tail or text
 
 
 # 标准词汇命名空间（自动推导默认 NS 时排除；同时覆盖带 '#' 与无 '#' 写法）

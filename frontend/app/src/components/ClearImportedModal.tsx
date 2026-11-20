@@ -68,7 +68,7 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
     setBusy('exit');
     setLocalError(null);
     try {
-      const result = await api.exitImported();
+      const result = await api.switchToDefaultDomain();
       await finish(
         `已切回默认领域「${result.domain}」；磁盘上的导入数据仍保留`
         + (workspace ? `（CQ 题集 ${workspace.cq_cases} 道、跑分记录 ${workspace.runs} 次）` : '')

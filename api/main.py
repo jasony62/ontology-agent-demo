@@ -31,12 +31,12 @@
         GET/PUT/DELETE /api/domains/current/cq/prompts      出题配比 / 措辞 / 描述
         POST           /api/domains/current/cq/prompts/preview 出题指令预览（只读）
         GET/PUT        /api/domains/current/cq/requirements 人沉淀的出题要求
-    本体管理（v1.3.0 起，通用层扩展）：
+    本体管理（通用层扩展）：
         POST /api/ontology/load         上传 .owl/.rdf 并切换为「导入的本体」只读领域
         GET  /api/ontology/materialized 物化 diff：原始断言 / 推理新增 / 统计
         GET  /api/ontology/source       当前本体原始 RDF/XML 文本
         GET  /api/ontology/export       导出物化后完整本体（turtle / rdfxml / n3）
-    在线编辑（v1.4.0：编辑模型 / 保存写回 / 下载）：
+    在线编辑（编辑模型 / 保存写回 / 下载）：
         GET  /api/ontology/edit-model   当前本体 → 结构化编辑模型 JSON（rdflib 全量提取）
         POST /api/ontology/save         编辑模型 → RDF/XML 写盘 + 重建引擎 + 重推理（new/overwrite）
         GET  /api/ontology/download     下载 data/uploads/ 内保存的本体文件（防路径穿越）
@@ -93,6 +93,7 @@ from reasoner.protocol import (
     undeclared_missing,
     validate_entity_schema,
 )
+from config.version import project_version
 from domains import DomainManager, DomainContractError, DomainNotFoundError
 from domains.imported import display_filename
 from . import workspaces
@@ -269,7 +270,9 @@ app = FastAPI(
         "本页由 FastAPI 按 OpenAPI 3.1 规范自动生成；工作台「服务能力」面板读取 "
         "`/openapi.json` 渲染同一份文档，并支持在线调用。"
     ),
-    version="1.4.0",
+    # #364：系统版本只认 pyproject.toml（与 git tag 对齐）。这里曾是手工维护的
+    # "1.4.0"，与发版号各说各话，OpenAPI 面板因此显示一个不存在的版本。
+    version=project_version(),
     openapi_tags=OPENAPI_TAGS,
     # /redoc 是 FastAPI 默认注册的第三个文档入口：纯阅读、依赖 CDN、
     # 对 OpenAPI 3.1 仅基础支持。保留 /docs 与工作台 /api-docs 两个入口。
@@ -652,16 +655,18 @@ def _class_count(field: str) -> int:
         200: {
             "model": HealthResponse,
             "description": (
-                "服务状态、本体版本、脏标记、当前领域与契约探针"
+                "服务状态、系统版本 / 本体版本、脏标记、当前领域与契约探针"
                 "（含 contract.query_kinds / contract.apply_kinds 可用能力）。"
             ),
         },
     },
 )
 def health():
-    """返回服务状态、本体版本、脏标记、当前领域与契约探针。
+    """返回服务状态、系统版本 / 本体版本、脏标记、当前领域与契约探针。
 
-    给调用方：`contract.query_kinds` 是 `POST /api/domains/current/capabilities/query`
+    给调用方：`system_version` 是发版号（与 git tag / pyproject.toml 对齐），
+    `ontology_version` 才是本体自身的版本；回归记录的「版本」字段请用前者（#364）。
+    另外，`contract.query_kinds` 是 `POST /api/domains/current/capabilities/query`
     当前可用只读能力的权威清单，`contract.apply_kinds` 对应
     `POST /api/domains/current/capabilities/apply`；两者都按领域 `CAPABILITIES` 过滤过。
     `counts` 与顶层 agents / tasks / assignments 是领域可选统计，领域没有
@@ -675,7 +680,10 @@ def health():
     return {
         "status": "ok",
         "ontology": os.path.basename(ENGINE.onto_path),
-        "version": _ontology_version(),
+        # #364：系统版本（发版号，与 git tag / pyproject.toml 一致）与本体版本
+        # 分开报。此前 health.version 其实是本体版本，回归记录抄错后无法跨版本比较。
+        "system_version": project_version(),
+        "ontology_version": _ontology_version(),
         "loaded_at": ENGINE_LOADED_AT,
         "reasoner": getattr(ADAPTER, "REASONER_SUMMARY", None) or "OWL 2 RL (owlrl)",
         "domain": ADAPTER.NAME,
@@ -3689,16 +3697,36 @@ def workspace_detail_endpoint(
 
 
 @app.post(
-    "/api/ontology/exit-imported",
+    "/api/ontology/switch-to-default-domain",
     tags=["本体管理"],
-    summary="退出导入态并切回默认领域",
-    responses={200: {"model": OpenEnvelope, "description": "切换结果；不删除任何磁盘文件。"}, **ERROR_400},
+    summary="切回默认领域（不恢复导入工作区指针）",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "切换结果；目标永远是配置里的默认领域，不会回到上一个导入工作区，"
+                "也不删除任何磁盘文件。"
+            ),
+        },
+        **ERROR_400,
+    },
 )
-def exit_imported_endpoint():
-    """#276 R3：最小可交付闭环——不删文件，只切领域并清重启指针。"""
+def switch_to_default_domain_endpoint():
+    """#276 R3 / #366：不删文件，只切到**默认领域**并清重启指针。
+
+    这个端点此前叫 `exit-imported`（「退出导入态」），调用方容易误读成
+    「回到上一个导入工作区」——实际目标是配置里的默认领域。名字与说明现在都
+    直说「切回默认领域」，并明确不恢复、不保留导入工作区指针。
+    """
     handle = DOMAINS.current()
     if not handle.is_imported:
-        return {"status": "ok", "exited": False, "domain": handle.name}
+        return {
+            "status": "ok",
+            "exited": False,
+            "switched": False,
+            "domain": handle.name,
+            "reason": "当前不在导入态",
+        }
     workspace_id = (workspaces.get_current() or {}).get("current_id") or ""
     default = _default_domain_name()
     try:
@@ -3717,9 +3745,11 @@ def exit_imported_endpoint():
     return {
         "status": "ok",
         "exited": True,
+        "switched": True,
         "domain": switched.name,
         "loaded_at": switched.loaded_at,
         "workspace": workspace_id,
+        "note": "已切回默认领域；导入工作区仍保留在磁盘，可重新导入恢复。",
         **_mcp_follow(switched.name),
     }
 

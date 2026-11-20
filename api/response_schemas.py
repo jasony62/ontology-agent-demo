@@ -135,7 +135,17 @@ class HealthResponse(BaseModel):
 
     status: str = Field(..., description="服务状态；正常时固定为 ok。")
     ontology: str = Field(..., description="当前本体文件名。")
-    version: str = Field(..., description="本体版本：优先 owl:versionInfo，未配置时回退文件 mtime。")
+    system_version: str = Field(
+        ...,
+        description=(
+            "系统发版版本（与 git tag / pyproject.toml 一致）；回归记录的「版本」"
+            "字段应当填这个，一轮一个值、可跨轮比较。"
+        ),
+    )
+    ontology_version: str = Field(
+        ...,
+        description="本体版本：优先 owl:versionInfo，未配置时回退文件 mtime。与发版号无关。",
+    )
     loaded_at: str | None = Field(None, description="当前领域/引擎的加载时刻（ISO 8601）。")
     reasoner: str = Field(..., description="推理器摘要，如 OWL 2 RL (owlrl)。")
     domain: str = Field(..., description="当前领域包名。")

@@ -91,9 +91,11 @@ def test_health_extended_fields():
     r = client.get("/api/health")
     assert r.status_code == 200
     d = r.json()
-    # REQ-03 新字段
-    for k in ("version", "loaded_at", "dirty", "pending_changes", "changelog", "counts"):
+    # REQ-03 字段 + #364：系统版本与本体版本分开报
+    for k in ("system_version", "ontology_version", "loaded_at", "dirty",
+              "pending_changes", "changelog", "counts"):
         assert k in d
+    assert "version" not in d  # 旧的含混字段已拆开
     assert isinstance(d["dirty"], bool)
     assert isinstance(d["pending_changes"], int)
     for k in ("agents", "tasks", "capabilities", "constraints", "assignments", "inferred_triples"):

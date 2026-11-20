@@ -37,8 +37,23 @@ const EDGE_COLOR = '#9aa0a6';
 const MIN_RESIZE_WIDTH = 120;
 
 /** 首次布局与「重新布局」共用同一组参数，保证两次排版观感一致 */
-function fcoseOptions(): LayoutOptions {
-  return { name: 'fcose', animate: false, randomize: true, nodeSeparation: 60 } as LayoutOptions;
+function fcoseOptions(separation = 60): LayoutOptions {
+  return { name: 'fcose', animate: false, randomize: true, nodeSeparation: separation } as LayoutOptions;
+}
+
+/** 点到线段的距离（渲染坐标）：用于把「点在边附近」也算作命中 */
+function distToSegment(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
 /** 工具栏图标：手写 SVG，统一 16px / 1.8 描边，避免 Unicode 字形在不同字体下忽大忽小 */
@@ -84,6 +99,11 @@ const stylesheet: StylesheetStyle[] = [
     // 缩得很远（窄屏或整图 fit）时连类名也会糊成一团：全部收起，只留选中节点
     selector: 'node.zoom-far',
     style: { 'text-opacity': 0 },
+  },
+  {
+    // 窄容器：节点缩小，给布局多留一点呼吸空间
+    selector: 'node.compact',
+    style: { width: 24, height: 16 },
   },
   {
     // 放大到能看清细节时，个体标签才值得占位置
@@ -368,7 +388,16 @@ export default function GraphView({
     cy.on('tap', 'node', (evt) => selectRef.current?.(evt.target.id()));
     cy.on('tap', 'edge', (evt) => selectRef.current?.(evt.target.id()));
     cy.on('tap', (evt) => {
-      if (evt.target === cy) selectRef.current?.(null);
+      if (evt.target !== cy) return;
+      // 2px 的线很难点中：点在线附近 12px 内也算选中这条边
+      const point = evt.renderedPosition ?? evt.position;
+      let bestId: string | null = null;
+      let best = 12;
+      cy.edges().forEach((edge) => {
+        const d = distToSegment(point, edge.source().renderedPosition(), edge.target().renderedPosition());
+        if (d < best) { best = d; bestId = edge.id(); }
+      });
+      selectRef.current?.(bestId);
     });
     // 边标签按需出现：悬停即显示，移开后跟随全局开关
     cy.on('mouseover', 'edge', (evt) => evt.target.addClass('show-label'));
@@ -425,6 +454,7 @@ export default function GraphView({
       const narrow = cy.width() < 480;
       cy.nodes().toggleClass('zoom-near', cy.zoom() >= 1.1 && !narrow);
       cy.nodes().toggleClass('zoom-far', cy.zoom() < 0.75 || narrow);
+      cy.nodes().toggleClass('compact', narrow);
       // 分栏变窄后选中节点可能已经滑出视口：只把「看不见的」拉回中央，
       // 不打断用户正在看的位置
       const id = selectedIdRef.current;
@@ -516,7 +546,7 @@ export default function GraphView({
     //    这样既不会「按一个键整图乱跳」，也不会因孤立分量被 fCoSE 打包成网格而看着像乱掉。
     if (!laidOutRef.current) {
       laidOutRef.current = true;
-      cy.layout(fcoseOptions()).run();
+      cy.layout(fcoseOptions(cy.width() < 480 ? 36 : 60)).run();
       cy.fit(undefined, 28);
     }
 
@@ -568,7 +598,7 @@ export default function GraphView({
     const cy = cyRef.current;
     if (!cy) return;
     laidOutRef.current = true;
-    cy.layout(fcoseOptions()).run();
+    cy.layout(fcoseOptions(cy.width() < 480 ? 36 : 60)).run();
     cy.fit(undefined, 28);
   };
 

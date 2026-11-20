@@ -1222,9 +1222,9 @@ def export_review_markdown(
     verdict = str(delivery.get("verdict") or "").strip()
     if not verdict:
         verdict = (
-            f"达到交付线：{delivery.get('graduated_questions', 0)} 题已全部毕业"
+            f"达到交付线：{delivery.get('graduated_questions', 0)} 题已全部可交付"
             if delivery.get("ready")
-            else f"未达交付线：差 {missing} 题毕业"
+            else f"未达交付线：差 {missing} 题达到交付线"
         )
 
     lines = [
@@ -1238,7 +1238,7 @@ def export_review_markdown(
         "",
         f"- 目标题量：{delivery.get('target_questions', 0)} 题"
         f"（按本体规模估算：关键术语数 × {TARGET_QUESTIONS_K}，最低 {TARGET_QUESTIONS_MIN} 题，可调）",
-        f"- 已毕业：{delivery.get('graduated_questions', 0)} 题；"
+        f"- 已可交付：{delivery.get('graduated_questions', 0)} 题；"
         f"缺口：{delivery.get('missing_questions', 0)} 题"
         f"（未锚定 {delivery.get('unanchored_questions', 0)} · "
         f"回归未通过 {delivery.get('failed_questions', 0)}）",
@@ -1257,7 +1257,7 @@ def export_review_markdown(
         f"| 总题数 | {summary.get('total', 0)} |",
         f"| 已锚定 | {summary.get('located', 0)} |",
         f"| 可答 | {summary.get('answerable', 0)} |",
-        f"| 已毕业 | {delivery.get('graduated_questions', 0)} |",
+        f"| 已可交付 | {delivery.get('graduated_questions', 0)} |",
         f"| 目标题量 | {delivery.get('target_questions', 0)} |",
         f"| 成熟度 CQM | {round(float(delivery.get('cqm') or 0) * 100)}% |",
         f"| 定位覆盖 | {round(float(summary.get('coverage_light') or 0) * 100)}% |",
@@ -1270,7 +1270,7 @@ def export_review_markdown(
     ]
     for index, case in enumerate(cases, start=1):
         blockers = [str(item) for item in (case.get("blockers") or [])]
-        conclusion = "已毕业" if case.get("graduated") else (
+        conclusion = "已可交付" if case.get("graduated") else (
             "回归通过" if case.get("answerable") else "未答"
         )
         lines.append(

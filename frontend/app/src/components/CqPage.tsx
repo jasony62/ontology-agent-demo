@@ -450,20 +450,9 @@ export default function CqPage() {
     || coverage?.summary?.likely_mismatch
     || (summary && summary.total > 0 && summary.located === 0),
   );
-  const unanchoredCases = cases.filter((item) => !item.located).map((item, index) => (
-    item.short_id ? `#${item.short_id}` : item.id || `第 ${index + 1} 题`
-  ));
-  // #266：部分错配（未锚定占比 > 10% 或 ≥ 2 题）此前落在「沉默区」，现在单独告警。
-  const partialMismatch = !mismatch && Boolean(
-    summary && summary.total > 0
-    && (unanchoredCases.length >= 2 || unanchoredCases.length / summary.total > 0.1),
-  );
   const mismatchText = provenance?.stale
     ? `这份题集是从「${provenance.seed_ontology || '另一个本体'}」播种的，当前加载的是「${provenance.current_ontology || '另一个本体'}」，不能作为成熟度依据。请让智能体按当前本体重新生成题目。`
     : '当前题集与加载的本体可能不是同一套：所有题目都没有命中本体术语。请先确认「当前题集 / 当前领域」是否匹配，或让智能体按当前本体重新生成题目。';
-  const partialMismatchText = summary
-    ? `有 ${unanchoredCases.length} 道题没有对上本体术语（${unanchoredCases.slice(0, 5).join('、')}${unanchoredCases.length > 5 ? ' 等' : ''}），成熟度会偏低；建议改问法或补术语后重跑。`
-    : '';
   const ontologyLoadedAt = String(health?.loaded_at || '');
   const domainName = String(health?.domain || domainInfo?.name || '');
   const domainLabel = domainInfo?.display_name || domainName;
@@ -723,11 +712,7 @@ export default function CqPage() {
                         ? `达到交付线：${delivery.graduated_questions} 题已全部可交付`
                         : `未达交付线：还差 ${delivery.missing_questions} 题达到交付线`)}
                     {provenance && !provenance.known ? '（来源未记录，仅供参考）' : ''}
-                    {partialMismatch ? (
-                      <span className="guide-muted"> {partialMismatchText}</span>
-                    ) : delivery.unanchored_questions > 0
-                      ? `（其中 ${delivery.unanchored_questions} 题未锚定）`
-                      : ''}
+
                   </span>
                   {!delivery.ready && (
                     <button type="button" className="btn secondary" onClick={() => void requestCases()}>
@@ -1175,9 +1160,10 @@ function dispositionReviewLabel(state?: string | null): string {
   return '未要求审核';
 }
 
-/** #343：回归未通过——内部 blocker 键仍是「未通过」（显示层映射见 #341）。 */
+/** #343：回归未通过——内部 blocker 键仍是「未通过」。
+ *  没跑过评估的题只是「未评估」，不能据此给出「可以启用但不满足交付条件」的警告。 */
 function isRegressionFailed(item: CqSetCase): boolean {
-  return (item.missing ?? item.blockers ?? []).includes('未通过');
+  return hasRun(item) && (item.missing ?? item.blockers ?? []).includes('未通过');
 }
 
 function reviewLabel(review?: CqSetCase['review'] | null): string {
@@ -1708,6 +1694,10 @@ function CqDetail({
 }) {
   const cache = item.coverage_cache;
   const regression = item.regression || {};
+  // 0 可交付时最该做的是「修改」；把实心蓝从「启用」挪到「修改」
+  const primaryDisposition = (item.dispositions ?? []).some((a) => a.action === 'revise')
+    ? 'revise'
+    : 'approve_activate';
   const expectText = regression.expect === undefined
     ? '—'
     : JSON.stringify(regression.expect, null, 2);
@@ -1774,7 +1764,7 @@ function CqDetail({
             <button
               key={action.action}
               type="button"
-              className={`btn ${action.action === 'approve_activate' ? '' : 'secondary'}`}
+              className={`btn ${action.action === primaryDisposition ? '' : 'secondary'}`}
               disabled={!action.available || dispositionBusy}
               title={action.effect}
               onClick={() => onDispose(action.action)}

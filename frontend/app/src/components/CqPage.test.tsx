@@ -395,7 +395,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const text = container!.textContent ?? '';
     expect(text).toContain('来源未记录');
-    expect(text).toContain('没有对上本体术语');
+    expect(text).toContain('未锚定');
     expect(text).toContain('#Q2');
     expect(text).toContain('成熟度仅供参考');
   });
@@ -1534,8 +1534,8 @@ describe('CQ 集页（#151 / #203）', () => {
     stubFetch({
       ...SET,
       cases: SET.cases.map((item, index) => (index === 0
-        ? { ...item, answerable: false, blockers: ['未通过'], dispositions }
-        : item)),
+        ? { ...item, answerable: false, blockers: ['未通过'], coverage_cache: { conclusion: 0, ran_at: '2026-11-20T00:00:00Z' }, dispositions }
+        : item)) as typeof SET.cases,
     });
     act(() => root!.render(<CqPage />));
     await flush();
@@ -1549,6 +1549,22 @@ describe('CQ 集页（#151 / #203）', () => {
     const approve = [...container!.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent === '审核通过并启用')!;
     expect(approve.disabled).toBe(false);
+  });
+
+  it('没跑过评估的题不出现「回归未通过」警示（P0 口径统一）', async () => {
+    const dispositions = [
+      { action: 'approve_activate', label: '审核通过并启用', effect: '审核：审核已通过；状态：启用。', available: true },
+    ];
+    stubFetch({
+      ...SET,
+      cases: SET.cases.map((item, index) => (index === 0
+        ? { ...item, answerable: false, blockers: ['未通过'], coverage_cache: null, dispositions }
+        : item)) as typeof SET.cases,
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelector('.cq-disposition-warn')).toBeNull();
   });
 
   it('回归通过的题不出现启用警示（#343）', async () => {

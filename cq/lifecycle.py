@@ -52,15 +52,19 @@ def delivery_verdict(view: dict) -> dict:
     target = int(summary.get("target_questions") or 20)
     graduated = sum(1 for case in cases if case.get("graduated"))
     unanchored = [
-        str(case.get("id") or "")
+        str(case.get("short_id") or case.get("id") or "")
         for case in cases
-        if not case.get("located") and case.get("id")
+        if not case.get("located") and (case.get("short_id") or case.get("id"))
     ]
+    # 没跑过评估的题不算「回归未通过」：那是状态，不是结论。
+    # 与前端 hasRun / blockerKeys 同一判据（last_run 由本函数上游的聚合写入）。
     failed = [
-        str(case.get("id") or "")
+        str(case.get("short_id") or case.get("id") or "")
         for case in cases
-        if "未通过" in (case.get("blockers") or []) and case.get("id")
+        if (case.get("last_run") or {}).get("state") in _FAILED
+        and (case.get("short_id") or case.get("id"))
     ]
+    evaluated = any(case.get("last_run") for case in cases)
     missing = max(0, target - graduated)
     if target:
         cqm = round(graduated / target, 3)
@@ -69,10 +73,19 @@ def delivery_verdict(view: dict) -> dict:
     else:
         cqm = 0.0
         optimistic = 0.0
-    if graduated >= target and not failed:
-        verdict = f"达到交付线：{graduated} 题已全部毕业"
+    if not evaluated and cases:
+        verdict = (
+            f"尚未评估：先跑一轮评估再判断交付线（题量 {len(cases)}/{target}）"
+        )
+        if unanchored:
+            verdict += (
+                "；其中 " + str(len(unanchored)) + " 题未锚定（"
+                + "、".join(f"#{case_id}" for case_id in unanchored[:10]) + "）"
+            )
+    elif graduated >= target and not failed:
+        verdict = f"达到交付线：{graduated} 题已全部可交付"
     else:
-        parts = [f"未达交付线：差 {missing} 题毕业"]
+        parts = [f"未达交付线：差 {missing} 题达到交付线"]
         if unanchored:
             parts.append(
                 "其中 " + str(len(unanchored)) + " 题未锚定（"

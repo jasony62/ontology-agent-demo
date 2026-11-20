@@ -4,7 +4,7 @@ import cytoscape from 'cytoscape';
 import fcose from 'cytoscape-fcose';
 import type { Core, ElementDefinition, NodeSingular, StylesheetStyle, LayoutOptions } from 'cytoscape';
 import type { GraphData, GraphGroup } from '../api/client';
-import { CLASS_COLOR, INDIVIDUAL_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView } from '../lib/graphGroups';
+import { CLASS_COLOR, INDIVIDUAL_COLOR, INFERRED_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView } from '../lib/graphGroups';
 import type { GroupView, LegendFocus } from '../lib/graphGroups';
 import { applyGraphDim } from '../lib/graphSelection';
 import OverflowMenu from './OverflowMenu';
@@ -32,7 +32,6 @@ interface Props {
   onSelect?: (id: string | null) => void;
 }
 
-const INFERRED_COLOR = '#2f8f6b';
 const EDGE_COLOR = '#9aa0a6';
 /** 容器窄于此值（折叠成 40px 图标条）时不做 resize，避免把图挤坏 */
 const MIN_RESIZE_WIDTH = 120;
@@ -57,6 +56,11 @@ const stylesheet: StylesheetStyle[] = [
     },
   },
   {
+    // 形状承载"类 / 个体"这一维，颜色只承载分组：两套编码不抢同一个通道
+    selector: 'node.kind-class',
+    style: { shape: 'round-rectangle', width: 34, height: 24 },
+  },
+  {
     selector: 'node.inferred',
     style: {
       'border-style': 'dashed',
@@ -73,8 +77,13 @@ const stylesheet: StylesheetStyle[] = [
     style: { 'border-width': 3, 'border-style': 'solid', 'border-color': '#c62828' },
   },
   {
+    // 语义缩放：缩得很远时节点标签会糊成一团，只保留选中的那个
+    selector: 'node.zoom-far',
+    style: { 'text-opacity': 0 },
+  },
+  {
     selector: 'node:selected',
-    style: { 'border-width': 3, 'border-color': '#0078d4' },
+    style: { 'border-width': 3, 'border-color': '#0078d4', 'text-opacity': 1 },
   },
   {
     selector: 'node.highlight',
@@ -105,13 +114,19 @@ const stylesheet: StylesheetStyle[] = [
       'target-arrow-color': EDGE_COLOR,
       'target-arrow-shape': 'triangle',
       'curve-style': 'bezier',
-      label: 'data(label)',
-      'font-size': 10,
-      color: '#666',
+      // 边标签默认不显示：137 条边全挂标签会互相压字，读者连线的走向都看不清。
+      // 悬停、选中或在「标签」开关打开时才出现。
+      label: '',
+      'font-size': 11,
+      color: '#5a6b7f',
       'text-background-color': '#ffffff',
-      'text-background-opacity': 0.85,
+      'text-background-opacity': 0.9,
       'text-background-padding': '2px',
     },
+  },
+  {
+    selector: 'edge.show-label',
+    style: { label: 'data(label)' },
   },
   {
     selector: 'edge.inferred',
@@ -134,7 +149,7 @@ const stylesheet: StylesheetStyle[] = [
   },
   {
     selector: 'edge:selected',
-    style: { 'line-color': '#0078d4', 'target-arrow-color': '#0078d4' },
+    style: { 'line-color': '#0078d4', 'target-arrow-color': '#0078d4', label: 'data(label)' },
   },
   {
     // 两端都被淡化的边跟着淡化：只灰节点不灰边，画面上会留下一堆"悬空乱线"，
@@ -181,7 +196,11 @@ function elementsFromGraphData(
       if (!id || seenNodes.has(id)) continue;
       seenNodes.add(id);
       const issue = !isInferred ? issueLevels[id] ?? issueLevels[id.toLowerCase()] : undefined;
-      const classes = [isInferred ? 'inferred' : '', issue ? `issue-${issue}` : ''].filter(Boolean).join(' ');
+      const classes = [
+        isInferred ? 'inferred' : '',
+        issue ? `issue-${issue}` : '',
+        n.type === 'class' ? 'kind-class' : 'kind-individual',
+      ].filter(Boolean).join(' ');
       elements.push({
         data: {
           id,
@@ -248,7 +267,28 @@ export default function GraphView({
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
   const [search, setSearch] = useState('');
+  const nodeIndex = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; kind: 'class' | 'individual' }>();
+    for (const g of [asserted, inferred]) {
+      for (const n of g?.nodes ?? []) {
+        const id = (n.id ?? '').trim();
+        if (!id || map.has(id)) continue;
+        map.set(id, {
+          id,
+          label: (n.label ?? '').trim() || id,
+          kind: n.type === 'class' ? 'class' : 'individual',
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [asserted, inferred]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  // 边标签默认关闭：需要时再打开，或悬停/选中单条边查看
+  const [edgeLabels, setEdgeLabels] = useState(false);
+  // 键盘 / 读屏的替代路径：画布本身不在可访问树里，必须有一份可选中的元素清单
+  const [nodeIndexOpen, setNodeIndexOpen] = useState(false);
+  const edgeLabelsRef = useRef(false);
+  edgeLabelsRef.current = edgeLabels;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -265,12 +305,32 @@ export default function GraphView({
     cy.on('tap', (evt) => {
       if (evt.target === cy) selectRef.current?.(null);
     });
+    // 边标签按需出现：悬停即显示，移开后跟随全局开关
+    cy.on('mouseover', 'edge', (evt) => evt.target.addClass('show-label'));
+    cy.on('mouseout', 'edge', (evt) => {
+      if (!edgeLabelsRef.current) evt.target.removeClass('show-label');
+    });
     cyRef.current = cy;
     return () => {
       cy.destroy();
       cyRef.current = null;
     };
   }, []);
+
+  // 语义缩放：缩得太远时只保留选中节点的标签，避免 55 个标签糊成一团
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const apply = () => cy.nodes().toggleClass('zoom-far', cy.zoom() < 0.75);
+    cy.on('zoom', apply);
+    apply();
+    return () => { cy.off('zoom', apply); };
+  }, []);
+
+  // 全局「标签」开关：新增/切换视图后重新同步一次，不能只依赖初始状态
+  useEffect(() => {
+    cyRef.current?.edges().toggleClass('show-label', edgeLabels);
+  }, [edgeLabels]);
 
   // 分栏拖拽 / 折叠 / 窄屏切 Tab 都会改变容器尺寸：让画布跟随 DOM 容器，
   // 否则出现白边、节点错位与命中区域偏移。
@@ -370,6 +430,10 @@ export default function GraphView({
       cy.layout(fcoseOptions()).run();
       cy.fit(undefined, 28);
     }
+
+    // 新增元素不继承旧元素上的状态类：视图切换 / 增删后按当前开关重新同步
+    cy.edges().toggleClass('show-label', edgeLabelsRef.current);
+    cy.nodes().toggleClass('zoom-far', cy.zoom() < 0.75);
   }, [viewMode, asserted, inferred, groupView, issueLevels]);
 
   // 聚焦淡化：选中节点时看「节点 + 直连邻域」，否则沿用图例聚焦（详见 lib/graphSelection）。
@@ -429,6 +493,25 @@ export default function GraphView({
           title="输入类/个体名称或 id，自动高亮并聚焦"
         />
         {highlightId && <span className="graph-hit">已定位：{highlightId}</span>}
+        <button
+          type="button"
+          className={`secondary graph-index-toggle${nodeIndexOpen ? ' active' : ''}`}
+          aria-expanded={nodeIndexOpen}
+          aria-controls="graph-node-index"
+          onClick={() => setNodeIndexOpen((v) => !v)}
+          title="以列表方式浏览全部节点（键盘与读屏可用）"
+        >
+          元素
+        </button>
+        <button
+          type="button"
+          className={`secondary graph-label-toggle${edgeLabels ? ' active' : ''}`}
+          onClick={() => setEdgeLabels((v) => !v)}
+          aria-pressed={edgeLabels}
+          title="显示或隐藏连线标签（悬停单条边也会显示）"
+        >
+          标签
+        </button>
         <span className="graph-zoom-btns">
           <button className="secondary" onClick={() => zoomBy(1.25)} title="放大">＋</button>
           <button className="secondary" onClick={() => zoomBy(0.8)} title="缩小">－</button>
@@ -439,6 +522,9 @@ export default function GraphView({
         <OverflowMenu id="graph-toolbar" className="graph-more" label="更多" title="收起的缩放与新建入口" closeOnAction={false}>
           {toolbarOverflow && <div className="graph-more-create">{toolbarOverflow}</div>}
           <div className="graph-more-zoom">
+            <button type="button" onClick={() => setEdgeLabels((v) => !v)}>
+              {edgeLabels ? '✓ 连线标签' : '连线标签'}
+            </button>
             <button type="button" onClick={() => zoomBy(1.25)}>＋ 放大</button>
             <button type="button" onClick={() => zoomBy(0.8)}>－ 缩小</button>
             <button type="button" onClick={() => cyRef.current?.fit(undefined, 28)}>⛶ 适应画布</button>
@@ -446,7 +532,39 @@ export default function GraphView({
           </div>
         </OverflowMenu>
       </div>
-      <div ref={containerRef} id="graph" className="graph-wrap" />
+      {nodeIndexOpen && (
+        <div id="graph-node-index" className="graph-node-index" role="region" aria-label="图谱元素列表">
+          <div className="graph-node-index-head">
+            <span>共 {nodeIndex.length} 个节点</span>
+            <button type="button" className="btn ghost" onClick={() => setNodeIndexOpen(false)}>关闭</button>
+          </div>
+          <ul>
+            {nodeIndex.map((n) => (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  className="graph-node-item"
+                  aria-current={selectedId === n.id ? 'true' : undefined}
+                  onClick={() => {
+                    selectRef.current?.(n.id);
+                    setNodeIndexOpen(false);
+                  }}
+                >
+                  <span className="graph-node-kind">{n.kind === 'class' ? '类' : '个体'}</span>
+                  <span className="graph-node-label">{n.label}</span>
+                  <code>{n.id}</code>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div
+        ref={containerRef}
+        id="graph"
+        className="graph-wrap"
+        aria-label={`知识图谱画布，共 ${nodeIndex.length} 个节点；可用「元素」列表逐一浏览`}
+      />
     </div>
   );
 }

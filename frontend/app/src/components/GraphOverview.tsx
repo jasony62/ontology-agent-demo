@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useAppStore } from '../store/appStore';
-import { CLASS_COLOR, INDIVIDUAL_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView, sameLegendFocus } from '../lib/graphGroups';
+import { CLASS_COLOR, INDIVIDUAL_COLOR, INFERRED_COLOR, STRUCTURE_EDGE_COLOR, buildGroupView, sameLegendFocus } from '../lib/graphGroups';
 import type { LegendFocus } from '../lib/graphGroups';
 
 interface Props {
@@ -223,9 +223,12 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
             <span className="overview-legend-title">关系</span>
             <span className="item"><span className="line dashed" style={{ borderColor: STRUCTURE_EDGE_COLOR }}></span> 结构边（类层级 / 实例归类）</span>
             <span className="item"><span className="line"></span> 原始断言边</span>
-            <span className="item"><span className="line dashed" style={{ borderColor: '#2f8f6b' }}></span> 推理新增边（物化）</span>
+            <span className="item"><span className="line dashed" style={{ borderColor: INFERRED_COLOR }}></span> 推理新增边（物化）</span>
           </div>
 
+          <p className="overview-legend-note">
+            节点色 = 所属分组，形状 = 类（方）还是个体（圆）；线色 = 来源：紫虚线是结构边，灰实线是原始断言，绿虚线是推理新增。
+          </p>
           <p className="overview-legend-note">
             Thing（<code>owl:Thing</code>）= 兜底类：它出现在这里，说明有元素没归到具体类。
           </p>
@@ -233,7 +236,7 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
       </section>
 
       <p className="overview-footnote">
-        点图上的元素可改；要加新的，用画布左上角「新建」。点击图例项聚焦对应节点。
+        点图上的元素在右侧查看；要修改或新建，用工具栏「编辑本体」进入在线编辑（唯一保存出口）。点击图例项聚焦对应节点。
       </p>
     </div>
   );

@@ -3,6 +3,7 @@ import { serializeToRDF } from '../lib/rdf/serializer';
 import { useAppStore } from '../store/appStore';
 import { api } from '../api/client';
 import { flattenValidationIssues, validateOntology } from '../data/validate';
+import { useDialogA11y } from '../lib/useDialogA11y';
 
 interface Props {
   onClose: () => void;
@@ -62,13 +63,18 @@ export default function ExportDialog({ onClose }: Props) {
     }
   };
 
+  const dialogRef = useDialogA11y(onClose);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="导出知识" tabIndex={-1} ref={dialogRef} onClick={(e) => e.stopPropagation()}>
         <h3>导出知识</h3>
+        <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
+          三个出口互不替代，按目的选一个：备份原文件、另存一份重新生成的模型、或导出含推理结论的图。
+        </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div className="panel" style={{ padding: 10 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>① 原样备份 · 与系统当前文件完全一致</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>原样备份 · 与系统当前文件完全一致</div>
             <div style={{ fontSize: 13, color: '#5a6b7f', marginBottom: 8 }}>
               直接下载后端当前加载的 OWL 文件，不经过前端模型重新生成；复杂公理会原样保留。
             </div>
@@ -78,13 +84,13 @@ export default function ExportDialog({ onClose }: Props) {
           </div>
 
           <div className="panel" style={{ padding: 10 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>② 导出当前编辑模型（生成新文件）</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>另存一份重新生成的本体（新文件）</div>
             <div style={{ fontSize: 13, color: '#5a6b7f', marginBottom: 8 }}>
               按另一套规则重新生成，不是原文副本；命名空间会改变，复杂规则<strong>可能不保留</strong>。
-              包含本次在图谱上新建的事实；这是新生成的文件，不会改动系统。
+              包含当前加载的模型（在线编辑保存后的结果）；这是新文件，不会改动系统。
               {blocked && (
                 <div style={{ color: '#b34700', marginTop: 6 }}>
-                  当前模型有 {issues.length} 项阻断 / 必改问题，导出会被拦截；请先在图上点红色 ⚠ 节点就地修复。
+                  当前模型有 {issues.length} 项阻断 / 必改问题，导出会被拦截；请打开「编辑本体」，按红色 ⚠ 提示修复后再导出。
                 </div>
               )}
             </div>
@@ -94,7 +100,7 @@ export default function ExportDialog({ onClose }: Props) {
           </div>
 
           <div className="panel" style={{ padding: 10 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>③ 导出物化后本体（含推理新增三元组）</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>物化后本体（含推理新增三元组）</div>
             <div style={{ fontSize: 13, color: '#5a6b7f', marginBottom: 8 }}>
               来自推理引擎的完整图（原始断言 ∪ 推理结论）。
             </div>

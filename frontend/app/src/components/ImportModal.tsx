@@ -3,6 +3,7 @@ import { parseRDF, RDFParseError } from '../lib/rdf/parser';
 import { useAppStore } from '../store/appStore';
 import { ontologyToGraphData } from '../data/toGraphData';
 import { api } from '../api/client';
+import { useDialogA11y } from '../lib/useDialogA11y';
 
 interface Props {
   onClose: () => void;
@@ -100,9 +101,11 @@ export default function ImportModal({ onClose, onSynced }: Props) {
     setError(null);
   };
 
+  const dialogRef = useDialogA11y(onClose);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="导入 OWL 知识" tabIndex={-1} ref={dialogRef} onClick={(e) => e.stopPropagation()}>
         <h3>导入 OWL 知识</h3>
         <div className="import-hint">
           导入后页头会切换为<b>「导入的本体」</b>：<b>通用 OWL 2 RL 推理可用</b>

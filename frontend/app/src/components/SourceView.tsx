@@ -1,5 +1,6 @@
 import { highlightRdf, RDF_HIGHLIGHT_DARK } from '../lib/rdf/highlighter';
 import { useAppStore } from '../store/appStore';
+import { useDialogA11y } from '../lib/useDialogA11y';
 
 interface Props {
   onClose: () => void;
@@ -19,9 +20,11 @@ export default function SourceView({ onClose }: Props) {
     URL.revokeObjectURL(url);
   };
 
+  const dialogRef = useDialogA11y(onClose);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="OWL 源码" tabIndex={-1} ref={dialogRef} onClick={(e) => e.stopPropagation()}>
         <h3>OWL 源码 · {sourceName || 'ontology.owl'}</h3>
         <div className="source-view">{highlightRdf(sourceXml, RDF_HIGHLIGHT_DARK)}</div>
         <div className="actions">

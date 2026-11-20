@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { useAppStore } from '../store/appStore';
 import { api } from '../api/client';
@@ -103,7 +103,18 @@ export default function OntologyEditor() {
   // 分类导航：同一时刻只渲染一个工作区（#89）
   const [activeCategory, setActiveCategory] = useState<Category>('class');
   const [search, setSearch] = useState('');
-  // #117 阶段 3：定义类模板表单（只支持 X ≡ A ⊓ ∃p.C）
+  // 画布「在在线编辑器中修改 →」的定位请求：切到对应分类并预填搜索，消费一次即清空
+  const editorRequest = useAppStore((s) => s.editorRequest);
+  const setEditorRequest = useAppStore((s) => s.setEditorRequest);
+  useEffect(() => {
+    if (!editorRequest || !model) return;
+    const category: Category = editorRequest.kind === 'class'
+      ? 'class'
+      : editorRequest.kind === 'relation' ? 'obj' : 'ind';
+    setActiveCategory(category);
+    setSearch(editorRequest.name || editorRequest.id);
+    setEditorRequest(null);
+  }, [editorRequest, model, setEditorRequest]);  // #117 阶段 3：定义类模板表单（只支持 X ≡ A ⊓ ∃p.C）
   const [definedDraft, setDefinedDraft] = useState<{
     name: string; baseClass: string; property: string; valueClass: string;
   } | null>(null);

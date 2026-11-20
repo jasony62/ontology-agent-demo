@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { OntologyWorkspaceSummary } from '../api/client';
 import { useAppStore } from '../store/appStore';
+import { useDialogA11y } from '../lib/useDialogA11y';
 
 type DeleteScope = 'source' | 'all';
 
@@ -94,9 +95,11 @@ export default function ClearImportedModal({ onClose, onSynced }: Props) {
     }
   };
 
+  const dialogRef = useDialogA11y(onClose);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal clear-import" onClick={(e) => e.stopPropagation()}>
+      <div className="modal clear-import" role="dialog" aria-modal="true" aria-label="清除导入的本体" tabIndex={-1} ref={dialogRef} onClick={(e) => e.stopPropagation()}>
         <h3>清除导入的本体</h3>
         {loading ? (
           <p className="guide-muted">正在读取导入记录…</p>

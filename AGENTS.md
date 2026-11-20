@@ -70,6 +70,7 @@ bash scripts/start.sh      # venv + deps + API + open browser
 
 ## Conventions
 
+- 前端样式：跨页原语（token + `.btn` / `.field` / `.panel` / `.badge`）以 `docs/STYLE-SPEC.md` §3 为准；页面级类名按 `页面前缀-BEM` 命名（`cq-` / `graph-` / `guide-` / `ef-` / `element-`），不逐个登记，但不得重写原语的形态。
 - Conventional Commits with scopes (`engine`, `api`, `domains`, `frontend`, `mcp`, `scripts`, `docs`, `ci`), Chinese subjects.
 - User-visible changes must be recorded under `## [Unreleased]` in `CHANGELOG.md` (Keep a Changelog); internal refactors and CI/doc wording do not need entries. See `CONTRIBUTING.md` for release steps.
 - The MkDocs nav in `mkdocs.yml` is explicit. Add new guide/manual pages there; `docs/guide/` is the site root and `docs/manual/` the user manual (sibling of `docs/guide/`). Root `docs/*.md` files are design/review documents, not published guide pages.

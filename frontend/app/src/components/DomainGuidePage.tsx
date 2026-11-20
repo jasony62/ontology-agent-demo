@@ -910,7 +910,7 @@ export default function DomainGuidePage({
         <div className="guide-status-facts">
           <div><b>{businessClasses}</b><span><TermText text="业务类" scope="overview" site="status-business" /></span></div>
           <div><b>{runtime.counts.individuals}</b><span><TermText text="个体" scope="overview" site="status-individuals" /></span></div>
-          <div><b>{runtime.counts.inferred}</b><span><TermText text="推理新增" scope="overview" site="status-inferred" /></span></div>
+          <div><b>{runtime.counts.inferred}</b><span><TermText text="推理新增" scope="overview" site="status-inferred" /><span className="guide-unit">明细</span></span></div>
         </div>
         {loading && <span className="guide-muted">刷新中…</span>}
       </div>

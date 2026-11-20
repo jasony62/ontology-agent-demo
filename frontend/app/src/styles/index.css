@@ -194,7 +194,7 @@ body {
 .ef-class-summary:hover { background: #f4f7fb; }
 .ef-class-summary.open { border-color: #dde5f0; background: #f4f7fb; }
 .ef-class-toggle { font-size: 11px; color: #8a94a6; width: 14px; }
-.ef-class-id { font-size: 11px; color: #8a94a6; background: #f0f3f8; padding: 1px 6px; border-radius: 8px; }
+.ef-class-id { font-size: 11px; color: var(--muted); background: #f0f3f8; padding: 1px 6px; border-radius: 8px; }
 .ef-class-parent { font-size: 11px; color: #0b57a0; }
 
 .app-main { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
@@ -256,7 +256,7 @@ body {
   border: 1px solid var(--border); border-radius: 8px;
 }
 .overview-stat .label { font-size: 12px; color: var(--muted); }
-.overview-stat .num { font-size: 18px; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+.overview-stat .num { font-size: 18px; font-weight: 700; color: #0069bd; font-variant-numeric: tabular-nums; }
 .overview-stat .num.inferred { color: #1f6f52; }
 .overview-empty { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
 /* #134 R5：本体身份 / 结构规模两组，字段名与值左右对齐，长文件名省略并进悬停提示 */
@@ -587,7 +587,7 @@ textarea.source-editor {
   font-size: 12px; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.apidoc-deprecated { font-size: 10.5px; color: var(--danger); border: 1px solid var(--danger-border); border-radius: 3px; padding: 0 4px; }
+.apidoc-deprecated { font-size: var(--fs-xs); color: var(--danger); border: 1px solid var(--danger-border); border-radius: 3px; padding: 0 4px; }
 .apidoc-chevron { margin-left: auto; color: var(--muted); font-size: 11px; }
 .apidoc-op-body {
   display: flex; flex-direction: column; gap: 8px;
@@ -606,7 +606,7 @@ textarea.source-editor {
 .apidoc-field-label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .apidoc-field-label code { font-size: 12px; color: var(--link); }
 .apidoc-field-label em {
-  font-style: normal; font-size: 10.5px; color: var(--muted);
+  font-style: normal; font-size: var(--fs-xs); color: var(--muted);
   background: #eef3f8; border-radius: 3px; padding: 0 4px;
 }
 .apidoc-field input[type='text'], .apidoc-field input[type='file'], .apidoc-field select {
@@ -616,9 +616,9 @@ textarea.source-editor {
 .apidoc-field input[type='file'] { padding: 3px 6px; height: auto; }
 .apidoc-field input:focus, .apidoc-field select:focus { outline: none; border-color: var(--primary); box-shadow: var(--ring); }
 .apidoc-hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
-.apidoc-required { font-size: 10.5px; color: var(--danger); font-weight: 600; }
+.apidoc-required { font-size: var(--fs-xs); color: var(--danger); font-weight: 600; }
 .apidoc-type {
-  font-size: 10.5px; color: var(--muted); background: #eef3f8;
+  font-size: var(--fs-xs); color: var(--muted); background: #eef3f8;
   border-radius: 3px; padding: 0 4px; margin-left: 6px;
 }
 .apidoc-body-input {
@@ -651,7 +651,7 @@ textarea.source-editor {
 .apidoc-response-item[open] > .apidoc-response-summary::before { content: '▾'; }
 .apidoc-response-desc { flex: 1; min-width: 0; font-size: 12.5px; color: var(--heading); line-height: 1.6; }
 .apidoc-field-count {
-  flex: none; font-size: 10.5px; color: var(--muted); background: #eef3f8;
+  flex: none; font-size: var(--fs-xs); color: var(--muted); background: #eef3f8;
   border-radius: var(--radius-full); padding: 1px 7px;
 }
 .apidoc-response-content { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 10px; }
@@ -1169,7 +1169,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .guide-health { border: 1px solid #e3c9a5; border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; background: #fffdf9; font-size: var(--fs-sm2); line-height: 1.7; }
 .guide-health.reasoning_ready { border-color: #9fd4b8; background: var(--success-bg); }
 .guide-health-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.guide-health-label { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: #8a6a3a; background: #f6ead9; border-radius: 999px; padding: 1px 8px; }
+.guide-health-label { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: #6b4a1f; background: #f6ead9; border-radius: 999px; padding: 1px 8px; }
 .guide-health-facts { color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
 .guide-health-list { list-style: none; margin: 6px 0; padding: 0; }
 .guide-health-list li { display: flex; gap: 6px; align-items: baseline; }
@@ -1373,7 +1373,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   .graph-toolbar-create { display: none; }
   .graph-more-create { display: block; }
 }
-@media (max-width: 1024px) {
+@media (max-width: 900px) {
   .app-nav { display: none; }
   .menu-nav-item { display: block; }
 }
@@ -1466,7 +1466,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   padding: 2px 0; border: 0; border-radius: 0; background: transparent;
 }
 .cq-tool-group-label {
-  flex-basis: auto; font-size: 10.5px; color: var(--muted);
+  flex-basis: auto; font-size: var(--fs-xs); color: var(--muted);
   letter-spacing: .04em; margin: 0 2px 0 0;
 }
 .cq-tool-group.readonly, .cq-tool-group.writes { background: transparent; border: 0; }
@@ -1485,13 +1485,13 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   font-size: 12.5px; text-decoration: none; white-space: nowrap;
 }
 .cq-export-list a:hover { background: var(--panel-2); }
-.cq-export-list a i { display: block; margin-top: 1px; font-style: normal; font-size: 10.5px; color: var(--muted); }
+.cq-export-list a i { display: block; margin-top: 1px; font-style: normal; font-size: var(--fs-xs); color: var(--muted); }
 /* #307：预检默认折成徽标；待审核数仍在 summary 上可见，点开看明细。 */
 .cq-run-preflight { flex-basis: auto; max-width: none; font-size: 11px; color: var(--muted); line-height: 1.55; }
 .cq-run-preflight > summary {
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
   border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2);
-  color: var(--muted); font-size: 10.5px; cursor: pointer; list-style: none;
+  color: var(--muted); font-size: var(--fs-xs); cursor: pointer; list-style: none;
 }
 .cq-run-preflight > summary::-webkit-details-marker { display: none; }
 .cq-run-preflight[open] > summary { border-color: var(--border-strong); color: var(--text); }
@@ -1613,7 +1613,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-stat b { font-size: 20px; color: var(--primary); font-variant-numeric: tabular-nums; }
 .cq-stat b.ok { color: var(--success); }
 .cq-stat b.warn { color: var(--danger); }
-.cq-stat-note { font-size: 10.5px; color: var(--muted); font-style: normal; }
+.cq-stat-note { font-size: var(--fs-xs); color: var(--muted); font-style: normal; }
 .cq-waiting {
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
   margin: 10px 0; padding: 8px 12px; border: 1px dashed #e6b36b; border-radius: 8px;
@@ -1805,7 +1805,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-training-guide b { color: var(--heading); }
 .cq-training-guide .btn { align-self: flex-start; margin-top: 2px; }
 .cq-stage-bar-wrap { display: flex; flex-direction: column; gap: 3px; }
-.cq-stage-caption { font-size: 10.5px; color: var(--muted); }
+.cq-stage-caption { font-size: var(--fs-xs); color: var(--muted); }
 .cq-training-evidence {
   display: flex; flex-direction: column; gap: 2px; padding: 7px 9px;
   border: 1px solid var(--border); background: var(--panel-2); border-radius: 4px;
@@ -1931,7 +1931,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .cq-training-card h4 { font-size: var(--fs-md); color: var(--text); line-height: 1.5; }
 .cq-training-bg { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
 .cq-training-context {
-  margin: 0; padding: 6px 8px; border-left: 2px solid var(--border-strong);
+  margin: 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px;
   background: var(--panel-2); font-size: 12px; color: var(--text); line-height: 1.6;
 }
 .cq-training-context b { display: block; font-size: 11px; color: var(--muted); font-weight: 600; }
@@ -2044,12 +2044,12 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .clear-import-grid b { color: var(--heading); font-weight: 600; }
 .clear-import-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .clear-import-reimport {
-  margin: 8px 0; padding: 8px 10px; border-left: 3px solid var(--primary);
-  background: var(--panel-2); border-radius: 4px;
+  margin: 8px 0; padding: 8px 10px; border: 1px solid #cfe1f7;
+  background: var(--primary-soft); border-radius: 6px;
   font-size: 12px; line-height: 1.65; color: var(--muted);
 }
 .clear-import-reimport b { color: var(--heading); }
-.clear-import-note { margin: -2px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--muted); }
+.clear-import-note { margin: -2px 0 0; font-size: var(--fs-sm); line-height: 1.6; color: var(--muted); }
 .clear-import-delete {
   display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
   padding: 8px 10px; border: 1px dashed #e6b36b; border-radius: 8px; background: #fffaf1;
@@ -2167,7 +2167,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   font-size: 12px; line-height: 1.6; color: var(--text);
   display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap;
 }
-.cq-evidence-lines code { font-size: 10.5px; color: var(--muted); }
+.cq-evidence-lines code { font-size: var(--fs-xs); color: var(--muted); }
 .cq-evidence-lines mark {
   background: #fff2a8; color: inherit; padding: 0 1px; border-radius: 2px;
 }
@@ -2351,3 +2351,20 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   .graph-more { display: block; }
   .graph-search { flex: 1 1 80px; min-width: 70px; }
 }
+
+/* 图例：形状与画布一致（类=方，个体=圆） */
+.legend .dot.dot-square { border-radius: 2px; }
+
+/* 极窄容器：工具栏允许横向滚动，保证「更多」与视图档位都够得到 */
+@container graph-pane (max-width: 520px) {
+  .graph-toolbar { overflow-x: auto; scrollbar-width: thin; }
+  .graph-search { flex: 1 0 90px; }
+}
+
+/* 元素清单里的「关系」分组标题 */
+.graph-node-index-sub {
+  flex: 0 0 auto; padding: 6px 10px 2px; font-size: var(--fs-xs);
+  color: var(--muted); border-top: 1px solid var(--border); background: var(--panel-2);
+}
+/* 推理新增的统计口径提示 */
+.guide-unit { font-size: var(--fs-xs); color: var(--muted); margin-left: 4px; }

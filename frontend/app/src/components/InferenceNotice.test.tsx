@@ -72,7 +72,7 @@ describe('推理提示横幅（#55）', () => {
   it('默认渲染文案 A，数字来自 store 数据而非常量', () => {
     render();
     const text = bannerText();
-    expect(text).toContain('图上 86 条连线里，22 条不在本体文件里');
+    expect(text).toContain('画布共 86 条连线：声明 64 条 + 推理新增 22 条');
     expect(text).toContain('其中 10 条是「谁能做这个任务」');
     // 恢复按钮只在关闭后出现
     expect(container!.querySelector('[aria-label="显示图谱提示"]')).toBeNull();
@@ -140,7 +140,7 @@ describe('推理提示横幅（#55）', () => {
       restore.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(bannerText()).toContain('图上 86 条连线里');
+    expect(bannerText()).toContain('画布共 86 条连线');
     expect(sessionStorage.getItem('ontology:inference-banner:dismissed')).toBeNull();
     expect(useAppStore.getState().noticeDismissed).toBe(false);
     // 恢复后关闭按钮重新可用，形成完整闭环

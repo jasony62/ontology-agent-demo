@@ -31,7 +31,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
  * 画布右侧的元素详情（只读）。
  *
  * 画布不承载写入：这里只把「这个元素是什么」讲清楚，并提供唯一出口
- * 「在在线编辑器中修改 →」。改造前这里是一张和在线编辑长得一样、但改动
+ * 「去在线编辑修改 →」。改造前这里是一张和在线编辑长得一样、但改动
  * 只存在于内存草图里的表单，切领域 / 重载即静默丢弃（评审 P0）。
  */
 export default function ElementDetail({ ontology, target, onEdit }: Props) {
@@ -42,6 +42,9 @@ export default function ElementDetail({ ontology, target, onEdit }: Props) {
       (i) => (i.types?.length ? i.types : [i.entityTypeId]).includes(entity.id),
     );
     const subclasses = ontology.entityTypes.filter((c) => c.parent === entity.id);
+    // 证据的第一层：这个类参与了哪些关系、指向谁。只读详情不提供这层，
+    // 用户就只能回到画布上点 2px 的线。
+    const relatedRelations = ontology.relationships.filter((r) => r.from === entity.id || r.to === entity.id);
     return (
       <section className="element-detail panel" aria-label={`类 · ${entity.name}`}>
         <header className="element-detail-head">
@@ -69,6 +72,19 @@ export default function ElementDetail({ ontology, target, onEdit }: Props) {
           <Field label="个体">
             {instances.length ? `${instances.length} 个（${instances.map((i) => i.label || i.id).join('、')}）` : '（无）'}
           </Field>
+          <Field label="关系">
+            {relatedRelations.length ? (
+              <ul className="element-detail-assertions">
+                {relatedRelations.map((r) => (
+                  <li key={r.id}>
+                    {r.from === entity.id ? '→' : '←'} <code>{r.name || r.id}</code>
+                    {' '}
+                    {r.from === entity.id ? nameOfClass(ontology, r.to) : nameOfClass(ontology, r.from)}
+                  </li>
+                ))}
+              </ul>
+            ) : '（无）'}
+          </Field>
         </dl>
 
         <button
@@ -76,7 +92,7 @@ export default function ElementDetail({ ontology, target, onEdit }: Props) {
           className="btn element-detail-cta"
           onClick={() => onEdit({ id: entity.id, name: entity.name || entity.id, kind: 'class' })}
         >
-          在在线编辑器中修改 →
+          去在线编辑修改 →
         </button>
       </section>
     );
@@ -114,7 +130,7 @@ export default function ElementDetail({ ontology, target, onEdit }: Props) {
           className="btn element-detail-cta"
           onClick={() => onEdit({ id: rel.id, name: rel.name || rel.id, kind: 'relation' })}
         >
-          在在线编辑器中修改 →
+          去在线编辑修改 →
         </button>
       </section>
     );
@@ -157,7 +173,7 @@ export default function ElementDetail({ ontology, target, onEdit }: Props) {
         className="btn element-detail-cta"
         onClick={() => onEdit({ id: instance.id, name: instance.label || instance.id, kind: 'instance' })}
       >
-        在在线编辑器中修改 →
+        去在线编辑修改 →
       </button>
     </section>
   );

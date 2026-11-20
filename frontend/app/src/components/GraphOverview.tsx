@@ -10,12 +10,6 @@ interface Props {
   onToggleFocus: (next: LegendFocus) => void;
 }
 
-const VIEW_MODES = [
-  { mode: 'asserted', label: '只看原始的' },
-  { mode: 'materialized', label: '显示推理全貌' },
-  { mode: 'diff', label: '只看新推出的' },
-] as const;
-
 /**
  * 图谱概览：右侧栏在「未选中任何元素」时展示的整体信息。
  *
@@ -30,7 +24,6 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
   const stats = useAppStore((s) => s.materialized.stats);
   const graphData = useAppStore((s) => s.graphData);
   const sourceName = useAppStore((s) => s.sourceName);
-  const synced = useAppStore((s) => s.syncedToBackend);
   const ontologyMode = useAppStore((s) => s.ontologyMode);
   const health = useAppStore((s) => s.guideHealth);
   const viewMode = useAppStore((s) => s.viewMode);
@@ -76,8 +69,8 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
       </section>
 
       <section className="overview-section">
-        <h3>结构规模</h3>
-        <div className="overview-stats overview-stats--compact" aria-label="当前视图的结构规模">
+        <h3>本体规模</h3>
+        <div className="overview-stats overview-stats--compact" aria-label="本体规模（不随视图切换变化）">
           <div className="overview-stat">
             <span className="label">类</span>
             <span className="num">{classes}</span>
@@ -87,7 +80,7 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
             <span className="num">{individuals}</span>
           </div>
           <div className="overview-stat">
-            <span className="label">连线</span>
+            <span className="label" title="含结构边；不随视图切换变化">连线</span>
             <span className="num">{edges}</span>
           </div>
         </div>
@@ -109,6 +102,10 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
               <span className="label">推出来的</span>
               <span className="num inferred">{stats.inferred_added}</span>
             </div>
+            <p className="overview-legend-note">
+              以上为三元组口径（物化统计）。「当前领域」里的「推理新增」是推理明细口径，
+              两者会因自反 / 元层是否计入而差几十条。
+            </p>
           </div>
         ) : (
           <div className="overview-empty">暂无物化统计（图谱加载后自动计算）。</div>
@@ -117,20 +114,6 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
 
       <section className="overview-section">
         <h3>可用性与下一步</h3>
-        <div className="overview-views" aria-label="切换图谱视图">
-          {VIEW_MODES.map((item) => (
-            <button
-              key={item.mode}
-              type="button"
-              className={`overview-view-btn${viewMode === item.mode ? ' active' : ''}`}
-              aria-pressed={viewMode === item.mode}
-              onClick={() => setViewMode(item.mode)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
         {imported ? (
           <div className="overview-hint" role="note">
             {health && <b className="overview-hint-title">{health.profile_label}</b>}
@@ -166,13 +149,7 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
               </>
             )}
           </div>
-        ) : (
-          !synced && (
-            <div className="overview-hint">
-              提示：导入自定义本体后，点击「导入并开始推理」即可查看该本体的物化结果。
-            </div>
-          )
-        )}
+        ) : null}
 
         <p className="overview-next">
           <a href="#guide">去「当前领域」页</a> 看这份本体能问什么、怎么接进去。
@@ -191,7 +168,7 @@ export default function GraphOverview({ focus, onToggleFocus }: Props) {
               onClick={() => onToggleFocus({ kind: 'class' })}
               title="点击聚焦：类保持原色，其余节点淡化；再次点击恢复"
             >
-              <span className="dot" style={{ background: CLASS_COLOR }}></span> 类（Class）
+              <span className="dot dot-square" style={{ background: CLASS_COLOR }}></span> 类（Class）
             </button>
             {legend.length > 0 ? (
               legend.map((g) => (

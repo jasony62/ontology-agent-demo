@@ -83,25 +83,25 @@ export function buildInferenceNotice(
   // 三元组与连线的口径差：概览写「推出来的 545」，图上只多 22 条线——
   // 放进悬浮提示，让第一行只讲用户眼前看到的东西。
   const detail =
-    `${stats.inferred_added} 条新增三元组里，类型与父子类等骨架已折叠进节点，` +
-    `图上表现为 ${inferredEdges} 条连线。`;
+    `${stats.inferred_added} 个推理三元组在图上表现为 ${inferredEdges} 条连线` +
+    `（类型与父子类等骨架已折叠进节点）；右栏「连线」统计的是领域图，不含推理新增。`;
 
   if (viewMode === 'materialized') {
     return {
-      lead: `图上 ${totalEdges} 条连线里，${inferredEdges} 条不在本体文件里。绿色虚线是推理推出来的${domainClauseA}。`,
-      action: '点任意虚线看依据。',
+      lead: `画布共 ${totalEdges} 条连线：声明 ${assertedEdges} 条 + 推理新增 ${inferredEdges} 条${domainClauseA}。`,
+      action: '绿色虚线是推出来的，点它看依据。',
       detail,
     };
   }
   if (viewMode === 'asserted') {
     return {
-      lead: `你现在只看得到本体里声明的 ${assertedEdges} 条。另有 ${inferredEdges} 条是推出来的${domainClauseB}。`,
+      lead: `当前只显示声明过的 ${assertedEdges} 条连线；另有 ${inferredEdges} 条推理新增${domainClauseB}。`,
       action: '点「显示推理全貌」可见。',
       detail,
     };
   }
   return {
-    lead: `这里只有推出来的 ${inferredEdges} 条，本体里声明的那 ${assertedEdges} 条不在图中。`,
+    lead: `这里只有推理新增的 ${inferredEdges} 条连线；声明过的 ${assertedEdges} 条已隐藏。`,
     action: '点「显示推理全貌」看全貌。',
     detail,
   };

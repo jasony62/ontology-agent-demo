@@ -258,6 +258,20 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [notice, setNotice]);
 
+  // Esc 清除图谱选中：此前只能点空白处，键盘用户没有退路。
+  // 弹窗自己处理 Esc（useDialogA11y），输入框里的 Esc 保持浏览器默认。
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (document.querySelector('.modal-backdrop')) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      if (useAppStore.getState().selectedId) setSelectedId(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [setSelectedId]);
+
   // 在线编辑有未保存修改时，刷新 / 关标签页要拦一道——图谱页不再是唯一的编辑入口，
   // 浏览器的默认关闭行为不能绕过 dirty（P0：改动不许无声消失）。
   useEffect(() => {

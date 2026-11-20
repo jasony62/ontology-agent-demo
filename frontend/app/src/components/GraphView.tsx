@@ -67,6 +67,11 @@ const stylesheet: StylesheetStyle[] = [
     style: { label: 'data(label)' },
   },
   {
+    // 缩得很远（窄屏或整图 fit）时连类名也会糊成一团：全部收起，只留选中节点
+    selector: 'node.zoom-far',
+    style: { 'text-opacity': 0 },
+  },
+  {
     // 放大到能看清细节时，个体标签才值得占位置
     selector: 'node.zoom-near',
     style: { label: 'data(label)' },
@@ -275,6 +280,9 @@ export default function GraphView({
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
   const [search, setSearch] = useState('');
+  const [nodeIndexOpen, setNodeIndexOpen] = useState(false);
+  const indexBtnRef = useRef<HTMLButtonElement>(null);
+  const indexPanelRef = useRef<HTMLDivElement>(null);
   const nodeIndex = useMemo(() => {
     const map = new Map<string, { id: string; label: string; kind: 'class' | 'individual' }>();
     for (const g of [asserted, inferred]) {
@@ -290,11 +298,46 @@ export default function GraphView({
     }
     return Array.from(map.values());
   }, [asserted, inferred]);
+
+  const edgeIndex = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; kind: 'asserted' | 'inferred' }>();
+    const collect = (g: typeof asserted, inferredFlag: boolean) => {
+      for (const e of g?.edges ?? []) {
+        const eid = e.id || `${e.source}--${e.label}--${e.target}`;
+        if (!eid || map.has(eid)) continue;
+        map.set(eid, {
+          id: `edge|${eid}`,
+          label: e.label || eid,
+          kind: inferredFlag ? 'inferred' : 'asserted',
+        });
+      }
+    };
+    collect(asserted, false);
+    collect(inferred, true);
+    return Array.from(map.values());
+  }, [asserted, inferred]);
+
+  const pick = (id: string) => {
+    selectRef.current?.(id);
+    setNodeIndexOpen(false);
+    indexBtnRef.current?.focus();
+  };
+
+  // 清单打开后：焦点进入第一项，Esc 关闭并把焦点还给触发按钮
+  useEffect(() => {
+    if (!nodeIndexOpen) return;
+    indexPanelRef.current?.querySelector<HTMLElement>('.graph-node-item')?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setNodeIndexOpen(false);
+      indexBtnRef.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [nodeIndexOpen]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   // 边标签默认关闭：需要时再打开，或悬停/选中单条边查看
   const [edgeLabels, setEdgeLabels] = useState(false);
-  // 键盘 / 读屏的替代路径：画布本身不在可访问树里，必须有一份可选中的元素清单
-  const [nodeIndexOpen, setNodeIndexOpen] = useState(false);
   const edgeLabelsRef = useRef(false);
   edgeLabelsRef.current = edgeLabels;
 
@@ -332,7 +375,14 @@ export default function GraphView({
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    const apply = () => cy.nodes().toggleClass('zoom-near', cy.zoom() >= 1.1);
+    // 窄容器（手机 / 分栏被挤）比「缩放得很远」更该收标签：此时 fit 后缩放未必很小，
+    // 但可用面积已经不足以放下 17 个类名。
+    const apply = () => {
+      const zoom = cy.zoom();
+      const narrow = cy.width() < 480;
+      cy.nodes().toggleClass('zoom-near', zoom >= 1.1 && !narrow);
+      cy.nodes().toggleClass('zoom-far', zoom < 0.75 || narrow);
+    };
     cy.on('zoom', apply);
     apply();
     return () => { cy.off('zoom', apply); };
@@ -358,6 +408,9 @@ export default function GraphView({
       const height = box?.height ?? el.clientHeight;
       if (width < MIN_RESIZE_WIDTH || height <= 0) return;
       cy.resize();
+      const narrow = cy.width() < 480;
+      cy.nodes().toggleClass('zoom-near', cy.zoom() >= 1.1 && !narrow);
+      cy.nodes().toggleClass('zoom-far', cy.zoom() < 0.75 || narrow);
       // 分栏变窄后选中节点可能已经滑出视口：只把「看不见的」拉回中央，
       // 不打断用户正在看的位置
       const id = selectedIdRef.current;
@@ -455,7 +508,9 @@ export default function GraphView({
 
     // 新增元素不继承旧元素上的状态类：视图切换 / 增删后按当前开关重新同步
     cy.edges().toggleClass('show-label', edgeLabelsRef.current);
-    cy.nodes().toggleClass('zoom-near', cy.zoom() >= 1.1);
+    const narrow = cy.width() < 480;
+    cy.nodes().toggleClass('zoom-near', cy.zoom() >= 1.1 && !narrow);
+    cy.nodes().toggleClass('zoom-far', cy.zoom() < 0.75 || narrow);
   }, [viewMode, asserted, inferred, groupView, issueLevels]);
 
   // 聚焦淡化：选中节点时看「节点 + 直连邻域」，否则沿用图例聚焦（详见 lib/graphSelection）。
@@ -516,6 +571,7 @@ export default function GraphView({
         />
         {highlightId && <span className="graph-hit">已定位：{highlightId}</span>}
         <button
+          ref={indexBtnRef}
           type="button"
           className={`secondary graph-index-toggle${nodeIndexOpen ? ' active' : ''}`}
           aria-expanded={nodeIndexOpen}
@@ -558,10 +614,10 @@ export default function GraphView({
         </OverflowMenu>
       </div>
       {nodeIndexOpen && (
-        <div id="graph-node-index" className="graph-node-index" role="region" aria-label="图谱元素列表">
+        <div id="graph-node-index" className="graph-node-index" role="region" aria-label="图谱元素列表" ref={indexPanelRef}>
           <div className="graph-node-index-head">
-            <span>共 {nodeIndex.length} 个节点</span>
-            <button type="button" className="btn ghost" onClick={() => setNodeIndexOpen(false)}>关闭</button>
+            <span>共 {nodeIndex.length} 个节点 · {edgeIndex.length} 条关系</span>
+            <button type="button" className="btn ghost" onClick={() => { setNodeIndexOpen(false); indexBtnRef.current?.focus(); }}>关闭</button>
           </div>
           <ul>
             {nodeIndex.map((n) => (
@@ -570,14 +626,23 @@ export default function GraphView({
                   type="button"
                   className="graph-node-item"
                   aria-current={selectedId === n.id ? 'true' : undefined}
-                  onClick={() => {
-                    selectRef.current?.(n.id);
-                    setNodeIndexOpen(false);
-                  }}
+                  onClick={() => pick(n.id)}
                 >
                   <span className="graph-node-kind">{n.kind === 'class' ? '类' : '个体'}</span>
                   <span className="graph-node-label">{n.label}</span>
                   <code>{n.id}</code>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="graph-node-index-sub">关系</div>
+          <ul>
+            {edgeIndex.map((e) => (
+              <li key={e.id}>
+                <button type="button" className="graph-node-item" onClick={() => pick(e.id)}>
+                  <span className="graph-node-kind">{e.kind === 'inferred' ? '推理' : '断言'}</span>
+                  <span className="graph-node-label">{e.label}</span>
+                  <code>{e.id.replace(/^edge\|/, '')}</code>
                 </button>
               </li>
             ))}

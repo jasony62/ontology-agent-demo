@@ -172,7 +172,7 @@ describe('图谱右侧编辑框（#91 融合重构）', () => {
     const text = el.textContent ?? '';
     expect(text).toContain('Agent');
     expect(text).toContain('只读');
-    expect(text).toContain('在在线编辑器中修改');
+    expect(text).toContain('去在线编辑修改');
     expect(text).toContain('父类');
     expect(text).not.toContain('图谱概览');
     expect(el.querySelector('input')).toBeNull();
@@ -189,11 +189,11 @@ describe('图谱右侧编辑框（#91 融合重构）', () => {
     expect(deleters).toHaveLength(0);
   });
 
-  it('点「在在线编辑器中修改」回传定位请求', () => {
+  it('点「去在线编辑修改」回传定位请求', () => {
     seed('agent');
     const onEdit = vi.fn();
     const el = render(<GraphSidePanel focus={null} onToggleFocus={() => {}} onEditInPanel={onEdit} />);
-    const cta = Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('在在线编辑器中修改'))!;
+    const cta = Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.includes('去在线编辑修改'))!;
     act(() => cta.click());
     expect(onEdit).toHaveBeenCalledWith({ id: 'agent', name: 'Agent', kind: 'class' });
   });

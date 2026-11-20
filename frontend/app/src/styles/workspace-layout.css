@@ -68,7 +68,7 @@
 .pane-rail-toggle,
 .pane-rail-tab {
   display: inline-flex; align-items: center; justify-content: center;
-  flex: 0 0 auto; width: 24px; height: 24px; padding: 0;
+  flex: 0 0 auto; width: 28px; height: 28px; padding: 0;
   border: 1px solid transparent; border-radius: 6px; background: transparent;
   color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer;
 }

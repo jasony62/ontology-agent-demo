@@ -226,6 +226,35 @@ class SparqlResultsResponse(BaseModel):
     )
 
 
+class QueryVisualResponse(BaseModel):
+    """SPARQL 结果 + 图谱命中集合（#374）。"""
+
+    results: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="SELECT 结果行列表；键为 SPARQL 变量名，IRI 值已转成短名。",
+    )
+    askAnswer: bool | None = Field(
+        None,
+        description="ASK 查询的布尔结果；SELECT 查询时为空。",
+    )
+    nodes: list[str] = Field(
+        default_factory=list,
+        description="命中且存在于当前图谱的节点 id（短名）；ASK 时为空。",
+    )
+    edges: list[str] = Field(
+        default_factory=list,
+        description=(
+            "命中且存在于当前图谱的边 id（形如 `源--谓词--目标`）。"
+            "SPARQL 只返回投影变量：谓词写成常量、或 s/p/o 未全投影时为空，属预期行为。"
+        ),
+    )
+    row_count: int = Field(0, description="结果行数。")
+    unmapped: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="无法映射到图的值（字面量 / 空节点）：`{var, value, reason}`。",
+    )
+
+
 class IndividualsResponse(BaseModel):
     """指定类的个体列表。"""
 

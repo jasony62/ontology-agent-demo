@@ -107,6 +107,7 @@ from .schemas import (
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
     DescribeRequest, SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
     CqPromptsRequest, CqPromptsPreviewRequest, CqRequirementsRequest, CqDispositionRequest, CqDecisionRequest,
+    QueryVisualRequest,
 )
 from .response_schemas import (
     ClassesResponse,
@@ -126,6 +127,7 @@ from .response_schemas import (
     OntologyStatusResponse,
     OpenEnvelope,
     PropertyValuesResponse,
+    QueryVisualResponse,
     SparqlResultsResponse,
     TypesResponse,
 )
@@ -1871,6 +1873,40 @@ def sparql_query(req: SparqlRequest):
     try:
         result = ENGINE.query_sparql(req.sparql)
         return result if isinstance(result, dict) else {"results": result}
+    except SparqlTimeoutError as exc:
+        raise HTTPException(
+            status_code=408,
+            detail={"error": "query_timeout", "kind": exc.kind,
+                    "limit_ms": exc.limit_ms, "message": str(exc),
+                    "hint": "请缩小查询范围或加 LIMIT，或调整两段超时环境变量"})
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"SPARQL 执行失败: {exc}")
+
+
+@app.post(
+    "/api/query/visual",
+    tags=["通用查询"],
+    summary="SPARQL 查询并在图谱上高亮命中",
+    responses={
+        200: {
+            "model": QueryVisualResponse,
+            "description": (
+                "一次执行同时返回结果表与图谱命中集合：`nodes` / `edges` 可直接点亮，"
+                "`unmapped` 列出字面量等无法映射到图的值。"
+            ),
+        },
+        **ERROR_400,
+        **ERROR_408,
+    },
+)
+def sparql_query_visual(req: QueryVisualRequest):
+    """SPARQL 查询 + 图谱高亮（#374），与 /api/query 同契约、同一超时口径。
+
+    给调用方：`edges` 依赖 SPARQL 投影变量——谓词写成常量、或 s/p/o 没全投影时
+    拼不出边，只亮节点，这是查询语义决定的预期行为。
+    """
+    try:
+        return ENGINE.query_visual(req.sparql)
     except SparqlTimeoutError as exc:
         raise HTTPException(
             status_code=408,

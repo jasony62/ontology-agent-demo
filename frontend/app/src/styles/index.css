@@ -2522,3 +2522,35 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 /* 「从这里开始」折叠后仍需可读的摘要行 */
 .cq-training-guide > summary { cursor: pointer; font-weight: 600; color: var(--heading); padding: 4px 0; }
 .cq-training-guide[open] > summary { margin-bottom: 6px; }
+
+/* ============================================================
+   #374：图谱页 SPARQL 查询与命中高亮
+   ============================================================ */
+.graph-sparql { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.graph-sparql-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.graph-sparql-hit {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--fs-sm2); color: var(--heading);
+}
+.graph-sparql-panel {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.graph-sparql-input {
+  width: 100%; min-height: 64px; resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-sm2); line-height: 1.5;
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--text);
+}
+.graph-sparql-input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.graph-sparql-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.graph-sparql-result { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm2); }
+.graph-sparql-result p { margin: 0; }
+.graph-sparql-table { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); }
+.graph-sparql-table table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+.graph-sparql-table th,
+.graph-sparql-table td { padding: 3px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.graph-sparql-table th { position: sticky; top: 0; background: var(--panel-2); color: var(--heading); font-weight: 600; }
+.graph-sparql-table tr:last-child td { border-bottom: 0; }

@@ -85,3 +85,54 @@ describe('首屏深链路由（#344）', () => {
     expect(container!.querySelector('.cq-tab.active')?.textContent).toBe('集总览');
   });
 });
+
+describe('#374 图谱页 SPARQL 查询', () => {
+  it('输入查询后执行，展示命中数；命中边为空时说明是预期行为；可清除高亮', async () => {
+    const visual = {
+      results: [{ s: 't_login_dev' }],
+      askAnswer: null,
+      nodes: ['t_login_dev'],
+      edges: [],
+      row_count: 1,
+      unmapped: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/api/query/visual')) {
+        return { ok: true, status: 200, json: async () => visual } as unknown as Response;
+      }
+      throw new Error('offline');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await renderAt('#');
+
+    const open = [...container!.querySelectorAll('button')]
+      .find((button) => button.textContent === 'SPARQL 查询') as HTMLButtonElement;
+    expect(open).toBeTruthy();
+    act(() => open.click());
+
+    const input = container!.querySelector<HTMLTextAreaElement>('.graph-sparql-input')!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      setter.call(input, 'SELECT ?s WHERE { ?s a ?t } LIMIT 5');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    const run = [...container!.querySelectorAll('button')]
+      .find((button) => button.textContent === '执行并高亮') as HTMLButtonElement;
+    await act(async () => {
+      run.click();
+      await new Promise((resolve) => { setTimeout(resolve, 0); });
+    });
+
+    expect(container!.textContent).toContain('命中 1 个节点 · 0 条边');
+    expect(container!.textContent).toContain('只点亮了节点');
+    expect(container!.textContent).toContain('t_login_dev');
+    const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/api/query/visual'));
+    expect(call).toBeTruthy();
+
+    const clear = [...container!.querySelectorAll('button')]
+      .find((button) => button.textContent === '清除高亮') as HTMLButtonElement;
+    act(() => clear.click());
+    expect(container!.textContent).not.toContain('清除高亮');
+  });
+});

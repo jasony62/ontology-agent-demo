@@ -920,6 +920,16 @@ export interface CqRun {
   actor?: string;
 }
 
+/** #374：查询结果 + 图谱命中集合（`/api/query/visual`）。 */
+export interface QueryVisualResult {
+  results: Record<string, unknown>[];
+  askAnswer?: boolean | null;
+  nodes: string[];
+  edges: string[];
+  row_count: number;
+  unmapped: { var: string; value: string; reason: string }[];
+}
+
 export const api = {
   health: () => request<Record<string, unknown>>('/api/health'),
 
@@ -947,6 +957,14 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ iri, include_as_object: includeAsObject }),
+    }),
+
+  /** #374：SPARQL 查询并在图谱上高亮命中（与 /api/query 同契约）。 */
+  queryVisual: (sparql: string) =>
+    request<QueryVisualResult>('/api/query/visual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sparql }),
     }),
 
   /** CQ 集（#150）：读当前集 + 概览 summary */

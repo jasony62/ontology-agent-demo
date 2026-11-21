@@ -18,6 +18,8 @@ import { ApiError } from '../api/client';
 import { formatLocalTime } from '../lib/time';
 import CqPromptsPanel from './CqPromptsPanel';
 import CqTrainingPage from './CqTrainingPage';
+import CqOverviewView from './CqOverviewView';
+import CqDemoPanel from './CqDemoPanel';
 import HelpTip from './HelpTip';
 import TechDetails from './TechDetails';
 
@@ -55,20 +57,30 @@ function blockerKeys(item: CqSetCase): string[] {
 // 后端 fail-fast 会 400；浅合并时还会用旧 review 覆盖服务端刚写入的状态。
 const CASE_WRITE_FIELDS = ['id', 'cq', 'expected_type', 'status', 'requirement', 'regression'] as const;
 
-type CqTabName = 'cases' | 'training';
+type CqTabName = 'overview' | 'cases' | 'training';
 
 /** #290 / #292：视图与搜索词都在 hash 里，刷新 / 分享 / 前进后退都保持。 */
 function parseCqHash(): { tab: CqTabName; query: string } {
-  const raw = String(window.location.hash || '').replace(/^#cq\/?/, '');
+  const hash = String(window.location.hash || '');
+  const raw = hash.replace(/^#cq\/?/, '');
   const [segment, search = ''] = raw.split('?');
-  return {
-    tab: segment === 'training' ? 'training' : 'cases',
-    query: new URLSearchParams(search).get('q') || '',
-  };
+  const tab: CqTabName = segment === 'training'
+    ? 'training'
+    : segment === 'cases'
+      ? 'cases'
+      : segment === 'overview'
+        ? 'overview'
+        // #389：真实入口 `#cq` 默认进概览；仅在没有 #cq 的独立渲染（测试）里保留题目视图
+        : hash.startsWith('#cq') ? 'overview' : 'cases';
+  return { tab, query: new URLSearchParams(search).get('q') || '' };
 }
 
 function cqHash(tab: CqTabName, query: string): string {
-  const base = tab === 'training' ? '#cq/training' : '#cq/cases';
+  const base = tab === 'training'
+    ? '#cq/training'
+    : tab === 'overview'
+      ? '#cq/overview'
+      : '#cq/cases';
   const trimmed = query.trim();
   return trimmed ? `${base}?q=${encodeURIComponent(trimmed)}` : base;
 }
@@ -149,6 +161,8 @@ export default function CqPage() {
   // #338：单题回归调试结果（不写评估历史）
   const [caseRunBusy, setCaseRunBusy] = useState(false);
   const [caseRunResult, setCaseRunResult] = useState<CqCaseRunResult | null>(null);
+  // #389：单题四步演示（只读）
+  const [demoCase, setDemoCase] = useState<CqSetCase | null>(null);
   // 0/20 的结果不该用成功色播报
   const [noticeTone, setNoticeTone] = useState<'ok' | 'warn'>('ok');
   // #250 R6：点击整体缺口统计，把下方题目列表筛到对应题
@@ -600,16 +614,18 @@ export default function CqPage() {
             CQ 集
             <span className="cq-abbr">能力问题 · Competency Question</span>
             <span className="cq-breadcrumb" aria-label="当前位置">
-              › {tab === 'training' ? '训练' : '题目'}
+              › {tab === 'training' ? '训练' : tab === 'overview' ? '概览' : '题目'}
             </span>
           </h2>
           <p className="cq-intro">
             CQ 是把业务问题写成能被本体自动验证的题目集。智能体负责生成和检查，你负责看证据、拍板。
           </p>
           <p className="guide-muted">
-            {tab === 'cases'
-              ? '本页：看每题能不能被本体验证，并处理需要你拍板的事。'
-              : '每题走到生命周期哪一段、需要你做什么；题卡内可下钻完整轨迹。'}
+            {tab === 'overview'
+              ? '先看一句结论与三个待办；要管理题库或看完整漏斗，点「题目」。'
+              : tab === 'cases'
+                ? '本页：看每题能不能被本体验证，并处理需要你拍板的事。'
+                : '每题走到生命周期哪一段、需要你做什么；题卡内可下钻完整轨迹。'}
           </p>
         </div>
         <div className="cq-toolbar-actions">
@@ -619,11 +635,20 @@ export default function CqPage() {
               <button
                 type="button"
                 role="tab"
+                aria-selected={tab === 'overview'}
+                className={`cq-tab${tab === 'overview' ? ' active' : ''}`}
+                onClick={() => selectTab('overview')}
+              >
+                概览
+              </button>
+              <button
+                type="button"
+                role="tab"
                 aria-selected={tab === 'cases'}
                 className={`cq-tab${tab === 'cases' ? ' active' : ''}`}
                 onClick={() => selectTab('cases')}
               >
-                集总览
+                题目
               </button>
               <button
                 type="button"
@@ -755,9 +780,28 @@ export default function CqPage() {
       <CqManagementGuide />
       {showGlossary && <CqGlossary onClose={() => setShowGlossary(false)} />}
       {showPrompts && <CqPromptsPanel onClose={() => setShowPrompts(false)} />}
+      {demoCase && (
+        <CqDemoPanel
+          caseId={demoCase.id || ''}
+          question={demoCase.cq}
+          onClose={() => setDemoCase(null)}
+        />
+      )}
 
-      {tab === 'training' ? (
-        <CqTrainingPage onGoToCases={() => selectTab('cases')} />
+      {tab === 'overview' ? (
+        <CqOverviewView
+          delivery={delivery}
+          pending={pendingQuestions ?? 0}
+          unanchored={Math.max(0, (summary?.total ?? 0) - (summary?.located ?? 0))}
+          failed={delivery?.failed_questions ?? 0}
+          suite={suiteDisplay}
+          domainLabel={domainLabel}
+          evaluatedAt={evaluation?.ran_at ? formatLocalTime(evaluation.ran_at) : undefined}
+          onGoCases={() => selectTab('cases')}
+          onGoTraining={() => selectTab('training')}
+        />
+      ) : tab === 'training' ? (
+        <CqTrainingPage onGoToCases={() => selectTab('cases')} cases={data?.cases ?? []} />
       ) : (
         <>
           {notice && <div className={`notice-banner${noticeTone === 'warn' ? ' warn' : ''}`} role="status">{notice}</div>}
@@ -1308,6 +1352,7 @@ export default function CqPage() {
                         caseRunBusy={caseRunBusy}
                         caseRunResult={caseRunResult}
                         onRunCase={() => void runCaseNow()}
+                        onExplain={() => setDemoCase(current)}
                       />
                     </div>
                   )}
@@ -1904,7 +1949,7 @@ function CqEditor({
 function CqDetail({
   item, index, locate, error, showTech,
   dispositionBusy, dispositionResult, onDispose,
-  caseRunBusy, caseRunResult, onRunCase,
+  caseRunBusy, caseRunResult, onRunCase, onExplain,
 }: {
   item: CqSetCase;
   index: number;
@@ -1917,6 +1962,7 @@ function CqDetail({
   caseRunBusy: boolean;
   caseRunResult: CqCaseRunResult | null;
   onRunCase: () => void;
+  onExplain: () => void;
 }) {
   const cache = item.coverage_cache;
   const regression = item.regression || {};
@@ -2119,14 +2165,19 @@ function CqDetail({
           <p className="guide-muted">
             只验证这一题，方便改完断言立刻确认；正式评估仍用工具栏「跑一轮评估」。
           </p>
-          <button
-            type="button"
-            className="btn secondary"
-            disabled={caseRunBusy}
-            onClick={onRunCase}
-          >
-            {caseRunBusy ? '测试中…' : '测这一题'}
-          </button>
+          <div className="cq-case-run-actions">
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={caseRunBusy}
+              onClick={onRunCase}
+            >
+              {caseRunBusy ? '测试中…' : '测这一题'}
+            </button>
+            <button type="button" className="btn secondary" onClick={onExplain}>
+              四步演示
+            </button>
+          </div>
           {caseRunResult && (
             <div className={`cq-case-run-result state-${caseRunResult.state}`} role="status">
               <b>

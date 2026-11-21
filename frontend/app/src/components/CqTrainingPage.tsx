@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import CqTrainingPanel from './CqTrainingPanel';
+import CqTryoutPanel from './CqTryoutPanel';
+import type { CqSetCase } from '../api/client';
 import CqTimelinePage from './CqTimelinePage';
 import { CQ_TRAINING_CHANGED } from '../lib/cqTrainingEvent';
 
@@ -12,7 +14,9 @@ import { CQ_TRAINING_CHANGED } from '../lib/cqTrainingEvent';
  * 三个组件都零 props：现场、时间线、迭代档案各自取数，切领域后随同一份身份一起换。
  * 现场提交反馈后广播一次窗口事件，这里用 key 让时间线重读——提交完往下滚就能看到新事件。
  */
-export default function CqTrainingPage({ onGoToCases }: { onGoToCases?: () => void } = {}) {
+export default function CqTrainingPage({
+  onGoToCases, cases = [],
+}: { onGoToCases?: () => void; cases?: CqSetCase[] } = {}) {
   const [logKey, setLogKey] = useState(0);
   const [focusCaseId, setFocusCaseId] = useState<string | null>(null);
   const handleFocus = useCallback((caseId: string) => setFocusCaseId(caseId), []);
@@ -26,6 +30,7 @@ export default function CqTrainingPage({ onGoToCases }: { onGoToCases?: () => vo
 
   return (
     <div className="cq-training-page">
+      <CqTryoutPanel cases={cases} />
       <section className="cq-training-live" aria-label="训练现场">
         <CqTrainingPanel
           focusCaseId={focusCaseId}

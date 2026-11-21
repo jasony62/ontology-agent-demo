@@ -112,6 +112,7 @@ from .schemas import (
 from .response_schemas import (
     ClassesResponse,
     CqAxiomsResponse,
+    CqExplainResponse,
     CqLocateResponse,
     DomainActivateResponse,
     DomainReloadResponse,
@@ -2721,6 +2722,45 @@ def cq_regression_run_case(
         "excluded_from_formal": excluded,
         "excluded_reason": "该题审核已驳回，正式回归会排除它；本次结果只用于调试" if excluded else "",
     }
+
+
+@app.post(
+    "/api/domains/current/cq/cases/{case_id}/regression/explain",
+    tags=["通用查询"],
+    summary="单题四步轨迹（只读演示 / 试跑）",
+    responses={
+        200: {
+            "model": CqExplainResponse,
+            "description": (
+                "四步真实轨迹：按什么判定 → 本体命中什么 → 期望与实际差在哪 → 结论。"
+                "可带 `expect` 覆盖题面期望（结构化试跑），不写评估历史、审计或题目状态。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def cq_regression_explain_case(
+    case_id: str = ApiPath(..., description="题目稳定 id"),
+    payload: dict | None = Body(None),
+):
+    """单题四步演示 / 训练试跑（#389）：确定性、只读。"""
+    body = payload or {}
+    expect = body.get("expect") if "expect" in body else None
+    if expect is not None and not isinstance(expect, (dict, bool, int)):
+        raise HTTPException(
+            status_code=400,
+            detail="expect 只接受结构化期望（对象 / 布尔 / 整数），不支持自然语言",
+        )
+    ontology_id, seed = _cq_identity()
+    data = cq_store.get_set(ontology_id, seed)
+    case = next(
+        (item for item in data.get("cases") or []
+         if isinstance(item, dict) and str(item.get("id") or "") == case_id),
+        None,
+    )
+    if case is None:
+        raise HTTPException(status_code=404, detail=f"题目不存在：{case_id}")
+    return cq_runner.explain_case(ENGINE, case, expect_override=expect)
 
 
 @app.get(

@@ -49,11 +49,20 @@ describe('首屏深链路由（#344）', () => {
     expect(container!.querySelector('.cq-tab.active')?.textContent).toBe('训练');
   });
 
+  it('#cq 冷启动进 CQ 页并落在概览', async () => {
+    await renderAt('#cq');
+
+    expect(container!.querySelector('.cq-page')).toBeTruthy();
+    expect(container!.querySelector('.cq-tab.active')?.textContent).toBe('概览');
+    expect(container!.querySelector('.cq-overview')).toBeTruthy();
+    expect(container!.querySelector('.cq-overview-stats')?.textContent).toContain('待拍板');
+  });
+
   it('#cq/cases 冷启动进 CQ 页并选中题目 tab', async () => {
     await renderAt('#cq/cases');
 
     expect(container!.querySelector('.cq-page')).toBeTruthy();
-    expect(container!.querySelector('.cq-tab.active')?.textContent).toBe('集总览');
+    expect(container!.querySelector('.cq-tab.active')?.textContent).toBe('题目');
   });
 
   it('#cq/cases?q=… 冷启动恢复筛选词', async () => {
@@ -82,7 +91,7 @@ describe('首屏深链路由（#344）', () => {
 
     const search = container!.querySelector<HTMLInputElement>('input.cq-search');
     expect(search?.value).toBe('登录');
-    expect(container!.querySelector('.cq-tab.active')?.textContent).toBe('集总览');
+    expect(container!.querySelector('.cq-tab.active')?.textContent).toBe('题目');
   });
 });
 

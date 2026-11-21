@@ -255,6 +255,31 @@ class QueryVisualResponse(BaseModel):
     )
 
 
+class CqExplainResponse(BaseModel):
+    """CQ 单题四步轨迹（#389）。只读，不写评估历史 / 审计 / 题目状态。"""
+
+    id: str | None = Field(None, description="题目 id。")
+    cq: str | None = Field(None, description="题干。")
+    state: str = Field(..., description="结论：pass / fail / cannot_tell / not_tested。")
+    query: str = Field("", description="本次执行的 SPARQL 断言。")
+    expect_source: str = Field("case", description="期望来源：case（题面）/ override（试跑台覆盖）。")
+    detail: dict[str, Any] = Field(default_factory=dict, description="判分明细（expect / actual / missing 等）。")
+    steps: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "四步轨迹：assertion（按什么判定）/ query（命中什么）/ "
+            "compare（期望与实际差异）/ conclusion（结论）。"
+        ),
+    )
+    proofs: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "三元组形态结果的结构化证明（最多 5 条）：mode=asserted 表示本体直接声明；"
+            "非三元组结果不生成，避免伪造依据。"
+        ),
+    )
+
+
 class IndividualsResponse(BaseModel):
     """指定类的个体列表。"""
 

@@ -930,6 +930,32 @@ export interface QueryVisualResult {
   unmapped: { var: string; value: string; reason: string }[];
 }
 
+/** #389：CQ 单题四步轨迹（只读演示 / 训练试跑）。 */
+export interface CqExplainStep {
+  step: 'assertion' | 'query' | 'compare' | 'conclusion' | string;
+  title: string;
+  [key: string]: unknown;
+}
+
+export interface CqExplainProof {
+  mode: 'asserted' | 'derived' | 'unproven' | string;
+  rule?: string | null;
+  axioms?: { iri?: string; type?: string; chain?: string[]; inverse?: string }[];
+  premises?: { subject: string; predicate: string; object: string; source?: string }[];
+  conclusion?: { subject: string; predicate: string; object: string };
+}
+
+export interface CqCaseExplain {
+  id?: string | null;
+  cq?: string | null;
+  state: string;
+  query: string;
+  expect_source: 'case' | 'override' | string;
+  detail: Record<string, unknown>;
+  steps: CqExplainStep[];
+  proofs?: CqExplainProof[];
+}
+
 export const api = {
   health: () => request<Record<string, unknown>>('/api/health'),
 
@@ -982,6 +1008,17 @@ export const api = {
 
   cqResetPrompts: () =>
     request<CqPromptsResponse>('/api/domains/current/cq/prompts', { method: 'DELETE' }),
+
+  /** #389：单题四步轨迹；传 expect 即「结构化试跑」，只读不落盘。 */
+  cqExplain: (caseId: string, expect?: Record<string, unknown> | boolean | number) =>
+    request<CqCaseExplain>(
+      `/api/domains/current/cq/cases/${encodeURIComponent(caseId)}/regression/explain`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(expect === undefined ? {} : { expect }),
+      },
+    ),
 
   /** #306：出题要求（人可见、可改、可删，下一次出题生效） */
   cqRequirements: () =>

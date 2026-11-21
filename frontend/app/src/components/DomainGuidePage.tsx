@@ -105,6 +105,32 @@ function CopyBlock({ code, note }: { code: string; note?: string }) {
   );
 }
 
+/** 静态参数预览：字符串按原文显示（SPARQL 不再被 JSON 引号包住），并提供复制。 */
+function StaticParam({ value }: { value: unknown }) {
+  const [copied, setCopied] = useState(false);
+  const text = typeof value === 'string' ? value : pretty(value);
+  return (
+    <div className="guide-param-static-row">
+      <code className="guide-param-static">{text}</code>
+      <button
+        type="button"
+        className="btn ghost guide-param-copy"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          } catch {
+            /* clipboard 不可用时静默：内容仍可手动选中复制 */
+          }
+        }}
+      >
+        {copied ? '已复制 ✓' : '复制'}
+      </button>
+    </div>
+  );
+}
+
 function pretty(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
@@ -436,12 +462,18 @@ function ExamplePanel({
                       ))}
                     </select>
                   ) : (
-                    <code className="guide-param-static">{pretty(value)}</code>
+                    <StaticParam value={value} />
                   )}
                   <span className="field-hint">
                     {selectable ? (
                       <TermText
                         text="候选值来自当前本体，可直接换一个再发"
+                        scope="examples"
+                        site={`param-hint-${example.id}-${key}`}
+                      />
+                    ) : typeof value === 'string' && /^\s*(SELECT|ASK|CONSTRUCT|DESCRIBE)\b/i.test(value) ? (
+                      <TermText
+                        text="复制后可到「图谱工作台 → SPARQL 查询」直接粘贴执行"
                         scope="examples"
                         site={`param-hint-${example.id}-${key}`}
                       />

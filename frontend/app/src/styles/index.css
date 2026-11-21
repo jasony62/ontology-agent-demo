@@ -1263,7 +1263,14 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .guide-do-buttons { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .guide-param-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-.guide-param-static { font-size: var(--fs-sm2); background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; overflow-x: auto; }
+.guide-param-static-row { display: flex; align-items: flex-start; gap: 6px; }
+.guide-param-static-row .guide-param-static { flex: 1 1 auto; min-width: 0; }
+.guide-param-copy { flex: 0 0 auto; }
+.guide-param-static {
+  font-size: var(--fs-sm2); background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 6px 8px; overflow-x: auto;
+  white-space: pre-wrap; word-break: break-word;
+}
 .guide-endpoint { font-size: var(--fs-sm2); color: var(--muted); }
 .guide-endpoint code { color: var(--link); }
 .guide-code-note { font-size: var(--fs-xs); color: #a9b7c6; padding: 0 12px 10px; }

@@ -520,9 +520,9 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     const open = [...card.querySelectorAll('button')].find((b) => b.textContent === '照着做')!;
     act(() => open.click());
 
-    // SPARQL 文本不是本体个体：不给下拉，静态透传
+    // SPARQL 文本不是本体个体：不给下拉，按原文静态展示，并指路图谱页
     expect(card.querySelector('select')).toBeNull();
-    expect(card.textContent).toContain('该参数不是本体个体，按原值透传');
+    expect(card.textContent).toContain('复制后可到「图谱工作台 → SPARQL 查询」直接粘贴执行');
     // 请求预览指向真实端点，而不是能力查询端点
     expect(card.textContent).toContain('/api/query');
     expect(card.textContent).not.toContain('/api/domains/current/capabilities/query');
@@ -773,6 +773,48 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
   it('#372 没有游离个体时不渲染该说明', () => {
     render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
     expect(container!.querySelector('.guide-isolated')).toBeNull();
+  });
+
+  it('SPARQL 参数按原文显示、不加 JSON 引号，并提供复制按钮', async () => {
+    const guide = withGuide({
+      ...GUIDE,
+      examples: [
+        ...GUIDE.examples,
+        {
+          id: 'T2-SPARQL',
+          question: '哪些依赖：登录测试？',
+          capability: 'query_sparql',
+          params: { sparql: 'SELECT ?s WHERE { ?s a ?t } LIMIT 5' },
+          answer_hint: 't_login_dev',
+          via: 'query_sparql',
+          endpoint: 'POST /api/query',
+          safe: true,
+          reason: null,
+        },
+      ],
+    });
+    render(<DomainGuidePage guide={guide} error={null} loading={false} onRetry={() => {}} />);
+
+    const card = container!.querySelector('#guide-example-T2-SPARQL')!;
+    const open = [...card.querySelectorAll('button')]
+      .find((button) => button.textContent === '照着做') as HTMLButtonElement;
+    act(() => open.click());
+
+    const code = card.querySelector('.guide-param-static') as HTMLElement;
+    expect(code.textContent).toBe('SELECT ?s WHERE { ?s a ?t } LIMIT 5');
+    expect(code.textContent!.startsWith('"')).toBe(false);
+    const copy = [...card.querySelectorAll('button')]
+      .find((button) => button.textContent === '复制') as HTMLButtonElement;
+    expect(copy).toBeTruthy();
+    expect(card.textContent).toContain('图谱工作台 → SPARQL 查询');
+
+    // 剪贴板内容必须是原文，粘贴到图谱页即可直接执行
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText }, configurable: true,
+    });
+    await act(async () => { copy.click(); });
+    expect(writeText).toHaveBeenCalledWith('SELECT ?s WHERE { ?s a ?t } LIMIT 5');
   });
 
   it('#378 业务派生为 0 时直说推不出新业务结论', () => {

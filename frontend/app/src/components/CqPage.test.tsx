@@ -717,6 +717,10 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-welcome')).toBeNull();
     const text = container!.textContent ?? '';
     expect(text.split('智能体负责生成和检查，你负责看证据、拍板').length - 1).toBe(1);
+    // 总说明单独一行，排在「怎么管这批题」之上
+    const intro = container!.querySelector('.cq-overview-intro')!;
+    const guide = container!.querySelector('.cq-swimlane')!;
+    expect(Boolean(intro.compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
 
     const casesTab = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
       .find((tab) => tab.textContent === '题目')!;

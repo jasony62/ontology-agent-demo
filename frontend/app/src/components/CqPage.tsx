@@ -792,6 +792,10 @@ export default function CqPage() {
 
       {tab === 'overview' ? (
         <>
+          {/* 总说明：单独一行，放在「怎么管这批题」之上 */}
+          <p className="cq-intro cq-overview-intro">
+            CQ 是把业务问题写成能被本体自动验证的题目集。智能体负责生成和检查，你负责看证据、拍板。
+          </p>
           <CqManagementGuide onNavigate={navigateToStep} />
           <CqOverviewView
             delivery={delivery}

@@ -40,9 +40,6 @@ export default function CqOverviewView({
 
   return (
     <section className="cq-overview" aria-label="CQ 概览">
-      <p className="cq-intro">
-        CQ 是把业务问题写成能被本体自动验证的题目集。智能体负责生成和检查，你负责看证据、拍板。
-      </p>
       <p className={`cq-overview-verdict${delivery?.ready ? ' is-ready' : ''}`}>{verdict}</p>
       <div className="cq-overview-actions">
         <button type="button" className="btn" onClick={primary}>{primaryLabel}</button>

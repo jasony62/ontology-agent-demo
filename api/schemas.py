@@ -160,6 +160,10 @@ class SparqlRequest(BaseModel):
     )
 
 
+class QueryVisualRequest(SparqlRequest):
+    """SPARQL 查询 + 图谱高亮（#374）：请求与 /api/query 相同。"""
+
+
 class IndividualsRequest(BaseModel):
     """指定类（短名）的个体列表。"""
 

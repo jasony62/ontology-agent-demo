@@ -25,6 +25,8 @@ interface Props {
   selectedId?: string | null;
   /** 需要就地表红的节点（blocker / required）；键为节点 id */
   issueLevels?: Record<string, 'blocker' | 'required'>;
+  /** #374：SPARQL 查询命中集合；不为空时点亮对应节点 / 边（不影响搜索与淡化） */
+  queryHighlight?: { nodes: string[]; edges: string[] } | null;
   /** 工具栏前置控件（视图模式切换等），与搜索 / 缩放同排以节省画布上方空间 */
   toolbarLeading?: ReactNode;
   /** 窄屏收进「更多」的操作（新建入口等）；宽度不足时由 CSS 显示菜单 */
@@ -137,6 +139,26 @@ const stylesheet: StylesheetStyle[] = [
       'border-color': '#ff9800',
       'border-opacity': 0.95,
       'z-index': 999,
+    },
+  },
+  {
+    // #374：查询命中——用独立类，不复用搜索的 `highlight`，也不碰 `dim`
+    selector: 'node.query-hit',
+    style: {
+      'border-width': 4,
+      'border-color': '#0b57a0',
+      'border-opacity': 1,
+      'z-index': 999,
+    },
+  },
+  {
+    selector: 'edge.query-hit',
+    style: {
+      'line-color': '#0b57a0',
+      'target-arrow-color': '#0b57a0',
+      'width': 4,
+      'z-index': 998,
+      label: 'data(label)',
     },
   },
   {
@@ -297,7 +319,8 @@ function elementsFromGraphData(
 }
 
 export default function GraphView({
-  viewMode, asserted, inferred, groups, focus, selectedId, issueLevels, toolbarLeading, toolbarOverflow, onSelect,
+  viewMode, asserted, inferred, groups, focus, selectedId, issueLevels,
+  queryHighlight, toolbarLeading, toolbarOverflow, onSelect,
 }: Props) {
   const groupView = useMemo(() => buildGroupView(groups ?? []), [groups]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -564,6 +587,18 @@ export default function GraphView({
     if (!cy) return;
     applyGraphDim(cy, selectedId ?? null, focus ?? null);
   }, [focus, selectedId, viewMode, asserted, inferred, groupView]);
+
+  // #374：查询命中独立类 `query-hit`（不碰搜索的 highlight / 聚焦的 dim）
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.elements().removeClass('query-hit');
+    if (!queryHighlight) return;
+    const nodeIds = new Set(queryHighlight.nodes);
+    const edgeIds = new Set(queryHighlight.edges);
+    cy.nodes().filter((node) => nodeIds.has(node.id())).addClass('query-hit');
+    cy.edges().filter((edge) => edgeIds.has(edge.id())).addClass('query-hit');
+  }, [queryHighlight, viewMode, asserted, inferred, groupView]);
 
   // #23：节点搜索/聚焦——输入实体名，匹配节点高亮并居中
   useEffect(() => {

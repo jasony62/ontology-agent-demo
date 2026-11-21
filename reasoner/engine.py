@@ -195,7 +195,48 @@ def _consume_query(g, sparql: str) -> list[dict] | dict:
     return _query_payload(g.query(sparql))
 
 
-def _run_query_timed(g, sparql: str, first_ms, total_ms) -> list[dict] | dict:
+def _resolve_timeouts(first_ms, total_ms) -> tuple:
+    """两段式超时口径：显式参数与 env 同为「非正数 = 不启用」。
+
+    first_ms=0 若当成 0ms 会立刻超时，与 env 里 0 表示关闭自相矛盾（见 query_sparql）。
+    """
+    first = first_ms if first_ms is not None else _env_timeout_ms(
+        "ONTOLOGY_SPARQL_FIRST_RESULT_TIMEOUT_MS")
+    total = total_ms if total_ms is not None else _env_timeout_ms(
+        "ONTOLOGY_SPARQL_TOTAL_TIMEOUT_MS")
+    first = first if first is not None and first > 0 else None
+    total = total if total is not None and total > 0 else None
+    return first, total
+
+
+def _query_payload_visual(result) -> tuple:
+    """SELECT → (对外行列表, 每行的原始 term)；ASK → ({"askAnswer": bool}, None)。
+
+    图谱高亮必须看**原始 term**：`_query_payload` 已把 IRI 和字面量都变成字符串，
+    再猜类型会把字面量误当成节点（#374）。
+    """
+    if getattr(result, "type", None) == "ASK":
+        return {"askAnswer": bool(result.askAnswer)}, None
+    rows: list[dict] = []
+    terms: list[dict] = []
+    for row in result:
+        plain_row: dict = {}
+        term_row: dict = {}
+        for var in row.asdict():
+            value = row[var]
+            plain_row[var] = local(value) if isinstance(value, URIRef) else str(value)
+            term_row[var] = value
+        rows.append(plain_row)
+        terms.append(term_row)
+    return rows, terms
+
+
+def _consume_query_visual(g, sparql: str) -> tuple:
+    """带超时执行时使用的消费函数（#374）。"""
+    return _query_payload_visual(g.query(sparql))
+
+
+def _run_query_timed(g, sparql: str, first_ms, total_ms, consume=_consume_query):
     """带时限执行：后台线程跑查询，主线程按两段时限放弃（结果不回灌）。
 
     demo 的查询为一次性物化整页结果（非流式）：first_ms 作用于「整批结果
@@ -208,7 +249,7 @@ def _run_query_timed(g, sparql: str, first_ms, total_ms) -> list[dict] | dict:
 
     def _worker():
         try:
-            holder["rows"] = _consume_query(g, sparql)
+            holder["rows"] = consume(g, sparql)
         except BaseException as exc:  # 后台异常回传主线程原样抛出
             holder["error"] = exc
         finally:
@@ -672,17 +713,90 @@ class OntologyEngine:
         两段均未启用时直通原执行路径（零线程开销、逐字节兼容）。
         超时抛 SparqlTimeoutError（kind/limit_ms），单次超时仅放弃该查询。
         """
-        first = first_ms if first_ms is not None else _env_timeout_ms(
-            "ONTOLOGY_SPARQL_FIRST_RESULT_TIMEOUT_MS")
-        total = total_ms if total_ms is not None else _env_timeout_ms(
-            "ONTOLOGY_SPARQL_TOTAL_TIMEOUT_MS")
-        # 显式参数与 env 同一口径：非正数 = 不启用（否则 first_ms=0 会立刻超时，
-        # 与 env 里 0 表示关闭自相矛盾）。
-        first = first if first is not None and first > 0 else None
-        total = total if total is not None and total > 0 else None
+        first, total = _resolve_timeouts(first_ms, total_ms)
         if first is None and total is None:
             return _consume_query(self.g, sparql)
         return _run_query_timed(self.g, sparql, first, total)
+
+    @staticmethod
+    def _graph_edge_label(predicate) -> str:
+        """边 id 里的谓词段：结构边用固定名，业务边用短名（与 _graph_data 一致）。"""
+        if predicate == RDF.type:
+            return "rdf:type"
+        if predicate == RDFS.subClassOf:
+            return "subClassOf"
+        return local(predicate)
+
+    def query_visual(self, sparql: str) -> dict:
+        """执行 SPARQL，并把结果映射成图上的命中节点 / 边（#374）。
+
+        返回：`results`（同 /api/query）、`nodes` / `edges`（用于高亮的 id）、
+        `row_count`、`unmapped`（字面量等无法映射到图的值）。
+
+        - 只用**原始 term** 判断类型：字面量 / 空节点不参与高亮；
+        - id 必须同时存在于当前断言图的节点 / 边集合里，避免图外的短名点亮；
+        - SPARQL 只返回投影变量：谓词写成常量、或 s/p/o 没全投影时拼不出边，
+          这是查询语义决定的，不是丢结果（前端会提示）。
+        """
+        first, total = _resolve_timeouts(None, None)
+        if first is None and total is None:
+            payload = _consume_query_visual(self.g, sparql)
+        else:
+            payload = _run_query_timed(
+                self.g, sparql, first, total, consume=_consume_query_visual)
+        rows, terms = payload
+        if terms is None:  # ASK：没有可高亮的绑定
+            return {
+                "askAnswer": rows.get("askAnswer"),
+                "results": [],
+                "nodes": [],
+                "edges": [],
+                "row_count": 0,
+                "unmapped": [],
+            }
+
+        data = self._graph_data(self.raw)
+        node_ids = {node["id"] for node in data["nodes"]}
+        edge_ids = {edge["id"] for edge in data["edges"]}
+
+        nodes: set[str] = set()
+        edges: set[str] = set()
+        unmapped: list[dict] = []
+        seen_unmapped: set[tuple[str, str]] = set()
+        for term_row in terms:
+            iri_vars: list[tuple[str, URIRef]] = []
+            for var, value in term_row.items():
+                if isinstance(value, URIRef):
+                    name = local(value)
+                    iri_vars.append((var, value))
+                    if name in node_ids:
+                        nodes.add(name)
+                else:
+                    reason = "blank" if isinstance(value, BNode) else "literal"
+                    key = (var, str(value))
+                    if key not in seen_unmapped:
+                        seen_unmapped.add(key)
+                        unmapped.append({"var": var, "value": str(value), "reason": reason})
+            # 行内任意 s/p/o 三元组合，只要该边在图上就算命中（变量名不限）。
+            for i in range(len(iri_vars)):
+                for j in range(len(iri_vars)):
+                    for k in range(len(iri_vars)):
+                        if len({i, j, k}) < 3:
+                            continue
+                        edge_id = (
+                            f"{local(iri_vars[i][1])}--{self._graph_edge_label(iri_vars[j][1])}"
+                            f"--{local(iri_vars[k][1])}"
+                        )
+                        if edge_id in edge_ids:
+                            edges.add(edge_id)
+        return {
+            "askAnswer": None,
+            "results": rows,
+            "nodes": sorted(nodes),
+            "edges": sorted(edges),
+            "row_count": len(rows),
+            "unmapped": unmapped,
+        }
 
     def individuals(self, class_name: str) -> list[str]:
         """指定类（短名）及其子类的全部个体短名。"""

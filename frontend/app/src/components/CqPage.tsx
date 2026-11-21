@@ -633,13 +633,6 @@ export default function CqPage() {
               CQ 是把业务问题写成能被本体自动验证的题目集。智能体负责生成和检查，你负责看证据、拍板。
             </p>
           )}
-          <p className="guide-muted">
-            {tab === 'overview'
-              ? '先看一句结论与三个待办；要管理题库或看完整漏斗，点「题目」。'
-              : tab === 'cases'
-                ? '本页：看每题能不能被本体验证，并处理需要你拍板的事。'
-                : '每题走到生命周期哪一段、需要你做什么；题卡内可下钻完整轨迹。'}
-          </p>
         </div>
         <div className="cq-toolbar-actions">
           <div className="cq-tool-group">

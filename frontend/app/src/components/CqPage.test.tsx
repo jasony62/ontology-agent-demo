@@ -723,7 +723,8 @@ describe('CQ 集页（#151 / #203）', () => {
     await act(async () => { casesTab.click(); });
     await flush();
     expect(container!.textContent).not.toContain('智能体负责生成和检查，你负责看证据、拍板');
-    expect(container!.textContent).toContain('本页：看每题能不能被本体验证');
+    // 页头不再挂按视图的说明句，只留面包屑与工具
+    expect(container!.textContent).not.toContain('本页：看每题能不能被本体验证');
   });
 
   it('来源未记录时判定条与 CQM 都带可信度标注（#295）', async () => {

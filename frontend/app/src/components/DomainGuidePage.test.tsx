@@ -434,7 +434,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     // MCP 启动命令退回默认领域时，页面要讲清原因
     expect(text).toContain('MCP 工具在启动时按领域注册');
     // 业务派生为 0 是一句明确结论，不是让用户自己猜
-    expect(text).toContain('业务派生为 0：这份本体推不出新的业务结论');
+    expect(text).toContain('业务派生 0（推不出新的业务结论）');
   });
 
   it('只读 GET 示例：请求走查询串，curl 预览不带 -X / -d（#119）', async () => {
@@ -785,10 +785,23 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     });
     render(<DomainGuidePage guide={guide} error={null} loading={false} onRetry={() => {}} />);
 
+    const cell = [...container!.querySelectorAll('.guide-status-facts > div')]
+      .find((node) => node.textContent?.includes('业务派生'))!;
+    // 数字是独立指标，不把长句塞进指标区
+    expect(cell.querySelector('b')?.textContent).toBe('0');
     const facts = container!.querySelector('.guide-status-facts')!.textContent ?? '';
-    expect(facts).toContain('业务派生 0 条（推不出新的业务结论）');
-    // 与 04 区推理构成说明同口径，不出现「0 条」与「业务派生为 0」互相矛盾
-    expect(container!.textContent).toContain('业务派生 0（业务派生为 0');
+    expect(facts).not.toContain('推不出新的业务结论');
+
+    // 解释走气泡：点开仍能看到「长期为 0」的说明
+    const mark = cell.querySelector('.term-mark') as HTMLElement;
+    act(() => mark.click());
+    // 一句话默认态先给「是什么」；细说点「完整说明」再展开
+    const tip = document.querySelector('.term-tooltip') as HTMLElement;
+    const more = [...tip.querySelectorAll('button')].find((b) => b.textContent === '完整说明')!;
+    act(() => more.click());
+    expect(document.querySelector('.term-tooltip')!.textContent).toContain('长期为 0');
+    // 04 区仍给同口径的结论
+    expect(container!.textContent).toContain('业务派生 0（推不出新的业务结论）');
   });
 
   it('#373 现状卡的「业务派生」可见、可点开，展开后有完整说明', () => {
@@ -797,7 +810,9 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     const mark = [...container!.querySelectorAll('.term-mark')]
       .find((node) => node.textContent === '业务派生') as HTMLElement;
     expect(mark).toBeTruthy();
-    expect(container!.querySelector('.guide-status-facts')!.textContent).toContain('业务派生 3 条');
+    const derivedCell = [...container!.querySelectorAll('.guide-status-facts > div')]
+      .find((node) => node.textContent?.includes('业务派生'))!;
+    expect(derivedCell.querySelector('b')?.textContent).toBe('3');
     // 不再只有原生 title 提示
     expect(container!.querySelector('.guide-status-facts [title="推理明细口径（含自反 / 元层），与图谱概览里「推出来的」物化三元组统计可能相差数十条"]')).toBeNull();
 

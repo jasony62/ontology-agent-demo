@@ -574,15 +574,6 @@ function ExamplePanel({
   );
 }
 
-/** #378：现状卡的「业务派生」要带条数；为 0 时说清结论，与 04 区口径一致。 */
-function businessDerivedLabel(runtime: GuideRuntime): string {
-  const business = runtime.inference?.business;
-  if (business === undefined) return '业务派生';
-  return business === 0
-    ? '业务派生 0 条（推不出新的业务结论）'
-    : `业务派生 ${business} 条`;
-}
-
 export default function DomainGuidePage({
   guide, error, loading, onRetry, onImport, onReloadDomain, onSwitchDomain, mcpSync,
 }: Props) {
@@ -908,7 +899,7 @@ export default function DomainGuidePage({
       resetKey={`${guide.domain}:${guide.loaded_at}:${guide.guide_version}`}
     >
     <div className="domain-guide">
-      {/* #137 R2：现状卡 = 文件名 + 三个可扫读数字；不复述 display_name / summary / 内部状态 */}
+      {/* #137 R2：现状卡 = 文件名 + 可扫读指标；不复述 display_name / summary / 内部状态 */}
       <div className="guide-head guide-status">
         <div className="guide-status-id">
           <span className="guide-status-label">当前本体</span>
@@ -919,14 +910,14 @@ export default function DomainGuidePage({
         <div className="guide-status-facts">
           <div><b>{businessClasses}</b><span><TermText text="业务类" scope="overview" site="status-business" /></span></div>
           <div><b>{runtime.counts.individuals}</b><span><TermText text="个体" scope="overview" site="status-individuals" /></span></div>
-          <div><b>{runtime.counts.inferred}</b><span><TermText text="推理新增" scope="overview" site="status-inferred" /><span className="guide-unit">
-                      {/* #378：只写术语名看不出构成，这里补条数；为 0 时直说推不出新业务结论 */}
-                      <TermText
-                        text={businessDerivedLabel(runtime)}
-                        scope="overview"
-                        site="status-business-derived"
-                      />
-                    </span></span></div>
+          <div><b>{runtime.counts.inferred}</b><span><TermText text="推理新增" scope="overview" site="status-inferred" /></span></div>
+          {/* #378 反馈：业务派生是一个独立指标，数字与其它指标并排；解释交给术语气泡 */}
+          {runtime.inference && (
+            <div>
+              <b>{runtime.inference.business}</b>
+              <span><TermText text="业务派生" scope="overview" site="status-business-derived" /></span>
+            </div>
+          )}
         </div>
         {loading && <span className="guide-muted">刷新中…</span>}
       </div>
@@ -1294,7 +1285,7 @@ export default function DomainGuidePage({
                 {runtime.inference && (
                   <div className="guide-muted">
                     <TermText
-                      text={`推理新增构成：自反 ${runtime.inference.reflexive} · 元层 ${runtime.inference.meta} · 业务派生 ${runtime.inference.business}${runtime.inference.business === 0 ? '（业务派生为 0：这份本体推不出新的业务结论）' : ''}`}
+                      text={`推理新增构成：自反 ${runtime.inference.reflexive} · 元层 ${runtime.inference.meta} · 业务派生 ${runtime.inference.business}${runtime.inference.business === 0 ? '（推不出新的业务结论）' : ''}`}
                       scope="trust"
                       site="inference"
                     />

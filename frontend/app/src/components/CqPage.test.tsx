@@ -1879,6 +1879,17 @@ describe('CQ 三视图（#389）', () => {
     expect(container!.querySelector('.cq-funnel')).not.toBeNull();
   });
 
+  it('题集名为空时，题目视图不渲染「当前题集」这一行', async () => {
+    stubFetch({ ...SET, suite: '' });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelector('.cq-meta')).toBeNull();
+    expect(container!.textContent).not.toContain('未命名题集');
+    // 题库本身仍在，只是不显示无用的身份行
+    expect(container!.querySelector('.cq-funnel')).not.toBeNull();
+  });
+
   it('四步演示来自真实执行，弹窗内四步齐全且标只读', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));

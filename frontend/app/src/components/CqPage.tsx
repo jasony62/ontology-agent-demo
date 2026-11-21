@@ -884,10 +884,13 @@ export default function CqPage() {
                   </span>
                 </div>
               )}
-              {/* #389 2c：题目视图只留极简题集名（写操作前确认身份）；完整身份在概览出现一次 */}
-              <p className="cq-meta guide-muted">
-                当前题集：<b>{suiteDisplay}</b>
-              </p>
+              {/* #389 2c：题目视图只留极简题集名（写操作前确认身份）；完整身份在概览出现一次。
+                  名称为空时不渲染这一行，避免「当前题集：未命名题集」这种无用信息。 */}
+              {data?.suite && (
+                <p className="cq-meta guide-muted">
+                  当前题集：<b>{data.suite}</b>
+                </p>
+              )}
               <details className="cq-quality-detail">
                 <summary>质量明细</summary>
                 {!lifecycleSummary && loading && (

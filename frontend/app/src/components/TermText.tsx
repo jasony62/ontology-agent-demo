@@ -128,6 +128,9 @@ function TermMark({ id, entry, text }: { id: string; entry: GlossaryEntry; text:
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => ctx?.setOpenId(next), delay);
   };
+  // #378：鼠标从词条移进气泡要经过几像素空隙，期间会排队一次关闭；
+  // 进入气泡时必须取消，否则「完整说明」永远点不到。
+  const cancelClose = () => window.clearTimeout(timer.current);
 
   return (
     <>
@@ -172,6 +175,7 @@ function TermMark({ id, entry, text }: { id: string; entry: GlossaryEntry; text:
           id={`tip-${id}`}
           anchor={ref}
           entry={entry}
+          onEnter={cancelClose}
           onLeave={() => { if (!pinned.current) schedule(null, 200); }}
         />
       )}
@@ -180,11 +184,12 @@ function TermMark({ id, entry, text }: { id: string; entry: GlossaryEntry; text:
 }
 
 function TermTooltip({
-  id, anchor, entry, onLeave,
+  id, anchor, entry, onEnter, onLeave,
 }: {
   id: string;
   anchor: React.RefObject<HTMLSpanElement | null>;
   entry: GlossaryEntry;
+  onEnter: () => void;
   onLeave: () => void;
 }) {
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -200,8 +205,8 @@ function TermTooltip({
     const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
     const tooltip = document.getElementById(id);
     const height = tooltip?.getBoundingClientRect().height ?? 96;
-    let top = rect.top - height - 8;
-    if (top < 8) top = Math.max(8, Math.min(window.innerHeight - height - 8, rect.bottom + 8));
+    let top = rect.top - height - 4;
+    if (top < 8) top = Math.max(8, Math.min(window.innerHeight - height - 8, rect.bottom + 4));
     setPos({ top, left, width });
   }, [anchor, id, entry, expanded]);
 
@@ -210,6 +215,7 @@ function TermTooltip({
       id={id}
       role="tooltip"
       className="term-tooltip"
+      onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       style={{
         top: pos?.top ?? 0,

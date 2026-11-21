@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GlossaryProvider, TermText } from './TermText';
 
 /** React 19 的 act 环境标记 */
@@ -103,5 +103,41 @@ describe('术语注解层（#138）', () => {
     expect(expanded.textContent).toContain('举个例子');
     expect(expanded.textContent).toContain('别和它混');
     expect(expanded.textContent).toContain('北京');
+  });
+
+  it('#378 鼠标从词条移入气泡会取消关闭，「完整说明」点得到', () => {
+    vi.useFakeTimers();
+    try {
+      render(<TermText text="业务派生" scope="overview" site="hover" />);
+      const mark = marks()[0] as HTMLElement;
+      act(() => mark.focus());
+      act(() => { vi.advanceTimersByTime(1); });
+      const tooltip = document.querySelector('.term-tooltip') as HTMLElement;
+      expect(tooltip).toBeTruthy();
+
+      // 离开词条：排队一次 200ms 后关闭（中间隔着几像素空隙）
+      act(() => {
+        mark.dispatchEvent(new MouseEvent('mouseout', {
+          bubbles: true, relatedTarget: document.body,
+        }));
+      });
+      act(() => { vi.advanceTimersByTime(100); });
+
+      // 进入气泡：必须取消待执行的关闭
+      act(() => {
+        tooltip.dispatchEvent(new MouseEvent('mouseover', {
+          bubbles: true, relatedTarget: document.body,
+        }));
+      });
+      act(() => { vi.advanceTimersByTime(400); });
+      expect(document.querySelector('.term-tooltip')).toBeTruthy();
+
+      const more = [...(document.querySelector('.term-tooltip') as HTMLElement)
+        .querySelectorAll('button')].find((button) => button.textContent === '完整说明')!;
+      act(() => more.click());
+      expect(document.querySelector('.term-tooltip')!.textContent).toContain('为什么要有它');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -126,6 +126,77 @@ export default function App() {
     }
   };
 
+  // #379：面板挂在工具栏下方；命中提示收进面板，不再单独占行
+  const sparqlPanel = sparqlOpen ? (
+    <div className="graph-sparql-panel">
+      <textarea
+        className="graph-sparql-input"
+        rows={3}
+        value={sparqlText}
+        placeholder="SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 50"
+        onChange={(event) => setSparqlText(event.target.value)}
+      />
+      <div className="graph-sparql-actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={sparqlBusy}
+          onClick={() => void runSparqlQuery()}
+        >
+          {sparqlBusy ? '查询中…' : '执行'}
+        </button>
+        <span className="guide-muted">命中项保持原色，其余淡化；查询文本由你输入。</span>
+        {sparqlResult && (
+          <span className="graph-sparql-hit">
+            命中 {sparqlResult.nodes.length} 个节点 · {sparqlResult.edges.length} 条边
+            <button type="button" className="btn ghost" onClick={() => setSparqlResult(null)}>
+              清除高亮
+            </button>
+          </span>
+        )}
+      </div>
+      {sparqlError && <div className="element-readonly-note">{sparqlError}</div>}
+      {sparqlResult && (
+        <div className="graph-sparql-result">
+          {sparqlResult.askAnswer != null ? (
+            <p>ASK 结果：<b>{String(sparqlResult.askAnswer)}</b></p>
+          ) : (
+            <>
+              <p className="guide-muted">
+                共 {sparqlResult.row_count} 行；命中 {sparqlResult.nodes.length} 个节点、{sparqlResult.edges.length} 条边。
+              </p>
+              {sparqlResult.nodes.length > 0 && sparqlResult.edges.length === 0 && (
+                <p className="guide-muted">
+                  只命中节点：SPARQL 只返回投影变量，谓词写成常量或 s/p/o 未全投影时拼不出连线，这是预期行为。
+                </p>
+              )}
+              {sparqlResult.results.length > 0 && (
+                <div className="graph-sparql-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        {Object.keys(sparqlResult.results[0]).map((key) => <th key={key}>{key}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sparqlResult.results.slice(0, 50).map((row, index) => (
+                        <tr key={index}>
+                          {Object.keys(sparqlResult.results[0]).map((key) => (
+                            <td key={key}>{String(row[key] ?? '')}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   // #20：本体模式（default=默认本体/generic=通用模式），存 store 以便导入同步后即时刷新
   const ontologyMode = useAppStore((s) => s.ontologyMode);
   const setOntologyMode = useAppStore((s) => s.setOntologyMode);
@@ -559,88 +630,6 @@ export default function App() {
                 <div className="panel workspace-graph">
                   <div className="graph-row">
                     <div className="graph-col">
-                      {/* #374：查询与图谱同屏——结果命中直接点亮节点 / 边 */}
-                      <div className="graph-sparql">
-                        <div className="graph-sparql-bar">
-                          <button
-                            type="button"
-                            className="btn secondary"
-                            aria-expanded={sparqlOpen}
-                            onClick={() => setSparqlOpen((open) => !open)}
-                          >
-                            SPARQL 查询
-                          </button>
-                          {sparqlResult && (
-                            <span className="graph-sparql-hit">
-                              命中 {sparqlResult.nodes.length} 个节点 · {sparqlResult.edges.length} 条边
-                              <button type="button" className="btn ghost" onClick={() => setSparqlResult(null)}>
-                                清除高亮
-                              </button>
-                            </span>
-                          )}
-                        </div>
-                        {sparqlOpen && (
-                          <div className="graph-sparql-panel">
-                            <textarea
-                              className="graph-sparql-input"
-                              rows={3}
-                              value={sparqlText}
-                              placeholder="SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 50"
-                              onChange={(event) => setSparqlText(event.target.value)}
-                            />
-                            <div className="graph-sparql-actions">
-                              <button
-                                type="button"
-                                className="btn"
-                                disabled={sparqlBusy}
-                                onClick={() => void runSparqlQuery()}
-                              >
-                                {sparqlBusy ? '查询中…' : '执行并高亮'}
-                              </button>
-                              <span className="guide-muted">只点亮本次查询命中的节点与连线；查询文本由你输入。</span>
-                            </div>
-                            {sparqlError && <div className="element-readonly-note">{sparqlError}</div>}
-                            {sparqlResult && (
-                              <div className="graph-sparql-result">
-                                {sparqlResult.askAnswer != null ? (
-                                  <p>ASK 结果：<b>{String(sparqlResult.askAnswer)}</b></p>
-                                ) : (
-                                  <>
-                                    <p className="guide-muted">
-                                      共 {sparqlResult.row_count} 行；点亮 {sparqlResult.nodes.length} 个节点、{sparqlResult.edges.length} 条边。
-                                    </p>
-                                    {sparqlResult.nodes.length > 0 && sparqlResult.edges.length === 0 && (
-                                      <p className="guide-muted">
-                                        只点亮了节点：SPARQL 只返回投影变量，谓词写成常量或 s/p/o 未全投影时拼不出连线，这是预期行为。
-                                      </p>
-                                    )}
-                                    {sparqlResult.results.length > 0 && (
-                                      <div className="graph-sparql-table">
-                                        <table>
-                                          <thead>
-                                            <tr>
-                                              {Object.keys(sparqlResult.results[0]).map((key) => <th key={key}>{key}</th>)}
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {sparqlResult.results.slice(0, 50).map((row, index) => (
-                                              <tr key={index}>
-                                                {Object.keys(sparqlResult.results[0]).map((key) => (
-                                                  <td key={key}>{String(row[key] ?? '')}</td>
-                                                ))}
-                                              </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
                       <GraphErrorBoundary>
                         <GraphView
                           viewMode={viewMode}
@@ -654,6 +643,16 @@ export default function App() {
                           toolbarLeading={
                             <>
                               <ViewModeToggle />
+                              {/* #379：查询入口并入工具栏行，不再独占画布上方一整行 */}
+                              <button
+                                type="button"
+                                className="btn secondary"
+                                aria-expanded={sparqlOpen}
+                                onClick={() => setSparqlOpen((open) => !open)}
+                                title="执行 SPARQL 并淡化未命中的节点 / 连线"
+                              >
+                                SPARQL 查询{sparqlResult ? ' · 已高亮' : ''}
+                              </button>
                               {/* 恢复按钮与切换器并列但在组外：三格是互斥视图，不能混进第四个按钮 */}
                               <NoticeRestoreButton />
                               {/* 画布不承载写入：新建与修改统一走右侧在线编辑（唯一保存出口） */}
@@ -665,10 +664,21 @@ export default function App() {
                             </>
                           }
                           toolbarOverflow={
-                            <button type="button" className="btn secondary" onClick={() => void openEditor()}>
-                              编辑本体
-                            </button>
+                            <>
+                              <button type="button" className="btn secondary" onClick={() => void openEditor()}>
+                                编辑本体
+                              </button>
+                              <button
+                                type="button"
+                                className="btn secondary"
+                                aria-expanded={sparqlOpen}
+                                onClick={() => setSparqlOpen((open) => !open)}
+                              >
+                                SPARQL 查询
+                              </button>
+                            </>
                           }
+                          belowToolbar={sparqlPanel}
                           onSelect={(id) => setSelectedId(id)}
                         />
                       </GraphErrorBoundary>

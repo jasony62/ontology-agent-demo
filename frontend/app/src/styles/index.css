@@ -2526,15 +2526,15 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 /* ============================================================
    #374：图谱页 SPARQL 查询与命中高亮
    ============================================================ */
-.graph-sparql { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
-.graph-sparql-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .graph-sparql-hit {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: var(--fs-sm2); color: var(--heading);
 }
+/* #379：面板挂在工具栏下方，不再单独占一行 */
 .graph-sparql-panel {
   display: flex; flex-direction: column; gap: 6px;
-  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius);
+  margin: 0 0 6px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--panel-2);
 }
 .graph-sparql-input {

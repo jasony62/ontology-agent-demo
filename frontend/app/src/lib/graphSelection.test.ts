@@ -78,3 +78,46 @@ describe('applyGraphDim：选中节点的邻域高亮', () => {
     expect(cy.elements().filter((el) => el.hasClass('dim')).length).toBe(0);
   });
 });
+
+describe('applyGraphDim：SPARQL 命中淡化（#379）', () => {
+  it('命中节点保持原色，其余淡化；短名大小写不同也能对上', () => {
+    const cy = makeGraph();
+    // 后端可能返回 KnowledgeBase，草图重建后的节点 id 是 knowledgebase
+    applyGraphDim(cy, null, null, { nodes: ['a'], edges: [] });
+
+    expect(isDim(cy, 'A')).toBe(false);
+    for (const id of ['B', 'C', 'D', 'ab', 'bc', 'cd']) {
+      expect(isDim(cy, id), `${id} 应淡化`).toBe(true);
+    }
+  });
+
+  it('命中边时连同两端保留，其余淡化', () => {
+    const cy = makeGraph();
+    applyGraphDim(cy, null, null, { nodes: [], edges: ['AB'] });
+
+    for (const id of ['A', 'B', 'ab']) {
+      expect(isDim(cy, id), `${id} 应保持原色`).toBe(false);
+    }
+    for (const id of ['C', 'D', 'bc', 'cd']) {
+      expect(isDim(cy, id), `${id} 应淡化`).toBe(true);
+    }
+  });
+
+  it('选中节点优先于查询命中，避免两处同时写 dim', () => {
+    const cy = makeGraph();
+    applyGraphDim(cy, 'B', null, { nodes: ['A'], edges: [] });
+
+    // 选中 B：只保留 B + 直连邻域，命中集合不再生效
+    for (const id of ['B', 'A', 'C', 'ab', 'bc']) {
+      expect(isDim(cy, id), `${id} 应保持原色`).toBe(false);
+    }
+    expect(isDim(cy, 'D')).toBe(true);
+  });
+
+  it('清除命中后全部恢复', () => {
+    const cy = makeGraph();
+    applyGraphDim(cy, null, null, { nodes: ['A'], edges: [] });
+    applyGraphDim(cy, null, null, null);
+    expect(cy.elements().filter((el) => el.hasClass('dim')).length).toBe(0);
+  });
+});

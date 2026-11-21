@@ -743,6 +743,38 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(container!.querySelector('.guide-pill')).toBeNull();
   });
 
+  it('#372 现状卡标出游离个体，展开可见短名与类型', () => {
+    const guide = withGuide({
+      ...GUIDE,
+      runtime: {
+        ...GUIDE.runtime,
+        isolated_individuals: {
+          count: 2,
+          individuals: [
+            { name: 'respHR', label: '人事责任', types: ['Responsibility'] },
+            { name: 'respFinance', label: '财务责任', types: [] },
+          ],
+        },
+      },
+    });
+    render(<DomainGuidePage guide={guide} error={null} loading={false} onRetry={() => {}} />);
+
+    const block = container!.querySelector('.guide-isolated') as HTMLDetailsElement;
+    expect(block).toBeTruthy();
+    expect(block.querySelector('summary')?.textContent).toContain('2 个游离个体');
+    expect(block.textContent).toContain('不是漏数');
+    const items = [...block.querySelectorAll('.guide-isolated-list li')];
+    expect(items).toHaveLength(2);
+    expect(items[0].textContent).toContain('respHR');
+    expect(items[0].textContent).toContain('Responsibility');
+    expect(items[1].textContent).toContain('respFinance');
+  });
+
+  it('#372 没有游离个体时不渲染该说明', () => {
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
+    expect(container!.querySelector('.guide-isolated')).toBeNull();
+  });
+
   it('#137 首次进来点「带我试一题」会真发一次只读请求，跑过即消失', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

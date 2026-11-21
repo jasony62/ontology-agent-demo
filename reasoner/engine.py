@@ -421,6 +421,34 @@ class OntologyEngine:
     def individual_count(self) -> int:
         return len(self.individual_iris())
 
+    def isolated_individuals(self) -> list[dict]:
+        """断言图里没有任何连线的业务个体（#372）。
+
+        定义与图谱一致：宽口径个体中，**在断言图上没有任何边**者——没有指向其他
+        资源的关系，也没有被别人指向；只有文字描述与自反 / 元层关系。图谱会把
+        它们画成孤立点，说明页据此解释「个体里有多少个游离个体」。
+
+        与 `individual_iris()` 共用同一份口径，保证「图谱节点数 / 领域页个体数 /
+        游离个体数」三者同源。
+        """
+        data = self._graph_data(self.raw)
+        linked: set[str] = set()
+        for edge in data["edges"]:
+            linked.add(edge["source"])
+            linked.add(edge["target"])
+        return sorted(
+            (
+                {
+                    "name": node["id"],
+                    "label": node["label"],
+                    "types": node["types"],
+                }
+                for node in data["nodes"]
+                if node["type"] == "individual" and node["id"] not in linked
+            ),
+            key=lambda item: item["name"],
+        )
+
     def inference_breakdown(self) -> dict:
         """推理新增三元组的构成：自反 / 元层 / 业务（#121）。
 
@@ -784,13 +812,15 @@ class OntologyEngine:
         edge_seen = set()
 
         if is_asserted:
-            # 1) 预建节点：全部类 + 全部具名个体（即使没有任何业务边也一定出现）
+            # 1) 预建节点：全部类 + 全部业务个体（即使没有任何业务边也一定出现）。
+            #    个体口径用 individual_iris()（与说明页 / infer 同一份，见 #121），
+            #    否则「只有字面量、没有对象关系」的个体会在图里消失，图谱个体系
+            #    与领域页个数对不上（#372）。
             for s in graph.subjects(RDF.type, OWL.Class):
                 if isinstance(s, URIRef):
                     ensure_node(s)
-            for s in graph.subjects(RDF.type, OWL.NamedIndividual):
-                if isinstance(s, URIRef):
-                    ensure_node(s)
+            for iri in self.individual_iris():
+                ensure_node(iri)
 
             # 2) 结构边：类层级（subClassOf）+ 实例归类（rdf:type→类）。
             #    端点由本循环 ensure_node 顺带建出，不再单独兜底遍历全图——

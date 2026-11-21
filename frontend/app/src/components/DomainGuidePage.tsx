@@ -920,6 +920,29 @@ export default function DomainGuidePage({
         {loading && <span className="guide-muted">刷新中…</span>}
       </div>
 
+      {/* #372：游离个体与图谱孤立点同源；只解释形态，不编造关系 */}
+      {runtime.isolated_individuals && runtime.isolated_individuals.count > 0 && (
+        <details className="guide-isolated">
+          <summary>
+            个体里有 {runtime.isolated_individuals.count} 个游离个体
+            <span className="guide-muted">（只有文字描述、没有对象关系，图谱上是孤立点）</span>
+          </summary>
+          <p className="guide-muted">
+            这不是漏数：它们在文件里本来就没有指向其他资源的关系，所以画不出连线。
+          </p>
+          <ul className="guide-isolated-list">
+            {runtime.isolated_individuals.individuals.map((item) => (
+              <li key={item.name}>
+                <code>{item.name}</code>
+                {item.types.length > 0 && (
+                  <span className="guide-muted">{item.types.join(' / ')}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       {/* #137 R4：例外横幅只写后果，generic / imported 按优先级只取一条 */}
       {generic ? (
         <div className="mode-banner">

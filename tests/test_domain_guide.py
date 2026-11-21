@@ -340,6 +340,17 @@ def test_guide_endpoint_returns_one_complete_response():
     assert "triples" in body["runtime"]["counts"]
     assert isinstance(body["runtime"]["individuals"], list)
 
+    # #372：图谱个体节点数与领域页个体数同口径；游离个体是其中没有连线的那些。
+    iso = body["runtime"]["isolated_individuals"]
+    assert iso["count"] == len(iso["individuals"])
+    assert all(item["name"] in body["runtime"]["individuals"] for item in iso["individuals"])
+    graph_nodes = {
+        node["id"]
+        for node in M.ENGINE.materialized()["asserted"]["nodes"]
+        if node["type"] == "individual"
+    }
+    assert len(graph_nodes) == body["runtime"]["counts"]["individuals"]
+
     # #121 R1/R2：同一响应里推理新增只有一个口径；类计数与 /api/classes 一致
     counts = body["runtime"]["counts"]
     inference = body["runtime"]["inference"]

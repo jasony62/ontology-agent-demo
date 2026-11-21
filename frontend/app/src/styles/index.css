@@ -2572,6 +2572,8 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .graph-sparql-input:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
 .graph-sparql-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 清除高亮推到手边、加边框，避免埋在命中文案里看不见 */
+.graph-sparql-clear { margin-left: auto; }
 .graph-sparql-result { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm2); }
 .graph-sparql-result p { margin: 0; }
 .graph-sparql-table { max-height: 150px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); }

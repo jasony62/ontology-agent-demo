@@ -14,6 +14,12 @@ export interface GlossaryEntry {
   level: GlossaryLevel;
   /** 负向上下文：出现这些组合时不单独标（中文没有分词边界） */
   exclude?: string[];
+  /** 为什么要有它 / 没有它会怎样（可选，折叠显示） */
+  why?: string;
+  /** 一个看得见的例子（可选，折叠显示） */
+  example?: string;
+  /** 和哪个相邻词容易混、差在哪（可选，折叠显示） */
+  contrast?: string;
 }
 
 export interface TermMatch {
@@ -83,8 +89,11 @@ export function matchTerms(text: string, entries: GlossaryEntry[] = GLOSSARY): T
 const FORBIDDEN_IN_PLAIN = ['闭包', 'IRI', 'OWL 2 RL', 'RDF', 'SPARQL', '端点', 'API'];
 
 /**
- * 词表校验（#138 V8）：主词唯一、别名不冲突、必填非空、分级合法、
+ * 词表校验（#138 V8 / #373）：主词唯一、别名不冲突、必填非空、分级合法、
  * 一句人话 ≤30 字且不套用未解释的实现层行话。
+ *
+ * 细说字段（`why` / `example` / `contrast`）可选，但一旦填写同样不能出现
+ * 未展开的行话——否则只是把「一句话」换成了「一段更长的黑话」。
  */
 export function validateGlossary(entries: GlossaryEntry[] = GLOSSARY): string[] {
   const errors: string[] = [];
@@ -102,9 +111,16 @@ export function validateGlossary(entries: GlossaryEntry[] = GLOSSARY): string[] 
       if (owner && owner !== entry.term) errors.push(`${name}：别名 ${word} 与 ${owner} 冲突`);
       seen.set(key, entry.term);
     }
+    const details = [entry.why, entry.example, entry.contrast];
+    for (const detail of details) {
+      if (detail !== undefined && !detail.trim()) {
+        errors.push(`${name}：细说字段不能是空字符串`);
+      }
+    }
+    const fields = [entry.plain, entry.where, ...details.filter((d): d is string => d !== undefined)];
     for (const bad of FORBIDDEN_IN_PLAIN) {
       const own = termWords(entry).some((word) => word.includes(bad));
-      if (!own && (entry.plain.includes(bad) || entry.where.includes(bad))) {
+      if (!own && fields.some((field) => field.includes(bad))) {
         errors.push(`${name}：解释里出现了未展开的行话 ${bad}`);
       }
     }

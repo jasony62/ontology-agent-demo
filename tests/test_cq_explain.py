@@ -29,7 +29,7 @@ def ws(monkeypatch, tmp_path):
                 "id": "Q3", "cq": "列出三条三元组。",
                 "expected_type": "retrieval", "status": "draft",
                 "regression": {
-                    "query": "SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 3",
+                    "query": "SELECT ?s ?p ?o WHERE { ?s ?p ?o . FILTER(isIRI(?o)) } LIMIT 3",
                     "expect": {"type": "count", "value": 3},
                 },
             },

@@ -114,13 +114,17 @@ describe('#374 / #379 图谱页 SPARQL 查询', () => {
 
     const clear = [...container!.querySelectorAll('button')]
       .find((button) => button.textContent === '清除高亮') as HTMLButtonElement;
+    // 反馈：清除高亮要显眼——独立的次按钮，不再藏在命中文案里
+    expect(clear.classList.contains('graph-sparql-clear')).toBe(true);
+    expect(clear.classList.contains('secondary')).toBe(true);
+    expect(clear.title).toContain('查询文本保留');
     act(() => clear.click());
     expect(container!.textContent).not.toContain('清除高亮');
     // 查询文本保留，面板不关
     expect(container!.querySelector('.graph-sparql-panel')).toBeTruthy();
   });
 
-  it('#384 浮层头部「关闭」收起面板；打开「元素」时自动关闭', () => {
+  it('#384 浮层头部「收起」关闭面板；打开「元素」时自动关闭', () => {
     act(() => { root!.render(<App />); });
     return flush().then(() => {
       const open = [...container!.querySelectorAll('.graph-toolbar button')]
@@ -129,7 +133,7 @@ describe('#374 / #379 图谱页 SPARQL 查询', () => {
       expect(container!.querySelector('.graph-sparql-panel')).toBeTruthy();
 
       const close = [...container!.querySelectorAll('.graph-sparql-panel button')]
-        .find((button) => button.textContent === '关闭') as HTMLButtonElement;
+        .find((button) => button.textContent === '收起') as HTMLButtonElement;
       act(() => close.click());
       expect(container!.querySelector('.graph-sparql-panel')).toBeNull();
 

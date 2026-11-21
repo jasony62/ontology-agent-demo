@@ -137,8 +137,13 @@ export default function App() {
     <div className="graph-sparql-panel" role="region" aria-label="SPARQL 查询">
       <div className="graph-sparql-head">
         <b>SPARQL 查询</b>
-        <button type="button" className="btn ghost" onClick={() => setSparqlOpen(false)}>
-          关闭
+        <button
+          type="button"
+          className="btn ghost"
+          title="收起面板；查询文本与命中高亮都会保留"
+          onClick={() => setSparqlOpen(false)}
+        >
+          收起
         </button>
       </div>
       <textarea
@@ -158,12 +163,20 @@ export default function App() {
           {sparqlBusy ? '查询中…' : '执行'}
         </button>
         {sparqlResult && (
-          <span className="graph-sparql-hit">
-            命中 {sparqlResult.nodes.length} 个节点 · {sparqlResult.edges.length} 条边
-            <button type="button" className="btn ghost" onClick={() => setSparqlResult(null)}>
+          <>
+            <span className="graph-sparql-hit">
+              命中 {sparqlResult.nodes.length} 个节点 · {sparqlResult.edges.length} 条边
+            </span>
+            {/* #384 反馈：清除高亮是独立动作，用可见的次按钮，不藏在命中文案里 */}
+            <button
+              type="button"
+              className="btn secondary graph-sparql-clear"
+              title="清除命中高亮；查询文本保留，可再次执行"
+              onClick={() => setSparqlResult(null)}
+            >
               清除高亮
             </button>
-          </span>
+          </>
         )}
       </div>
       {sparqlError && <div className="element-readonly-note">{sparqlError}</div>}

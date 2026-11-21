@@ -2650,3 +2650,8 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   .cq-overview { padding: 16px; }
   .cq-demo-compare, .cq-tryout-compare { grid-template-columns: 1fr; }
 }
+/* #389 反馈：试跑台布尔选项，radio 与文字同一行（label 在右侧） */
+.cq-tryout-bool label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.cq-tryout-bool input {
+  width: auto; height: auto; margin: 0; padding: 0; flex: 0 0 auto;
+}

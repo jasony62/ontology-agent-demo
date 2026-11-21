@@ -1106,7 +1106,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
     const labels = [...container!.querySelectorAll('.cq-tool-group-label')]
       .map((node) => node.textContent);
-    expect(labels).toEqual(['视图', '帮助', '出题', '技术', '只读工具', '写操作']);
+    expect(labels).toEqual(['视图', '出题', '技术', '只读工具', '写操作']);
     expect(container!.querySelector('.cq-export-menu')).not.toBeNull();
     const links = [...container!.querySelectorAll<HTMLAnchorElement>('.cq-export-list a')];
     const items = links.map((link) => link.textContent ?? '');
@@ -1179,6 +1179,7 @@ describe('CQ 集页（#151 / #203）', () => {
   });
 
   it('术语说明可展开，覆盖首屏行话（#233）', async () => {
+    window.history.replaceState(null, '', '#cq/overview');
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
@@ -1769,6 +1770,7 @@ describe('CQ 集页（#151 / #203）', () => {
 
   it('顶部给出五步三泳道引导，术语表与界面用词一致（#351）', async () => {
     window.localStorage.clear();
+    window.history.replaceState(null, '', '#cq/overview');
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
@@ -1831,6 +1833,29 @@ describe('CQ 三视图（#389）', () => {
     await act(async () => { toCases.click(); });
     await flush();
     expect(window.location.hash).toBe('#cq/cases');
+    expect(container!.querySelector('.cq-funnel')).not.toBeNull();
+  });
+
+  it('「怎么管这批题」与「术语说明」只在概览出现；点步骤先切到题目', async () => {
+    window.history.replaceState(null, '', '#cq/overview');
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(container!.querySelector('.cq-swimlane')).not.toBeNull();
+    expect([...container!.querySelectorAll('button')]
+      .some((button) => button.textContent === '术语说明')).toBe(true);
+
+    // 点「建题」：先切到题目视图，再定位到对应区块
+    const step = [...container!.querySelectorAll<HTMLButtonElement>('.cq-step-link')]
+      .find((button) => button.textContent === '建题')!;
+    await act(async () => { step.click(); });
+    await flush();
+    await new Promise((resolve) => { setTimeout(resolve, 80); });
+    expect(window.location.hash).toBe('#cq/cases');
+    expect(container!.querySelector('.cq-swimlane')).toBeNull();
+    expect([...container!.querySelectorAll('button')]
+      .some((button) => button.textContent === '术语说明')).toBe(false);
     expect(container!.querySelector('.cq-funnel')).not.toBeNull();
   });
 

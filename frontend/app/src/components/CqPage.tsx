@@ -175,6 +175,17 @@ export default function CqPage() {
     }
   }, [query]);
 
+  // #389：概览里的五步引导点击后先切到「题目」，再滚动到对应区块
+  const navigateToStep = useCallback((id: string) => {
+    selectTab('cases');
+    window.setTimeout(() => {
+      const el = document.getElementById(id);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el?.setAttribute('tabindex', '-1');
+      (el as HTMLElement | null)?.focus?.();
+    }, 60);
+  }, [selectTab]);
+
   const updateQuery = (next: string) => {
     setQuery(next);
     window.history.replaceState(null, '', cqHash(tab, next));
@@ -661,13 +672,15 @@ export default function CqPage() {
               </button>
             </div>
           </div>
-          {/* #351：术语入口移出「技术」组——普通用户不用先承认自己是专家。 */}
-          <div className="cq-tool-group">
-            <span className="cq-tool-group-label">帮助</span>
-            <button type="button" className="btn link" onClick={() => setShowGlossary((value) => !value)}>
-              {showGlossary ? '收起术语说明' : '术语说明'}
-            </button>
-          </div>
+          {/* #351 / #389：术语说明只在概览出现，题目 / 训练保持工具行精简 */}
+          {tab === 'overview' && (
+            <div className="cq-tool-group">
+              <span className="cq-tool-group-label">帮助</span>
+              <button type="button" className="btn link" onClick={() => setShowGlossary((value) => !value)}>
+                {showGlossary ? '收起术语说明' : '术语说明'}
+              </button>
+            </div>
+          )}
           {tab === 'cases' && (
             <>
               <div className="cq-tool-group">
@@ -777,8 +790,7 @@ export default function CqPage() {
         </div>
       </div>
 
-      <CqManagementGuide />
-      {showGlossary && <CqGlossary onClose={() => setShowGlossary(false)} />}
+      {showGlossary && tab === 'overview' && <CqGlossary onClose={() => setShowGlossary(false)} />}
       {showPrompts && <CqPromptsPanel onClose={() => setShowPrompts(false)} />}
       {demoCase && (
         <CqDemoPanel
@@ -789,17 +801,20 @@ export default function CqPage() {
       )}
 
       {tab === 'overview' ? (
-        <CqOverviewView
-          delivery={delivery}
-          pending={pendingQuestions ?? 0}
-          unanchored={Math.max(0, (summary?.total ?? 0) - (summary?.located ?? 0))}
-          failed={delivery?.failed_questions ?? 0}
-          suite={suiteDisplay}
-          domainLabel={domainLabel}
-          evaluatedAt={evaluation?.ran_at ? formatLocalTime(evaluation.ran_at) : undefined}
-          onGoCases={() => selectTab('cases')}
-          onGoTraining={() => selectTab('training')}
-        />
+        <>
+          <CqManagementGuide onNavigate={navigateToStep} />
+          <CqOverviewView
+            delivery={delivery}
+            pending={pendingQuestions ?? 0}
+            unanchored={Math.max(0, (summary?.total ?? 0) - (summary?.located ?? 0))}
+            failed={delivery?.failed_questions ?? 0}
+            suite={suiteDisplay}
+            domainLabel={domainLabel}
+            evaluatedAt={evaluation?.ran_at ? formatLocalTime(evaluation.ran_at) : undefined}
+            onGoCases={() => selectTab('cases')}
+            onGoTraining={() => selectTab('training')}
+          />
+        </>
       ) : tab === 'training' ? (
         <CqTrainingPage onGoToCases={() => selectTab('cases')} cases={data?.cases ?? []} />
       ) : (
@@ -1703,7 +1718,7 @@ const SWIMLANE_ROWS: Array<{ lane: string; cells: string[][] }> = [
 ];
 
 /** #351：顶部可折叠泳道图——五步、三泳道，节点标真实按钮名或接口名。 */
-function CqManagementGuide() {
+function CqManagementGuide({ onNavigate }: { onNavigate?: (id: string) => void } = {}) {
   const [open, setOpen] = useState(() => {
     try {
       return window.localStorage.getItem('oa.cq.guide.v1') === '1';
@@ -1739,6 +1754,7 @@ function CqManagementGuide() {
                 type="button"
                 className="cq-step-link"
                 onClick={() => {
+                  onNavigate?.(id);
                   const el = document.getElementById(id);
                   el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   el?.setAttribute('tabindex', '-1');

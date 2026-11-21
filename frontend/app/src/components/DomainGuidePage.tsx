@@ -910,11 +910,8 @@ export default function DomainGuidePage({
         <div className="guide-status-facts">
           <div><b>{businessClasses}</b><span><TermText text="业务类" scope="overview" site="status-business" /></span></div>
           <div><b>{runtime.counts.individuals}</b><span><TermText text="个体" scope="overview" site="status-individuals" /></span></div>
-          <div><b>{runtime.counts.inferred}</b><span><TermText text="推理新增" scope="overview" site="status-inferred" /><span
-                      className="guide-unit"
-                      title="推理明细口径（含自反 / 元层），与图谱概览里「推出来的」物化三元组统计可能相差数十条"
-                    >
-                      明细
+          <div><b>{runtime.counts.inferred}</b><span><TermText text="推理新增" scope="overview" site="status-inferred" /><span className="guide-unit">
+                      <TermText text="业务派生" scope="overview" site="status-business-derived" />
                     </span></span></div>
         </div>
         {loading && <span className="guide-muted">刷新中…</span>}
@@ -1278,12 +1275,12 @@ export default function DomainGuidePage({
                   <div><b>{runtime.counts.asserted}</b><span>文件里声明的</span></div>
                   <div><b>{runtime.counts.inferred}</b><span>推出来的</span></div>
                   <div><b>{runtime.counts.classes}</b><span>{classLabel}</span></div>
-                  <div><b>{runtime.counts.individuals}</b><span>个体</span></div>
+                  <div><b>{runtime.counts.individuals}</b><span><TermText text="个体" scope="trust" site="trust-individuals" /></span></div>
                 </div>
                 {runtime.inference && (
                   <div className="guide-muted">
                     <TermText
-                      text={`推理新增构成：自反 ${runtime.inference.reflexive} · 元层 ${runtime.inference.meta} · 业务 ${runtime.inference.business}${runtime.inference.business === 0 ? '（业务派生为 0：这份本体推不出新的业务结论）' : ''}`}
+                      text={`推理新增构成：自反 ${runtime.inference.reflexive} · 元层 ${runtime.inference.meta} · 业务派生 ${runtime.inference.business}${runtime.inference.business === 0 ? '（业务派生为 0：这份本体推不出新的业务结论）' : ''}`}
                       scope="trust"
                       site="inference"
                     />

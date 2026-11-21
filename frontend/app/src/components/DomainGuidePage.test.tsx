@@ -183,7 +183,7 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(text).toContain('会写盘');
     expect(text).toContain('照着做 · 请求预览');
     // #121：推理新增拆成自反 / 元层 / 业务，不再只给一个总数
-    expect(text).toContain('推理新增构成：自反 12 · 元层 5 · 业务 3');
+    expect(text).toContain('推理新增构成：自反 12 · 元层 5 · 业务派生 3');
     expect(text).toContain('MCP 接入');
     expect(text).toContain('http://127.0.0.1:9000/mcp');
     expect(text).toContain('mcpServers');
@@ -773,6 +773,27 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
   it('#372 没有游离个体时不渲染该说明', () => {
     render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
     expect(container!.querySelector('.guide-isolated')).toBeNull();
+  });
+
+  it('#373 现状卡的「业务派生」可见、可点开，展开后有完整说明', () => {
+    render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
+
+    const mark = [...container!.querySelectorAll('.term-mark')]
+      .find((node) => node.textContent === '业务派生') as HTMLElement;
+    expect(mark).toBeTruthy();
+    expect(container!.querySelector('.guide-status-facts')!.textContent).toContain('业务派生');
+    // 不再只有原生 title 提示
+    expect(container!.querySelector('.guide-status-facts [title="推理明细口径（含自反 / 元层），与图谱概览里「推出来的」物化三元组统计可能相差数十条"]')).toBeNull();
+
+    act(() => mark.click());
+    const tooltip = document.querySelector('.term-tooltip')!;
+    expect(tooltip.textContent).toContain('推理算出的、文件里原本没写的新业务事实');
+    expect(tooltip.textContent).not.toContain('为什么要有它');
+    const more = [...tooltip.querySelectorAll('button')]
+      .find((button) => button.textContent === '完整说明')!;
+    act(() => more.click());
+    expect(document.querySelector('.term-tooltip')!.textContent).toContain('为什么要有它');
+
   });
 
   it('#137 首次进来点「带我试一题」会真发一次只读请求，跑过即消失', async () => {

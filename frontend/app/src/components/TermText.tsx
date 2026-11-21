@@ -140,7 +140,13 @@ function TermMark({ id, entry, text }: { id: string; entry: GlossaryEntry; text:
         title=""
         onMouseDown={(event) => event.preventDefault()}
         onMouseEnter={() => { if (!pinned.current) schedule(id, 150); }}
-        onMouseLeave={() => { if (!pinned.current) schedule(null, 200); }}
+        onMouseLeave={(event) => {
+          if (pinned.current) return;
+          // 鼠标移进气泡（展开「完整说明」时要点按钮）不能触发关闭。
+          const next = event.relatedTarget as Element | null;
+          if (next?.closest?.('.term-tooltip')) return;
+          schedule(null, 200);
+        }}
         onFocus={() => schedule(id, 0)}
         onBlur={() => { if (!pinned.current) schedule(null, 200); }}
         onClick={() => {
@@ -161,38 +167,50 @@ function TermMark({ id, entry, text }: { id: string; entry: GlossaryEntry; text:
       >
         {text}
       </span>
-      {open && ctx && <TermTooltip id={`tip-${id}`} anchor={ref} entry={entry} />}
+      {open && ctx && (
+        <TermTooltip
+          id={`tip-${id}`}
+          anchor={ref}
+          entry={entry}
+          onLeave={() => { if (!pinned.current) schedule(null, 200); }}
+        />
+      )}
     </>
   );
 }
 
 function TermTooltip({
-  id, anchor, entry,
+  id, anchor, entry, onLeave,
 }: {
   id: string;
   anchor: React.RefObject<HTMLSpanElement | null>;
   entry: GlossaryEntry;
+  onLeave: () => void;
 }) {
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = Boolean(entry.why || entry.example || entry.contrast);
 
+  // #373：展开后高度会变，必须重新测高/重算位置；只看 entry 会让气泡跑出视口。
   useLayoutEffect(() => {
     const el = anchor.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const width = Math.min(280, window.innerWidth - 16);
+    const width = Math.min(320, window.innerWidth - 16);
     const left = Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - width - 8));
     const tooltip = document.getElementById(id);
     const height = tooltip?.getBoundingClientRect().height ?? 96;
     let top = rect.top - height - 8;
-    if (top < 8) top = Math.min(window.innerHeight - height - 8, rect.bottom + 8);
+    if (top < 8) top = Math.max(8, Math.min(window.innerHeight - height - 8, rect.bottom + 8));
     setPos({ top, left, width });
-  }, [anchor, id, entry]);
+  }, [anchor, id, entry, expanded]);
 
   return createPortal(
     <div
       id={id}
       role="tooltip"
       className="term-tooltip"
+      onMouseLeave={onLeave}
       style={{
         top: pos?.top ?? 0,
         left: pos?.left ?? 0,
@@ -202,6 +220,28 @@ function TermTooltip({
     >
       <div className="term-tooltip-term">{entry.term}</div>
       <div className="term-tooltip-plain">{entry.plain}</div>
+      {hasDetail && !expanded && (
+        <button
+          type="button"
+          className="term-tooltip-more"
+          onClick={() => setExpanded(true)}
+        >
+          完整说明
+        </button>
+      )}
+      {expanded && (
+        <div className="term-tooltip-detail">
+          {entry.why && (
+            <div><b>为什么要有它</b><span>{entry.why}</span></div>
+          )}
+          {entry.example && (
+            <div><b>举个例子</b><span>{entry.example}</span></div>
+          )}
+          {entry.contrast && (
+            <div><b>别和它混</b><span>{entry.contrast}</span></div>
+          )}
+        </div>
+      )}
       <div className="term-tooltip-where"><span>在这套系统里</span>{entry.where}</div>
     </div>,
     document.body,

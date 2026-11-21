@@ -84,4 +84,24 @@ describe('术语注解层（#138）', () => {
     });
     expect(document.querySelectorAll('.term-tooltip')).toHaveLength(0);
   });
+
+  it('#373 默认只显示一句话，点「完整说明」展开三段细说', () => {
+    render(<TermText text="业务派生" scope="overview" site="business-derived" />);
+    const mark = marks()[0] as HTMLElement;
+    act(() => mark.click());
+
+    const tooltip = document.querySelector('.term-tooltip')!;
+    expect(tooltip.textContent).toContain('推理算出的');
+    expect(tooltip.textContent).not.toContain('为什么要有它');
+    const more = [...tooltip.querySelectorAll('button')]
+      .find((button) => button.textContent === '完整说明')!;
+    expect(more).toBeTruthy();
+
+    act(() => more.click());
+    const expanded = document.querySelector('.term-tooltip')!;
+    expect(expanded.textContent).toContain('为什么要有它');
+    expect(expanded.textContent).toContain('举个例子');
+    expect(expanded.textContent).toContain('别和它混');
+    expect(expanded.textContent).toContain('北京');
+  });
 });

@@ -1397,7 +1397,10 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
    #138：术语注解层——不占布局的虚线标记 + 固定定位气泡
    ============================================================ */
 .term-mark {
-  border-bottom: 1px dotted var(--border-strong);
+  /* #373：从 1px 点线改成一眼可见的下划线 + 淡底——「可点开」要看得出来 */
+  border-bottom: 1px dashed var(--primary);
+  background: rgba(0, 120, 212, .06);
+  padding: 0 2px;
   cursor: help;
   outline: none;
   border-radius: 2px;
@@ -1405,13 +1408,19 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .term-mark:hover,
 .term-mark:focus-visible,
 .term-mark.is-open {
-  border-bottom-color: var(--primary);
+  border-bottom-style: solid;
   color: var(--primary);
+}
+/* 现状卡是用户第一眼落点，再强一档 */
+.guide-status-facts .term-mark {
+  border-bottom-width: 2px;
+  background: rgba(0, 120, 212, .11);
 }
 .term-tooltip {
   position: fixed;
   z-index: 120;
-  pointer-events: none;
+  /* #373：展开「完整说明」需要点按钮，气泡不能穿透鼠标 */
+  pointer-events: auto;
   background: #fff;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1422,6 +1431,17 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   color: var(--text);
 }
 .term-tooltip-term { font-weight: 600; color: var(--heading); font-size: 12px; margin-bottom: 3px; }
+.term-tooltip-more {
+  margin-top: 6px; padding: 0; border: 0; background: transparent;
+  color: var(--link); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  text-decoration: underline;
+}
+.term-tooltip-more:hover { color: var(--primary); }
+.term-tooltip-more:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.term-tooltip-detail { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.term-tooltip-detail > div { display: flex; flex-direction: column; gap: 1px; }
+.term-tooltip-detail b { color: var(--heading); font-size: var(--fs-sm); }
+.term-tooltip-detail span { color: var(--text); }
 .term-tooltip-where {
   margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--border);
   color: var(--muted); font-size: var(--fs-sm);

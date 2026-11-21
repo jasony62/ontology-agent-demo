@@ -2539,13 +2539,30 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   display: inline-flex; align-items: center; gap: 6px;
   font-size: var(--fs-sm2); color: var(--heading);
 }
-/* #379：面板挂在工具栏下方，不再单独占一行 */
+/* #384：查询面板改为左上浮层——覆盖画布、不占文档流，和图谱同屏 */
 .graph-sparql-panel {
+  position: absolute; z-index: 29; top: 42px; left: 8px;
+  width: min(520px, calc(100% - 16px));
+  max-height: min(420px, 64vh);
+  overflow: auto;
   display: flex; flex-direction: column; gap: 6px;
-  margin: 0 0 6px; padding: 8px 10px;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--panel-2);
+  margin: 0; padding: 0 10px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
 }
+.graph-sparql-head {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0 -10px; padding: 6px 8px 6px 10px;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm); color: var(--heading);
+}
+.graph-sparql-results summary {
+  cursor: pointer; font-size: var(--fs-sm2); color: var(--heading);
+  padding: 2px 0;
+}
+.graph-sparql-results[open] summary { margin-bottom: 4px; }
 .graph-sparql-input {
   width: 100%; min-height: 64px; resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -2557,7 +2574,7 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .graph-sparql-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .graph-sparql-result { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm2); }
 .graph-sparql-result p { margin: 0; }
-.graph-sparql-table { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); }
+.graph-sparql-table { max-height: 150px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel); }
 .graph-sparql-table table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
 .graph-sparql-table th,
 .graph-sparql-table td { padding: 3px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }

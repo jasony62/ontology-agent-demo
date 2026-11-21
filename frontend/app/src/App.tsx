@@ -109,6 +109,12 @@ export default function App() {
   const [sparqlError, setSparqlError] = useState<string | null>(null);
   const [sparqlResult, setSparqlResult] = useState<QueryVisualResult | null>(null);
 
+  // #384：两个左上浮层互斥。回调身份必须稳定，否则 GraphView 的 effect 会在
+  // 每次 App 重渲染时重复触发，把刚打开的查询面板又关掉。
+  const handleNodeIndexOpen = useCallback((open: boolean) => {
+    if (open) setSparqlOpen(false);
+  }, []);
+
   const runSparqlQuery = async () => {
     const text = sparqlText.trim();
     if (!text) {
@@ -126,9 +132,15 @@ export default function App() {
     }
   };
 
-  // #379：面板挂在工具栏下方；命中提示收进面板，不再单独占行
+  // #384：查询面板改为左上浮层（绝对定位，不挤占画布高度）；结果表用原生 details 折叠
   const sparqlPanel = sparqlOpen ? (
-    <div className="graph-sparql-panel">
+    <div className="graph-sparql-panel" role="region" aria-label="SPARQL 查询">
+      <div className="graph-sparql-head">
+        <b>SPARQL 查询</b>
+        <button type="button" className="btn ghost" onClick={() => setSparqlOpen(false)}>
+          关闭
+        </button>
+      </div>
       <textarea
         className="graph-sparql-input"
         rows={3}
@@ -145,7 +157,6 @@ export default function App() {
         >
           {sparqlBusy ? '查询中…' : '执行'}
         </button>
-        <span className="guide-muted">命中项保持原色，其余淡化；查询文本由你输入。</span>
         {sparqlResult && (
           <span className="graph-sparql-hit">
             命中 {sparqlResult.nodes.length} 个节点 · {sparqlResult.edges.length} 条边
@@ -163,7 +174,7 @@ export default function App() {
           ) : (
             <>
               <p className="guide-muted">
-                共 {sparqlResult.row_count} 行；命中 {sparqlResult.nodes.length} 个节点、{sparqlResult.edges.length} 条边。
+                命中项保持原色，其余淡化；共 {sparqlResult.row_count} 行。
               </p>
               {sparqlResult.nodes.length > 0 && sparqlResult.edges.length === 0 && (
                 <p className="guide-muted">
@@ -171,24 +182,27 @@ export default function App() {
                 </p>
               )}
               {sparqlResult.results.length > 0 && (
-                <div className="graph-sparql-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        {Object.keys(sparqlResult.results[0]).map((key) => <th key={key}>{key}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sparqlResult.results.slice(0, 50).map((row, index) => (
-                        <tr key={index}>
-                          {Object.keys(sparqlResult.results[0]).map((key) => (
-                            <td key={key}>{String(row[key] ?? '')}</td>
-                          ))}
+                <details className="graph-sparql-results" open>
+                  <summary>查询结果 · {sparqlResult.row_count} 行</summary>
+                  <div className="graph-sparql-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          {Object.keys(sparqlResult.results[0]).map((key) => <th key={key}>{key}</th>)}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {sparqlResult.results.slice(0, 50).map((row, index) => (
+                          <tr key={index}>
+                            {Object.keys(sparqlResult.results[0]).map((key) => (
+                              <td key={key}>{String(row[key] ?? '')}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
               )}
             </>
           )}
@@ -679,6 +693,8 @@ export default function App() {
                             </>
                           }
                           belowToolbar={sparqlPanel}
+                          overlayOpen={sparqlOpen}
+                          onNodeIndexOpen={handleNodeIndexOpen}
                           onSelect={(id) => setSelectedId(id)}
                         />
                       </GraphErrorBoundary>

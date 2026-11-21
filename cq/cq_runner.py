@@ -64,6 +64,24 @@ def _sparql(engine, query: str) -> tuple[bool, object]:
     return False, rows
 
 
+def _sparql_with_terms(engine, query: str):
+    """同 `_sparql`，但保留原始 term（用于拼三元组证明，不影响既有契约）。"""
+    result = engine.g.query(query)
+    if result.type == "ASK":
+        return True, bool(result.askAnswer), None
+    rows: list[dict] = []
+    terms: list[dict] = []
+    for row in result:
+        plain: dict = {}
+        raw_row: dict = {}
+        for var, value in row.asdict().items():
+            plain[var] = local(value) if isinstance(value, URIRef) else str(value)
+            raw_row[var] = value
+        rows.append(plain)
+        terms.append(raw_row)
+    return False, rows, terms
+
+
 def _judge_sparql(is_ask: bool, actual, expect) -> tuple[bool, dict]:
     if isinstance(expect, bool):
         got = bool(actual) if is_ask else bool(actual)
@@ -126,6 +144,152 @@ def run_case(engine, case: dict) -> dict:
     if not ok:
         out["hint"] = _hint(case, engine)
     return out
+
+
+def explain_case(engine, case: dict, expect_override=None) -> dict:
+    """单题四步轨迹（#389）：按什么判 → 命中什么 → 差在哪 → 结论。
+
+    只读：不写 runs / 审计 / 事件，也不改题目状态。`expect_override` 供训练
+    试跑台用「结构化预期答案」替换题面里的 expect；query 仍来自题目本身。
+    """
+    base = {
+        "id": case.get("id"),
+        "cq": case.get("cq"),
+        "rule": case.get("rule") or case.get("expected_type"),
+    }
+    regression = _regression(case)
+    if not regression or not str(regression.get("query") or "").strip():
+        reason = (
+            "该题没有 regression{query, expect} 断言"
+            if not regression else "regression 缺少 query"
+        )
+        return {
+            **base,
+            "state": NOT_TESTED,
+            "query": "",
+            "expect_source": "case",
+            "detail": {"reason": reason},
+            "proofs": [],
+            "steps": [
+                {"step": "assertion", "title": "按什么判定", "query": "", "expect": None},
+                {"step": "conclusion", "title": "结论", "state": NOT_TESTED, "summary": reason},
+            ],
+        }
+
+    query = str(regression["query"])
+    override = expect_override is not None
+    expect = expect_override if override else regression.get("expect")
+    steps: list[dict] = [{
+        "step": "assertion",
+        "title": "按什么判定",
+        "query": query,
+        "expect": expect,
+        "source": "override" if override else "case",
+    }]
+
+    try:
+        is_ask, actual, term_rows = _sparql_with_terms(engine, query)
+    except Exception as exc:  # noqa: BLE001 —— 单题演示失败不拖垮页面
+        error = f"{type(exc).__name__}: {exc}"
+        steps.append({"step": "query", "title": "本体里命中了什么", "error": error})
+        steps.append({
+            "step": "conclusion", "title": "结论", "state": CANNOT_TELL,
+            "summary": "查询没有跑通，无法判定；先检查断言里的命名空间与语法。",
+        })
+        return {
+            **base, "state": CANNOT_TELL, "query": query,
+            "expect_source": "override" if override else "case",
+            "detail": {"error": error}, "steps": steps, "proofs": [],
+        }
+
+    rows = [] if is_ask else list(actual or [])
+    steps.append({
+        "step": "query",
+        "title": "本体里命中了什么",
+        "kind": "ask" if is_ask else "select",
+        "value": bool(actual) if is_ask else None,
+        "rows": rows,
+        "row_count": len(rows),
+    })
+
+    # 试跑台可能给出与断言形态不匹配的口径：ASK 没有「名单 / 数量」可比。
+    # 明确说不可判定，而不是让判分函数抛错或静默判失败（#389 验收 6）。
+    kind = expect.get("type") if isinstance(expect, dict) else None
+    needs_rows = kind in {"count", "values", "set_exact", "contains"} or (
+        isinstance(expect, int) and not isinstance(expect, bool)
+    )
+    if is_ask and needs_rows:
+        error = "该题回归断言是 ASK（是 / 否），不能用名单一致 / 包含 / 数量口径；请改选布尔"
+        steps.append({
+            "step": "compare", "title": "期望与实际差在哪",
+            "expect": expect, "actual": bool(actual), "matches": False, "error": error,
+        })
+        steps.append({
+            "step": "conclusion", "title": "结论", "state": CANNOT_TELL,
+            "summary": "口径与断言形态不匹配，本次不判定。",
+        })
+        return {
+            **base, "state": CANNOT_TELL, "query": query,
+            "expect_source": "override" if override else "case",
+            "detail": {"error": error}, "steps": steps, "proofs": [],
+        }
+
+    ok, detail = _judge_sparql(is_ask, actual, expect)
+    compare = {
+        "step": "compare",
+        "title": "期望与实际差在哪",
+        "expect": detail.get("expect"),
+        "actual": detail.get("actual"),
+        "matches": ok,
+    }
+    if "missing" in detail:
+        compare["missing"] = detail["missing"]
+    if "error" in detail:
+        compare["error"] = detail["error"]
+    steps.append(compare)
+
+    state = PASS if ok else FAIL
+    conclusion = {
+        "step": "conclusion",
+        "title": "结论",
+        "state": state,
+        "summary": "期望与实际一致" if ok else "期望与实际不一致",
+    }
+    if not ok:
+        conclusion["hint"] = _hint(case, engine)
+    steps.append(conclusion)
+
+    # 「看依据」：结果行恰好是三元组形态时，复用结构化证明；直接断言标 asserted，
+    # 不编造公理。非三元组结果不给假证明，前端会说明「该结果不是三元组形态」。
+    proofs: list[dict] = []
+    if term_rows:
+        seen: set[tuple[str, str, str]] = set()
+        for term_row in term_rows:
+            if len(term_row) != 3 or len(proofs) >= 5:
+                continue
+            values = list(term_row.values())
+            if not all(isinstance(value, URIRef) for value in values):
+                continue
+            key = tuple(str(value) for value in values)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                from reasoner.proof import build_proof
+
+                proofs.append(build_proof(engine, *key))
+            except Exception:  # noqa: BLE001 —— 证明失败不影响四步轨迹
+                continue
+
+    return {
+        **base,
+        "state": state,
+        "query": query,
+        "expect_source": "override" if override else "case",
+        "detail": detail,
+        "steps": steps,
+        "proofs": proofs,
+    }
 
 
 def _review_rejected(case: dict) -> bool:

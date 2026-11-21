@@ -204,6 +204,27 @@ function stubFetch(
         json: async () => ({ ok: true, action: { action_id: 'a1', action: 'generate_cases', status: 'pending' } }),
       } as unknown as Response;
     }
+    if (url.includes('/regression/explain')) {
+      const body = JSON.parse(String(init?.body || '{}'));
+      const override = body.expect !== undefined;
+      return {
+        ok: true, status: 200,
+        json: async () => ({
+          id: 'Q1', cq: '哪些智能体可以执行「登录模块开发」？',
+          state: override ? 'fail' : 'pass',
+          query: 'ASK { ?s ?p ?o }',
+          expect_source: override ? 'override' : 'case',
+          detail: { expect: body.expect ?? true, actual: true },
+          steps: [
+            { step: 'assertion', title: '按什么判定', query: 'ASK { ?s ?p ?o }', expect: body.expect ?? true },
+            { step: 'query', title: '本体里命中了什么', kind: 'ask', value: true, rows: [], row_count: 0 },
+            { step: 'compare', title: '期望与实际差在哪', expect: body.expect ?? true, actual: true, matches: !override },
+            { step: 'conclusion', title: '结论', state: override ? 'fail' : 'pass', summary: '期望与实际一致' },
+          ],
+          proofs: [],
+        }),
+      } as unknown as Response;
+    }
     if (url.includes('/cq/regression/run')) {
       return {
         ok: true, status: 200, json: async () => ({
@@ -749,18 +770,18 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(strip.textContent).not.toContain('待决状态未知');
   });
 
-  it('顶部只有「集总览 / 训练」两个标签，训练标签挂训练现场与时间线', async () => {
+  it('顶部三个标签「概览 / 题目 / 训练」，训练标签挂训练现场与时间线', async () => {
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
     const tabs = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['集总览', '训练']);
-    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['概览', '题目', '训练']);
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
     expect(container!.querySelector('.cq-funnel')).not.toBeNull();
     expect(container!.querySelector('.cq-training-page')).toBeNull();
 
-    await act(async () => { tabs[1].click(); });
+    await act(async () => { tabs[2].click(); });
     await flush();
 
     expect(container!.querySelector('.cq-overview')).toBeNull();
@@ -1781,5 +1802,82 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(glossary).toContain('单题验证');
     expect(glossary).toContain('评估');
     expect(glossary).toContain('单题验证不改变这个状态');
+  });
+});
+
+
+describe('CQ 三视图（#389）', () => {
+  it('#cq/overview 默认只给结论、主动作与三个待办，漏斗与列表不出现', async () => {
+    window.history.replaceState(null, '', '#cq/overview');
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const overview = container!.querySelector('.cq-overview');
+    expect(overview).toBeTruthy();
+    expect(overview!.textContent).toContain('未达交付线');
+    const stats = [...overview!.querySelectorAll('.cq-overview-stat')];
+    expect(stats.map((node) => node.querySelector('span')?.textContent))
+      .toEqual(['待拍板', '未对上本体', '回归未通过']);
+    expect(stats[0].querySelector('b')?.textContent).toBe('0');
+    expect(stats[1].querySelector('b')?.textContent).toBe('1');
+    // 概览不承载漏斗 / 题目列表
+    expect(container!.querySelector('.cq-funnel')).toBeNull();
+    expect(container!.querySelector('.cq-list')).toBeNull();
+    expect(container!.querySelector('.cq-overview-source')?.textContent).toContain('来源：');
+
+    const toCases = [...container!.querySelectorAll<HTMLButtonElement>('.cq-overview-actions button')]
+      .find((button) => button.textContent?.includes('去题目'))!;
+    await act(async () => { toCases.click(); });
+    await flush();
+    expect(window.location.hash).toBe('#cq/cases');
+    expect(container!.querySelector('.cq-funnel')).not.toBeNull();
+  });
+
+  it('四步演示来自真实执行，弹窗内四步齐全且标只读', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const demo = [...container!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '四步演示')!;
+    expect(demo).toBeTruthy();
+    await act(async () => { demo.click(); });
+    await flush();
+
+    const modal = document.querySelector('.cq-demo');
+    expect(modal).toBeTruthy();
+    expect(modal!.textContent).toContain('1 · 按什么判定');
+    expect(modal!.textContent).toContain('2 · 本体里命中了什么');
+    expect(modal!.textContent).toContain('3 · 期望与实际差在哪');
+    expect(modal!.textContent).toContain('4 · 结论');
+    expect(modal!.textContent).toContain('演示只跑这一题');
+    expect(modal!.textContent).toContain('看依据');
+  });
+
+  it('训练试跑台：结构化预期跑一次，展示期望 / 实际差异', async () => {
+    stubFetch();
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    const trainingTab = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '训练')!;
+    await act(async () => { trainingTab.click(); });
+    await flush();
+
+    const tryout = container!.querySelector('.cq-tryout');
+    expect(tryout).toBeTruthy();
+    expect(tryout!.textContent).toContain('训练试跑台');
+    expect(tryout!.textContent).toContain('只读');
+
+    const run = [...tryout!.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent === '跑一次')!;
+    await act(async () => { run.click(); });
+    await flush();
+
+    const result = container!.querySelector('.cq-tryout-result');
+    expect(result).toBeTruthy();
+    expect(result!.textContent).toContain('不一致');
+    expect(result!.textContent).toContain('本次试跑');
   });
 });

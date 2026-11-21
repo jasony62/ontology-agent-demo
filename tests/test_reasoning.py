@@ -363,3 +363,45 @@ def test_sparql_short_name_is_non_empty_for_ontology_iri(tmp_path):
     assert rows, "查询本身应当成功"
     assert rows[0]["s"] == "onto"
     assert all(row["s"] for row in rows), "短名不得为空串"
+
+
+def test_graph_includes_isolated_individuals_and_counts_match(tmp_path):
+    """图谱个体系与领域页同口径：无业务边的个体也建节点，但只是孤立点（#372）。"""
+    onto = tmp_path / "isolated.owl"
+    onto.write_text(
+        """<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:ex="http://example.org/iso#">
+  <owl:Ontology rdf:about="http://example.org/iso#"/>
+  <owl:Class rdf:about="http://example.org/iso#Person"/>
+  <owl:ObjectProperty rdf:about="http://example.org/iso#knows"/>
+  <rdf:Description rdf:about="http://example.org/iso#alice">
+    <rdf:type rdf:resource="http://example.org/iso#Person"/>
+    <ex:knows rdf:resource="http://example.org/iso#bob"/>
+  </rdf:Description>
+  <rdf:Description rdf:about="http://example.org/iso#bob">
+    <rdf:type rdf:resource="http://example.org/iso#Person"/>
+  </rdf:Description>
+  <owl:NamedIndividual rdf:about="http://example.org/iso#carol">
+    <rdfs:label>carol</rdfs:label>
+  </owl:NamedIndividual>
+</rdf:RDF>
+""",
+        encoding="utf-8",
+    )
+    e = OntologyEngine(str(onto))
+    asserted = e.materialized()["asserted"]
+    individuals = {n["id"] for n in asserted["nodes"] if n["type"] == "individual"}
+    # 图谱不再漏掉只有字面量的个体：节点数与宽口径个体数一致。
+    assert individuals == {"alice", "bob", "carol"}
+    assert len(individuals) == e.individual_count()
+
+    # 只补节点、不虚构边；carol 没有任何对象关系，是游离个体。
+    sources = {edge["source"] for edge in asserted["edges"]}
+    targets = {edge["target"] for edge in asserted["edges"]}
+    assert "carol" not in sources | targets
+    isolated = e.isolated_individuals()
+    assert [item["name"] for item in isolated] == ["carol"]
+    assert isolated[0]["label"]

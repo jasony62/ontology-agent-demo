@@ -1409,6 +1409,9 @@ def domain_guide():
             "上面的命令启动的是默认领域的工具，通用查询能力仍可用。"
         )
 
+    # #372：与图谱补齐孤立节点共用同一份计算，三个数字同源。
+    isolated = ENGINE.isolated_individuals()
+
     return {
         "domain": handle.name,
         "display_name": handle.display_name,
@@ -1437,6 +1440,12 @@ def domain_guide():
             ),
             "mcp": mcp,
             "counts": counts,
+            # #372：宽口径个体里在断言图上没有任何连线的那部分（游离个体）。
+            # 与图谱节点数同源，避免同一份本体在两页报两个个体数。
+            "isolated_individuals": {
+                "count": len(isolated),
+                "individuals": isolated,
+            },
             # #121：推理新增拆成自反 / 元层 / 业务；单给总数会把 1000 条
             # 「A 等于 A」当成卖点。三层互斥且相加等于 counts.inferred。
             "inference": ENGINE.inference_breakdown(),

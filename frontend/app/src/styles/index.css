@@ -1075,6 +1075,21 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 }
 .guide-status-facts b { font-size: var(--fs-title); color: var(--link); font-variant-numeric: tabular-nums; }
 .guide-status-facts span { font-size: var(--fs-xs); color: var(--muted); }
+/* #372：游离个体说明——与图谱孤立点同源，常驻在现状卡下方 */
+.guide-isolated { font-size: var(--fs-sm2); color: var(--muted); }
+.guide-isolated summary { cursor: pointer; color: var(--heading); }
+.guide-isolated summary:hover { color: var(--link); }
+.guide-isolated summary .guide-muted { font-weight: 400; }
+.guide-isolated > p { margin: 6px 0 0; }
+.guide-isolated-list {
+  display: flex; flex-wrap: wrap; gap: 4px 16px;
+  margin: 6px 0 0; padding-left: 18px;
+}
+.guide-isolated-list li { display: flex; align-items: baseline; gap: 6px; font-size: var(--fs-xs); }
+.guide-isolated-list code {
+  font-size: var(--fs-xs); color: var(--heading);
+  background: var(--panel-2); padding: 1px 5px; border-radius: 4px;
+}
 /* #137 R3：scenario 改成真可点入口 */
 .guide-tag-action { border: 1px solid transparent; cursor: pointer; font: inherit; }
 .guide-tag-action:hover { border-color: #b9d5e8; background: #e3eef8; }

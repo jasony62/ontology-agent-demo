@@ -387,6 +387,14 @@ export interface GuideRuntime {
     business_classes?: number;
     individuals: number;
   };
+  /**
+   * #372：宽口径个体里在断言图上没有任何连线的那些（图上为孤立点）。
+   * 与图谱节点数同源；旧后端不发时不渲染该说明。
+   */
+  isolated_individuals?: {
+    count: number;
+    individuals: { name: string; label: string; types: string[] }[];
+  };
   /** 推理新增构成（#121）：三层互斥，相加等于 counts.inferred */
   inference?: {
     total: number;

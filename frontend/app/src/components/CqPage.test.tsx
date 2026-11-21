@@ -506,20 +506,26 @@ describe('CQ 集页（#151 / #203）', () => {
   });
 
   it('总题数与时间口径改成业务能读懂的说明（#269）', async () => {
+    window.history.replaceState(null, '', '#cq/overview');
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
 
     const text = container!.textContent ?? '';
-    expect(text).toContain('总题数');
     expect(text).not.toContain('承诺');
+    // 题集身份与时间只在概览完整出现
     expect(text).toContain('题集更新于');
     expect(text).toContain('含导入 / 编辑时间');
     expect(text).toContain('本体加载于');
     expect(text).toContain('服务启动时间');
-    // 领域显示中文名，不再露 snake_case
     expect(text).toContain('当前领域：智能体任务');
     expect(text).not.toContain('当前领域：agent_task');
+
+    const casesTab = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '题目')!;
+    await act(async () => { casesTab.click(); });
+    await flush();
+    expect(container!.textContent).toContain('总题数');
   });
 
   it('成熟度未返回时用等高骨架屏占位，避免首屏跳动（#271）', async () => {
@@ -531,6 +537,7 @@ describe('CQ 集页（#151 / #203）', () => {
   });
 
   it('显示真实套件名，「来源未记录」是独立徽章（#288）', async () => {
+    window.history.replaceState(null, '', '#cq/overview');
     stubFetch({ ...SET, provenance: { ...SET.provenance, known: false } });
     act(() => root!.render(<CqPage />));
     await flush();
@@ -701,7 +708,8 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-detail')?.textContent).toContain('#Q01');
   });
 
-  it('页面说明只出现一处，旧欢迎横幅已删除（#303）', async () => {
+  it('页面说明只在概览出现一次，旧欢迎横幅已删除（#303 / #389）', async () => {
+    window.history.replaceState(null, '', '#cq/overview');
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
@@ -709,7 +717,13 @@ describe('CQ 集页（#151 / #203）', () => {
     expect(container!.querySelector('.cq-welcome')).toBeNull();
     const text = container!.textContent ?? '';
     expect(text.split('智能体负责生成和检查，你负责看证据、拍板').length - 1).toBe(1);
-    expect(text).toContain('本页：看每题能不能被本体验证');
+
+    const casesTab = [...container!.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+      .find((tab) => tab.textContent === '题目')!;
+    await act(async () => { casesTab.click(); });
+    await flush();
+    expect(container!.textContent).not.toContain('智能体负责生成和检查，你负责看证据、拍板');
+    expect(container!.textContent).toContain('本页：看每题能不能被本体验证');
   });
 
   it('来源未记录时判定条与 CQM 都带可信度标注（#295）', async () => {
@@ -1169,6 +1183,7 @@ describe('CQ 集页（#151 / #203）', () => {
   });
 
   it('时间统一显示本地格式且不带时区后缀（#250 R5）', async () => {
+    window.history.replaceState(null, '', '#cq/overview');
     stubFetch();
     act(() => root!.render(<CqPage />));
     await flush();
@@ -1826,7 +1841,7 @@ describe('CQ 三视图（#389）', () => {
     // 概览不承载漏斗 / 题目列表
     expect(container!.querySelector('.cq-funnel')).toBeNull();
     expect(container!.querySelector('.cq-list')).toBeNull();
-    expect(container!.querySelector('.cq-overview-source')?.textContent).toContain('来源：');
+    expect(container!.querySelector('.cq-overview-source')?.textContent).toContain('当前题集：');
 
     const toCases = [...container!.querySelectorAll<HTMLButtonElement>('.cq-overview-actions button')]
       .find((button) => button.textContent?.includes('去题目'))!;

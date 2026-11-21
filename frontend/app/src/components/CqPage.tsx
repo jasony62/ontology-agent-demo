@@ -628,9 +628,11 @@ export default function CqPage() {
               › {tab === 'training' ? '训练' : tab === 'overview' ? '概览' : '题目'}
             </span>
           </h2>
-          <p className="cq-intro">
-            CQ 是把业务问题写成能被本体自动验证的题目集。智能体负责生成和检查，你负责看证据、拍板。
-          </p>
+          {tab === 'overview' && (
+            <p className="cq-intro">
+              CQ 是把业务问题写成能被本体自动验证的题目集。智能体负责生成和检查，你负责看证据、拍板。
+            </p>
+          )}
           <p className="guide-muted">
             {tab === 'overview'
               ? '先看一句结论与三个待办；要管理题库或看完整漏斗，点「题目」。'
@@ -811,6 +813,9 @@ export default function CqPage() {
             suite={suiteDisplay}
             domainLabel={domainLabel}
             evaluatedAt={evaluation?.ran_at ? formatLocalTime(evaluation.ran_at) : undefined}
+            updatedAt={data?.updated_at ? formatLocalTime(data.updated_at) : undefined}
+            loadedAt={ontologyLoadedAt ? formatLocalTime(ontologyLoadedAt) : undefined}
+            provenanceKnown={Boolean(provenance?.known)}
             onGoCases={() => selectTab('cases')}
             onGoTraining={() => selectTab('training')}
           />
@@ -887,15 +892,9 @@ export default function CqPage() {
                   </span>
                 </div>
               )}
+              {/* #389 2c：题目视图只留极简题集名（写操作前确认身份）；完整身份在概览出现一次 */}
               <p className="cq-meta guide-muted">
                 当前题集：<b>{suiteDisplay}</b>
-                {provenance && !provenance.known && (
-                  <span className="cq-badge warn" title="这份题集没有播种来源记录（早于来源校验功能）">来源未记录</span>
-                )}
-                {data?.updated_at ? `（题集更新于 ${formatLocalTime(data.updated_at)}，含导入 / 编辑时间）` : ''}
-                {' '}· 当前领域：<b>{domainLabel}</b>
-                {ontologyLoadedAt ? ` · 本体加载于 ${formatLocalTime(ontologyLoadedAt)}（服务启动时间）` : ''}
-                {provenance && !provenance.known ? ' · 来源未记录（旧题集）' : ''}
               </p>
               <details className="cq-quality-detail">
                 <summary>质量明细</summary>

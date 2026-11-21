@@ -31,8 +31,12 @@ interface Props {
   toolbarLeading?: ReactNode;
   /** 窄屏收进「更多」的操作（新建入口等）；宽度不足时由 CSS 显示菜单 */
   toolbarOverflow?: ReactNode;
-  /** 工具栏下方、画布上方的面板（#379：SPARQL 查询面板） */
+  /** 工具栏下方、画布上方的面板（#384：SPARQL 查询浮层） */
   belowToolbar?: ReactNode;
+  /** 另一个左上浮层（SPARQL）是否打开：打开时收起「元素」清单，二者不叠加 */
+  overlayOpen?: boolean;
+  /** 「元素」清单开合通知：打开时调用方应关闭自己的浮层 */
+  onNodeIndexOpen?: (open: boolean) => void;
   onSelect?: (id: string | null) => void;
 }
 
@@ -302,7 +306,8 @@ function elementsFromGraphData(
 
 export default function GraphView({
   viewMode, asserted, inferred, groups, focus, selectedId, issueLevels,
-  queryHighlight, toolbarLeading, toolbarOverflow, belowToolbar, onSelect,
+  queryHighlight, toolbarLeading, toolbarOverflow, belowToolbar,
+  overlayOpen, onNodeIndexOpen, onSelect,
 }: Props) {
   const groupView = useMemo(() => buildGroupView(groups ?? []), [groups]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -570,6 +575,15 @@ export default function GraphView({
     if (!cy) return;
     applyGraphDim(cy, selectedId ?? null, focus ?? null, queryHighlight ?? null);
   }, [focus, selectedId, queryHighlight, viewMode, asserted, inferred, groupView]);
+
+  // #384：两个左上浮层互斥——SPARQL 打开时收起「元素」清单
+  useEffect(() => {
+    if (overlayOpen) setNodeIndexOpen(false);
+  }, [overlayOpen]);
+
+  useEffect(() => {
+    if (nodeIndexOpen) onNodeIndexOpen?.(true);
+  }, [nodeIndexOpen, onNodeIndexOpen]);
 
   // #23：节点搜索/聚焦——输入实体名，匹配节点高亮并居中
   useEffect(() => {

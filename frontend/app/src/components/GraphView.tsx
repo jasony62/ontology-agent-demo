@@ -31,6 +31,8 @@ interface Props {
   toolbarLeading?: ReactNode;
   /** 窄屏收进「更多」的操作（新建入口等）；宽度不足时由 CSS 显示菜单 */
   toolbarOverflow?: ReactNode;
+  /** 工具栏下方、画布上方的面板（#379：SPARQL 查询面板） */
+  belowToolbar?: ReactNode;
   onSelect?: (id: string | null) => void;
 }
 
@@ -139,26 +141,6 @@ const stylesheet: StylesheetStyle[] = [
       'border-color': '#ff9800',
       'border-opacity': 0.95,
       'z-index': 999,
-    },
-  },
-  {
-    // #374：查询命中——用独立类，不复用搜索的 `highlight`，也不碰 `dim`
-    selector: 'node.query-hit',
-    style: {
-      'border-width': 4,
-      'border-color': '#0b57a0',
-      'border-opacity': 1,
-      'z-index': 999,
-    },
-  },
-  {
-    selector: 'edge.query-hit',
-    style: {
-      'line-color': '#0b57a0',
-      'target-arrow-color': '#0b57a0',
-      'width': 4,
-      'z-index': 998,
-      label: 'data(label)',
     },
   },
   {
@@ -320,7 +302,7 @@ function elementsFromGraphData(
 
 export default function GraphView({
   viewMode, asserted, inferred, groups, focus, selectedId, issueLevels,
-  queryHighlight, toolbarLeading, toolbarOverflow, onSelect,
+  queryHighlight, toolbarLeading, toolbarOverflow, belowToolbar, onSelect,
 }: Props) {
   const groupView = useMemo(() => buildGroupView(groups ?? []), [groups]);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -580,25 +562,14 @@ export default function GraphView({
     cy.nodes().toggleClass('zoom-far', cy.zoom() < 0.75 || narrow);
   }, [viewMode, asserted, inferred, groupView, issueLevels]);
 
-  // 聚焦淡化：选中节点时看「节点 + 直连邻域」，否则沿用图例聚焦（详见 lib/graphSelection）。
+  // 淡化只有一个出口：#379 起 SPARQL 命中与选中 / 图例聚焦共用 applyGraphDim，
+  // 优先级 选中 > 查询命中 > 图例聚焦；分两处写 dim 会互相覆盖。
   // 依赖里带上数据源：节点是增量增删的，新加的节点不会自动继承上一轮的 dim。
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    applyGraphDim(cy, selectedId ?? null, focus ?? null);
-  }, [focus, selectedId, viewMode, asserted, inferred, groupView]);
-
-  // #374：查询命中独立类 `query-hit`（不碰搜索的 highlight / 聚焦的 dim）
-  useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy) return;
-    cy.elements().removeClass('query-hit');
-    if (!queryHighlight) return;
-    const nodeIds = new Set(queryHighlight.nodes);
-    const edgeIds = new Set(queryHighlight.edges);
-    cy.nodes().filter((node) => nodeIds.has(node.id())).addClass('query-hit');
-    cy.edges().filter((edge) => edgeIds.has(edge.id())).addClass('query-hit');
-  }, [queryHighlight, viewMode, asserted, inferred, groupView]);
+    applyGraphDim(cy, selectedId ?? null, focus ?? null, queryHighlight ?? null);
+  }, [focus, selectedId, queryHighlight, viewMode, asserted, inferred, groupView]);
 
   // #23：节点搜索/聚焦——输入实体名，匹配节点高亮并居中
   useEffect(() => {
@@ -692,6 +663,7 @@ export default function GraphView({
           </div>
         </OverflowMenu>
       </div>
+      {belowToolbar}
       {nodeIndexOpen && (
         <div id="graph-node-index" className="graph-node-index" role="region" aria-label="图谱元素列表" ref={indexPanelRef}>
           <div className="graph-node-index-head">

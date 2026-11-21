@@ -775,13 +775,29 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     expect(container!.querySelector('.guide-isolated')).toBeNull();
   });
 
+  it('#378 业务派生为 0 时直说推不出新业务结论', () => {
+    const guide = withGuide({
+      ...GUIDE,
+      runtime: {
+        ...GUIDE.runtime,
+        inference: { total: 20, reflexive: 12, meta: 8, business: 0 },
+      },
+    });
+    render(<DomainGuidePage guide={guide} error={null} loading={false} onRetry={() => {}} />);
+
+    const facts = container!.querySelector('.guide-status-facts')!.textContent ?? '';
+    expect(facts).toContain('业务派生 0 条（推不出新的业务结论）');
+    // 与 04 区推理构成说明同口径，不出现「0 条」与「业务派生为 0」互相矛盾
+    expect(container!.textContent).toContain('业务派生 0（业务派生为 0');
+  });
+
   it('#373 现状卡的「业务派生」可见、可点开，展开后有完整说明', () => {
     render(<DomainGuidePage guide={withGuide(GUIDE)} error={null} loading={false} onRetry={() => {}} />);
 
     const mark = [...container!.querySelectorAll('.term-mark')]
       .find((node) => node.textContent === '业务派生') as HTMLElement;
     expect(mark).toBeTruthy();
-    expect(container!.querySelector('.guide-status-facts')!.textContent).toContain('业务派生');
+    expect(container!.querySelector('.guide-status-facts')!.textContent).toContain('业务派生 3 条');
     // 不再只有原生 title 提示
     expect(container!.querySelector('.guide-status-facts [title="推理明细口径（含自反 / 元层），与图谱概览里「推出来的」物化三元组统计可能相差数十条"]')).toBeNull();
 

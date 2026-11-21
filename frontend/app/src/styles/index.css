@@ -2582,3 +2582,76 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .graph-sparql-table td { padding: 3px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
 .graph-sparql-table th { position: sticky; top: 0; background: var(--panel-2); color: var(--heading); font-weight: 600; }
 .graph-sparql-table tr:last-child td { border-bottom: 0; }
+
+/* ============================================================
+   #389：CQ 三视图（概览 / 题目 / 训练）
+   ============================================================ */
+.cq-overview {
+  display: flex; flex-direction: column; gap: 14px;
+  max-width: 720px; margin: 8px auto 0; padding: 20px 22px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.cq-overview-verdict {
+  margin: 0; font-size: var(--fs-title2); line-height: 1.6; color: var(--heading);
+}
+.cq-overview-verdict.is-ready { color: var(--success); }
+.cq-overview-actions { display: flex; gap: 8px; }
+.cq-overview-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cq-overview-stat {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 12px 8px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel-2); cursor: pointer; font: inherit;
+}
+.cq-overview-stat:hover { border-color: var(--primary); background: var(--primary-soft); }
+.cq-overview-stat b { font-size: 22px; color: var(--link); font-variant-numeric: tabular-nums; }
+.cq-overview-stat span { font-size: var(--fs-sm2); color: var(--muted); }
+.cq-overview-source { margin: 0; }
+
+.cq-demo { max-width: 720px; max-height: 82vh; overflow: auto; }
+.cq-demo-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.cq-demo-head h3 { margin: 2px 0 0; font-size: var(--fs-title2); }
+.cq-demo-steps { margin: 12px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 12px; }
+.cq-demo-steps h4 { margin: 0 0 4px; font-size: var(--fs-sm2); color: var(--heading); }
+.cq-demo-steps pre { margin: 4px 0; }
+.cq-demo-compare, .cq-tryout-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cq-demo-compare span, .cq-tryout-compare span { font-size: var(--fs-xs); color: var(--muted); }
+.cq-demo-table { max-height: 180px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.cq-demo-table table { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+.cq-demo-table th, .cq-demo-table td { padding: 3px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.cq-demo-state { margin: 0; }
+.cq-demo-state.state-pass { color: var(--success); }
+.cq-demo-state.state-fail { color: var(--danger); }
+.cq-demo-state.state-cannot_tell { color: var(--warning); }
+.cq-demo-evidence { margin-top: 12px; }
+.cq-demo-proofs { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.cq-demo-proofs code { font-size: var(--fs-xs); }
+.cq-demo-proof-mode { margin-left: 6px; font-size: var(--fs-xs); color: var(--muted); }
+
+.cq-case-run-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.cq-tryout {
+  display: flex; flex-direction: column; gap: 10px;
+  margin-bottom: 12px; padding: 14px 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.cq-tryout-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cq-tryout-head h3 { margin: 0; font-size: var(--fs-title2); }
+.cq-tryout-form { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end; }
+.cq-tryout-values { grid-column: 1 / -1; }
+.cq-tryout-bool { display: flex; gap: 12px; font-size: var(--fs-sm2); }
+.cq-tryout-run { align-self: end; }
+.cq-tryout-result { font-size: var(--fs-sm2); }
+.cq-tryout-result.state-pass { color: var(--success); }
+.cq-tryout-result.state-fail { color: var(--danger); }
+.cq-tryout-result.state-cannot_tell { color: var(--warning); }
+@media (max-width: 900px) {
+  .cq-tryout-form { grid-template-columns: 1fr; }
+  .cq-overview { padding: 16px; }
+  .cq-demo-compare, .cq-tryout-compare { grid-template-columns: 1fr; }
+}
+/* #389 反馈：试跑台布尔选项，radio 与文字同一行（label 在右侧） */
+.cq-tryout-bool label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.cq-tryout-bool input {
+  width: auto; height: auto; margin: 0; padding: 0; flex: 0 0 auto;
+}

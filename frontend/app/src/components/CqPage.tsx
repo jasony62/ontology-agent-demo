@@ -628,11 +628,6 @@ export default function CqPage() {
               › {tab === 'training' ? '训练' : tab === 'overview' ? '概览' : '题目'}
             </span>
           </h2>
-          {tab === 'overview' && (
-            <p className="cq-intro">
-              CQ 是把业务问题写成能被本体自动验证的题目集。智能体负责生成和检查，你负责看证据、拍板。
-            </p>
-          )}
         </div>
         <div className="cq-toolbar-actions">
           <div className="cq-tool-group">

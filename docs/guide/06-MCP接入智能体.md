@@ -49,7 +49,7 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 
 ## 第 3 步：认识核心工具（完整清单见速查表 §C）
 
-服务在同一进程内暴露两个端点，共 **44 个工具**：`/mcp/ontology` 26 个（领域业务 10 + 引擎通用 16）、`/mcp/cq` 18 个。按来源分：
+服务在同一进程内暴露两个端点，共 **50 个工具**：`/mcp/ontology` 32 个（领域业务 10 + 引擎通用 16 + 建议 6）、`/mcp/cq` 18 个。按来源分：
 
 - **领域业务工具 10 个**——随领域包注册（`capability_match`/`orchestrate`/`assign`/`classify`/`consistency`/`explain`/`ontology`/`entities`/`status`/`validate_shapes`），换领域这组跟着换；
 - **引擎通用工具 15 个**——任意 `.owl` 可用（SPARQL、个体、类、类型、属性、重推理、证明、守卫、闸门、规则执行、合并预检等）；
@@ -107,7 +107,7 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 |---|---|---|
 | 面向 | 前端页面、脚本、任何 HTTP 客户端 | 智能体（豆包连接器等 MCP 客户端） |
 | 协议 | HTTP + JSON | MCP（JSON-RPC / SSE） |
-| 工具/端点 | 72 个端点 | 44 个工具（本体 26 + CQ 18） |
+| 工具/端点 | 85 个端点 | 50 个工具（本体 32 + CQ 18） |
 | 依赖 | 独立进程 | 内嵌引擎，不依赖 REST |
 
 两者共享**同一套引擎与领域包**——这就是篇 5（搭建本体推理服务）所讲的服务"多通道出口"：**同一种能力，按消费方选通道**。脚本和前端走 REST；智能体走 MCP。
@@ -116,7 +116,7 @@ docker compose up -d mcp    # 容器内启动 MCP Server（:9000）
 
 1. **MCP = 智能体的 USB 接口**：能力封装成标准工具，智能体自动发现、按说明调用。
 2. **一行命令启动**：`docker compose up -d mcp`，内嵌引擎零依赖；豆包侧边栏加连接器即可接入。
-3. **44 个工具**：10 个领域业务工具 + 16 个引擎通用工具（`/mcp/ontology`，含 `mcp_status` 自省）+ 18 个框架级 CQ 工具（`/mcp/cq`）；入门先掌握 `capability_match` / `orchestrate` / `entities`。
+3. **50 个工具**：10 个领域业务工具 + 16 个引擎通用工具 + 6 个建议工具（`/mcp/ontology`，含 `mcp_status` 自省）+ 18 个框架级 CQ 工具（`/mcp/cq`）；入门先掌握 `capability_match` / `orchestrate` / `entities`。
 4. **智能体听懂人话，本体算得准讲得清**——MCP 是两者的"合体通道"。
 
 **常见问题**

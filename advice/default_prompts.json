@@ -1,0 +1,43 @@
+{
+  "description": "本体图谱改进建议的出厂生成提示词。类别定义 / diff 形状 / 输出格式是契约段，界面只读；配比与写法规则可按领域覆盖。",
+  "advice_generation": {
+    "category_taxonomy": {
+      "axiom": "补 TBox 公理：subClassOf / equivalentClass / inverseOf / disjointWith 等，让推理能推出新结论。",
+      "terminology": "术语与层级：类名、父类、label / comment 的缺失或歧义。",
+      "instance": "实例数据：个体类型断言或业务属性取值缺失，导致示例问题答不出。",
+      "hygiene": "命名与注释：同一概念多个短名、拼写不一致、缺少可读说明。",
+      "other": "不属于以上四类，但确实值得改的建模问题。"
+    },
+    "category_mix": {
+      "axiom": 3,
+      "terminology": 2,
+      "instance": 2,
+      "hygiene": 1,
+      "other": 1
+    },
+    "diff_shape": "只接受编辑模型形状：classes / objectProps / dataProps / individuals / disjoints / definedClasses。字段清单以 ontology_advice_shape 的返回为准，不要凭记忆写字段名。",
+    "evidence_rules": [
+      "source 必填，至少一条可核验依据：kind=iri 引用当前本体真实存在的实体，或 kind=text 引用体检结论 / 用户原话。",
+      "why 写「为什么现在要改」，引用具体 IRI 或缺口，不写泛泛而谈的建模常识。",
+      "expected 写「改完能看到什么」，可以是推断条数变化，但要注明是估计值。",
+      "risk 写「可能改坏什么」与回退方式，没有风险也要写「无已知风险」。"
+    ],
+    "forbidden_fields": [
+      "gates / gate_trace：闸门结果由系统预检后写入",
+      "preflight / measured / verified / tested：实测字段由系统写入",
+      "business_inferred / inferred：推断数量由系统计算",
+      "review / status / approved / applied：审核与运营状态只能由人处置写入"
+    ],
+    "writing_rules": [
+      "一条建议只做一件事；不要把补公理与补实例混在同一个 diff 里。",
+      "优先给「改完能验证」的建议：有明确的前后差异与可回归的示例问题。",
+      "不要提议删除大类或批量重命名；这类改动需要单独评审。",
+      "引用本体里已有实体时用短名或完整 IRI，二者都必须在当前本体里能解析。"
+    ],
+    "output_format": "提交时给出 title / category / diff / source / why / expected / risk。先调 ontology_advice_validate 自检，通过后再调 ontology_advice_submit；不要自己宣布「已通过闸门」。",
+    "requirement_rules": [
+      "改进要求是这次别这样：每条要求都要在建议里体现，能落到 diff 或依据里。",
+      "要求之间冲突时，优先级：人工手写 > 审核意见 > 处置反馈。"
+    ]
+  }
+}

@@ -635,6 +635,227 @@ export interface CqPromptsPreviewResponse {
   requirements_loaded: CqRequirement[];
 }
 
+/** #391：建议审核态 × 运营态（两层状态机）。前端不自造状态，只渲染后端值。 */
+export type AdviceReview = 'none' | 'pending' | 'approved' | 'rejected';
+export type AdviceStatus = 'draft' | 'applied' | 'archived';
+
+/** 后端下发的可用动作（四动作封闭枚举）；前端只按 action 码分发。 */
+export interface AdviceAction {
+  action: 'approve_apply' | 'revise' | 'reject' | 'defer' | string;
+  label: string;
+  effect: string;
+  /** 采纳前需要跑预检（后端标记，前端据此先展开预检区）。 */
+  requires_preflight?: boolean;
+}
+
+/** 提议依据：kind=iri 的引用必须在当前本体里存在。 */
+export interface AdviceSourceItem {
+  kind: 'iri' | 'text' | 'file' | string;
+  ref: string;
+  note?: string;
+  verified?: boolean;
+}
+
+export interface AdviceEvent {
+  action: string;
+  at: string;
+  actor_type?: string;
+  actor?: string;
+  note?: string;
+  before?: { review?: string; status?: string };
+  after?: { review?: string; status?: string };
+  write?: unknown;
+  blocked_at?: string | null;
+}
+
+export interface AdviceGateResult {
+  gate: string;
+  /** pass / fail / skipped / deferred / error */
+  status: string;
+  reason?: string;
+  evidence?: Record<string, unknown>;
+  remediation?: string | null;
+}
+
+export interface AdviceSimulationCounts {
+  total?: number;
+  business?: number;
+  meta?: number;
+  reflexive?: number;
+  error?: string;
+}
+
+export interface AdvicePreflight {
+  ok: boolean;
+  checked_at: string;
+  failed_at: string | null;
+  next: string;
+  connected_gates: string[];
+  deferred_gates: { gate: string; reason: string }[];
+  diff_check?: { ok: boolean; errors: { path: string; message: string }[]; warnings?: { path: string; message: string }[] };
+  source_check?: { ok: boolean; errors: { path: string; message: string }[] } | null;
+  gates: Record<string, AdviceGateResult>;
+  conflict?: {
+    error?: string;
+    summary?: { conflicts?: number; warnings?: number; info_additions?: number; overlap_entities?: number };
+    conflicts?: Record<string, unknown>[];
+    warnings?: Record<string, unknown>[];
+  } | null;
+  simulation?: {
+    basis?: string;
+    current?: AdviceSimulationCounts;
+    proposed?: AdviceSimulationCounts;
+    delta?: { inferred?: number; business?: number };
+    note?: string;
+  } | null;
+}
+
+/** 列表卡片摘要（不含 diff 全文与事件流）。 */
+export interface AdviceProposal {
+  id: string;
+  title: string;
+  category: string;
+  category_label?: string;
+  review: AdviceReview;
+  status: AdviceStatus;
+  revision?: number;
+  created_by?: { type: string; name: string };
+  created_at?: string;
+  updated_at?: string;
+  why?: string;
+  expected?: string;
+  risk?: string;
+  preflight_ok?: boolean | null;
+  preflight_at?: string | null;
+}
+
+export interface AdviceProposalDetail extends AdviceProposal {
+  diff: Record<string, unknown>;
+  source: AdviceSourceItem[];
+  preflight?: AdvicePreflight | null;
+  events: AdviceEvent[];
+}
+
+export interface AdviceRequestCard {
+  id: string;
+  note?: string;
+  status: string;
+  created_at?: string;
+  created_by?: { type: string; name: string };
+}
+
+export interface AdviceListResponse {
+  ontology_id: string;
+  counts: {
+    none: number;
+    pending: number;
+    approved: number;
+    rejected: number;
+    total: number;
+    applied: number;
+  };
+  preflight_capabilities?: {
+    gates_connected: string[];
+    gates_deferred: string[];
+    conflict_scan: boolean;
+    simulation: boolean;
+  };
+  proposals: AdviceProposal[];
+  requests: AdviceRequestCard[];
+  updated_at?: string | null;
+}
+
+export interface AdviceDetailResponse {
+  ontology_id: string;
+  proposal: AdviceProposalDetail;
+  actions: AdviceAction[];
+}
+
+export interface AdviceDispositionResponse {
+  action: string;
+  label: string;
+  effect: string;
+  note: string;
+  review: AdviceReview;
+  status: AdviceStatus;
+  idempotent: boolean;
+  actions: AdviceAction[];
+  write?: { preflight?: AdvicePreflight; save?: SaveModelResponse } | null;
+  proposal?: AdviceProposalDetail;
+}
+
+export interface AdviceRequirement {
+  id?: string;
+  text: string;
+  rule?: string;
+  source?: 'review' | 'feedback' | 'manual' | string;
+  source_id?: string | null;
+  edited?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface AdviceRequirementsResponse {
+  ontology_id: string;
+  source: 'workspace' | 'empty' | string;
+  count: number;
+  items: AdviceRequirement[];
+}
+
+export interface AdvicePromptsConfig {
+  description?: string;
+  advice_generation?: Record<string, unknown>;
+}
+
+export interface AdvicePromptsResponse {
+  ontology_id: string;
+  source: 'workspace' | 'domain' | 'default' | string;
+  config: AdvicePromptsConfig;
+}
+
+export interface AdvicePromptsPreview {
+  ontology_id: string;
+  prompt: string;
+  rule_count: number;
+  source: string;
+  keys: string[];
+  shape_note?: string;
+  diff_keys: string[];
+}
+
+export interface AdviceShape {
+  keys: Record<string, string[]>;
+  examples: Record<string, unknown>;
+  required: Record<string, string[]>;
+  notes: string[];
+}
+
+export interface AdviceContextResponse {
+  ontology_id: string;
+  domain: string;
+  health: GuideHealth;
+  requirements: { count: number; items: AdviceRequirement[]; rules: string[]; source: string };
+  prompts_loaded: { source: string; keys: string[]; requirement_count: number; prompt_chars: number };
+  prompt: string;
+  shape: AdviceShape;
+  referenceable: {
+    counts: Record<string, number>;
+    classes: string[];
+    properties: string[];
+    individuals: string[];
+    truncated: boolean;
+  };
+  pending: { count: number; ids: string[] };
+  requests: AdviceRequestCard[];
+  counts: AdviceListResponse['counts'];
+  updated_at?: string | null;
+}
+
+export interface AdvicePreflightResponse {
+  proposal_id: string;
+  preflight: AdvicePreflight;
+}
+
 export interface CqEvidence {
   item: string;
   label: string;
@@ -1286,6 +1507,83 @@ export const api = {
     if (!res.ok) throw new Error(`导出失败: ${res.status} ${res.statusText}`);
     return res.blob();
   },
+
+  /** #391：现有建议列表（按审核态 / 运营态 / 类别过滤；只读） */
+  adviceList: (params: { review?: string; status?: string; category?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.review) query.set('review', params.review);
+    if (params.status) query.set('status', params.status);
+    if (params.category) query.set('category', params.category);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return request<AdviceListResponse>(`/api/domains/current/advice${suffix}`);
+  },
+
+  adviceDetail: (proposalId: string) =>
+    request<AdviceDetailResponse>(`/api/domains/current/advice/${encodeURIComponent(proposalId)}`),
+
+  /** 预检：G1/G2 + 冲突扫描 + 引擎副本预演；不改审核态、不写本体 */
+  advicePreflight: (proposalId: string) =>
+    request<AdvicePreflightResponse>(
+      `/api/domains/current/advice/${encodeURIComponent(proposalId)}/preflight`,
+      { method: 'POST' },
+    ),
+
+  /** 四动作处置；采纳时后端预检通过才写盘，失败返回 ApiError.detail.preflight */
+  adviceDispose: (proposalId: string, action: string, note = '') =>
+    request<AdviceDispositionResponse>(
+      `/api/domains/current/advice/${encodeURIComponent(proposalId)}/disposition`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, note }),
+      },
+    ),
+
+  /** 建议上下文（与 MCP ontology_advice_context 同一份装配；只读） */
+  adviceContext: () => request<AdviceContextResponse>('/api/domains/current/advice/context'),
+
+  adviceRequirements: () =>
+    request<AdviceRequirementsResponse>('/api/domains/current/advice/requirements'),
+
+  adviceSaveRequirements: (items: AdviceRequirement[]) =>
+    request<AdviceRequirementsResponse>('/api/domains/current/advice/requirements', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    }),
+
+  advicePrompts: () =>
+    request<AdvicePromptsResponse>('/api/domains/current/advice/prompts'),
+
+  adviceSavePrompts: (config: AdvicePromptsConfig) =>
+    request<AdvicePromptsResponse>('/api/domains/current/advice/prompts', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config }),
+    }),
+
+  adviceResetPrompts: () =>
+    request<AdvicePromptsResponse>('/api/domains/current/advice/prompts', { method: 'DELETE' }),
+
+  advicePromptsPreview: (config: AdvicePromptsConfig, items: AdviceRequirement[]) =>
+    request<AdvicePromptsPreview>('/api/domains/current/advice/prompts/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config, items }),
+    }),
+
+  adviceCreateRequest: (note: string) =>
+    request<{ request: AdviceRequestCard }>('/api/domains/current/advice/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note }),
+    }),
+
+  adviceWithdrawRequest: (requestId: string) =>
+    request<{ request: AdviceRequestCard }>(
+      `/api/domains/current/advice/requests/${encodeURIComponent(requestId)}`,
+      { method: 'DELETE' },
+    ),
 
   /** 当前本体 → 结构化编辑模型（在线编辑） */
   editModel: () => request<EditModelPayload>('/api/ontology/edit-model'),

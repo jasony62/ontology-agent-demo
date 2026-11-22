@@ -277,6 +277,73 @@ class CqDispositionRequest(BaseModel):
     note: str = Field("", description="可选说明，写入处置事件与修改待办。")
 
 
+class AdviceDispositionRequest(BaseModel):
+    """本体改进建议处置（#391）：四动作封闭枚举，枚举外返回 400。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: str = Field(
+        ...,
+        description=(
+            "处置码：approve_apply（预检通过后采纳并写入本体）/ revise（退回修改）/ "
+            "reject（拒绝）/ defer（暂缓）。动作码与可用动作由后端下发，前端不自造。"
+        ),
+    )
+    note: str = Field("", description="审核意见 / 退回理由；会沉淀进改进要求资产。")
+
+
+class AdviceRequestCreate(BaseModel):
+    """「＋ 请求提议」（#393）：只登记待办占位卡，不代智能体创作。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field("", max_length=200, description="可选的请求说明（不超过 200 字）。")
+
+
+class AdvicePromptsRequest(BaseModel):
+    """建议生成提示词保存（#392）：整份配置写回当前工作区。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config: dict[str, Any] = Field(
+        ...,
+        description=(
+            "提示词配置对象，结构同框架默认模板 `advice/default_prompts.json`："
+            "`advice_generation`（建议分类 / 配比 / diff 形状 / 依据写法 / 实测字段禁令 / "
+            "输出格式）、`description`。"
+        ),
+    )
+
+
+class AdvicePromptsPreviewRequest(BaseModel):
+    """建议提示词预览（#392）：只读，可带未保存的编辑值。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config: dict[str, Any] | None = Field(
+        None, description="可选的提示词配置草稿；不传则用当前工作区生效值。",
+    )
+    items: list[dict[str, Any]] | None = Field(
+        None, description="可选的改进要求草稿；不传则用已保存的要求清单。",
+    )
+
+
+class AdviceRequirementsRequest(BaseModel):
+    """改进要求整份保存（#391）：人可见、可改、可删的约束清单。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[dict[str, Any]] = Field(
+        ...,
+        max_length=100,
+        description=(
+            "整份要求清单。条目字段：`text`（原文，必填）、`rule`（正面祈使句，"
+            "缺省由服务端机械转换）、`source`（review / feedback / manual）、"
+            "`source_id`（来源建议编号）。已有 `id` 保留创建时间。"
+        ),
+    )
+
+
 class CqDecisionRequest(BaseModel):
     """CQ 决策入口（#195）：提问 / 反馈 / 自答撤问。"""
 

@@ -23,6 +23,7 @@ import CqPage from './components/CqPage';
 import OverflowMenu from './components/OverflowMenu';
 import WorkspaceSplit from './components/WorkspaceSplit';
 import type { WorkspaceTab } from './components/WorkspaceSplit';
+import OntologyProposalPanel from './components/OntologyProposalPanel';
 import { useEditorStore } from './store/editorStore';
 
 export default function App() {
@@ -92,9 +93,14 @@ export default function App() {
   const [guide, setGuide] = useState<DomainGuide | null>(null);
   const [guideError, setGuideError] = useState<string | null>(null);
   const [guideLoading, setGuideLoading] = useState(false);
-  // 工作区右侧编辑区：只有一个「在线编辑」Tab，mounted 决定是否已挂载（首次打开才挂载）
+  // 工作区右侧：在线编辑 + 改进建议两个 Tab；mounted 决定是否已挂载（首次打开才拉数据）
   const [rightTab, setRightTab] = useState<WorkspaceTab | null>(null);
   const [editorMounted, setEditorMounted] = useState(false);
+  const [proposalMounted, setProposalMounted] = useState(false);
+  // 从领域页体检卡带过来的建议类别（进入面板时预选筛选）
+  const [suggestCategory, setSuggestCategory] = useState('');
+  // 待审建议数：页头 / tab / 图标条三处同源
+  const [pendingSuggestions, setPendingSuggestions] = useState(0);
   // 领域包切换器：清单来自 /api/domains（切换不落盘，进程重启回默认领域）
   const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null);
   // #277：MCP 实际领域与 API 是否一致（未运行时不显示误导性的「已同步」）
@@ -262,9 +268,26 @@ export default function App() {
     setRightTab(null);
   };
 
-  /** 关闭右侧编辑区：在线编辑走 dirty 确认（组件保活） */
+  /** 打开改进建议面板：首次打开才挂载（不预先拉建议列表） */
+  const openSuggest = (category = '') => {
+    setSuggestCategory(category);
+    setProposalMounted(true);
+    setRightTab('suggest');
+  };
+
+  /** 领域页体检卡的「让智能体提具体方案」：回图谱页并选中建议 tab */
+  const proposeFromGuide = (category: string) => {
+    gotoGraph();
+    openSuggest(category);
+  };
+
+  /** 关闭右侧工作区：在线编辑走 dirty 确认；建议面板无未保存草稿（组件保活） */
   const closeRightPane = () => {
-    closeEditor();
+    if (rightTab === 'editor') {
+      closeEditor();
+      return;
+    }
+    setRightTab(null);
   };
 
   /** 图例聚焦：点一次只看该类/该组，再点一次恢复全图 */
@@ -344,6 +367,13 @@ export default function App() {
       setMcpSync(await api.mcpSyncStatus());
     } catch {
       setMcpSync(null);
+    }
+    // 待审建议数：角标要在打开建议 tab 之前就正确，因此随工作区一起刷新。
+    try {
+      const advice = await api.adviceList();
+      setPendingSuggestions(advice.counts.pending);
+    } catch {
+      setPendingSuggestions(0);
     }
     // 当前领域说明：声明 + 实测 + 对账一次拿到。失败时清空而不是拿上一次
     // 缓存当现状——换包后若接口不可用，页面必须明确说"读不到"。
@@ -638,6 +668,7 @@ export default function App() {
             onReloadDomain={() => void runDomainAction('重载领域', () => api.reloadDomain())}
             onSwitchDomain={(name) => void runDomainAction('切换领域', () => api.activateDomain(name))}
             mcpSync={mcpSync}
+            onPropose={proposeFromGuide}
           />
         ) : page === 'cq' ? (
           // key 跟着当前领域走：切领域后 CQ 集 / 训练现场 / 时间线一起按新身份重读，不跨领域串数据
@@ -723,12 +754,21 @@ export default function App() {
                 </div>
               )}
               activeTab={rightTab}
-              onOpenTab={() => void openEditor()}
+              onOpenTab={(tab) => (tab === 'editor' ? void openEditor() : openSuggest())}
               onCloseTab={closeRightPane}
               dirty={{ editor: editorDirty }}
+              badges={{ suggest: pendingSuggestions }}
               panes={{
                 // key 跟着本体文件走：切领域 / 重载本体后重建，避免上一个本体的草稿被带过来
                 editor: editorMounted ? <OntologyEditor key={sourceName} /> : null,
+                suggest: proposalMounted ? (
+                  <OntologyProposalPanel
+                    key={domainInfo?.current ?? 'domain'}
+                    initialCategory={suggestCategory}
+                    onPendingChange={setPendingSuggestions}
+                    onApplied={() => void loadWorkspace()}
+                  />
+                ) : null,
               }}
             />
           </>

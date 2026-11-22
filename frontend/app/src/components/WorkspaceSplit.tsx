@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
  * - 视口 < 1280px 回退为标签页（同一时刻只显示一个工作区）。
  */
 
-export type WorkspaceTab = 'editor';
+export type WorkspaceTab = 'editor' | 'suggest';
 export type PaneMode = 'normal' | 'minimized';
 export type PaneSide = 'left' | 'right';
 
@@ -42,10 +42,11 @@ export const DEFAULT_LAYOUT: WorkspaceLayout = {
 
 export const TAB_LABELS: Record<WorkspaceTab, string> = {
   editor: '在线编辑',
+  suggest: '改进建议',
 };
 
-const TABS: WorkspaceTab[] = ['editor'];
-const TAB_ICONS: Record<WorkspaceTab, string> = { editor: '⌨' };
+const TABS: WorkspaceTab[] = ['editor', 'suggest'];
+const TAB_ICONS: Record<WorkspaceTab, string> = { editor: '⌨', suggest: '✧' };
 
 /** 面板折叠/展开图标：18px 手写 SVG，替代 « » 这类随字体缩放的字符 */
 function ChevronIcon({ dir }: { dir: 'left' | 'right' }) {
@@ -183,6 +184,8 @@ export interface WorkspaceSplitProps {
   onCloseTab: () => void;
   /** Tab 上的未保存标记 */
   dirty?: Partial<Record<WorkspaceTab, boolean>>;
+  /** Tab 上的计数角标（如待审建议数）；0 / undefined 不显示 */
+  badges?: Partial<Record<WorkspaceTab, number>>;
   /** localStorage 键（测试可隔离） */
   storageKey?: string;
 }
@@ -208,6 +211,7 @@ export default function WorkspaceSplit({
   onOpenTab,
   onCloseTab,
   dirty,
+  badges,
   storageKey = WORKSPACE_LAYOUT_KEY,
 }: WorkspaceSplitProps) {
   const [layout, setLayout] = useState<WorkspaceLayout>(() => readLayout(safeStorage(), storageKey));
@@ -296,6 +300,7 @@ export default function WorkspaceSplit({
               }}
             >
               {TAB_LABELS[tab]}
+              {!!badges?.[tab] && <span className="pane-tab-badge">{badges[tab]}</span>}
               {dirty?.[tab] && <span className="dirty-dot on" aria-label="有未保存修改" />}
             </button>
           ))}
@@ -393,9 +398,10 @@ export default function WorkspaceSplit({
                 onClick={() => openTab(tab)}
               >
                 {tab === 'editor' ? <KeyboardIcon /> : TAB_ICONS[tab]}
+                {!!badges?.[tab] && <span className="pane-tab-badge">{badges[tab]}</span>}
               </button>
             ))}
-            <span className="pane-rail-label">编辑</span>
+            <span className="pane-rail-label">工作区</span>
           </div>
         ) : (
           <div className="pane-head pane-head--right">
@@ -410,6 +416,7 @@ export default function WorkspaceSplit({
                   onClick={() => openTab(tab)}
                 >
                   {TAB_LABELS[tab]}
+                  {!!badges?.[tab] && <span className="pane-tab-badge">{badges[tab]}</span>}
                   {dirty?.[tab] && <span className="dirty-dot on" aria-label="有未保存修改" />}
                 </button>
               ))}

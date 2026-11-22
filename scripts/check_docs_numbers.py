@@ -105,8 +105,8 @@ def _mcp_tool_counts() -> dict[str, int]:
 
     工具数会随注册表漂移，与端点数一样是「可从代码推导的数字」，不该靠人眼。
     返回：
-      - `ontology`：`/mcp/ontology` 全部工具（领域 10 + 通用 16 = 26）；
-      - `generic`：引擎通用工具（导入态无领域包时的工具数，16）；
+      - `ontology`：`/mcp/ontology` 全部工具（领域 10 + 通用 16 + 建议 6 = 32）；
+      - `generic`：引擎通用工具（不含领域包与建议工具，16）；
       - `cq`：`/mcp/cq`（18）；
       - `imported`：导入态 `/mcp/ontology`（与 `generic` 同值，保留语义便于文档直接对号）。
     """
@@ -126,6 +126,16 @@ def _mcp_tool_counts() -> dict[str, int]:
         lambda: ENGINE, lambda: ADAPTER, handle.name, handle.description or ""
     )
     module.register_status_tool(server, lambda: {})
+    # #392：建议工具由 main() 实际注册；这里必须同样注册，否则读到的
+    # tools/list 与运行态不一致，文档数字会按错误的 26 校验。
+    advice_spec = importlib.util.spec_from_file_location(
+        "_docs_advice_tools", ROOT / "mcp" / "advice_tools.py")
+    advice_module = importlib.util.module_from_spec(advice_spec)
+    advice_spec.loader.exec_module(advice_module)
+    advice_module.register_tools(
+        module._ToolNameGuard(server), lambda: ENGINE,
+        lambda: (handle.name, handle.name, []),
+    )
     ontology = len(asyncio.run(server.list_tools()))
 
     imported = module.build_server(
@@ -134,11 +144,19 @@ def _mcp_tool_counts() -> dict[str, int]:
     )
     module.register_status_tool(imported, lambda: {})
     generic = len(asyncio.run(imported.list_tools()))
+    # 导入态实际可用的 `/mcp/ontology`：通用 16 + 建议 6 = 22。
+    advice_module.register_tools(
+        module._ToolNameGuard(imported), lambda: ENGINE,
+        lambda: (handle.name, handle.name, []),
+    )
+    imported_count = len(asyncio.run(imported.list_tools()))
 
     cq = len(asyncio.run(
         module.build_cq_server(lambda: ENGINE, lambda: (handle.name, None)).list_tools()
     ))
-    return {"ontology": ontology, "generic": generic, "cq": cq, "imported": generic}
+    return {
+        "ontology": ontology, "generic": generic, "cq": cq, "imported": imported_count,
+    }
 
 
 def main() -> int:
@@ -200,7 +218,7 @@ def main() -> int:
                     f"{rel}: 端点总数写 {got}，实际 {endpoint_count}"
                 )
 
-    # MCP 工具数（#357）：通用 16 / CQ 18（导入态 16）。与端点数同构，
+    # MCP 工具数（#357/#392）：通用 16 / CQ 18 / 本体 32（导入态 22）。与端点数同构，
     # 真建 server 读 tools/list，不维护第二份常量。
     counts = _mcp_tool_counts()
     for rel in (

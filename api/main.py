@@ -102,11 +102,20 @@ from cq import disposition
 from cq import agenda as cq_agenda
 from cq import coverage as cq_coverage
 from cq import lifecycle as cq_lifecycle
+from advice import context as advice_context
+from advice import diff as advice_diff
+from advice import disposition as advice_disposition
+from advice import preflight as advice_preflight
+from advice import prompts_store as advice_prompts
+from advice import requirements as advice_requirements
+from advice import store as advice_store
 from .schemas import (
     ApplyRequest, CapabilityQueryRequest, EntityRequest, RevokeRequest, ImportRequest,
     SparqlRequest, IndividualsRequest, TypesRequest, PropertyRequest,
     DescribeRequest, SaveOntologyRequest, EditModel, SimulationRequest, CqLocateRequest,
     CqPromptsRequest, CqPromptsPreviewRequest, CqRequirementsRequest, CqDispositionRequest, CqDecisionRequest,
+    AdviceDispositionRequest, AdviceRequestCreate,
+    AdvicePromptsRequest, AdvicePromptsPreviewRequest, AdviceRequirementsRequest,
     QueryVisualRequest,
 )
 from .response_schemas import (
@@ -963,82 +972,14 @@ def _ontology_basename(engine, handle) -> str:
 
 
 def _ontology_health(engine, examples: list[dict]) -> dict:
-    """本体体检（#129）：把「这份本体在这个系统里能看到什么」说成人话。
+    """本体体检（#129）：实现见 `reasoner.health`。
 
-    分型只看**用户能感知的三件素材**：有没有个体、断言里有没有 TBox 公理、
-    推理有没有推出业务结论。它不判本体好坏，只回答「哪些功能有得看」——
-    初始用户不该靠一路撞墙（图上没新增 → 数字对不上 → 查不到依据）自己悟。
-
-    口径与说明生成共用引擎原语：个体 = `individual_count()`，业务派生 =
-    `inference_breakdown()["business"]`，公理 = `tbox_axiom_count()`（只看
-    断言图，物化补出的自反结论不算）。纯术语层 / 只有实例 / 可推理三型
-    互斥，判定顺序固定，保证同一份本体每次得到同一个结论。
+    说明页与 MCP 建议上下文（#392）必须拿到同一份三数，判定逻辑因此归到
+    引擎层；这里保留这个名字，历史调用点与测试不用改。
     """
-    from reasoner.engine import tbox_axiom_count
+    from reasoner.health import ontology_health
 
-    breakdown = engine.inference_breakdown()
-    individuals = engine.individual_count()
-    axioms = tbox_axiom_count(engine)
-    if individuals == 0:
-        profile = "terminology_only"
-        profile_label = "纯术语层：没有业务个体，推理只补类型层级"
-        suggestion = (
-            "这份本体没有可推理的个体：想看到推理效果，先补几组个体"
-            "（类型 + 至少一条业务属性）再导入。"
-        )
-    elif axioms == 0:
-        profile = "instances_only"
-        profile_label = "只有实例：没有可验证的 TBox 公理"
-        suggestion = (
-            "个体已经有了，但缺公理：补一条 subClassOf / equivalentClass / "
-            "inverseOf 再导入，才会有「个体被推出新类型 / 新关系」可看。"
-        )
-    else:
-        profile = "reasoning_ready"
-        profile_label = f"有推理素材：{individuals} 个个体 + {axioms} 条公理"
-        suggestion = (
-            "切到「只看推理新增」看结论，再点一条绿色虚线查依据。"
-            if breakdown["business"] > 0
-            else "本体的公理与个体没有形成可派生的组合；先看推理新增，"
-            "若图上仍无新连线，可补 inverseOf / 属性链让个体之间产生结论。"
-        )
-    safe_examples = sum(1 for item in examples if item.get("safe"))
-    return {
-        "profile": profile,
-        "profile_label": profile_label,
-        "facts": {
-            "individuals": individuals,
-            "axioms": axioms,
-            "inferred": breakdown["total"],
-            "business_inferred": breakdown["business"],
-        },
-        "expectations": [
-            {
-                "feature": "推理新增业务结论",
-                "available": breakdown["business"] > 0,
-                "detail": (
-                    f"业务派生 {breakdown['business']} 条"
-                    if breakdown["business"] > 0
-                    else "业务派生 0 条：图上不会多出新连线"
-                ),
-            },
-            {
-                "feature": "查依据（点推理连线看前提）",
-                "available": individuals > 0,
-                "detail": (
-                    "有业务个体，可逐条展开前提链"
-                    if individuals > 0
-                    else "没有业务个体，依据定位只会返回空结果"
-                ),
-            },
-            {
-                "feature": "示例题",
-                "available": safe_examples > 0,
-                "detail": f"{safe_examples} 道可在页内直接试跑",
-            },
-        ],
-        "suggestion": suggestion,
-    }
+    return ontology_health(engine, examples)
 
 
 def _rules_summary(report: dict | None) -> dict | None:
@@ -3261,6 +3202,414 @@ def export_ontology(format: str = Query(
         media_type=media,
         headers={"Content-Disposition": f'attachment; filename="ontology.{suffix}"'},
     )
+
+
+# ---------------- 本体改进建议（#391 / #392：资产 / 处置 / 预检 / 要求 / 提示词） ----------------
+
+
+def _advice_identity() -> str:
+    """建议资产的本体标识（与 CQ 同口径）：导入态用工作区 id，安装领域用领域名。"""
+    return advice_context.identity(DOMAINS.current().name)
+
+
+def _advice_gate_domain() -> str:
+    """预检跑闸门时的领域名；导入态显式传空串（G3/G4 本来就 deferred）。"""
+    handle = DOMAINS.current()
+    return "" if handle.is_imported else handle.name
+
+
+def _advice_detail_view(ontology_id: str, proposal_id: str) -> dict:
+    data = advice_store.detail(ontology_id, proposal_id)
+    item = data.get("proposal") or {}
+    return {**data, "actions": advice_disposition.actions_for(item)}
+
+
+def _advice_write_summary(saved: dict) -> dict:
+    """写盘回执只留人能用的部分（materialized 全量不塞进建议事件流）。"""
+    return {
+        "mode": saved.get("mode"),
+        "filename": saved.get("filename"),
+        "workspace_id": saved.get("workspace_id"),
+        "backup": saved.get("backup"),
+        "stats": saved.get("stats"),
+        "dropped_axioms": saved.get("dropped_axioms"),
+        "inverse_impact": saved.get("inverse_impact"),
+    }
+
+
+def _advice_apply(item: dict):
+    """构造采纳回调：预检 → 合并编辑模型 → 复用保存路径写盘 + 备份 + 重建。
+
+    导入的本体（只读副本）只允许 `mode=new` 另存；这里不从请求体读 mode，
+    因此调用方无法通过参数绕过这条约束。
+    """
+    def apply() -> dict:
+        result = advice_preflight.check(
+            ENGINE, item.get("diff") or {},
+            domain=_advice_gate_domain(), source=item.get("source"),
+        )
+        if not result.get("ok"):
+            raise advice_disposition.ApplyBlocked(
+                result.get("next") or "预检未通过，未写盘。", result,
+            )
+        model = advice_diff.merge(ENGINE, item.get("diff") or {})
+        imported = DOMAINS.current().is_imported
+        filename = f"{Path(getattr(ENGINE, 'onto_path', 'ontology')).stem}-improved.owl"
+        try:
+            saved = save_ontology(SaveOntologyRequest(
+                model=model,
+                mode="new" if imported else "overwrite",
+                filename=filename,
+            ))
+        except HTTPException as exc:
+            raise advice_disposition.ApplyBlocked(str(exc.detail), result) from exc
+        return {"preflight": result, "save": _advice_write_summary(saved)}
+
+    return apply
+
+
+@app.get(
+    "/api/domains/current/advice/context",
+    tags=["通用查询"],
+    summary="建议上下文（只读）",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "智能体提建议前该读到的一切：体检三数 + 分型、改进要求、"
+                "组装好的提示词、可引用 IRI 摘要、待审编号与计数。"
+                "纯只读：不调 infer()、不改活图。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def advice_context_endpoint():
+    """与 MCP `ontology_advice_context` 同一份装配（#392）。"""
+    handle = DOMAINS.current()
+    examples: list[dict] = []
+    guide = getattr(handle, "guide", None)
+    if isinstance(guide, dict):
+        examples = [item for item in guide.get("examples") or [] if isinstance(item, dict)]
+    try:
+        return advice_context.context(ENGINE, examples, handle.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"建议上下文无法读取：{exc}")
+
+
+@app.get(
+    "/api/domains/current/advice/requirements",
+    tags=["通用查询"],
+    summary="改进要求（当前本体）",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "改进要求清单：原文与正面规则并列，标明来源与是否被人改过。",
+        },
+        **ERROR_400,
+    },
+)
+def advice_requirements_get():
+    """读改进要求；只读，不播种、不写盘。"""
+    return advice_requirements.view(_advice_identity())
+
+
+@app.put(
+    "/api/domains/current/advice/requirements",
+    tags=["通用查询"],
+    summary="保存改进要求",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "整份保存后的要求清单。",
+        },
+        **ERROR_400,
+    },
+)
+def advice_requirements_save(req: AdviceRequirementsRequest, request: Request):
+    """整份保存到当前本体；写操作只接受本地回环来源。"""
+    _require_loopback(request)
+    ontology_id = _advice_identity()
+    try:
+        advice_requirements.replace(ontology_id, req.items)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"改进要求无法保存：{exc}")
+    return advice_requirements.view(ontology_id)
+
+
+@app.get(
+    "/api/domains/current/advice/prompts",
+    tags=["通用查询"],
+    summary="建议生成提示词配置",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "生效配置（框架默认 → 领域包 → 工作区，逐字段深合并）与来源。",
+        },
+        **ERROR_400,
+    },
+)
+def advice_prompts_get():
+    """读当前本体的生效建议提示词；只读，不播种、不写盘。"""
+    ontology_id = _advice_identity()
+    try:
+        return {
+            "ontology_id": ontology_id,
+            "source": advice_prompts.source(ontology_id),
+            "config": advice_prompts.load(ontology_id),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"建议配置无法读取：{exc}")
+
+
+@app.put(
+    "/api/domains/current/advice/prompts",
+    tags=["通用查询"],
+    summary="保存建议生成提示词配置",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "保存后的生效配置与来源；已提交建议不受影响。",
+        },
+        **ERROR_400,
+    },
+)
+def advice_prompts_save(req: AdvicePromptsRequest, request: Request):
+    """整份保存到当前本体；只写工作区覆盖，不动领域包。"""
+    _require_loopback(request)
+    ontology_id = _advice_identity()
+    try:
+        config = advice_prompts.save(ontology_id, req.config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"建议配置无法保存：{exc}")
+    return {
+        "ontology_id": ontology_id,
+        "source": advice_prompts.source(ontology_id),
+        "config": config,
+    }
+
+
+@app.delete(
+    "/api/domains/current/advice/prompts",
+    tags=["通用查询"],
+    summary="恢复默认建议生成提示词",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "恢复默认后的生效配置与来源（删除工作区覆盖，回落到领域包 / 框架默认）。",
+        },
+        **ERROR_400,
+    },
+)
+def advice_prompts_reset(request: Request):
+    """删除工作区覆盖，回落到领域包 / 框架默认。"""
+    _require_loopback(request)
+    ontology_id = _advice_identity()
+    try:
+        config = advice_prompts.reset(ontology_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"建议配置无法恢复默认：{exc}")
+    return {
+        "ontology_id": ontology_id,
+        "source": advice_prompts.source(ontology_id),
+        "config": config,
+    }
+
+
+@app.post(
+    "/api/domains/current/advice/prompts/preview",
+    tags=["通用查询"],
+    summary="建议提示词预览（只读）",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "与真实提议同一拼装函数生成的完整提示词；不落盘。",
+        },
+        **ERROR_400,
+    },
+)
+def advice_prompts_preview(req: AdvicePromptsPreviewRequest):
+    """按草稿或已保存配置拼出完整提示词；不写盘。"""
+    ontology_id = _advice_identity()
+    try:
+        return advice_prompts.preview(ontology_id, req.config, req.items)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"建议配置无法预览：{exc}")
+
+
+@app.post(
+    "/api/domains/current/advice/requests",
+    tags=["通用查询"],
+    summary="登记「请求提议」待办",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "新建的待办占位卡；只登记请求，不代智能体创作。",
+        },
+        **ERROR_400,
+    },
+)
+def advice_request_create(req: AdviceRequestCreate, request: Request):
+    """人登记一条「请求提议」，只写待办占位卡。"""
+    _require_loopback(request)
+    try:
+        created = advice_store.add_request(
+            _advice_identity(), note=req.note, actor_type="human", actor="web",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"请求提议无法登记：{exc}")
+    return {"request": created}
+
+
+@app.delete(
+    "/api/domains/current/advice/requests/{request_id}",
+    tags=["通用查询"],
+    summary="撤销「请求提议」待办",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "撤销后的请求；仍保留在资产里，标记 withdrawn。",
+        },
+        **ERROR_400,
+    },
+)
+def advice_request_withdraw(
+    request: Request,
+    request_id: str = ApiPath(..., description="请求编号（如 R1）；不存在返回 400。"),
+):
+    """撤销自己登记的请求；资产保留，状态改 withdrawn。"""
+    _require_loopback(request)
+    try:
+        return {"request": advice_store.withdraw_request(_advice_identity(), request_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get(
+    "/api/domains/current/advice",
+    tags=["通用查询"],
+    summary="改进建议列表",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "建议概览：待审 / 已采纳 / 已拒绝计数、待办占位卡、按状态与类别过滤后的卡片摘要。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def advice_list(
+    review: str = Query("", description="按审核态过滤：none / pending / approved / rejected。"),
+    status: str = Query("", description="按运营态过滤：draft / applied / archived。"),
+    category: str = Query("", description="按建议类别过滤：axiom / terminology / instance / hygiene / other。"),
+):
+    """按本体标识读建议列表；只读，不播种。"""
+    try:
+        return advice_store.view(_advice_identity(), review=review, status=status, category=category)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"建议列表无法读取：{exc}")
+
+
+@app.get(
+    "/api/domains/current/advice/{proposal_id}",
+    tags=["通用查询"],
+    summary="改进建议详情",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": "单条建议全文、事件流、最近一次预检结果与后端下发的可用动作。",
+        },
+        **ERROR_400,
+    },
+)
+def advice_detail(proposal_id: str = ApiPath(..., description="建议编号（如 P1）；不存在返回 400。")):
+    """单条建议 + 事件流 + 预检结果 + 后端下发的可用动作。"""
+    try:
+        return _advice_detail_view(_advice_identity(), proposal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post(
+    "/api/domains/current/advice/{proposal_id}/preflight",
+    tags=["通用查询"],
+    summary="执行建议预检",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "预检实测：G1/G2 + 冲突扫描 + 引擎副本预演；G3/G4 如实标 deferred。"
+                "无论通过与否都写回建议（不改审核态），供界面展示。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def advice_preflight_run(
+    request: Request,
+    proposal_id: str = ApiPath(..., description="建议编号（如 P1）。"),
+):
+    """对已存 diff 跑预检并回写实测结果；不改审核态、不写本体。"""
+    _require_loopback(request)
+    ontology_id = _advice_identity()
+    try:
+        item = advice_store.get(ontology_id, proposal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    result = advice_preflight.check(
+        ENGINE, item.get("diff") or {},
+        domain=_advice_gate_domain(), source=item.get("source"),
+    )
+    try:
+        advice_disposition.record_preflight(ontology_id, proposal_id, result)
+    except ValueError:
+        pass
+    return {"proposal_id": proposal_id, "preflight": result}
+
+
+@app.post(
+    "/api/domains/current/advice/{proposal_id}/disposition",
+    tags=["通用查询"],
+    summary="处置改进建议（采纳并写入 / 退回 / 拒绝 / 暂缓）",
+    responses={
+        200: {
+            "model": OpenEnvelope,
+            "description": (
+                "处置结果：实际写入的审核态 / 运营态、下一步可用动作与（采纳时的）"
+                "预检 + 写盘回执。处置码封闭，枚举外返回 400。"
+            ),
+        },
+        **ERROR_400,
+    },
+)
+def advice_dispose(
+    proposal_id: str = ApiPath(..., description="建议编号（如 P1）。"),
+    req: AdviceDispositionRequest = Body(..., description="处置动作与可选说明。"),
+    actor_type: str = Query("human", description="human / agent（审计用）"),
+    actor: str = Query("web", description="操作者标识（审计用）"),
+):
+    """按处置码原子写入两层状态；采纳走预检 + 保存同一条路径。"""
+    ontology_id = _advice_identity()
+    try:
+        item = advice_store.get(ontology_id, proposal_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        result = advice_disposition.dispose(
+            ontology_id, proposal_id, req.action,
+            note=req.note, actor_type=actor_type, actor=actor,
+            apply=_advice_apply(item),
+        )
+    except advice_disposition.ApplyBlocked as exc:
+        # 预检 / 写盘被拦下：状态已维持 pending+draft，返回实测供界面展示
+        raise HTTPException(status_code=400, detail={
+            "message": str(exc) or "预检未通过，未写盘",
+            "preflight": exc.preflight,
+        })
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {**result, "proposal": _advice_detail_view(ontology_id, proposal_id)["proposal"]}
 
 
 # ---------------- 在线编辑（v1.4.0：编辑模型 / 保存写回 / 下载） ----------------

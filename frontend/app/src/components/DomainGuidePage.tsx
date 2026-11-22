@@ -17,6 +17,8 @@ interface Props {
   onSwitchDomain?: (domain: string) => void;
   /** #277：MCP 实时同步状态（由 App 统一读取，本页只展示） */
   mcpSync?: McpSyncStatus | null;
+  /** #393：体检卡的「让智能体提具体方案」——带建议类别跳到图谱页建议面板 */
+  onPropose?: (category: string) => void;
 }
 
 /*
@@ -607,7 +609,7 @@ function ExamplePanel({
 }
 
 export default function DomainGuidePage({
-  guide, error, loading, onRetry, onImport, onReloadDomain, onSwitchDomain, mcpSync,
+  guide, error, loading, onRetry, onImport, onReloadDomain, onSwitchDomain, mcpSync, onPropose,
 }: Props) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState<SectionId>('overview');
@@ -1066,6 +1068,18 @@ export default function DomainGuidePage({
                 <div className="guide-health-next">
                   <b>下一步：</b>
                   <TermText text={runtime.health.suggestion} scope="overview" site="health-next" />
+                  {onPropose && (
+                    <button
+                      type="button"
+                      className="btn secondary guide-health-propose"
+                      title="带着体检上下文打开右侧改进建议面板，让智能体按缺口提具体方案"
+                      onClick={() => onPropose(
+                        runtime.health?.profile === 'terminology_only' ? 'instance' : 'axiom',
+                      )}
+                    >
+                      让智能体提具体方案 →
+                    </button>
+                  )}
                 </div>
               </div>
             )}

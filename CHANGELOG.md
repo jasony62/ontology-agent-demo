@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **本体图谱改进建议：建议资产、两层状态机与写盘闸门（#391）**：新增 `advice/` 模块与 `ontology_proposals.json`（与本体共址、按本体标识隔离）：每条建议含编号、结构化 `diff`、可核验的提议依据 `source`、为什么 / 预期 / 风险与审计事件流。审核态 `none / pending / approved / rejected` × 运营态 `draft / applied / archived`，四动作封闭枚举（`approve_apply` / `revise` / `reject` / `defer`），非已落地建议至少下发一个可点动作。采纳是唯一写盘路径：先跑预检（G1/G2 + 冲突扫描 + 引擎副本预演，G3/G4 如实标「第二期接入」），通过后复用保存端点写盘（自动备份、失败回滚）；导入的只读本体只允许另存，后端硬挡覆盖。退回 / 拒绝意见沉淀进新增的 `ontology_improvement_requirements.json`（三类来源、按来源去重、人改过不覆盖、删除记抑制键）。新增 10 个 REST 路径（`/api/domains/current/advice*`）。
+- **改进建议 MCP 契约：体检上下文、形状自检、三段式提交与生成提示词（#392）**：`/mcp/ontology` 新增 6 个工具——`ontology_advice_context`（体检三数与领域页同源、要求、可引用 IRI、待审编号、组装好的 prompt）、`ontology_advice_shape`、`ontology_advice_validate`、`ontology_advice_submit`、`ontology_advice_resume`、`ontology_advice_list`。接口层拒收自由 JSON、实测 / 状态字段（`gates` / `preflight` / `business_inferred` / `approved` / `applied` 等）、空 `source` 与不存在的 IRI 引用；只读工具不调 `infer()`，调用前后主引擎不变化。新增 `advice/default_prompts.json` 与工作区 / 领域包 / 框架默认三层合并，配置端点支持读取、保存、恢复默认与指令预览。
+- **改进建议页面：右侧建议 tab、审核四动作、预检与建议配置（#393）**：图谱页右侧新增「✧ 改进建议 N」tab（不新增一级导航），含状态与类别筛选、建议卡片（结构化 diff + 三段依据 + 审核意见 + 四动作）、卡片内预检区（第一期接通 G1/G2，未接入闸门如实标注）、「＋ 请求提议」待办占位卡与「⚙ 建议配置」弹窗（配比 / 写法 / 要求可改，契约段只读，支持恢复默认）。领域页体检卡新增「让智能体提具体方案 →」，带着分型与缺口跳到建议面板；待审角标在 tab 与图标条同源。
+
 ## [0.10.2] - 2026-11-21
 
 ### Added

@@ -119,6 +119,7 @@ function renderSplit(options: RenderOptions = {}) {
         graph={<div data-testid="graph">图谱</div>}
         panes={{
           editor: options.panes?.editor ?? <div data-testid="editor">在线编辑</div>,
+          suggest: options.panes?.suggest ?? null,
         }}
         activeTab={options.activeTab ?? null}
         onOpenTab={onOpenTab}
@@ -171,7 +172,7 @@ describe('WorkspaceSplit 折叠与持久化', () => {
       root.render(
         <WorkspaceSplit
           graph={<div />}
-          panes={{ editor: null }}
+          panes={{ editor: null, suggest: null }}
           activeTab={null}
           onOpenTab={vi.fn()}
           onCloseTab={vi.fn()}
@@ -188,7 +189,7 @@ describe('WorkspaceSplit 折叠与持久化', () => {
       root.render(
         <WorkspaceSplit
           graph={<div />}
-          panes={{ editor: <div data-testid="editor" /> }}
+          panes={{ editor: <div data-testid="editor" />, suggest: null }}
           activeTab={null}
           onOpenTab={onOpenTab}
           onCloseTab={vi.fn()}
@@ -252,6 +253,49 @@ describe('WorkspaceSplit 折叠与持久化', () => {
     expect(container.querySelector('.workspace-tabs')).not.toBeNull();
     expect(container.querySelector('[role="separator"]')).toBeNull();
     expect(container.querySelector('[data-testid="graph"]')).not.toBeNull();
+  });
+
+
+  it('改进建议 Tab 与在线编辑并列（pane-tabs 同步）', () => {
+    renderSplit({ activeTab: 'editor' });
+    const tabs = Array.from(container.querySelectorAll('.pane-tab')).map((el) => el.textContent ?? '');
+    expect(tabs.some((text) => text.includes('在线编辑'))).toBe(true);
+    expect(tabs.some((text) => text.includes('改进建议'))).toBe(true);
+  });
+
+  it('右侧收起时图标条有两个工作区入口，并带同源角标', () => {
+    window.localStorage.setItem(WORKSPACE_LAYOUT_KEY, JSON.stringify(DEFAULT_LAYOUT));
+    act(() => {
+      root.render(
+        <WorkspaceSplit
+          graph={<div />}
+          panes={{ editor: null, suggest: null }}
+          activeTab={null}
+          onOpenTab={vi.fn()}
+          onCloseTab={vi.fn()}
+          badges={{ suggest: 3 }}
+        />,
+      );
+    });
+    expect(container.querySelectorAll('.pane-rail-tab')).toHaveLength(2);
+    const badges = Array.from(container.querySelectorAll('.pane-rail-tab .pane-tab-badge')).map((el) => el.textContent);
+    expect(badges).toContain('3');
+  });
+
+  it('窄屏回退也包含改进建议标签', () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+    renderSplit();
+    const labels = Array.from(container.querySelectorAll('.workspace-tab')).map((el) => el.textContent ?? '');
+    expect(labels.some((text) => text.includes('改进建议'))).toBe(true);
   });
 
   it('关闭编辑区走 onCloseTab（由 App 决定是否弹 dirty 确认）', () => {

@@ -107,6 +107,13 @@ _cq_mod = importlib.util.module_from_spec(_cq_spec)
 _cq_spec.loader.exec_module(_cq_mod)
 cq_tools_mod = _cq_mod
 
+# 本体改进建议工具面（#392）同理：名字冲突会命中 SDK 包，加前缀走动态加载。
+_advice_spec = importlib.util.spec_from_file_location(
+    "_mcp_advice_tools", os.path.join(os.path.dirname(os.path.abspath(__file__)), "advice_tools.py"))
+_advice_mod = importlib.util.module_from_spec(_advice_spec)
+_advice_spec.loader.exec_module(_advice_mod)
+advice_tools_mod = _advice_mod
+
 
 class _ToolNameGuard:
     """包装 MCPServer.tool：同一个领域内重复工具名直接失败。
@@ -671,6 +678,30 @@ def main() -> int:
                     seed = candidate
         return cq_store.identity_for(name, seed)
 
+    def get_advice_context() -> tuple[str, str, list[dict]]:
+        """建议上下文身份（#392）：本体标识 + 领域名 + 说明页示例题。
+
+        示例题只用于体检里的「示例题 N 道」一项；取不到就传空，不能因为
+        生成说明失败让建议工具不可用（三数本身与领域页同源）。
+        """
+        ontology_id, _seed = get_cq_context()
+        examples: list[dict] = []
+        try:
+            if runtime["imported"]:
+                from domains import imported as imported_mod
+
+                guide = imported_mod.build_guide(
+                    runtime["engine"], filename=os.path.basename(runtime["onto"] or ""),
+                )
+            else:
+                from domains.registry import load_domain_guide
+
+                guide = load_domain_guide(runtime["domain"], runtime["mod"])
+            examples = [item for item in guide.get("examples") or [] if isinstance(item, dict)]
+        except Exception:  # noqa: BLE001 —— 说明生成失败不影响建议工具
+            examples = []
+        return ontology_id, runtime["domain"], examples
+
     def _reload(trigger: str) -> bool:
         """重建引擎 + 适配器（核心 + extensions/）；失败保持旧状态。SIGHUP / 文件监听共用。
 
@@ -825,6 +856,9 @@ def main() -> int:
     )
     runtime["server"] = ontology_server
     runtime["domain_tools"] = set(getattr(ontology_server, "_domain_tool_names", set()))
+    # #392：建议工具是框架级（随本体走），不依赖领域包；与 CQ 一样在
+    # 本体 server 上注册，stdio / HTTP 两种 transport 都可用。
+    advice_tools_mod.register_tools(_ToolNameGuard(ontology_server), get_engine, get_advice_context)
     runtime["generic_tools"] = _tool_names(ontology_server) - runtime["domain_tools"]
     register_status_tool(ontology_server, _status)
     runtime["generic_tools"] = _tool_names(ontology_server) - runtime["domain_tools"]

@@ -2833,3 +2833,17 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
   .oa-proposal-list { border-right: none; border-bottom: 1px solid var(--border); max-height: 40vh; }
   .oa-advice-requirements li { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   #395 新内容提示条：只提示、不自动刷新，图谱页与 CQ 页共用
+   ============================================================ */
+.new-content-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  flex-wrap: wrap; margin: 0 0 var(--sp-2);
+  padding: 8px 12px; border-radius: var(--radius);
+  background: var(--primary-soft); border: 1px solid #cfe0f5; color: var(--heading);
+}
+.new-content-banner-text { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.new-content-banner-mark { color: var(--primary); font-weight: 700; }
+.new-content-banner-hint { color: var(--muted); font-size: var(--fs-sm); }
+.new-content-banner-actions { display: flex; align-items: center; gap: 6px; }

@@ -1936,4 +1936,30 @@ describe('CQ 三视图（#389）', () => {
     expect(result!.textContent).toContain('不一致');
     expect(result!.textContent).toContain('本次试跑');
   });
+
+  it('智能体提交后 12 秒内出提示条，点「查看最新内容」才重读（#395）', async () => {
+    vi.useFakeTimers();
+    const set = JSON.parse(JSON.stringify(SET));
+    stubFetch(set);
+    try {
+      act(() => root!.render(<CqPage />));
+      await flush();
+      expect(container!.textContent).not.toContain('智能体提交了新内容');
+
+      // 模拟智能体异步写入：只改题集时间，页面不会自己变
+      set.updated_at = '2026-11-22T10:00:00+00:00';
+      await act(async () => { await vi.advanceTimersByTimeAsync(12000); });
+      await flush();
+      expect(container!.textContent).toContain('智能体提交了新内容');
+
+      const button = [...container!.querySelectorAll('button')]
+        .find((item) => item.textContent?.includes('查看最新内容')) as HTMLButtonElement;
+      expect(button).toBeTruthy();
+      await act(async () => { button.click(); });
+      await flush();
+      expect(container!.textContent).not.toContain('智能体提交了新内容');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

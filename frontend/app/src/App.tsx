@@ -24,6 +24,8 @@ import OverflowMenu from './components/OverflowMenu';
 import WorkspaceSplit from './components/WorkspaceSplit';
 import type { WorkspaceTab } from './components/WorkspaceSplit';
 import OntologyProposalPanel from './components/OntologyProposalPanel';
+import NewContentBanner from './components/NewContentBanner';
+import useContentProbe from './hooks/useContentProbe';
 import { useEditorStore } from './store/editorStore';
 
 export default function App() {
@@ -101,6 +103,10 @@ export default function App() {
   const [suggestCategory, setSuggestCategory] = useState('');
   // 待审建议数：页头 / tab / 图标条三处同源
   const [pendingSuggestions, setPendingSuggestions] = useState(0);
+  // #395：智能体异步提交的「有新内容」提示（只提示，点一下才刷新）
+  const [newContent, setNewContent] = useState(false);
+  // 人确认刷新后递增：建议面板据此重读，不依赖页面重建
+  const [contentRefreshToken, setContentRefreshToken] = useState(0);
   // 领域包切换器：清单来自 /api/domains（切换不落盘，进程重启回默认领域）
   const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null);
   // #277：MCP 实际领域与 API 是否一致（未运行时不显示误导性的「已同步」）
@@ -396,6 +402,45 @@ export default function App() {
     void loadWorkspace();
   }, [loadWorkspace]);
 
+  /**
+   * #395 内容探测（图谱页）：只比对指纹，不调用任何会改页面的加载函数。
+   *
+   * 信号：
+   *  - 建议：`updated_at` + 待审数 + 总数 + 最新一条的 `created_at`；
+   *  - 本体：`pending_changes` / `dirty` / 文件名。
+   * 只读、失败静默；编辑态保护由「只挂提示、点了才刷新」保证。
+   */
+  const graphProbe = useContentProbe({
+    enabled: page === 'graph' && backendOk,
+    resetKey: `${domainInfo?.current ?? ''}|${sourceName}`,
+    probe: async () => {
+      const [advice, status] = await Promise.all([api.adviceList(), api.status()]);
+      return JSON.stringify([
+        advice.updated_at ?? '',
+        advice.counts.pending,
+        advice.counts.total,
+        advice.proposals[0]?.created_at ?? '',
+        status.pending_changes,
+        status.dirty,
+        status.ontology,
+      ]);
+    },
+    onChanged: () => setNewContent(true),
+  });
+
+  /** 人确认后刷新：重读工作区 + 重读建议面板 + 清提示 / 重置基线 */
+  const refreshGraphContent = useCallback(async () => {
+    setNewContent(false);
+    graphProbe.reset();
+    setContentRefreshToken((value) => value + 1);
+    await loadWorkspace();
+  }, [graphProbe.reset, loadWorkspace]);
+
+  // 换领域 / 换本体后旧提示没有意义（基线由 resetKey 负责重建）
+  useEffect(() => {
+    setNewContent(false);
+  }, [domainInfo?.current, sourceName]);
+
   // #131：导入的本体先看「我声明的模型长什么样」——推理全貌是第二步诉求。
   // 只在模式切换时改默认值，用户之后手动切视图不受影响。
   useEffect(() => {
@@ -683,6 +728,14 @@ export default function App() {
             {/* #55：推理提示横幅——Inspector 能给出依据后，才敢说「点任意虚线看依据」 */}
             <InferenceNotice />
 
+            {newContent && (
+              <NewContentBanner
+                label="智能体提交了新内容"
+                hint="页面不会自动刷新，编辑中的内容不受影响"
+                onRefresh={() => void refreshGraphContent()}
+              />
+            )}
+
             <WorkspaceSplit
               graph={(
                 <div className="panel workspace-graph">
@@ -700,6 +753,14 @@ export default function App() {
                           queryHighlight={sparqlResult ? { nodes: sparqlResult.nodes, edges: sparqlResult.edges } : null}
                           toolbarLeading={
                             <>
+                              <button
+                                type="button"
+                                className="btn secondary"
+                                onClick={() => void refreshGraphContent()}
+                                title="重新读取本体与改进建议；不会重载领域代码，也不会覆盖未保存的编辑"
+                              >
+                                刷新
+                              </button>
                               <ViewModeToggle />
                               {/* #379：查询入口并入工具栏行，不再独占画布上方一整行 */}
                               <button
@@ -723,6 +784,9 @@ export default function App() {
                           }
                           toolbarOverflow={
                             <>
+                              <button type="button" className="btn secondary" onClick={() => void refreshGraphContent()}>
+                                刷新
+                              </button>
                               <button type="button" className="btn secondary" onClick={() => void openEditor()}>
                                 编辑本体
                               </button>
@@ -765,7 +829,9 @@ export default function App() {
                   <OntologyProposalPanel
                     key={domainInfo?.current ?? 'domain'}
                     initialCategory={suggestCategory}
+                    refreshToken={contentRefreshToken}
                     onPendingChange={setPendingSuggestions}
+                    onBaselineReset={graphProbe.reset}
                     onApplied={() => void loadWorkspace()}
                   />
                 ) : null,

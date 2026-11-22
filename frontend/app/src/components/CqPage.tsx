@@ -22,6 +22,8 @@ import CqOverviewView from './CqOverviewView';
 import CqDemoPanel from './CqDemoPanel';
 import HelpTip from './HelpTip';
 import TechDetails from './TechDetails';
+import NewContentBanner from './NewContentBanner';
+import useContentProbe from '../hooks/useContentProbe';
 
 // #308 / #309 / #310：与 cq/graduation.py 同一组词、同一顺序。
 // 「未启用」是运营态门槛，不是质量 blocker；「待审核」已从缺口词表移除。
@@ -167,6 +169,38 @@ export default function CqPage() {
   const [noticeTone, setNoticeTone] = useState<'ok' | 'warn'>('ok');
   // #250 R6：点击整体缺口统计，把下方题目列表筛到对应题
   const [gapFilter, setGapFilter] = useState<string | null>(null);
+  // #395：智能体异步提交（加题 / 请求 / 裁决）的提示；只提示，点了才重读
+  const [newContent, setNewContent] = useState(false);
+
+  /**
+   * #395 内容探测（CQ 页）：题集指纹 + 事件流指纹两条都看。
+   *
+   * `cases/request` / `cq_decision` 这类动作只追加 training_log，不改
+   * `cq_set.updated_at`——只看题集时间会漏掉「请求生成候选题」这条主路径。
+   * 因此同时取 `cqResume` 的待决、行动项、意图与计数。只读、失败静默。
+   */
+  const contentProbe = useContentProbe({
+    probe: async () => {
+      const [set, resume] = await Promise.all([api.cqSet(), api.cqResume()]);
+      return JSON.stringify([
+        set.updated_at ?? '',
+        set.summary?.total ?? 0,
+        (set.cases ?? []).map((item) => [
+          item.id ?? '',
+          item.status ?? '',
+          item.review?.state ?? '',
+          item.updated_at ?? '',
+        ]),
+        resume.counts,
+        (resume.pending_decisions ?? []).map((item) => [item.decision_id, item.status ?? '']),
+        (resume.next_actions ?? []).map((item) => [item.action_id, item.status, item.requested_at ?? '']),
+        resume.last_regression?.ran_at ?? '',
+        resume.evaluation?.state ?? '',
+        resume.intent_pending ?? [],
+      ]);
+    },
+    onChanged: () => setNewContent(true),
+  });
 
   const selectTab = useCallback((next: CqTabName) => {
     setTab(next);
@@ -238,10 +272,20 @@ export default function CqPage() {
       setData(null);
     } finally {
       setLoading(false);
+      // 这一轮重读已包含最新内容；把探测基线清空，下一轮静默重建，
+      // 避免用户自己的动作（请求生成 / 裁决）被当成「智能体新提交」。
+      contentProbe.reset();
     }
-  }, []);
+  }, [contentProbe.reset]);
 
   useEffect(() => { void load(); }, [load]);
+
+  /** 人确认刷新：清提示 + 重置基线 + 重读（不改编辑草稿） */
+  const refreshFromProbe = async () => {
+    setNewContent(false);
+    contentProbe.reset();
+    await load();
+  };
 
   const cases = useMemo(() => data?.cases ?? [], [data]);
   const current = useMemo(() => {
@@ -692,7 +736,7 @@ export default function CqPage() {
               </div>
               <div className="cq-tool-group readonly">
                 <span className="cq-tool-group-label">只读工具</span>
-                <button type="button" className="btn secondary" onClick={() => void load()} disabled={loading || busy != null}>
+                <button type="button" className="btn secondary" onClick={() => void refreshFromProbe()} disabled={loading || busy != null}>
                   刷新
                 </button>
                 <button type="button" className="btn secondary" onClick={() => void toggleAudit()}>
@@ -787,6 +831,16 @@ export default function CqPage() {
           caseId={demoCase.id || ''}
           question={demoCase.cq}
           onClose={() => setDemoCase(null)}
+        />
+      )}
+
+      {/* #395：提示条与 tab 无关——用户在概览等异步产出时也要看得见 */}
+      {newContent && (
+        <NewContentBanner
+          label="智能体提交了新内容"
+          hint="页面不会自动刷新，当前编辑与筛选保持不变"
+          onRefresh={() => void refreshFromProbe()}
+          busy={loading}
         />
       )}
 

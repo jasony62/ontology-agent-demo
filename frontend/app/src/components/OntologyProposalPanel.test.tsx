@@ -216,6 +216,26 @@ describe('OntologyProposalPanel', () => {
       (button.textContent ?? '').includes('确认写盘'))).toBe(false);
   });
 
+
+  it('工具栏「刷新」重读列表并重置父级探测基线', async () => {
+    const stub = stubFetch();
+    const onBaselineReset = vi.fn();
+    await act(async () => {
+      root.render(<OntologyProposalPanel onBaselineReset={onBaselineReset} />);
+    });
+    await flush();
+    const listCalls = () => stub.calls.filter((call) =>
+      call.url.endsWith('/api/domains/current/advice') && call.method === 'GET').length;
+    const before = listCalls();
+    const button = Array.from(container.querySelectorAll('button')).find((item) =>
+      item.textContent?.trim() === '刷新') as HTMLButtonElement;
+    expect(button).toBeTruthy();
+    await act(async () => { button.click(); });
+    await flush();
+    expect(listCalls()).toBeGreaterThan(before);
+    expect(onBaselineReset).toHaveBeenCalled();
+  });
+
   it('「＋ 请求提议」登记待办，写明不代智能体创作', async () => {
     const stub = stubFetch();
     await act(async () => {

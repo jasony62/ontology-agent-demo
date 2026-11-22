@@ -24,6 +24,10 @@ export interface OntologyProposalPanelProps {
   onPendingChange?: (count: number) => void;
   /** 从领域页体检卡带过来的上下文：预选类别筛选。 */
   initialCategory?: string;
+  /** #395：人确认刷新后递增，触发面板重读（不从页面重建） */
+  refreshToken?: number;
+  /** #395：面板自身的写操作也会改资产指纹，完成后重置父级探测基线 */
+  onBaselineReset?: () => void;
 }
 
 const REVIEW_OPTIONS = [
@@ -52,6 +56,8 @@ export default function OntologyProposalPanel({
   onApplied,
   onPendingChange,
   initialCategory = '',
+  refreshToken = 0,
+  onBaselineReset,
 }: OntologyProposalPanelProps) {
   const [list, setList] = useState<AdviceListResponse | null>(null);
   const [detail, setDetail] = useState<AdviceDetailResponse | null>(null);
@@ -112,8 +118,9 @@ export default function OntologyProposalPanel({
     })();
     return () => { alive = false; };
     // selected 不放进依赖：切筛选时以新列表第一项为主，避免残留旧选择
+    // refreshToken：人确认刷新后重读，但保留当前选中项
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [review, status, category, onPendingChange]);
+  }, [review, status, category, onPendingChange, refreshToken]);
 
   const select = async (proposal: AdviceProposal) => {
     setSelected(proposal.id);
@@ -130,6 +137,21 @@ export default function OntologyProposalPanel({
     }
   };
 
+  /** 手动刷新：重读列表与当前详情；父级提示条 / 基线一并复位 */
+  const refresh = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await loadList();
+      if (selected) await loadDetail(selected);
+      onBaselineReset?.();
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : String(exc));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runPreflight = async () => {
     if (!selected) return;
     setBusy(true);
@@ -138,6 +160,8 @@ export default function OntologyProposalPanel({
     try {
       const data = await api.advicePreflight(selected);
       setPreflight(data.preflight);
+      // 预检结果会写回建议资产（updated_at 变化），别让它变成「智能体新提交」
+      onBaselineReset?.();
       setNotice(data.preflight.ok ? '预检通过；确认后可写盘。' : '预检未通过：可查看原因后退回。');
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc));
@@ -181,6 +205,7 @@ export default function OntologyProposalPanel({
       setShowRequest(false);
       setNotice('已登记请求；智能体写回后这里会出现待审草稿。');
       await loadList();
+      onBaselineReset?.();
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : String(exc));
     } finally {
@@ -215,6 +240,15 @@ export default function OntologyProposalPanel({
           <span className="oa-proposal-pill muted">共 {counts?.total ?? 0}</span>
         </div>
         <div className="oa-proposal-panel-actions">
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => void refresh()}
+            disabled={busy}
+            title="重新读取建议列表（不改变任何状态，也不覆盖未保存的审核意见）"
+          >
+            刷新
+          </button>
           <button
             type="button"
             className="btn secondary"

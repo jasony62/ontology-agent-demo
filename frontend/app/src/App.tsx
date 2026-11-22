@@ -6,6 +6,7 @@ import type { DomainGuide, DomainInfo, GraphData, QueryVisualResult } from './ap
 import { parseRDF } from './lib/rdf/parser';
 import { sameLegendFocus } from './lib/graphGroups';
 import type { LegendFocus } from './lib/graphGroups';
+import { detectEscapedSparql, escapedSparqlHint } from './lib/sparqlEscape';
 import { mergeOntologyIntoGraph } from './data/toGraphData';
 import { validateOntology } from './data/validate';
 import GraphView from './components/GraphView';
@@ -119,6 +120,11 @@ export default function App() {
   const [sparqlText, setSparqlText] = useState('');
   const [sparqlBusy, setSparqlBusy] = useState(false);
   const [sparqlError, setSparqlError] = useState<string | null>(null);
+  // #382：报错时若识别出「粘贴来的转义文本」，附上诊断与还原后的文本供一键重试
+  const [sparqlEscapeFix, setSparqlEscapeFix] = useState<{
+    unescaped: string;
+    hint: string;
+  } | null>(null);
   const [sparqlResult, setSparqlResult] = useState<QueryVisualResult | null>(null);
 
   // #384：两个左上浮层互斥。回调身份必须稳定，否则 GraphView 的 effect 会在
@@ -127,21 +133,35 @@ export default function App() {
     if (open) setSparqlOpen(false);
   }, []);
 
-  const runSparqlQuery = async () => {
-    const text = sparqlText.trim();
+  const runSparqlQuery = async (overrideText?: string) => {
+    const text = (overrideText ?? sparqlText).trim();
     if (!text) {
       setSparqlError('请先输入一句 SPARQL 查询');
+      setSparqlEscapeFix(null);
       return;
     }
     setSparqlBusy(true);
     setSparqlError(null);
+    setSparqlEscapeFix(null);
     try {
       setSparqlResult(await api.queryVisual(text));
     } catch (e) {
       setSparqlError(`查询失败：${e instanceof Error ? e.message : String(e)}`);
+      // #382：只在已经报错后给线索，不拦截、不自动改写；合法字面量内的转义不算命中
+      const escaped = detectEscapedSparql(text);
+      if (escaped) {
+        setSparqlEscapeFix({ unescaped: escaped.unescaped, hint: escapedSparqlHint(escaped.sequences) });
+      }
     } finally {
       setSparqlBusy(false);
     }
+  };
+
+  // #382：一键还原转义（\n → 真换行、\" → 真引号）并重跑；还原后的文本回填输入框
+  const retrySparqlUnescaped = () => {
+    if (sparqlEscapeFix === null) return;
+    setSparqlText(sparqlEscapeFix.unescaped);
+    void runSparqlQuery(sparqlEscapeFix.unescaped);
   };
 
   // #384：查询面板改为左上浮层（绝对定位，不挤占画布高度）；结果表用原生 details 折叠
@@ -191,7 +211,25 @@ export default function App() {
           </>
         )}
       </div>
-      {sparqlError && <div className="element-readonly-note">{sparqlError}</div>}
+      {sparqlError && (
+        <div className="element-readonly-note" role="alert">
+          <span>{sparqlError}</span>
+          {/* #382：只在报错后补充「输入格式」线索，并给一键还原；不拦截、不改写用户输入 */}
+          {sparqlEscapeFix && (
+            <div className="graph-sparql-escape">
+              <p>{sparqlEscapeFix.hint}</p>
+              <button
+                type="button"
+                className="btn secondary"
+                title={'把字面的 \\n 还原为换行、\\" 还原为引号，回填输入框并重新执行'}
+                onClick={retrySparqlUnescaped}
+              >
+                还原转义后重试
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {sparqlResult && (
         <div className="graph-sparql-result">
           {sparqlResult.askAnswer != null ? (

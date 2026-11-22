@@ -147,3 +147,140 @@ describe('#374 / #379 图谱页 SPARQL 查询', () => {
     });
   });
 });
+
+/**
+ * #382：粘贴「转义文本」执行失败时给出可操作提示。
+ * 原则是不拦截、不自动改写——只在报错后多给一条「输入格式」线索与一键还原。
+ */
+describe('#382 SPARQL 转义文本提示', () => {
+  const openPanel = async () => {
+    act(() => { root!.render(<App />); });
+    await flush();
+    const open = [...container!.querySelectorAll('.graph-toolbar button')]
+      .find((button) => button.textContent === 'SPARQL 查询') as HTMLButtonElement;
+    act(() => open.click());
+  };
+
+  const setQuery = (text: string) => {
+    const input = container!.querySelector<HTMLTextAreaElement>('.graph-sparql-input')!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      setter.call(input, text);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+
+  const runQuery = async () => {
+    const run = [...container!.querySelectorAll('button')]
+      .find((button) => button.textContent === '执行') as HTMLButtonElement;
+    await act(async () => {
+      run.click();
+      await new Promise((resolve) => { setTimeout(resolve, 0); });
+    });
+  };
+
+  const okVisual = {
+    results: [{ s: 't_login_dev' }],
+    askAnswer: null,
+    nodes: ['t_login_dev'],
+    edges: [],
+    row_count: 1,
+    unmapped: [],
+  };
+
+  it('转义文本报错时补充「输入格式」提示，并给一键还原重试', async () => {
+    const bodies: string[] = [];
+    let calls = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/api/query/visual')) {
+        bodies.push(String(init?.body ?? ''));
+        calls += 1;
+        if (calls === 1) {
+          return {
+            ok: false,
+            status: 400,
+            statusText: 'Bad Request',
+            json: async () => ({ detail: "SPARQL 执行失败: Expected SelectQuery, found '\\'  (at char 23)" }),
+          } as unknown as Response;
+        }
+        return { ok: true, status: 200, json: async () => okVisual } as unknown as Response;
+      }
+      throw new Error('offline');
+    }));
+
+    await openPanel();
+    setQuery('SELECT ?s WHERE {\\n  ?s a ?t .\\n} LIMIT 5');
+    await runQuery();
+
+    // 原始错误保留，另附指向输入格式的提示
+    expect(container!.textContent).toContain('Expected SelectQuery');
+    expect(container!.textContent).toContain('检测到查询文本里有字面的');
+    expect(container!.textContent).toContain('这通常是从 JSON 或代码字符串里复制来的转义文本');
+    expect(container!.textContent).toContain('还原成真实换行和引号');
+    // 提示指向输入格式，不让人怀疑 FILTER / 本体
+    expect(container!.textContent).not.toContain('不支持 FILTER');
+
+    const retry = [...container!.querySelectorAll('button')]
+      .find((button) => button.textContent === '还原转义后重试') as HTMLButtonElement;
+    expect(retry).toBeTruthy();
+
+    // 原文不被自动改写：点按钮之前输入框仍保持粘贴内容
+    const input = container!.querySelector<HTMLTextAreaElement>('.graph-sparql-input')!;
+    expect(input.value).toContain('\\n');
+
+    await act(async () => {
+      retry.click();
+      await new Promise((resolve) => { setTimeout(resolve, 0); });
+    });
+
+    // 还原后的文本回填输入框，并按还原内容重新执行
+    expect(input.value).toContain('\n');
+    expect(JSON.parse(bodies[1]).sparql).toBe('SELECT ?s WHERE {\n  ?s a ?t .\n} LIMIT 5');
+    expect(container!.textContent).toContain('命中 1 个节点 · 0 条边');
+    expect(container!.textContent).not.toContain('检测到查询文本里有字面的');
+  });
+
+  it('普通查询失败不出现转义提示', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/api/query/visual')) {
+        return {
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          json: async () => ({ detail: 'SPARQL 执行失败: Expected SelectQuery, found EOF' }),
+        } as unknown as Response;
+      }
+      throw new Error('offline');
+    }));
+
+    await openPanel();
+    setQuery('SELECT ?s WHERE { ?s a ?t ');
+    await runQuery();
+
+    expect(container!.textContent).toContain('查询失败：');
+    expect(container!.textContent).not.toContain('检测到查询文本里有字面的');
+    expect(container!.textContent).not.toContain('还原转义后重试');
+  });
+
+  it('合法查询里字符串字面量内的转义不触发提示', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/api/query/visual')) {
+        return {
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          json: async () => ({ detail: 'SPARQL 执行失败: 其他语法问题' }),
+        } as unknown as Response;
+      }
+      throw new Error('offline');
+    }));
+
+    await openPanel();
+    setQuery('SELECT ?s WHERE { ?s ?p ?o . FILTER(CONTAINS(?o, "\\n")) }');
+    await runQuery();
+
+    expect(container!.textContent).toContain('查询失败：');
+    expect(container!.textContent).not.toContain('检测到查询文本里有字面的');
+    expect(container!.textContent).not.toContain('还原转义后重试');
+  });
+});

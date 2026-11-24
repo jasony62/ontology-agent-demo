@@ -370,7 +370,10 @@ export interface GuideRuntime {
   /** MCP 接入参数（框架级约定；端口来自运行态配置，领域名随当前句柄变化） */
   mcp: {
     transport: string;
+    /** 本体推理端点（#398：真端点，不再给 `/mcp` 兼容别名） */
     url: string;
+    /** CQ 出题 / 训练 / 裁决端点（#398；stdio 不分端点） */
+    cq_url: string;
     domain: string;
     port: number;
     start_command: string;

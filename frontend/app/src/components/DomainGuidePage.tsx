@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import type { DomainGuide, GuideCapabilitySlot, GuideExample, GuideRuntime, McpSyncStatus } from '../api/client';
 import { formatLocalTime } from '../lib/time';
 import { GlossaryProvider, TermText } from './TermText';
+import CopyBlock, { pretty } from './CopyBlock';
 
 interface Props {
   guide: DomainGuide | null;
@@ -83,30 +84,6 @@ function scenarioSection(text: string): SectionId {
 
 /** #114：示例题分组顺序——北极星入口与预测题置顶，未声明 group 的归入「其余示例」 */
 /** 深色代码块 + 复制按钮（与既有「服务能力」弹窗同一视觉语义） */
-function CopyBlock({ code, note }: { code: string; note?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="code-block">
-      <button
-        className="code-copy"
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(code);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          } catch {
-            /* clipboard 不可用时静默：内容仍可手动选中复制 */
-          }
-        }}
-      >
-        {copied ? '已复制 ✓' : '复制'}
-      </button>
-      <pre>{code}</pre>
-      {note && <div className="guide-code-note">{note}</div>}
-    </div>
-  );
-}
-
 /** 静态参数预览：字符串按原文显示（SPARQL 不再被 JSON 引号包住），并提供复制。 */
 function StaticParam({ value }: { value: unknown }) {
   const [copied, setCopied] = useState(false);
@@ -131,14 +108,6 @@ function StaticParam({ value }: { value: unknown }) {
       </button>
     </div>
   );
-}
-
-function pretty(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1433,7 +1402,8 @@ export default function DomainGuidePage({
               <div className="guide-card">
                 <h4>Streamable HTTP（豆包等连接器）</h4>
                 <p className="guide-muted">
-                  连接器传输类型选 HTTP，URL 填 <code>{runtime.mcp.url}</code>。
+                  连接器传输类型选 HTTP，URL 填 <code>{runtime.mcp.url}</code>
+                  （本体推理工具；CQ 出题 / 训练工具在 <code>{runtime.mcp.cq_url}</code>，CQ 概览页也有可复制配置）。
                 </p>
                 <CopyBlock code={`# 启动 MCP Server\n${runtime.mcp.start_command}`} />
                 <CopyBlock
@@ -1450,6 +1420,9 @@ export default function DomainGuidePage({
               </div>
               <div className="guide-card">
                 <h4>stdio（本地 MCP 客户端）</h4>
+                <p className="guide-muted">
+                  stdio 是单通道：这一份命令同时含本体与 CQ 全部工具，不需要分别配置。
+                </p>
                 <CopyBlock code={runtime.mcp.stdio_command} />
                 <CopyBlock
                   code={pretty({

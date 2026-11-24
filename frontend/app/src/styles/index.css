@@ -2850,3 +2850,17 @@ a.download-link:hover { background: var(--primary-soft); border-color: var(--bor
 .new-content-banner-mark { color: var(--primary); font-weight: 700; }
 .new-content-banner-hint { color: var(--muted); font-size: var(--fs-sm); }
 .new-content-banner-actions { display: flex; align-items: center; gap: 6px; }
+
+/* ============================================================
+   #398 CQ 概览的 MCP 配置折叠区：知识不是待办，默认收起
+   ============================================================ */
+.cq-mcp-config {
+  margin-top: var(--sp-4); border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); padding: 8px 12px;
+}
+.cq-mcp-config > summary {
+  cursor: pointer; color: var(--heading); font-weight: 600;
+}
+.cq-mcp-config[open] > summary { margin-bottom: 8px; }
+.cq-mcp-hint { color: var(--muted); font-size: var(--fs-sm); line-height: 1.65; margin-bottom: 8px; }
+.cq-mcp-hint code { background: var(--panel-2); padding: 1px 4px; border-radius: 4px; }

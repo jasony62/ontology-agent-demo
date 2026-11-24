@@ -335,7 +335,9 @@ def test_guide_endpoint_returns_one_complete_response():
     assert "graph_export" in body["runtime"]["declared_capabilities"]
     assert body["runtime"]["ontology"].endswith(".owl")
     assert body["runtime"]["mcp"]["domain"] == body["domain"]
-    assert body["runtime"]["mcp"]["url"].endswith("/mcp")
+    # #398：界面给真端点，不再给 `/mcp` 兼容别名；CQ 工具走另一个端点
+    assert body["runtime"]["mcp"]["url"].endswith("/mcp/ontology")
+    assert body["runtime"]["mcp"]["cq_url"].endswith("/mcp/cq")
     assert body["runtime"]["mcp"]["port"] > 0
     assert "triples" in body["runtime"]["counts"]
     assert isinstance(body["runtime"]["individuals"], list)

@@ -1335,7 +1335,10 @@ def domain_guide():
     )
     mcp = {
         "transport": "streamable-http",
-        "url": f"http://127.0.0.1:{mcp_port}/mcp",
+        # #398：对外给真端点，不再给兼容别名 `/mcp`；CQ 工具另开一个端点，
+        # 一份配置无法同时覆盖两类工具（stdio 例外，见下）。
+        "url": f"http://127.0.0.1:{mcp_port}/mcp/ontology",
+        "cq_url": f"http://127.0.0.1:{mcp_port}/mcp/cq",
         "domain": mcp_domain,
         "port": mcp_port,
         "start_command": (

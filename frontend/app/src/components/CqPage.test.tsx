@@ -103,6 +103,7 @@ function stubFetch(
     agentActions?: Array<Record<string, unknown>>;
     patchError?: Record<string, unknown>;
     evaluation?: Record<string, unknown>;
+    mcp?: Record<string, unknown>;
   } = {},
 ) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -310,6 +311,12 @@ function stubFetch(
         ok: true, status: 200,
         json: async () => ({ ...set, case: newCase, cases: [...set.cases, newCase] }),
       } as unknown as Response;
+    }
+    if (url.endsWith('/api/domains/current/guide')) {
+      if (!options.mcp) {
+        return { ok: false, status: 404, json: async () => ({ detail: 'no guide' }) } as unknown as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ runtime: { mcp: options.mcp } }) } as unknown as Response;
     }
     if (url.includes('/cq/set')) {
       return { ok: true, status: 200, json: async () => set } as unknown as Response;
@@ -1961,5 +1968,33 @@ describe('CQ 三视图（#389）', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('概览折叠区给出 /mcp/cq 配置，默认收起且端口随运行态（#398）', async () => {
+    stubFetch(SET, LOCATE, {
+      mcp: {
+        transport: 'streamable-http',
+        url: 'http://127.0.0.1:9010/mcp/ontology',
+        cq_url: 'http://127.0.0.1:9010/mcp/cq',
+        domain: 'agent_task',
+        port: 9010,
+        start_command: '',
+        stdio_command: '',
+      },
+    });
+    act(() => root!.render(<CqPage />));
+    await flush();
+
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/api/domains/current/guide'))).toBe(true);
+    const overview = [...container!.querySelectorAll('.cq-tab')]
+      .find((item) => item.textContent === '概览') as HTMLButtonElement;
+    await act(async () => { overview.click(); });
+    await flush();
+    const details = container!.querySelector('.cq-mcp-config') as HTMLDetailsElement | null;
+    expect(details).toBeTruthy();
+    expect(details!.open).toBe(false);
+    expect(details!.textContent).toContain('http://127.0.0.1:9010/mcp/cq');
+    expect(details!.textContent).toContain('本体推理工具请用领域页');
+    expect(details!.querySelector('.code-copy')?.textContent).toContain('复制');
   });
 });

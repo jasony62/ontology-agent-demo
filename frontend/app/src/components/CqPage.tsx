@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { CqAuditEntry, CqAxiomItem, CqAxiomsResult, CqCaseRunResult, CqCoverageResponse, CqDispositionResult, CqEvidence, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse, DomainInfo } from '../api/client';
+import type { CqAuditEntry, CqAxiomItem, CqAxiomsResult, CqCaseRunResult, CqCoverageResponse, CqDispositionResult, CqEvidence, CqLocateResult, CqMetricsResponse, CqResumeResponse, CqRun, CqSetCase, CqSetResponse, DomainInfo, GuideRuntime } from '../api/client';
 import {
   EXPECTED_TYPE_OPTIONS,
   STATUS_OPTIONS,
@@ -23,6 +23,7 @@ import CqDemoPanel from './CqDemoPanel';
 import HelpTip from './HelpTip';
 import TechDetails from './TechDetails';
 import NewContentBanner from './NewContentBanner';
+import CopyBlock, { pretty } from './CopyBlock';
 import useContentProbe from '../hooks/useContentProbe';
 
 // #308 / #309 / #310：与 cq/graduation.py 同一组词、同一顺序。
@@ -145,6 +146,8 @@ export default function CqPage() {
 
   // #269 / R22：领域显示名（有中文标签时领导模式不露 snake_case 标识符）。
   const [domainInfo, setDomainInfo] = useState<DomainInfo | null>(null);
+  // #398：CQ 端点配置（来自 guide 的运行态，端口 / 域名随配置变化，不前端写死）
+  const [mcp, setMcp] = useState<GuideRuntime['mcp'] | null>(null);
   // #255：辅助取数失败不再静默——汇总成一条可关闭、可重试的警告条。
   const [partialErrors, setPartialErrors] = useState<string[]>([]);
   const [recentAudit, setRecentAudit] = useState<CqAuditEntry[]>([]);
@@ -243,8 +246,10 @@ export default function CqPage() {
       const next = await api.cqSet();
       setData(next);
       setSelected((current) => current ?? (next.cases[0] ? caseKey(next.cases[0], 0) : null));
-      const [healthResult, resumeResult, auditResult, metricsResult, coverageResult, domainsResult] = await Promise.allSettled([
-        api.health(), api.cqResume(), api.cqAudit(5), api.cqMetrics(), api.cqCoverage(), api.domains(),
+      const [
+        healthResult, resumeResult, auditResult, metricsResult, coverageResult, domainsResult, guideResult,
+      ] = await Promise.allSettled([
+        api.health(), api.cqResume(), api.cqAudit(5), api.cqMetrics(), api.cqCoverage(), api.domains(), api.guide(),
       ]);
       const failed: string[] = [];
       if (healthResult.status === 'fulfilled') setHealth(healthResult.value);
@@ -259,6 +264,8 @@ export default function CqPage() {
       else failed.push('覆盖检查');
       if (domainsResult.status === 'fulfilled') setDomainInfo(domainsResult.value);
       else failed.push('领域信息');
+      // MCP 配置是知识不是待办：取不到就静默不展示，不占辅助错误条
+      setMcp(guideResult.status === 'fulfilled' ? guideResult.value.runtime.mcp : null);
       try {
         const history = await api.cqRuns();
         setRuns(history.runs);
@@ -865,6 +872,27 @@ export default function CqPage() {
             onGoCases={() => selectTab('cases')}
             onGoTraining={() => selectTab('training')}
           />
+          {/* #398：MCP 是知识不是待办，收进概览底部的折叠区，不占首屏 */}
+          {mcp && (
+            <details className="cq-mcp-config">
+              <summary>接智能体管题（MCP · CQ 工具）</summary>
+              <p className="cq-mcp-hint">
+                出题、跑回归、做裁决用的是 CQ 端点；本体推理工具请用领域页「怎么接进去」里的
+                {' '}<code>{mcp.url}</code>。本地 stdio 客户端只有一份命令，同时含两类工具。
+              </p>
+              <CopyBlock
+                code={pretty({
+                  mcpServers: {
+                    'ontology-agent-demo-cq': {
+                      type: 'http',
+                      url: mcp.cq_url,
+                    },
+                  },
+                })}
+                note="通用 MCP 客户端配置；字段名以客户端为准（部分客户端用 transport 替代 type）"
+              />
+            </details>
+          )}
         </>
       ) : tab === 'training' ? (
         <CqTrainingPage onGoToCases={() => selectTab('cases')} cases={data?.cases ?? []} />

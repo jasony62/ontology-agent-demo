@@ -47,7 +47,8 @@ const GUIDE: DomainGuide = {
     ontology: 'agent_task_ontology.owl',
     mcp: {
       transport: 'streamable-http',
-      url: 'http://127.0.0.1:9000/mcp',
+      url: 'http://127.0.0.1:9000/mcp/ontology',
+      cq_url: 'http://127.0.0.1:9000/mcp/cq',
       domain: 'agent_task',
       port: 9000,
       start_command: '.venv/bin/python mcp/mcp_server.py --domain agent_task --port 9000',
@@ -185,7 +186,10 @@ describe('DomainGuidePage（#103 当前领域单页）', () => {
     // #121：推理新增拆成自反 / 元层 / 业务，不再只给一个总数
     expect(text).toContain('推理新增构成：自反 12 · 元层 5 · 业务派生 3');
     expect(text).toContain('MCP 接入');
-    expect(text).toContain('http://127.0.0.1:9000/mcp');
+    expect(text).toContain('http://127.0.0.1:9000/mcp/ontology');
+    expect(text).not.toContain('URL 填 http://127.0.0.1:9000/mcp。');
+    expect(text).toContain('http://127.0.0.1:9000/mcp/cq');
+    expect(text).toContain('stdio 是单通道');
     expect(text).toContain('mcpServers');
     expect(text).toContain('<项目根目录>/.venv/bin/python');
   });

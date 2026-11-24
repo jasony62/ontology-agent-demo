@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -199,7 +201,12 @@ def test_timeline_summaries_are_chinese_and_never_empty(client):
         assert summary.strip(), "摘要不能为空"
         assert not summary.rstrip().endswith(("：", ":")), f"空冒号摘要：{summary!r}"
         for code in _BARE_CODES:
-            assert code not in summary, f"摘要含裸英文码 {code!r}：{summary!r}"
+            # 裸码判定按「独立 token」：随机 uuid / 哈希里恰好含 add、pass
+            # 不算泄漏（CI 上已实际误报过）。前后必须是字母数字之外才算独立码。
+            pattern = rf"(?<![a-z0-9]){re.escape(code)}(?![a-z0-9])"
+            assert not re.search(pattern, summary), (
+                f"摘要含裸英文码 {code!r}：{summary!r}"
+            )
 
     assert "查看了工作台（当时有待处理事项）" in summaries
     assert "请求执行动作：生成候选题" in summaries

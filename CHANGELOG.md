@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-11-24
+
 ### Added
 
 - **本体图谱改进建议：建议资产、两层状态机与写盘闸门（#391）**：新增 `advice/` 模块与 `ontology_proposals.json`（与本体共址、按本体标识隔离）：每条建议含编号、结构化 `diff`、可核验的提议依据 `source`、为什么 / 预期 / 风险与审计事件流。审核态 `none / pending / approved / rejected` × 运营态 `draft / applied / archived`，四动作封闭枚举（`approve_apply` / `revise` / `reject` / `defer`），非已落地建议至少下发一个可点动作。采纳是唯一写盘路径：先跑预检（G1/G2 + 冲突扫描 + 引擎副本预演，G3/G4 如实标「第二期接入」），通过后复用保存端点写盘（自动备份、失败回滚）；导入的只读本体只允许另存，后端硬挡覆盖。退回 / 拒绝意见沉淀进新增的 `ontology_improvement_requirements.json`（三类来源、按来源去重、人改过不覆盖、删除记抑制键）。新增 10 个 REST 路径（`/api/domains/current/advice*`）。
